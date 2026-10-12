@@ -43,6 +43,34 @@ func resolveMatePlugins(w *store.Workspace, project string) (matePlugins, error)
 	return p, nil
 }
 
+// PreflightMatePlugins says whether a Mate start of project on kind (the
+// workspace default when empty) would get past its plugins: their
+// configuration resolves, and a harness whose MCPConfig capability is not
+// verified has no MCP server to be given. It is the refusal StartMate or
+// the harness's Prepare would return, asked before anything is stopped:
+// context refresh asks it so that a Mate is not stopped for a fresh start
+// that cannot come up. It reads files only.
+func PreflightMatePlugins(w *store.Workspace, deps Deps, project string, kind harness.Kind) error {
+	if kind == "" {
+		var err error
+		if kind, err = deps.defaultHarness(w.Defaults().MateHarness, harness.RoleMate); err != nil {
+			return err
+		}
+	}
+	profile, err := deps.Harnesses.Lookup(kind)
+	if err != nil {
+		return err
+	}
+	p, err := resolveMatePlugins(w, project)
+	if err != nil {
+		return err
+	}
+	if c := profile.Capabilities().MCPConfig; !c.Verified() {
+		return harness.RefuseMCPServers(kind, c.Reason, p.servers)
+	}
+	return nil
+}
+
 // writePluginSkills installs the plugin skills where the harness reads the
 // Mate's own, and removes those of instances the Mate no longer has. A
 // destination the user owns refuses the start.

@@ -21,27 +21,30 @@ import (
 // pluginLinks are the plugin links that carry a console key, by project.
 type pluginLinks map[string][]plugin.Link
 
-// loadPluginLinks resolves every project's plugin links. A configuration
-// error, or a key that console.yaml or the console already owns, stops the
-// console before it starts; nothing is overridden silently.
-func loadPluginLinks(ws *store.Workspace, cfg consolecmd.Config) (pluginLinks, error) {
-	links := pluginLinks{}
+// loadPluginLinks resolves every project's plugin links. A plugin
+// configuration error leaves the console without any plugin link and is
+// returned as notice, one line naming the file and the error, for the
+// status line: plugins are a convenience the console runs without. A key
+// that console.yaml or the console already owns is console configuration,
+// and stops the console before it starts; nothing is overridden silently.
+func loadPluginLinks(ws *store.Workspace, cfg consolecmd.Config) (links pluginLinks, notice string, err error) {
+	links = pluginLinks{}
 	for _, p := range ws.Projects() {
 		res, err := plugin.Resolve(ws.Root(), p.Name)
 		if err != nil {
-			return nil, err
+			return pluginLinks{}, "plugin links off: " + strings.Join(strings.Fields(err.Error()), " "), nil
 		}
 		for _, l := range res.Links {
 			if l.Key == "" {
 				continue
 			}
 			if owner := consoleKeyOwner(cfg, l.Key); owner != "" {
-				return nil, fmt.Errorf("%s: instance %q key %q is %s", plugin.ConfigFile, l.Instance, l.Key, owner)
+				return nil, "", fmt.Errorf("%s: instance %q key %q is %s", plugin.ConfigFile, l.Instance, l.Key, owner)
 			}
 			links[p.Name] = append(links[p.Name], l)
 		}
 	}
-	return links, nil
+	return links, "", nil
 }
 
 // consoleKeyOwner says what already owns key on project rows - the console

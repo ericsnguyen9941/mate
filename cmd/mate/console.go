@@ -96,7 +96,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	if err != nil {
 		return err
 	}
-	links, err := loadPluginLinks(ws, commands)
+	links, pluginNotice, err := loadPluginLinks(ws, commands)
 	if err != nil {
 		return err
 	}
@@ -204,6 +204,11 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 			notice += "; "
 		}
 		notice += text
+	}
+	// A plugin configuration problem is said on the status line too; the
+	// console runs on without plugin links.
+	if pluginNotice != "" {
+		addNotice(pluginNotice)
 	}
 	var columns *consoleColumns
 	if h != nil {

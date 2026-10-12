@@ -59,7 +59,7 @@ func pluginFixture(t *testing.T, instances map[string]map[string]string) *store.
 
 func TestPluginLinksBindAndOpen(t *testing.T) {
 	w := pluginFixture(t, map[string]map[string]string{"board": {"shop": "b"}})
-	links, err := loadPluginLinks(w, consolecmd.Config{})
+	links, _, err := loadPluginLinks(w, consolecmd.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestPluginLinksBindAndOpen(t *testing.T) {
 
 func TestPluginLinksSharedKeyOneLinePerInstance(t *testing.T) {
 	w := pluginFixture(t, map[string]map[string]string{"board": {"shop": "b", "blog": "b"}})
-	links, err := loadPluginLinks(w, consolecmd.Config{})
+	links, _, err := loadPluginLinks(w, consolecmd.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestPluginLinksSharedKeyOneLinePerInstance(t *testing.T) {
 		t.Fatalf("same key, same instance, two projects: %+v", b)
 	}
 	w = pluginFixture(t, map[string]map[string]string{"board": {"shop": "b"}, "wiki": {"blog": "b"}})
-	links, err = loadPluginLinks(w, consolecmd.Config{})
+	links, _, err = loadPluginLinks(w, consolecmd.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestPluginLinkCollisions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := pluginFixture(t, map[string]map[string]string{"board": {"shop": tc.key}})
-			_, err := loadPluginLinks(w, tc.cfg)
+			_, _, err := loadPluginLinks(w, tc.cfg)
 			if err == nil {
 				t.Fatal("collision accepted")
 			}
@@ -142,14 +142,14 @@ func TestPluginLinkCollisions(t *testing.T) {
 	// A crew-scope console.yaml binding of the same key does not collide.
 	w := pluginFixture(t, map[string]map[string]string{"board": {"shop": "t"}})
 	cfg := consolecmd.Config{Bindings: []consolecmd.Binding{{Key: "t", Scope: "crew", Label: "c", Command: []string{"x"}, Mode: "external"}}}
-	if _, err := loadPluginLinks(w, cfg); err != nil {
+	if _, _, err := loadPluginLinks(w, cfg); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestNoPluginsYAMLChangesNothing(t *testing.T) {
 	w := pluginFixture(t, nil)
-	links, err := loadPluginLinks(w, consolecmd.Config{})
+	links, _, err := loadPluginLinks(w, consolecmd.Config{})
 	if err != nil || len(links) != 0 || len(links.bindings()) != 0 {
 		t.Fatalf("links %v, %v", links, err)
 	}
@@ -158,13 +158,41 @@ func TestNoPluginsYAMLChangesNothing(t *testing.T) {
 	}
 }
 
-func TestPluginLinkConfigErrorBlocksStartup(t *testing.T) {
-	w := pluginFixture(t, nil)
-	if err := os.WriteFile(filepath.Join(w.StateDir(), "plugins.yaml"), []byte("bogus: [\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := loadPluginLinks(w, consolecmd.Config{}); err == nil {
-		t.Fatal("bad plugins.yaml accepted")
+// A plugin configuration error does not keep the console from starting: it
+// runs without any plugin link, and says why in one status-line notice that
+// names the file.
+func TestPluginLinkConfigErrorDegradesToNotice(t *testing.T) {
+	for _, tc := range []struct{ name, yaml, want string }{
+		{"unparsable file", "bogus: [\n", "yaml"},
+		// An instance bound only to blog has no package; shop's board
+		// link resolves, and is dropped with it.
+		{"one project's binding", "", "is not a directory"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := pluginFixture(t, map[string]map[string]string{"board": {"shop": "b"}})
+			file := filepath.Join(w.StateDir(), "plugins.yaml")
+			text := tc.yaml
+			if text == "" {
+				data, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				text = string(data) + "  gone:\n    path: " + filepath.Join(w.Root(), "no-such-package") + "\n    projects:\n      blog: {}\n"
+			}
+			if err := os.WriteFile(file, []byte(text), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			links, notice, err := loadPluginLinks(w, consolecmd.Config{})
+			if err != nil {
+				t.Fatalf("console refused to start: %v", err)
+			}
+			if len(links) != 0 || len(links.bindings()) != 0 {
+				t.Fatalf("plugin links kept: %v", links)
+			}
+			if !strings.HasPrefix(notice, "plugin links off: ") || !strings.Contains(notice, file) || !strings.Contains(notice, tc.want) || strings.Contains(notice, "\n") {
+				t.Fatalf("notice %q: want one line naming %s and %q", notice, file, tc.want)
+			}
+		})
 	}
 }
 
