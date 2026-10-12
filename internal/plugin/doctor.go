@@ -32,8 +32,9 @@ type DoctorOptions struct {
 	LookPath func(file string) (string, error)
 }
 
-// Check is one doctor result. Subject is "plugins.yaml", an instance id, or
-// "<instance>/<project>".
+// Check is one doctor result. Subject is "plugins.yaml", an instance id,
+// "<instance>/<project>", or "<instance>/workspace" for the default harness
+// future projects start with.
 type Check struct {
 	Subject string
 	Name    string
@@ -99,8 +100,13 @@ func Doctor(workspaceRoot string, opts DoctorOptions) []Check {
 		}
 		found = true
 		projects := sortedKeys(in.Projects)
+		if in.Workspace != nil {
+			// Check the default harness for future projects as well as every
+			// current project's potentially different harness.
+			projects = append([]string{""}, opts.Projects...)
+		}
 		if opts.Project != "" {
-			if _, ok := in.Projects[opts.Project]; !ok {
+			if _, ok := in.BindingFor(opts.Project); !ok {
 				if opts.Instance != "" {
 					add(in.ID, "project "+opts.Project, errors.New("the instance has no binding for this project"), "")
 				}
@@ -157,9 +163,12 @@ func doctorInstance(in Instance, projects []string, cfg Config, opts DoctorOptio
 	}
 
 	for _, project := range projects {
-		b := in.Projects[project]
+		b, _ := in.BindingFor(project)
 		subject := in.ID + "/" + project
-		if opts.Projects != nil && !slices.Contains(opts.Projects, project) {
+		if project == "" {
+			subject = in.ID + "/workspace"
+		}
+		if project != "" && opts.Projects != nil && !slices.Contains(opts.Projects, project) {
 			add(subject, "project", errors.New("not a project of this workspace"), "")
 		}
 		if m.Open != nil {
@@ -200,7 +209,10 @@ func keyProblem(in Instance, project, key string, m *Manifest, cfg Config, owner
 		if other.ID == in.ID || !other.Enabled {
 			continue
 		}
-		if ob, ok := other.Projects[project]; ok && ob.Key == key {
+		if ob, ok := other.BindingFor(project); ok && ob.Key == key {
+			if project == "" {
+				return fmt.Errorf("instance %s binds the same key for the workspace", other.ID)
+			}
 			return fmt.Errorf("instance %s binds the same key on this project", other.ID)
 		}
 	}

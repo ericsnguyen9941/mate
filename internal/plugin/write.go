@@ -12,8 +12,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// AddRequest is one explicit binding of an instance to a project, as
-// `mate plugin add` writes it.
+// AddRequest installs an instance for the workspace. A non-empty Project
+// requests a legacy project binding.
 type AddRequest struct {
 	Instance string
 	// Path is the package root: absolute, or relative to the workspace root.
@@ -34,9 +34,13 @@ type AddResult struct {
 	Created bool
 	// NewInstance is true when the instance was added to the file.
 	NewInstance bool
-	// Replaced is true when the project already had a binding of this
-	// instance, now overwritten.
+	// Replaced is true when the instance already existed: a workspace add
+	// overwrote its config and key, a --project add overwrote that
+	// project's binding.
 	Replaced bool
+	// Promoted names, sorted, the legacy projects whose bindings a workspace
+	// add removed in favour of the one workspace config.
+	Promoted []string
 	// Disabled is true when the instance is enabled: false; the binding is
 	// written but gives nothing until it is enabled.
 	Disabled bool
@@ -56,13 +60,18 @@ type MissingConfigError struct {
 }
 
 func (e *MissingConfigError) Error() string {
-	return fmt.Sprintf("instance %s: project %s: %s open.url %q needs config %s, which the binding does not set",
-		e.Instance, e.Project, e.Manifest, e.URL, strings.Join(e.Keys, ", "))
+	scope := "workspace"
+	if e.Project != "" {
+		scope = "project " + e.Project
+	}
+	return fmt.Sprintf("instance %s: %s: %s open.url %q needs config %s, which the binding does not set",
+		e.Instance, scope, e.Manifest, e.URL, strings.Join(e.Keys, ", "))
 }
 
 // AddBinding writes req into <workspaceRoot>/.mate/plugins.yaml: it adds
 // the instance when the file has none of that id, and adds or overwrites
-// the binding of req.Project, keeping every other instance and project.
+// workspace configuration (or the legacy binding of req.Project). A workspace
+// installation replaces that instance's legacy bindings, keeping other instances.
 // An existing instance keeps its path; a different req.Path is refused.
 // The result is validated exactly as a Mate start reads it (Load) before
 // anything is written, so a refusal leaves the file untouched.
@@ -86,8 +95,8 @@ func AddBinding(workspaceRoot string, req AddRequest) (AddResult, error) {
 	if !instanceIDRe.MatchString(req.Instance) {
 		return AddResult{}, fail("instance id must match [a-z0-9][a-z0-9-]*")
 	}
-	if strings.TrimSpace(req.Project) == "" || strings.TrimSpace(req.Project) != req.Project {
-		return AddResult{}, fail("project name must be non-empty without surrounding spaces")
+	if strings.TrimSpace(req.Project) != req.Project {
+		return AddResult{}, fail("project name must have no surrounding spaces")
 	}
 	if strings.TrimSpace(req.Path) == "" {
 		return AddResult{}, fail("package path is required")
@@ -175,9 +184,12 @@ func AddBinding(workspaceRoot string, req AddRequest) (AddResult, error) {
 		}
 	}
 
-	projects := mappingField(inst, "projects")
-	if projects.Kind != yaml.MappingNode {
-		return AddResult{}, fail("projects is not a mapping; fix it by hand")
+	var projects *yaml.Node
+	if req.Project != "" {
+		projects = mappingField(inst, "projects")
+		if projects.Kind != yaml.MappingNode {
+			return AddResult{}, fail("projects is not a mapping; fix it by hand")
+		}
 	}
 	binding := mapping()
 	if len(req.Config) > 0 {
@@ -198,8 +210,24 @@ func AddBinding(workspaceRoot string, req AddRequest) (AddResult, error) {
 	if len(binding.Content) == 0 {
 		binding.Style = yaml.FlowStyle
 	}
-	res.Replaced = mappingValue(projects, req.Project) != nil
-	setField(projects, req.Project, binding)
+	if req.Project == "" {
+		res.Replaced = !res.NewInstance
+		if legacy := mappingValue(inst, "projects"); legacy != nil {
+			for i := 0; i+1 < len(legacy.Content); i += 2 {
+				res.Promoted = append(res.Promoted, legacy.Content[i].Value)
+			}
+			sort.Strings(res.Promoted)
+		}
+		removeField(inst, "projects")
+		removeField(inst, "config")
+		removeField(inst, "key")
+		for i := 0; i+1 < len(binding.Content); i += 2 {
+			setField(inst, binding.Content[i].Value, binding.Content[i+1])
+		}
+	} else {
+		res.Replaced = mappingValue(projects, req.Project) != nil
+		setField(projects, req.Project, binding)
+	}
 
 	var out bytes.Buffer
 	enc := yaml.NewEncoder(&out)
@@ -317,4 +345,13 @@ func setField(m *yaml.Node, key string, v *yaml.Node) {
 		}
 	}
 	m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, v)
+}
+
+func removeField(m *yaml.Node, key string) {
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			m.Content = append(m.Content[:i], m.Content[i+2:]...)
+			return
+		}
+	}
 }

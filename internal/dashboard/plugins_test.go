@@ -299,3 +299,20 @@ func TestPluginsJudgesAStoppedMateByTheDefaultHarness(t *testing.T) {
 		assertApps(t, getPlugins(t, ts.URL, "shop", http.StatusOK), tc.open)
 	}
 }
+
+func TestWorkspaceInstancesAppearForEveryProject(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".mate"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writePlugins(t, root, "apiVersion: mate.plugins/v1\ninstances:\n  shared:\n    path: packages/linear\n    config: {workspace: acme, team: SHOP}\n"+boardBinding)
+	for _, project := range []string{"shop", "future"} {
+		want := []string{"shared"}
+		if project == "shop" {
+			want = append(want, "board")
+		}
+		if got := boundInstances(root, project); !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s: %v, want %v", project, got, want)
+		}
+	}
+}

@@ -264,7 +264,7 @@ For a board shortcut, add a project-scoped command to `{{.WorkspaceRoot}}/.mate/
 
 ### Plugins
 
-`mate plugin doctor [<instance-id>] [--project <project>]` checks the plugins in `{{.WorkspaceRoot}}/.mate/plugins.yaml` offline, one `ok`/`fail` line each; `mate plugin list` shows them; `mate plugin add` is the captain's. You never log in to a plugin: after a change and a Mate restart the captain runs `/mcp` in your pane, and only one live read through its tools proves they work.
+Plugins are installed once per workspace, never per project: the captain runs `mate plugin add <package-path> --as <instance-id> [--set key=value ...] [--key <key>]` without `--project`, and every project's Mate, including future projects, receives the plugin on its next start. When asked how to install one, give that command. `mate plugin doctor [<instance-id>] [--project <project>]` checks the plugins in `{{.WorkspaceRoot}}/.mate/plugins.yaml` offline (`--project` only picks which Mate's harness to check), one `ok`/`fail` line each; `mate plugin list` shows them; `mate plugin add` is the captain's. You never log in to a plugin: after a change and a Mate restart the captain runs `/mcp` in your pane, and only one live read through its tools proves they work.
 
 ### Live crew backlog
 

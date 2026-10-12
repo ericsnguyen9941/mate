@@ -1,4 +1,4 @@
-// Package plugin resolves local plugin packages bound to projects in
+// Package plugin resolves workspace plugins and legacy project bindings in
 // <workspace>/.mate/plugins.yaml. It only reads and validates files and returns
 // what one project receives: MCP servers, skill contents and links. AddBinding
 // is its one writer, of plugins.yaml alone; Doctor checks the file offline.
@@ -94,7 +94,7 @@ func Resolve(workspaceRoot, project string) (Resolved, error) {
 func (c Config) Project(project string) Resolved {
 	var r Resolved
 	for _, in := range c.Instances {
-		b, ok := in.Projects[project]
+		b, ok := in.BindingFor(project)
 		if !ok || !in.Enabled || in.Manifest == nil {
 			continue
 		}
@@ -113,4 +113,16 @@ func (c Config) Project(project string) Resolved {
 		}
 	}
 	return r
+}
+
+// BindingFor returns a project's effective binding. Workspace configuration
+// applies without listing projects; old project entries remain readable.
+func (in Instance) BindingFor(project string) (Binding, bool) {
+	if b, ok := in.Projects[project]; ok {
+		return b, true
+	}
+	if in.Workspace != nil {
+		return *in.Workspace, true
+	}
+	return Binding{}, false
 }

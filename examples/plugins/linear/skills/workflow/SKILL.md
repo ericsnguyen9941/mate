@@ -5,7 +5,8 @@ description: Use when the captain assigns, mentions or asks about a Linear issue
 
 # Linear workflow
 
-Linear is the tracker for this project. You, the Mate, are the only dispatcher.
+This workspace makes Linear available to every Mate. You dispatch work only
+for your Mate project and the scope the captain assigns.
 Crew never pick up issues on their own.
 
 ## Tools
@@ -30,10 +31,12 @@ captain so the table can be fixed.
 
 ## Finding the project
 
-Do not assume any team or project ID. Run `mate plugin list` and read
-`project_url=` on this project's line under `{instance_id}` (the binding
-config), take the project name from it, and find the project with the project
-search tool. Work only inside that project.
+Use the issue ID, the captain's instructions or PROJECT.md to identify the
+Linear team/project for the task. Resolve it with the available search tools.
+If the scope is ambiguous, ask the captain before selecting or changing issues.
+The shared plugin's `project_url` is an app-opening link; it may point to the
+workspace home and does not select a task scope. Work only in the assigned
+scope, including when looking for `mate-ready` issues.
 
 ## Rules
 

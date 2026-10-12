@@ -2,8 +2,9 @@
 
 A plugin is a local package directory with a `mate-plugin.yaml` manifest. It
 may declare an MCP server, skills and an "open" link; every block is
-optional. A workspace binds packages to projects in `.mate/plugins.yaml`. Only
-a project's Mate receives them, when it starts; Crews never do. Mate has no
+optional. A workspace installs packages in `.mate/plugins.yaml`. Every current and
+future project's Mate receives them when it starts; Crews never do.
+Installation scope is independent of the external app's teams and projects. Mate has no
 package manager: it downloads, locks, caches and updates nothing. Design and
 rulings: [plans/plugins-and-office-2026-10-12.md](plans/plugins-and-office-2026-10-12.md).
 
@@ -27,20 +28,18 @@ apiVersion: mate.plugins/v1
 instances:
   tracker-work:              # instance id: also the MCP server's name
     path: /path/to/tracker-plugin
-    projects:
-      shop:
-        config:
-          project_url: https://tracker.example/project/shop
-        key: t               # optional console shortcut on the project row
+    config:
+      project_url: https://tracker.example/workspace
+    key: t                   # optional shortcut on every console project row
 ```
 
 ## Install a local package in four steps
 
 ```sh
-mate plugin add /path/to/tracker-plugin --as tracker-work --project shop \
-  --set project_url=https://tracker.example/project/shop [--key t]
-mate plugin doctor tracker-work --project shop
-mate mate stop shop && mate mate start shop
+mate plugin add /path/to/tracker-plugin --as tracker-work \
+  --set project_url=https://tracker.example/workspace [--key t]
+mate plugin doctor tracker-work
+mate mate stop <project> && mate mate start <project>  # repeat for running Mates
 ```
 
 Then, in the Mate's pane, run `/mcp` and log in to `tracker-work` (only when
@@ -49,10 +48,10 @@ tools. That read, not `doctor`, is the proof the tools work.
 Measured so far: a stdio server through `claude -p` only; an http server, its OAuth login and the interactive pane are unmeasured until the Linear pilot ([evidence/linear-pilot-2026-10-12.md](evidence/linear-pilot-2026-10-12.md)).
 
 - `add` is the captain's (a Mate or Crew is refused). It writes one explicit
-  binding. `--set` is the binding's opaque config; every key the package's
+  workspace installation. `--set` is its opaque config; every key the package's
   `open.url` substitutes must be set, or nothing is written. Re-running it
-  for the same instance and project replaces that binding and keeps all
-  others. An instance's `path` changes only by hand. The file is validated as
+  for the same instance replaces its workspace config and keeps other
+  instances. An instance's `path` changes only by hand. The file is validated as
   a Mate start reads it before it is written. It is rewritten through a YAML
   node tree: order and most comments survive, blank lines and hand-chosen
   indentation do not.
@@ -63,8 +62,15 @@ Measured so far: a stdio server through `claude -p` only; an http server, its OA
   `PATH`; an http server is not contacted), `open.url`, console key, project, and whether the Mate's
   harness (the running Mate's, else the workspace default) can take MCP
   servers. It never logs in or calls a tool. Exit 1 on any failure.
-- `list` prints instances, packages and bindings; no Mate needs to run.
+- `list` prints instances, packages and workspace config; no Mate needs to run.
 
 Editing `plugins.yaml` by hand is fine. A change reaches a Mate on its next
 start, and the console or Office on reopen. `enabled: false` keeps an
 instance in the file but gives nothing.
+
+Existing `projects:` bindings and `add --project` remain readable for backward
+compatibility. New installations omit `--project`; adding an existing instance
+without that flag replaces its legacy bindings with one workspace configuration.
+`doctor --project` selects a harness to check; it does not set installation scope.
+OAuth remains owned by each harness. Workspace configuration does not promise
+a single shared login across agents or harnesses.

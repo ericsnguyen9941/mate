@@ -481,3 +481,23 @@ func TestSpawnCrewIgnoresPlugins(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestStartMateReceivesWorkspacePlugin(t *testing.T) {
+	w := newWorkspace(t, "future-project")
+	writePluginPackages(t, w.Root())
+	writePluginsYAML(t, w, "apiVersion: mate.plugins/v1\ninstances:\n  tracker-work:\n    path: plugins/tracker\n")
+	deps := fakeDeps(t, runtime.NewFake())
+	reg, log := recording(t, deps.Harnesses)
+	deps.Harnesses = reg
+	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "future-project", Harness: claude.KindClaude})
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers := log.lastPrepare(t).MCPServers
+	if len(servers) != 1 || servers[0].Name != "tracker-work" {
+		t.Fatalf("workspace servers: %+v", servers)
+	}
+	if _, err := os.Stat(pluginSkillPath(w, "future-project", "plugin-tracker-work-workflow")); err != nil {
+		t.Fatalf("workspace skill: %v", err)
+	}
+}
