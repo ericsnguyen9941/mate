@@ -9,34 +9,53 @@ This workspace makes Linear available to every Mate. You dispatch work only
 for your Mate project and the scope the captain assigns.
 Crew never pick up issues on their own.
 
+## How Linear is shaped
+
+Linear is not Jira. Map it this way:
+
+| Linear | Means here | Jira equivalent |
+| --- | --- | --- |
+| Team | One Mate project; issue IDs carry its key (`HVN-12`) | Project |
+| Project | One epic: a deliverable with a goal, target date, milestones | Epic |
+| Parent issue with sub-issues | A small epic, or a task split in steps | Story with sub-tasks |
+| Initiative | A group of projects | Initiative |
+| Cycle | A team's time box, optional | Sprint |
+
+Your team's key is in PROJECT.md or the captain's workspace rules. Work only
+inside your own team.
+
 ## Tools
 
 The Linear MCP server is registered as `{instance_id}`, so its tools appear as
-`mcp__{instance_id}__<tool>`. Linear's official documentation
-(https://linear.app/docs/mcp, read 2026-10-12) says the server has tools for
-finding, creating and updating issues, projects and comments, but does not list
-tool names. Run `/mcp` and read the real names before the first call; do not
-guess them.
+`mcp__{instance_id}__<tool>`. Names below were read from `/mcp` on 2026-10-12
+(Linear's hosted server, 76 tools); that day a Mate read issues, created and
+updated an issue and added a comment through them.
 
-| Purpose | Candidate name | Verified |
-| --- | --- | --- |
-| Find or list issues, filter by assignee, state, label | `list_issues` | no (third-party catalogs 2026-10-12, not Linear docs) |
-| Read one issue with comments and relations | `get_issue` | no (same) |
-| Create or update an issue (state, assignee) | `save_issue` | no (same) |
-| Create or update a comment on an issue | `save_comment` | no (same) |
-| Find a project by name | `list_projects` | no (same) |
+| Purpose | Tool |
+| --- | --- |
+| Find or list issues, filter by team, project, state, label | `list_issues` |
+| Read one issue with its description | `get_issue` |
+| Create an issue, or update one (state, project, labels, description) | `save_issue` |
+| Add or edit a comment on an issue | `save_comment`, read with `list_comments` |
+| Find teams, projects, states, labels | `list_teams`, `list_projects`, `list_issue_statuses`, `list_issue_labels` |
+| Create or update a project (epic) or milestone | `save_project`, `save_milestone` |
 
-If a name differs from this table, use the name `/mcp` shows and tell the
-captain so the table can be fixed.
+Take parameters from each tool's schema, not from memory. If a call fails
+because a name or parameter changed, use what `/mcp` shows and tell the
+captain so this table can be fixed.
 
-## Finding the project
+The server cannot delete issues or projects. To drop work, set the issue's
+state to Canceled; if something must really be deleted, tell the captain,
+who does it on the web.
+
+## Finding the scope
 
 Use the issue ID, the captain's instructions or PROJECT.md to identify the
-Linear team/project for the task. Resolve it with the available search tools.
-If the scope is ambiguous, ask the captain before selecting or changing issues.
-The shared plugin's `project_url` is an app-opening link; it may point to the
-workspace home and does not select a task scope. Work only in the assigned
-scope, including when looking for `mate-ready` issues.
+team and project for the task. If the scope is ambiguous, ask the captain
+before selecting or changing issues. The plugin's `project_url` is an
+app-opening link; it may point to the workspace home and does not select a
+task scope. Work only in the assigned scope, including when looking for
+`mate-ready` issues.
 
 ## Rules
 
@@ -54,7 +73,5 @@ scope, including when looking for `mate-ready` issues.
 - Linear does not lock issues for you. One dispatcher is the rule that prevents
   double work.
 - If a Linear call fails, note the issue ID and tell the captain the sync is
-  unconfirmed. A failed write is not a success. A comment payload might look
-  like {"issueId": "<ID>", "body": "Started, Crew spawned"}, but that shape
-  is a guess, not read from Linear: take the real parameters from the tool's
-  schema in `/mcp`.
+  unconfirmed. A failed write is not a success. Read the issue back after a
+  write you report.

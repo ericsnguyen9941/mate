@@ -45,7 +45,7 @@ mate mate stop <project> && mate mate start <project>  # repeat for running Mate
 Then, in the Mate's pane, run `/mcp` and log in to `tracker-work` (only when
 the package has an MCP server), and ask the Mate for one read through its
 tools. That read, not `doctor`, is the proof the tools work.
-Measured so far: a stdio server through `claude -p` only; an http server, its OAuth login and the interactive pane are unmeasured until the Linear pilot ([evidence/linear-pilot-2026-10-12.md](evidence/linear-pilot-2026-10-12.md)).
+Measured so far: a stdio server through `claude -p`, and Linear's http server in an interactive Mate pane: one `/mcp` OAuth login serves every Mate and survives stop/start and resume ([evidence/linear-pilot-2026-10-12.md](evidence/linear-pilot-2026-10-12.md)). A Codex, pi or grok Mate is refused at start while an enabled plugin brings an MCP server.
 
 - `add` is the captain's (a Mate or Crew is refused). It writes one explicit
   workspace installation. `--set` is its opaque config; every key the package's

@@ -7,8 +7,9 @@ See `docs/plugins.md` for the format.
 ## linear
 
 An HTTP MCP server (`https://mcp.linear.app/mcp`), one skill for the Mate and
-an "Open Linear" link. Not yet verified live; see
-`docs/evidence/linear-pilot-2026-10-12.md`.
+an "Open Linear" link. Verified live on 2026-10-12 (login, read, create,
+update, comment); see `docs/evidence/linear-pilot-2026-10-12.md`. The server
+cannot delete issues or projects; Mates cancel instead.
 
 ```
 mate plugin add ./examples/plugins/linear --as linear-work --set project_url=<linear-workspace-url> --key t
