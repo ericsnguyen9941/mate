@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestServe(t *testing.T) {
+func TestMCPFixtureServe(t *testing.T) {
 	input := strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
@@ -102,7 +102,7 @@ func TestServe(t *testing.T) {
 	}
 }
 
-func TestInitializeDefaultsProtocol(t *testing.T) {
+func TestMCPFixtureInitializeDefaultsProtocol(t *testing.T) {
 	resp, ok := handle([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
 	if !ok {
 		t.Fatal("initialize got no reply")

@@ -191,8 +191,8 @@ func (p *mcpProbe) run(t *testing.T, variant, label, cwd string, tools []string,
 		if !contains(methods, "initialize") {
 			t.Fatalf("[%s/%s] the fixture never received initialize; the server was not started, so nothing was measured", variant, label)
 		}
-		called := contains(methods, "tools/call")
-		t.Logf("[%s/%s] verdict: TIMED OUT after 120s (fixture tools/call received: %v)", variant, label, called)
+		called := fixtureCalledWith(readFile(logPath), id)
+		t.Logf("[%s/%s] verdict: TIMED OUT after 120s (fixture tools/call with id %q received: %v)", variant, label, id, called)
 		return called
 	case errors.As(runErr, &exitErr):
 		exit = exitErr.ExitCode()
@@ -260,15 +260,12 @@ func (p *mcpProbe) run(t *testing.T, variant, label, cwd string, tools []string,
 	if !contains(methods, "initialize") {
 		t.Fatalf("[%s/%s] the fixture never received initialize; the server was not started, so nothing was measured", variant, label)
 	}
-	called := false
 	for _, line := range strings.Split(log, "\n") {
 		if strings.Contains(line, `"tools/call"`) {
 			t.Logf("[%s/%s] fixture tools/call: %s", variant, label, line)
-			if strings.Contains(line, `"`+id+`"`) {
-				called = true
-			}
 		}
 	}
+	called := fixtureCalledWith(log, id)
 	verdict := "tool NOT called"
 	if called {
 		verdict = "tool called"
@@ -360,6 +357,32 @@ func fixtureMethods(log string) []string {
 		}
 	}
 	return methods
+}
+
+// fixtureCalledWith reports whether the fixture log holds a tools/call for
+// read_probe whose arguments.id is id. It parses each JSON-RPC line, so an id
+// that appears only in _meta or another field does not count.
+func fixtureCalledWith(log, id string) bool {
+	sc := bufio.NewScanner(strings.NewReader(log))
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for sc.Scan() {
+		var req struct {
+			Method string `json:"method"`
+			Params struct {
+				Name      string `json:"name"`
+				Arguments struct {
+					ID string `json:"id"`
+				} `json:"arguments"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(sc.Bytes(), &req) != nil {
+			continue
+		}
+		if req.Method == "tools/call" && req.Params.Name == "read_probe" && req.Params.Arguments.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func readFile(path string) string {

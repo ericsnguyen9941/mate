@@ -79,7 +79,8 @@ claude -p '<prompt 1>' --dangerously-skip-permissions --setting-sources project 
 - assistant tool_use 1: `ToolSearch {"max_results":1,"query":"select:mcp__probe-inst__read_probe"}` → `[{"tool_name":"mcp__probe-inst__read_probe","type":"tool_reference"}]`
 - assistant tool_use 2: `mcp__probe-inst__read_probe {"id":"abc123"}` → `probe:abc123:ok`
 - result: `"probe:abc123:ok"`
-- fixture tools/call: `{"method":"tools/call","params":{"name":"read_probe","arguments":{"id":"abc123"},...},"jsonrpc":"2.0","id":2}`
+- fixture: `server/discover, initialize, notifications/initialized, tools/list, tools/call`
+- fixture tools/call: `{"method":"tools/call","params":{"name":"read_probe","arguments":{"id":"abc123"},"_meta":{"claudecode/toolUseId":"toolu_017kH93Jxb9JR8mAxHS6WF94","progressToken":2}},"jsonrpc":"2.0","id":2}`
 - **Phán quyết: tool được gọi** (qua `ToolSearch` trước).
 
 ### C — `--tools` cộng tên MCP tool
@@ -93,6 +94,8 @@ claude -p '<prompt 1>' --dangerously-skip-permissions --setting-sources project 
 - init MCP tools: `mcp__probe-inst__read_probe`
 - assistant tool_use: `mcp__probe-inst__read_probe {"id":"abc123"}` → `probe:abc123:ok`
 - result: `"probe:abc123:ok"`
+- fixture: `server/discover, initialize, notifications/initialized, tools/list, tools/call`
+- fixture tools/call: `{"method":"tools/call","params":{"name":"read_probe","arguments":{"id":"abc123"},"_meta":{"claudecode/toolUseId":"toolu_013xhiZCk1C9iSnJi7Asd5tW","progressToken":2}},"jsonrpc":"2.0","id":2}`
 - **Phán quyết: tool được gọi.**
 
 ### D — `--session-id` rồi `--resume`, cờ C
