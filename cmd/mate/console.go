@@ -96,6 +96,10 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	if err != nil {
 		return err
 	}
+	links, err := loadPluginLinks(ws, commands)
+	if err != nil {
+		return err
+	}
 	stdinFile, stdoutFile, err := consoleTerminalFiles(stdout)
 	if err != nil {
 		return err
@@ -161,7 +165,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	defer stopRecovery()
 
 	load := func(loadCtx context.Context) (query.Snapshot, error) {
-		bindings := consoleCommandBindings(commands)
+		bindings := append(consoleCommandBindings(commands), links.bindings()...)
 		snap, err := query.LoadLive(loadCtx, ws, consoleHarnesses(), bindings, consoleLiveness(loadCtx, ws, deps))
 		if err != nil {
 			return snap, err
@@ -236,7 +240,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 		WithNoticeClassifier(noticeClient != nil).
 		WithContext(ctx).
 		WithStage(consoleStage(ws, deps, columns)).
-		WithCommandView(consoleCommandView(ws, columns, commands, runConsoleLauncher)).
+		WithCommandView(consolePluginView(links, hostOpener(), runConsoleLauncher, consoleCommandView(ws, columns, commands, runConsoleLauncher))).
 		WithNoHostHint(host.NoHostHint(os.Getenv)).
 		WithKindGlyphs(probeKindGlyphs(os.Getenv)).
 		WithHarnessIcons(probeNerdIcons(os.Getenv, execOutput)).

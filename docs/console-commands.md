@@ -103,3 +103,14 @@ command. The same key can
 be bound once on crew rows and once on project rows. Unknown fields, path
 variables, scopes and modes are configuration errors reported before console
 startup. A missing executable is reported when its key is pressed.
+
+## Plugin links
+
+A plugin instance bound to a project in `.mate/plugins.yaml` can give that
+project an "open" link with a console `key`. The key appears on project rows
+like any configured command and opens the URL with the machine's opener
+(`open` on macOS, `xdg-open` on Linux); no terminal tab is created. Pressing
+the key on a project without that binding reports an error. A key that
+`console.yaml` binds on project rows, or that the console reserves, is refused
+before startup, naming `plugins.yaml`, the instance and the key. Without
+`plugins.yaml` nothing changes. See `docs/plans/plugins-and-office-2026-10-12.md`.
