@@ -149,6 +149,10 @@ async function boot(opts = {}) {
       if (fail[p]) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: "the timeline could not be read", reason: fail[p] }) });
       let m;
       if (p === "/api/workspace") body = fx.workspace;
+      else if (p === "/api/plugins") {
+        const project = u.searchParams.get("project");
+        body = (fx.plugins || {})[project] || { project, apps: [] };
+      }
       else if (p === "/api/now") body = fx.now;
       else if ((m = /^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/.exec(p))) body = fx.tasks[m[1] + "/" + m[2]] || taskBody(fx, m[1], m[2]);
       else if ((m = /^\/api\/projects\/([^/]+)\/mate$/.exec(p))) body = fx.mates[m[1]] || { project: m[1], exchanges: [] };
@@ -320,6 +324,53 @@ test("the filing cabinet lists finished tasks by drawer, with their final state"
   assert.ok(roomOf(app.root, "shop").querySelector(".cab").classes.includes("open"), "its top drawer is pulled out");
 });
 
+test("the Mate drawer lists the project's apps: status, an Open link only when configured, and where login is checked", async () => {
+  const app = await boot({ hash: "#mate/shop" });
+  assert.ok(app.requests.some(r => r.url === "/api/plugins?project=shop" && (r.method || "GET") === "GET"),
+    "the drawer reads the project's apps");
+  const block = app.drawer().querySelector("[aria-label=\"Apps\"]");
+  assert.ok(block, "an Apps block in the Mate drawer");
+  assert.equal(block.querySelector("h3").text, "Apps");
+  assert.deepEqual(block.querySelectorAll("dt").map(n => n.text), ["Linear", "notes"]);
+  const [linear, notes] = block.querySelectorAll("dd");
+
+  assert.equal(linear.querySelector(".chip").text, "configured");
+  const open = linear.querySelectorAll("a");
+  assert.equal(open.length, 1);
+  assert.equal(open[0].text, "Open");
+  assert.equal(open[0].getAttribute("href"), "https://linear.app/acme/team/SHOP");
+  assert.equal(open[0].getAttribute("target"), "_blank");
+  assert.equal(open[0].getAttribute("rel"), "noopener");
+
+  assert.equal(notes.querySelector(".chip").text, "configuration error");
+  assert.ok(notes.querySelector(".chip").classes.includes("t-bad"));
+  assert.equal(notes.querySelectorAll("a").length, 0, "no Open link for an app whose configuration is wrong");
+  assert.equal(notes.querySelector(".err-note").text,
+    "/ws/.mate/plugins.yaml: instance notes: package path /ws/<img src=x onerror=alert(1)> is not a directory");
+  assert.equal(app.root.querySelectorAll("img").length, 0, "the message is text");
+
+  assert.match(block.text, /Login and tool status: check \/mcp in the Mate's Claude pane/);
+  assert.doesNotMatch(block.text, /connected|logged in|ready/i, "Office does not know whether an app is connected");
+  assert.equal(app.drawer().querySelectorAll("form, button[type=\"submit\"]").length, 0);
+});
+
+test("the apps are read only while a Mate drawer is open, and a project without any shows no block", async () => {
+  const app = await boot({ hash: "#crew/shop/db-migrate" });
+  assert.ok(!app.requests.some(r => r.url.startsWith("/api/plugins")), "no app read for a crew drawer");
+  const docs = await boot({ hash: "#mate/docs-site" });
+  assert.ok(docs.requests.some(r => r.url === "/api/plugins?project=docs-site"));
+  assert.equal(docs.drawer().querySelector("[aria-label=\"Apps\"]"), null);
+});
+
+test("when the apps cannot be read the block says Apps: ? and the drawer still draws", async () => {
+  const app = await boot({ hash: "#mate/shop", fail: { "/api/plugins": "plugins.yaml is unreadable" } });
+  const d = app.drawer();
+  assert.equal(d.querySelector("[aria-label=\"Apps\"]").text, "Apps: ?");
+  assert.equal(d.querySelector("h2").text, "shop");
+  assert.deepEqual(d.querySelectorAll(".cr .id").map(n => n.text), ["rd1", "api-fix", "ui-polish", "db-migrate"]);
+  assert.match(d.text, /Thinking it over, facing api-fix/);
+});
+
 // The admin page's token consumption for a task, in a new tab; the Mate has
 // no task page, so its drawer has no such button.
 const usageHref = (project, crew) => "../#/p/" + encodeURIComponent(project) + "/t/" + encodeURIComponent(crew) + "/usage";
@@ -440,6 +491,7 @@ test("the page only ever GETs its own origin", async () => {
   await app.click(roomOf(app.root, "shop").querySelector(".mate"));
   await app.click(roomOf(app.root, "shop").querySelector(".cab"));
   assert.ok(app.requests.length >= 8);
+  assert.ok(app.requests.some(r => r.url === "/api/plugins?project=shop"), "the Mate drawer's app read is among them");
   for (const r of app.requests) {
     assert.ok(r.url.startsWith("/api/"), r.url + " is not this origin's API");
     assert.equal(r.method || "GET", "GET", r.url + " is not a GET");

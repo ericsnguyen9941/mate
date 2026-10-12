@@ -1326,5 +1326,45 @@
     }
    ]
   }
+ },
+ "plugins": {
+  "shop": {
+   "generated_at": "2026-10-03T14:32:07.000000000Z",
+   "last_event_id": 900,
+   "project": "shop",
+   "apps": [
+    {
+     "instance": "linear-work",
+     "name": "Linear",
+     "status": "configured",
+     "harness": "claude",
+     "open": {
+      "title": "Open Linear",
+      "url": "https://linear.app/acme/team/SHOP"
+     },
+     "mcp": {
+      "name": "linear-work",
+      "type": "http"
+     },
+     "skills": [
+      "workflow"
+     ],
+     "error": null
+    },
+    {
+     "instance": "notes",
+     "name": "notes",
+     "status": "configuration error",
+     "harness": "claude",
+     "open": {
+      "title": "Open notes",
+      "url": "https://notes.example/shop"
+     },
+     "mcp": null,
+     "skills": [],
+     "error": "/ws/.mate/plugins.yaml: instance notes: package path /ws/<img src=x onerror=alert(1)> is not a directory"
+    }
+   ]
+  }
  }
 }

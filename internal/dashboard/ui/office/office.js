@@ -319,6 +319,7 @@
   function projectPath(p) { return "/api/projects/" + enc(p); }
   function taskPath(p, c) { return "/api/projects/" + enc(p) + "/tasks/" + enc(c); }
   function matePath(p) { return "/api/projects/" + enc(p) + "/mate"; }
+  function pluginsPath(p) { return "/api/plugins?project=" + enc(p); }
 
   // ------------------------------------------------------------ state
 
@@ -331,6 +332,7 @@
   var pollToken = 0;
   var detailToken = 0;
   var detail = null;          // {key, body} | {key, error} | {key, loading}
+  var apps = null;            // the open Mate drawer's /api/plugins: {key, body} | {key, error}
   var live = { state: "loading", at: null, reason: "" };
   var sel = parseHash();
   var lastOpener = null;
@@ -434,13 +436,23 @@
     if (!s || s.kind === "cab") return Promise.resolve();
     if (!detail || detail.key !== key) detail = { key: key, loading: true };
     var path = s.kind === "crew" ? taskPath(s.project, s.crew) : matePath(s.project);
-    return api(path).then(function (body) {
+    var reads = [api(path).then(function (body) {
       if (token !== detailToken) return;
       detail = { key: key, body: body };
     }, function (err) {
       if (token !== detailToken) return;
       detail = { key: key, error: err };
-    });
+    })];
+    // The project's apps are read only while its Mate drawer is open, and
+    // on their own: a failure here leaves the rest of the drawer drawn.
+    if (s.kind === "mate") {
+      reads.push(api(pluginsPath(s.project)).then(function (body) {
+        if (token === detailToken) apps = { key: key, body: body };
+      }, function (err) {
+        if (token === detailToken) apps = { key: key, error: err };
+      }));
+    }
+    return Promise.all(reads);
   }
 
   function markLive() {
@@ -1183,7 +1195,49 @@
         return pickable(row, "crew/" + enc(name) + "/" + enc(t.crew));
       })) : el("p", { class: "loading-note", text: b ? "No open crews" : "loading…" })
     ]));
+    var appBlock = appsSection(name);
+    if (appBlock) nodes.push(appBlock);
     return nodes;
+  }
+
+  // Apps: the project's plugins as plugins.yaml configures them
+  // (GET /api/plugins). A status is about configuration only; whether the
+  // Mate is logged in to an app is not known here, so the block says where
+  // to look instead of guessing.
+  var APP_STATES = {
+    configured: { word: "configured", tone: "t-info", icon: "review" },
+    "configuration error": { word: "configuration error", tone: "t-bad", icon: "blocked" },
+    "harness unsupported": { word: "harness unsupported", tone: "t-wait", icon: "gone" }
+  };
+
+  function appsSection(name) {
+    var a = apps && apps.key === "mate/" + enc(name) ? apps : null;
+    if (!a) return null;
+    if (a.error) {
+      return el("section", { class: "ds", "aria-label": "Apps" },
+        el("p", { class: "err-note", text: "Apps: ?", title: a.error.reason || a.error.message }));
+    }
+    var list = a.body.apps || [];
+    if (!list.length && !a.body.error) return null;
+    var nodes = [el("h3", { class: "sh", text: "Apps" })];
+    if (!list.length) nodes.push(el("p", { class: "err-note", text: a.body.error }));
+    if (list.length) {
+      nodes.push(el("dl", { class: "kv apps" }, list.reduce(function (acc, x) {
+        var st = APP_STATES[x.status] || { word: x.status || "unknown", tone: "t-gone", icon: "unknown" };
+        var url = x.open && x.open.url;
+        var open = x.status === "configured" && url && /^https?:\/\//i.test(url)
+          ? el("a", { class: "link", href: url, target: "_blank", rel: "noopener", title: x.open.title || null, "aria-label": x.open.title || "Open " + x.name, style: "margin:0 0 0 8px" }, ["Open", icon("arrowR")])
+          : null;
+        return acc.concat([
+          el("dt", { text: x.name, title: x.instance }),
+          el("dd", null, [chip(st), open, x.error ? el("p", { class: "err-note", text: x.error }) : null])
+        ]);
+      }, [])));
+    }
+    if (list.some(function (x) { return x.mcp; })) {
+      nodes.push(el("p", { class: "loading-note", text: "Login and tool status: check /mcp in the Mate's Claude pane" }));
+    }
+    return el("section", { class: "ds", "aria-label": "Apps" }, nodes);
   }
 
   function lastOf(list) { return list && list.length ? list[list.length - 1] : null; }

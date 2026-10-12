@@ -36,6 +36,11 @@ type Deps struct {
 	BranchExists func(ctx context.Context, project, crew, branch string) (bool, error)
 	// Now is the clock behind `generated_at`; tests freeze it.
 	Now func() time.Time
+	// PluginHarness says whether a Mate on harness kind can be given its
+	// plugins: nil when it can, the reason when it cannot. It is a seam
+	// because only a harness profile may know which harness that is. Nil
+	// calls no harness unsupported.
+	PluginHarness func(kind string) error
 }
 
 func (d Deps) now() time.Time {
