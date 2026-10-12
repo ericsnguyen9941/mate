@@ -354,6 +354,25 @@ test("the Mate drawer lists the project's apps: status, an Open link only when c
   assert.equal(app.drawer().querySelectorAll("form, button[type=\"submit\"]").length, 0);
 });
 
+test("on a harness that cannot take MCP servers only the app with one is unsupported", async () => {
+  const fx = fixture();
+  const refusal = "the codex harness cannot give a Mate MCP servers: only config parsing is proven";
+  fx.plugins.shop.apps = [
+    Object.assign({}, fx.plugins.shop.apps[0], { status: "harness unsupported", harness: "codex", error: refusal }),
+    { instance: "board", name: "Board", status: "configured", harness: "codex",
+      open: { title: "Open board", url: "https://board.example/shop" }, mcp: null, skills: [],
+      error: "the Mate will not start while linear-work needs MCP servers: " + refusal }
+  ];
+  const app = await boot({ fixture: fx, hash: "#mate/shop" });
+  const [linear, board] = app.drawer().querySelector("[aria-label=\"Apps\"]").querySelectorAll("dd");
+  assert.equal(linear.querySelector(".chip").text, "harness unsupported");
+  assert.equal(linear.querySelectorAll("a").length, 0, "no Open link for an unsupported app");
+  assert.equal(linear.querySelector(".err-note").text, refusal);
+  assert.equal(board.querySelector(".chip").text, "configured");
+  assert.equal(board.querySelector("a").getAttribute("href"), "https://board.example/shop");
+  assert.match(board.querySelector(".err-note").text, /the Mate will not start while linear-work needs MCP servers/);
+});
+
 test("the apps are read only while a Mate drawer is open, and a project without any shows no block", async () => {
   const app = await boot({ hash: "#crew/shop/db-migrate" });
   assert.ok(!app.requests.some(r => r.url.startsWith("/api/plugins")), "no app read for a crew drawer");

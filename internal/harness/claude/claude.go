@@ -131,8 +131,23 @@ func (c Claude) Capabilities() harness.Capabilities {
 				Proof:    "internal/quota/testdata/schema5-0.1.34.json through TestParseARealSchema5Snapshot",
 			},
 		},
+		MCPConfig: harness.Cap[harness.MCPConfigurer]{
+			Status: harness.CapVerified,
+			Impl:   claudeMCP{},
+			Evidence: harness.Evidence{
+				Version:  "claude-code 2.1.287",
+				Measured: "2026-10-12 (docs/evidence/claude-mcp-probe-2026-10-12.md)",
+				Proof:    "live TestLiveClaudeMCPProbe and TestLiveClaudeMateLaunchMCP: under the Mate's flags a --mcp-config server's tool was listed and called, fresh and on --resume, and no global server leaked",
+			},
+		},
 	}
 }
+
+// claudeMCP is Claude's MCPConfigurer: the --mcp-config document
+// (MCPConfig) a Mate launch writes as MCPConfigFile.
+type claudeMCP struct{}
+
+func (claudeMCP) MCPConfig(servers []harness.MCPServer) ([]byte, error) { return MCPConfig(servers) }
 
 // claudeSessions is Claude's SessionIdentity. Prepare names the session at
 // launch (--session-id), and the Mate's SessionStart hook records the new

@@ -3,6 +3,7 @@ package catalog_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -348,6 +349,64 @@ func TestContractScreensClassifyTheirCaptures(t *testing.T) {
 		}
 		for want := range need {
 			t.Errorf("no capture read through %s shows %s", screen.ReadSource(), want)
+		}
+	})
+}
+
+// A Mate's plugin MCP servers reach it exactly when the profile declares
+// MCPConfig verified: Prepare and Build of a Mate given one server succeed,
+// and otherwise both refuse with ErrMCPUnsupported rather than start the
+// Mate without them. Launch behaviour and the declaration the dashboard
+// reads ("harness unsupported") cannot disagree.
+func TestContractMCPServersReachAMateExactlyWhenDeclared(t *testing.T) {
+	eachProfile(t, func(t *testing.T, p harness.Profile) {
+		for _, key := range p.Info().EnvKeys {
+			t.Setenv(key, t.TempDir())
+		}
+		ctx := context.Background()
+		servers := []harness.MCPServer{{Name: "contract-mcp", Type: "http", URL: "https://mcp.example/mcp"}}
+		cwd, state := t.TempDir(), t.TempDir()
+		manual := filepath.Join(cwd, "AGENTS.md")
+		if err := os.WriteFile(manual, []byte("you are a contract fixture\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		mcp := p.Capabilities().MCPConfig
+		prep, prepErr := p.Launcher().Prepare(ctx, harness.PrepareRequest{
+			Role: harness.RoleMate, Cwd: cwd, StateDir: state, ContextPath: manual,
+			Binary: "/usr/local/bin/mate", MCPServers: servers,
+		})
+		if !mcp.Verified() {
+			if !errors.Is(prepErr, harness.ErrMCPUnsupported) {
+				t.Errorf("Prepare of a Mate with an MCP server = %v, want ErrMCPUnsupported (MCPConfig is %s)", prepErr, mcp.Status)
+			}
+			_, err := p.Launcher().Build(ctx, harness.AgentSpec{
+				ID: "contract-mate", Role: harness.RoleMate, Kind: p.Kind(), Cwd: cwd,
+				ContextPath: manual, MCPServers: servers,
+			})
+			if !errors.Is(err, harness.ErrMCPUnsupported) {
+				t.Errorf("Build of a Mate with an MCP server = %v, want ErrMCPUnsupported (MCPConfig is %s)", err, mcp.Status)
+			}
+			return
+		}
+		if prepErr != nil {
+			t.Fatalf("MCPConfig is verified, but Prepare of a Mate with an MCP server failed: %v", prepErr)
+		}
+		if doc, err := mcp.Impl.MCPConfig(servers); err != nil || len(doc) == 0 {
+			t.Errorf("MCPConfig(%v) = %q, %v; want a document", servers, doc, err)
+		}
+		for _, f := range prep.Files {
+			if err := os.MkdirAll(filepath.Dir(f.Path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(f.Path, f.Data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := p.Launcher().Build(ctx, harness.AgentSpec{
+			ID: "contract-mate", Role: harness.RoleMate, Kind: p.Kind(), Cwd: cwd,
+			ContextPath: prep.ContextPath, Launch: prep.Launch, MCPServers: servers,
+		}); err != nil {
+			t.Errorf("MCPConfig is verified, but Build of a Mate with an MCP server failed: %v", err)
 		}
 	})
 }

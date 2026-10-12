@@ -96,35 +96,51 @@ func (s *Server) handlePlugins(ctx context.Context, r *http.Request, env envelop
 		return out, nil
 	}
 
-	// Which harness can take plugins is the harness profile's to say, not
-	// this package's (the harness ratchet): Deps.PluginHarness answers, and
-	// an unknown harness or no answer calls nothing unsupported.
-	status := pluginConfigured
-	var refusal *string
+	// Which harness can take MCP servers is the harness profile's to say,
+	// not this package's (the harness ratchet): Deps.PluginHarness answers,
+	// and an unknown harness or no answer calls nothing unsupported. Only
+	// an app with an MCP server can be unsupported; a skills-only or
+	// open-only app stays configured.
+	var refusal string
 	if harness != "unknown" && s.deps.PluginHarness != nil {
 		if err := s.deps.PluginHarness(harness); err != nil {
-			status = pluginUnsupported
-			msg := err.Error()
-			refusal = &msg
+			refusal = err.Error()
 		}
 	}
+	var unsupported []string
 	for _, in := range cfg.Instances {
 		b, ok := in.Projects[project]
 		if !ok || !in.Enabled || in.Manifest == nil {
 			continue
 		}
 		m := in.Manifest
-		app := PluginApp{Instance: in.ID, Name: m.Name, Status: status, Harness: harness, Skills: []string{}, Error: refusal}
+		app := PluginApp{Instance: in.ID, Name: m.Name, Status: pluginConfigured, Harness: harness, Skills: []string{}}
 		if m.Open != nil {
 			app.Open = &PluginOpen{Title: m.Open.Title, URL: b.OpenURL}
 		}
 		if m.MCP != nil {
 			app.MCP = &PluginMCP{Name: in.ID, Type: m.MCP.Type}
+			if refusal != "" {
+				msg := refusal
+				app.Status, app.Error = pluginUnsupported, &msg
+				unsupported = append(unsupported, in.ID)
+			}
 		}
 		for _, sk := range m.Skills {
 			app.Skills = append(app.Skills, sk.Name)
 		}
 		out.Apps = append(out.Apps, app)
+	}
+	// A Mate start refuses MCP servers its harness cannot take, so while
+	// one app needs them the Mate does not start and the configured apps
+	// beside it do not reach it either. They stay configured and say so.
+	if len(unsupported) > 0 {
+		msg := "the Mate will not start while " + strings.Join(unsupported, ", ") + " needs MCP servers: " + refusal
+		for i := range out.Apps {
+			if out.Apps[i].Status == pluginConfigured {
+				out.Apps[i].Error = &msg
+			}
+		}
 	}
 	return out, nil
 }

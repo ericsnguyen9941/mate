@@ -73,6 +73,23 @@ var (
 	ErrMCPUnsupported = errors.New("the harness does not support MCP servers")
 )
 
+// RefuseMCPServers is the launch-time refusal of a harness whose MCPConfig
+// capability is not verified: nil for a launch with no MCP servers, else an
+// ErrMCPUnsupported naming the servers and reason, the capability's own
+// Reason, so launch and declaration say the same thing.
+func RefuseMCPServers(kind Kind, reason string, servers []MCPServer) error {
+	if len(servers) == 0 {
+		return nil
+	}
+	names := make([]string, len(servers))
+	for i, s := range servers {
+		names[i] = s.Name
+	}
+	return observability.WrapError(observability.CodeUsage, fmt.Sprintf(
+		"the %s harness cannot give an agent MCP servers (%s): unsupported: %s",
+		kind, strings.Join(names, ", "), reason), ErrMCPUnsupported)
+}
+
 // EnvVar is a harness-level environment assignment.
 type EnvVar struct {
 	Key   string

@@ -34,6 +34,20 @@ open:
   url: "https://linear.app/{config.workspace}/team/{config.team}"
 `
 
+// boardManifest is an open-only package: no MCP server, no skill.
+const boardManifest = `apiVersion: mate.plugin/v1
+name: Board
+open:
+  title: Open board
+  url: https://board.example/shop
+`
+
+const boardBinding = `  board:
+    path: packages/board
+    projects:
+      shop: {}
+`
+
 const linearBinding = `  linear-work:
     path: packages/linear
     projects:
@@ -41,16 +55,21 @@ const linearBinding = `  linear-work:
         config: {workspace: acme, team: SHOP}
 `
 
-// writePlugins puts plugins.yaml into root/.mate and the linear package
-// under root/packages/linear.
+// writePlugins puts plugins.yaml into root/.mate, the linear package under
+// root/packages/linear and the open-only board package under
+// root/packages/board.
 func writePlugins(t *testing.T, root, pluginsYAML string) {
 	t.Helper()
 	pkg := filepath.Join(root, "packages", "linear")
-	if err := os.MkdirAll(filepath.Join(pkg, "skills", "workflow"), 0o755); err != nil {
-		t.Fatal(err)
+	board := filepath.Join(root, "packages", "board")
+	for _, dir := range []string{filepath.Join(pkg, "skills", "workflow"), board} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for name, body := range map[string]string{
 		filepath.Join(pkg, "mate-plugin.yaml"):               linearManifest,
+		filepath.Join(board, "mate-plugin.yaml"):             boardManifest,
 		filepath.Join(pkg, "skills", "workflow", "SKILL.md"): "# Workflow\n",
 		filepath.Join(root, ".mate", "plugins.yaml"):         pluginsYAML,
 	} {
@@ -202,24 +221,47 @@ func TestPluginsNamesAnUnknownProjectAndAnUnboundOne(t *testing.T) {
 
 // A Mate that is not running is judged by the harness a new start would
 // get, workspace.yaml's defaults.mate_harness; with none recorded it is
-// unknown, which is no reason to call the app unsupported. Whether a
-// harness can take plugins is Deps.PluginHarness's answer, never a name
-// this package knows.
+// unknown, which is no reason to call an app unsupported. Whether a harness
+// can take MCP servers is Deps.PluginHarness's answer, never a name this
+// package knows, and only an app with an MCP server can be unsupported: an
+// open-only app stays configured, and says when the Mate will not start
+// because of the app beside it.
 func TestPluginsJudgesAStoppedMateByTheDefaultHarness(t *testing.T) {
+	const refusal = "the codex harness cannot give a Mate MCP servers: only config parsing is proven"
 	refuse := func(kind string) error {
 		if kind == "codex" {
-			return errors.New("the codex harness cannot give an agent MCP servers")
+			return errors.New(refusal)
 		}
 		return nil
 	}
+	board := func(harness, error string) string {
+		return `{"instance":"board","name":"Board","status":"configured","harness":"` + harness + `",
+			"open":{"title":"Open board","url":"https://board.example/shop"},"mcp":null,"skills":[],"error":` + error + `}`
+	}
+	linear := func(status, harness, error string) string {
+		return strings.NewReplacer(`"status":"configured","harness":"claude"`,
+			`"status":"`+status+`","harness":"`+harness+`"`,
+			`"error":null`, `"error":`+error).Replace(configuredLinear)
+	}
+	stopped := `"the Mate will not start while linear-work needs MCP servers: ` + refusal + `"`
 	for _, tc := range []struct {
-		def, harness, status, error string
-		seam                        func(string) error
+		def  string
+		seam func(string) error
+		want string // both apps
+		open string // board alone
 	}{
-		{"codex", "codex", "harness unsupported", `"the codex harness cannot give an agent MCP servers"`, refuse},
-		{"Claude", "claude", "configured", "null", refuse},
-		{"", "unknown", "configured", "null", func(string) error { return errors.New("never asked about an unknown harness") }},
-		{"codex", "codex", "configured", "null", nil},
+		{"codex", refuse,
+			"[" + linear("harness unsupported", "codex", `"`+refusal+`"`) + "," + board("codex", stopped) + "]",
+			"[" + board("codex", "null") + "]"},
+		{"Claude", refuse,
+			"[" + linear("configured", "claude", "null") + "," + board("claude", "null") + "]",
+			"[" + board("claude", "null") + "]"},
+		{"", func(string) error { return errors.New("never asked about an unknown harness") },
+			"[" + linear("configured", "unknown", "null") + "," + board("unknown", "null") + "]",
+			"[" + board("unknown", "null") + "]"},
+		{"codex", nil,
+			"[" + linear("configured", "codex", "null") + "," + board("codex", "null") + "]",
+			"[" + board("codex", "null") + "]"},
 	} {
 		root := t.TempDir()
 		ws, err := store.Init(root, store.Defaults{MateHarness: tc.def})
@@ -250,11 +292,10 @@ func TestPluginsJudgesAStoppedMateByTheDefaultHarness(t *testing.T) {
 		}
 		ts := httptest.NewServer(s.Handler())
 		t.Cleanup(ts.Close)
-		writePlugins(t, root, "apiVersion: mate.plugins/v1\ninstances:\n"+linearBinding)
 
-		want := strings.NewReplacer(`"status":"configured","harness":"claude"`,
-			`"status":"`+tc.status+`","harness":"`+tc.harness+`"`,
-			`"error":null`, `"error":`+tc.error).Replace(configuredLinear)
-		assertApps(t, getPlugins(t, ts.URL, "shop", http.StatusOK), "["+want+"]")
+		writePlugins(t, root, "apiVersion: mate.plugins/v1\ninstances:\n"+linearBinding+boardBinding)
+		assertApps(t, getPlugins(t, ts.URL, "shop", http.StatusOK), tc.want)
+		writePlugins(t, root, "apiVersion: mate.plugins/v1\ninstances:\n"+boardBinding)
+		assertApps(t, getPlugins(t, ts.URL, "shop", http.StatusOK), tc.open)
 	}
 }

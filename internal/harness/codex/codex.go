@@ -146,6 +146,7 @@ func (c Codex) Capabilities() harness.Capabilities {
 				Proof:    "internal/quota/testdata/schema5-0.1.34.json through TestParseARealSchema5Snapshot and TestSchema6BindsTheHarnessAccount",
 			},
 		},
+		MCPConfig: harness.Cap[harness.MCPConfigurer]{Status: harness.CapUnsupported, Reason: mcpUnsupported},
 	}
 }
 
@@ -311,23 +312,17 @@ func (c Codex) Prepare(_ context.Context, req harness.PrepareRequest) (harness.P
 	return harness.Prepared{Files: files, SessionID: req.ResumeSessionID, ContextPath: override}, nil
 }
 
-// refuseMCPServers refuses a launch that carries MCP servers. codex-cli
+// mcpUnsupported is why the MCPConfig capability is unsupported. codex-cli
 // 0.162.1 parses `-c mcp_servers.<name>.url|command` under --strict-config,
-// but nothing past parsing is proven: no tool call, no auth, no resume
-// (docs/evidence/codex-mcp-config-audit-2026-10-12.md). So a Codex Mate is
-// refused before launch rather than started as if its plugins' tools were
-// there, and no -c mcp_servers is ever passed.
+// but nothing past parsing is proven: no tool call, no auth, no resume. So a
+// Codex Mate is refused before launch rather than started as if its
+// plugins' tools were there, and no -c mcp_servers is ever passed.
+const mcpUnsupported = "only config parsing is proven (docs/evidence/codex-mcp-config-audit-2026-10-12.md); run this Mate on claude or disable these plugins for the project"
+
+// refuseMCPServers refuses a launch that carries MCP servers, with the
+// capability's own reason.
 func refuseMCPServers(servers []harness.MCPServer) error {
-	if len(servers) == 0 {
-		return nil
-	}
-	names := make([]string, len(servers))
-	for i, s := range servers {
-		names[i] = s.Name
-	}
-	return observability.WrapError(observability.CodeUsage, fmt.Sprintf(
-		"the codex harness cannot give an agent MCP servers (%s): unsupported, since only config parsing is proven (docs/evidence/codex-mcp-config-audit-2026-10-12.md); run this Mate on claude or disable these plugins for the project",
-		strings.Join(names, ", ")), harness.ErrMCPUnsupported)
+	return harness.RefuseMCPServers(KindCodex, mcpUnsupported, servers)
 }
 
 // Build implements Launcher: a startable Codex spec, or an error.

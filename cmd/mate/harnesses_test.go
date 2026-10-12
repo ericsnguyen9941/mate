@@ -65,3 +65,27 @@ func TestOnlyAHarnessWithHooksIsOfferedForAMate(t *testing.T) {
 		}
 	}
 }
+
+// The dashboard's "harness unsupported" is the harness profile's MCPConfig
+// capability, wired through dashboardDeps: no harness is named, and a kind
+// this binary does not have is unknown rather than supported.
+func TestDashboardAsksTheProfileWhetherAMateTakesPlugins(t *testing.T) {
+	ask := dashboardDeps(nil).PluginHarness
+	if ask == nil {
+		t.Fatal("dashboardDeps sets no PluginHarness; the dashboard would call no harness unsupported")
+	}
+	for _, k := range harnesses.Kinds() {
+		p, _ := harnesses.Lookup(k)
+		c := p.Capabilities().MCPConfig
+		err := ask(string(k))
+		switch {
+		case c.Verified() && err != nil:
+			t.Errorf("%s: MCPConfig is verified but PluginHarness says %v", k, err)
+		case !c.Verified() && (err == nil || !strings.Contains(err.Error(), c.Reason)):
+			t.Errorf("%s: MCPConfig is %s; PluginHarness = %v, want the capability's reason %q", k, c.Status, err, c.Reason)
+		}
+	}
+	if err := ask("no-such-harness"); err == nil || !strings.Contains(err.Error(), `unknown harness "no-such-harness"`) {
+		t.Errorf("PluginHarness(no-such-harness) = %v, want it named as unknown", err)
+	}
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
@@ -39,6 +40,25 @@ func harnessChoices(role harness.AgentRole, sep string) string {
 func runsMate(k harness.Kind) bool {
 	p, err := harnesses.Lookup(k)
 	return err == nil && p.Capabilities().Hooks.Verified()
+}
+
+// pluginHarness is the dashboard's Deps.PluginHarness: nil when a Mate on
+// kind can be given its plugins' MCP servers, a verified MCPConfig
+// capability; otherwise that capability's Reason, or that the kind is not
+// one this binary has.
+func pluginHarness(kind string) error {
+	k, err := harnesses.Parse(kind)
+	if err != nil {
+		return fmt.Errorf("unknown harness %q: this binary has no such harness", kind)
+	}
+	p, err := harnesses.Lookup(k)
+	if err != nil {
+		return fmt.Errorf("unknown harness %q: %v", kind, err)
+	}
+	if c := p.Capabilities().MCPConfig; !c.Verified() {
+		return fmt.Errorf("the %s harness cannot give a Mate MCP servers: %s", k, c.Reason)
+	}
+	return nil
 }
 
 // workspaceDefaults are the harnesses a new workspace.yaml records: the
