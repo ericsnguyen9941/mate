@@ -1,16 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/host"
@@ -19,15 +16,12 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
-	"github.com/nguyenngocanh94/mate/internal/tool"
 	"github.com/nguyenngocanh94/mate/internal/ui/console"
 )
 
 // consoleColumns are the Console's surfaces (docs/mvp.md M13): the stage
 // column, which shows the agent of the row Enter was pressed on, and a tab
-// per tool role the tool registry binds a key to - the review tab, which
-// `e` opens on a crew's report, and the tasks tab, which `t` opens on a
-// project's tracker. A tool opens in a tab in the same window: a column
+// for each configured terminal command. A tool opens in a tab in the same window: a column
 // left the editor about half the window, and a separate window covered the
 // console. Each surface runs `mate pane serve` for its whole life; the
 // Console tells it what to show over its socket, and the host never
@@ -36,49 +30,43 @@ type consoleColumns struct {
 	h host.Host
 	// cols is the stage column.
 	cols []host.Column
-	// tabs are the tool tabs by role, one per Role a tool binding names,
-	// planned whether or not the tool is installed: a missing binary is
-	// said when its key is pressed (tool.Viewer.Argv) and on the status
-	// line when the Console opens (missingTools).
-	tabs  map[string]toolTab
+	// tabs are planned for configured terminal commands. Missing binaries
+	// are reported when the configured key is pressed.
+	tabs  map[string]commandTab
 	dir   string
 	stage string
 	herdr string
 	// findTool is a tool binary's absolute path, "" when it is not
-	// installed: the seam tool.Viewer.Argv resolves binaries through.
+	// installed.
 	findTool func(string) string
 	// env is what every column's program gets over the pane's own: the
 	// Console's PATH.
-	env []string
+	env         []string
+	commandDirs []string
 }
 
-// toolTab is one tool tab: the program the host runs in it, and the
+// commandTab is one configured command tab: the program the host runs in it, and the
 // socket that program listens on.
-type toolTab struct {
+type commandTab struct {
 	col    host.Column
 	socket string
 }
 
 // newConsoleColumns plans the surfaces for this Console: the stage column,
-// and a tab for each role tools binds a key to.
-func newConsoleColumns(h host.Host, getenv func(string) string, tools tool.Registry) (*consoleColumns, error) {
+// with no default application tabs. addCommandTabs plans configured tabs.
+func newConsoleColumns(h host.Host, getenv func(string) string) (*consoleColumns, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("find the mate binary: %w", err)
 	}
-	roles := toolRoles(tools)
-	sockets := []string{roleStage + ".sock"}
-	for _, role := range roles {
-		sockets = append(sockets, role+".sock")
-	}
 	// A short directory: a unix socket path is limited to about 100 bytes.
-	dir, err := panerun.SocketDir("mate-cols-", sockets...)
+	dir, err := panerun.SocketDir("mate-cols-", roleStage+".sock")
 	if err != nil {
 		return nil, err
 	}
 	c := &consoleColumns{
 		h: h, dir: dir, stage: filepath.Join(dir, roleStage+".sock"), herdr: findTool(getenv, "herdr"),
-		tabs: map[string]toolTab{},
+		tabs: map[string]commandTab{},
 		findTool: func(name string) string {
 			if p := findTool(getenv, name); filepath.IsAbs(p) {
 				return p
@@ -94,49 +82,7 @@ func newConsoleColumns(h host.Host, getenv func(string) string, tools tool.Regis
 		return host.Column{Role: role, Argv: []string{exe, "pane", "serve", "--role", role, "--socket", socket, "--owner", owner}}
 	}
 	c.cols = []host.Column{column(roleStage, c.stage)}
-	for _, role := range roles {
-		socket := filepath.Join(dir, role+".sock")
-		c.tabs[role] = toolTab{col: column(role, socket), socket: socket}
-	}
 	return c, nil
-}
-
-// toolRoles are the roles tools binds keys to, each once, in binding
-// order.
-func toolRoles(tools tool.Registry) []string {
-	var roles []string
-	for _, b := range tools.Bindings() {
-		if !slices.Contains(roles, b.Role) {
-			roles = append(roles, b.Role)
-		}
-	}
-	return roles
-}
-
-// missingTools is a status-line notice for each tool with a console key
-// whose binaries findTool does not find: the key, the tool and how to
-// install it.
-func (c *consoleColumns) missingTools(tools tool.Registry) []string {
-	var notices []string
-	seen := map[tool.Name]bool{}
-	for _, b := range tools.Bindings() {
-		if seen[b.Tool] {
-			continue
-		}
-		seen[b.Tool] = true
-		p, err := tools.Lookup(b.Tool)
-		if err != nil {
-			continue
-		}
-		info := p.Info()
-		for _, bin := range info.Binaries {
-			if c.findTool(bin) == "" {
-				notices = append(notices, fmt.Sprintf("%s %s needs %s: %s", b.Key, b.Label, info.Title, info.Install))
-				break
-			}
-		}
-	}
-	return notices
 }
 
 // toolDirs are where installers put a CLI when a pane's PATH, which
@@ -235,10 +181,13 @@ func (c *consoleColumns) close() {
 	}
 	_ = c.h.Close(ctx)
 	_ = os.RemoveAll(c.dir)
+	for _, dir := range c.commandDirs {
+		_ = os.RemoveAll(dir)
+	}
 }
 
 // consoleStage is the Console's Enter seam: the stage attaches the row's
-// agent and stays there. The report tab is `e`, not Enter. A nil columns
+// agent and stays there. Configured commands have their own keys. A nil columns
 // yields a nil StageFunc, which the Console reads as "no next pane".
 func consoleStage(ws *store.Workspace, deps spawn.Deps, c *consoleColumns) console.StageFunc {
 	if c == nil {
@@ -254,137 +203,6 @@ func consoleStage(ws *store.Workspace, deps spawn.Deps, c *consoleColumns) conso
 		}
 		return c.show(ctx, c.cols, c.stage, panerun.Command{Argv: host.AttachArgv(c.herdr, ref.HerdrSession, ref.AgentName), Env: c.env})
 	}
-}
-
-// consoleToolView is the Console's seam for the tool keys of the snapshot
-// (`e`: the crew's report; `t`: the project's tasks): the tool bound to
-// key on the target's row builds its process (tool.Viewer.Argv), and that
-// tool's tab beside the Console runs it, in the directory and with the
-// environment the tool asked for. A tool whose data the project does not
-// have yet gets it made first (consoleToolData). A nil columns yields a
-// nil ToolViewFunc.
-func consoleToolView(ws *store.Workspace, c *consoleColumns, tools tool.Registry) console.ToolViewFunc {
-	if c == nil {
-		return nil
-	}
-	return func(ctx context.Context, key string, target console.StageTarget) error {
-		b, err := toolBinding(tools, key, target)
-		if err != nil {
-			return err
-		}
-		p, err := tools.Lookup(b.Tool)
-		if err != nil {
-			return err
-		}
-		tab, ok := c.tabs[b.Role]
-		if !ok {
-			return fmt.Errorf("%s: the console has no %s tab", b.Label, b.Role)
-		}
-		vctx, err := viewerContext(ws, target)
-		if err != nil {
-			return fmt.Errorf("%s: %w", b.Label, err)
-		}
-		if err := consoleToolData(ctx, ws, target.ProjectID, p); err != nil {
-			return fmt.Errorf("%s: %w", b.Label, err)
-		}
-		// Argv's error is the tool's own sentence: how to install it.
-		inv, err := p.Capabilities().Viewer.Impl.Argv(vctx, c.findTool)
-		if err != nil {
-			return err
-		}
-		dir := inv.Dir
-		if dir == "" {
-			dir = vctx.CrewDir
-		}
-		if dir == "" {
-			dir = vctx.ProjectDir
-		}
-		cmd := panerun.Command{
-			Argv: append([]string{inv.Name}, inv.Args...),
-			Dir:  dir,
-			Env:  append(slices.Clone(c.env), inv.Env...),
-		}
-		if err := c.showRoleTab(ctx, tab.col, tab.socket, cmd); err != nil {
-			return fmt.Errorf("%s: %w", b.Label, err)
-		}
-		return nil
-	}
-}
-
-// consoleToolData makes a tool's data for project when the tool keeps data
-// and the project has none yet, the way `mate tool beads` makes the tracker
-// before opening the viewer: Beads Viewer on a project with no tracker
-// shows nothing. The viewer's export is not refreshed here when the data
-// exists: bv reads the tracker itself (--db). Making it is refused while
-// older data sits where toolDataRefusal says. The tool's own
-// diagnostic, if it failed, is the last line of what it wrote.
-func consoleToolData(ctx context.Context, ws *store.Workspace, project string, p tool.Profile) error {
-	data := p.Capabilities().Data
-	if !data.Verified() {
-		return nil
-	}
-	exists, err := data.Impl.Exists(ws.ProjectHome(project))
-	if err != nil || exists {
-		return err
-	}
-	if err := toolDataRefusal(ws, project, p, false); err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(ctx, toolCommandTimeout)
-	defer cancel()
-	var diagnostic bytes.Buffer
-	if err := data.Impl.Init(ctx, toolEnv(ws, project, p), &diagnostic); err != nil {
-		lines := strings.Split(strings.TrimSpace(diagnostic.String()), "\n")
-		if last := strings.TrimSpace(lines[len(lines)-1]); last != "" {
-			return fmt.Errorf("%w: %s", err, last)
-		}
-		return err
-	}
-	return nil
-}
-
-// toolBinding is the binding of key on the target's row: a crew target is
-// a crew row, a target with only a project a project row. A key bound on
-// another row only says where it acts.
-func toolBinding(tools tool.Registry, key string, target console.StageTarget) (tool.Binding, error) {
-	var scope tool.BindScope
-	switch {
-	case target.Kind == console.StageCrew && target.ID != "" && target.ProjectID != "":
-		scope = tool.ScopeCrew
-	case target.Kind == "" && target.ID == "" && target.ProjectID != "":
-		scope = tool.ScopeProject
-	}
-	var other *tool.Binding
-	for _, b := range tools.Bindings() {
-		if b.Key != key {
-			continue
-		}
-		if b.Scope == scope {
-			return b, nil
-		}
-		if other == nil {
-			other = &b
-		}
-	}
-	if other != nil {
-		return tool.Binding{}, fmt.Errorf("%s opens a %s's %s", key, other.Scope, other.Label)
-	}
-	return tool.Binding{}, fmt.Errorf("no tool bound to %s", key)
-}
-
-// viewerContext is what a tool opens on for target: the project, and for a
-// crew its folder and report.md (reviewReport).
-func viewerContext(ws *store.Workspace, target console.StageTarget) (tool.ViewerContext, error) {
-	vctx := tool.ViewerContext{ProjectDir: ws.ProjectHome(target.ProjectID)}
-	if target.Kind != console.StageCrew {
-		return vctx, nil
-	}
-	dir, file, err := reviewReport(ws, target)
-	if err != nil {
-		return tool.ViewerContext{}, err
-	}
-	vctx.CrewDir, vctx.ReportPath = dir, file
-	return vctx, nil
 }
 
 // herdrSession refuses to attach to an agent whose Herdr session is not up.

@@ -255,7 +255,7 @@ func (m Model) keyHints() []keyHint {
 	if m.emptyWorkspace() {
 		return []keyHint{{"n", "new project"}, {"r", "refresh"}, {"q", "quit"}}
 	}
-	tools := m.toolHints()
+	tools := m.commandHints()
 	switch m.focus {
 	case paneDetail:
 		return joinHints([]keyHint{{m.g.UpDown, "field"}, {"y", "copy"}, {"esc", "list"}}, tools, []keyHint{{"enter", "show"}})

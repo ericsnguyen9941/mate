@@ -161,7 +161,7 @@ func (s *toolSpy) fn(_ context.Context, key string, target StageTarget) error {
 func TestEOnACrewOpensItsReportAndEnterDoesNot(t *testing.T) {
 	stage := &stageSpy{}
 	view := &toolSpy{}
-	m := toRunningAttempt(t, loaded(t, sampleTree(), nil)).WithStage(stage.fn).WithToolView(view.fn)
+	m := toRunningAttempt(t, loaded(t, sampleTree(), nil)).WithStage(stage.fn).WithCommandView(view.fn)
 	m, cmd := send(t, m, key("enter"))
 	if cmd == nil {
 		t.Fatal("Enter on the Crew returned no Cmd")
@@ -191,7 +191,7 @@ func TestEOnACrewOpensItsReportAndEnterDoesNot(t *testing.T) {
 
 func TestEOnAMateSaysThereIsNoReport(t *testing.T) {
 	view := &toolSpy{}
-	m := projectFrame(t, sampleTree()).WithToolView(view.fn)
+	m := projectFrame(t, sampleTree()).WithCommandView(view.fn)
 	m, cmd := send(t, m, key("e"))
 	if cmd != nil || len(view.calls) != 0 {
 		t.Fatal("e on a Mate opened a report")
@@ -205,7 +205,7 @@ func TestEWithoutAHostSaysThereIsNoNextPane(t *testing.T) {
 	m := toRunningAttempt(t, loaded(t, sampleTree(), nil))
 	m, cmd := send(t, m, key("e"))
 	if cmd != nil {
-		t.Fatal("e without a ToolViewFunc returned a Cmd")
+		t.Fatal("e without a CommandViewFunc returned a Cmd")
 	}
 	if m.msg.tone != toneError || !strings.Contains(m.msg.text, "no next pane") {
 		t.Fatalf("message = %+v, want the no-host line", m.msg)
@@ -216,9 +216,9 @@ func TestEWithoutAHostSaysThereIsNoNextPane(t *testing.T) {
 // a key nothing owns, like any other the Console does not handle.
 func TestEWithNoToolBoundDoesNothing(t *testing.T) {
 	tree := sampleTree()
-	tree.Tools = nil
+	tree.Commands = nil
 	view := &toolSpy{}
-	m := toRunningAttempt(t, loaded(t, tree, nil)).WithToolView(view.fn)
+	m := toRunningAttempt(t, loaded(t, tree, nil)).WithCommandView(view.fn)
 	m, cmd := send(t, m, key("e"))
 	if cmd != nil || len(view.calls) != 0 {
 		t.Fatal("e with no tool bound opened something")
@@ -232,9 +232,9 @@ func TestEWithNoToolBoundDoesNothing(t *testing.T) {
 // sheet lists, whatever the tool is.
 func TestToolKeyWordsComeFromTheSnapshot(t *testing.T) {
 	tree := sampleTree()
-	tree.Tools = []query.ToolBinding{{Key: "e", Label: "diff", Scope: "crew", Role: "diff", Tool: "differ"}}
+	tree.Commands = []query.CommandBinding{{Key: "e", Label: "diff", Scope: "crew", Role: "diff"}}
 	view := &toolSpy{}
-	m := toRunningAttempt(t, loaded(t, tree, nil)).WithToolView(view.fn)
+	m := toRunningAttempt(t, loaded(t, tree, nil)).WithCommandView(view.fn)
 	m, cmd := send(t, m, key("e"))
 	if cmd == nil || !strings.HasPrefix(m.msg.text, "→ diff · opening") {
 		t.Fatalf("message = %q, want the tool's label", m.msg.text)
@@ -243,7 +243,7 @@ func TestToolKeyWordsComeFromTheSnapshot(t *testing.T) {
 	if !slices.Contains(rows, [2]string{"e", "crew diff"}) || slices.Contains(rows, [2]string{"e", "crew report"}) {
 		t.Fatalf("key rows = %q, want e drawn from the snapshot", rows)
 	}
-	tree.Tools = nil
+	tree.Commands = nil
 	if rows := loaded(t, tree, nil).keyRows(); slices.ContainsFunc(rows, func(r [2]string) bool { return r[0] == "e" }) {
 		t.Fatalf("key rows = %q, want no e row when no tool binds it", rows)
 	}
@@ -253,9 +253,9 @@ func TestToolKeyWordsComeFromTheSnapshot(t *testing.T) {
 // that tool's words.
 func TestTBoundToAToolOpensItOnTheProject(t *testing.T) {
 	tree := sampleTree()
-	tree.Tools = []query.ToolBinding{reportKey, {Key: "t", Label: "plan", Scope: "project", Role: "plan", Tool: "planner"}}
+	tree.Commands = []query.CommandBinding{reportKey, {Key: "t", Label: "plan", Scope: "project", Role: "plan"}}
 	view := &toolSpy{}
-	m := loaded(t, tree, nil).WithToolView(view.fn)
+	m := loaded(t, tree, nil).WithCommandView(view.fn)
 	want := m.modeTarget()
 	m, cmd := send(t, m, key("t"))
 	if cmd == nil {
@@ -287,7 +287,7 @@ func TestEnterWithoutAHostGivesTheHint(t *testing.T) {
 func TestTOpensTheProjectOfListDetailAndBox(t *testing.T) {
 	for _, focus := range []pane{paneList, paneDetail} {
 		view := &toolSpy{}
-		m := loaded(t, sampleTree(), nil).WithToolView(view.fn)
+		m := loaded(t, sampleTree(), nil).WithCommandView(view.fn)
 		m.focus = focus
 		want := m.modeTarget()
 		m, cmd := send(t, m, key("t"))
@@ -304,7 +304,7 @@ func TestTOpensTheProjectOfListDetailAndBox(t *testing.T) {
 	m, _, _ := bxPayments(t, 80, 36)
 	m = bxFocusBox(t, m)
 	view := &toolSpy{}
-	m = m.WithToolView(view.fn)
+	m = m.WithCommandView(view.fn)
 	items := m.boxItems()
 	want := items[m.boxSelection(items)].project
 	if _, cmd := send(t, m, key("t")); cmd == nil {
@@ -320,7 +320,7 @@ func TestTOpensTheProjectOfListDetailAndBox(t *testing.T) {
 // A tool's failure is said on the status line.
 func TestTFailureIsSaid(t *testing.T) {
 	view := &toolSpy{err: errors.New("host failed")}
-	m := projectFrame(t, sampleTree()).WithToolView(view.fn)
+	m := projectFrame(t, sampleTree()).WithCommandView(view.fn)
 	m, cmd := send(t, m, key("t"))
 	if cmd == nil {
 		t.Fatal("t on a project returned no Cmd")
@@ -334,19 +334,19 @@ func TestTFailureIsSaid(t *testing.T) {
 // t typed into a form is text, not a key.
 func TestTKeepsInputPriority(t *testing.T) {
 	view := &toolSpy{}
-	m := loaded(t, sampleTree(), nil).WithToolView(view.fn).beginNewProject()
+	m := loaded(t, sampleTree(), nil).WithCommandView(view.fn).beginNewProject()
 	m, _ = send(t, m, key("t"))
 	if !m.actionInputMode || len(view.calls) != 0 {
 		t.Fatal("t left the text form")
 	}
 }
 
-// With no tool bound to t, t does nothing and the key line offers no t,
+// With no command bound to t, t does nothing and the key line offers no t,
 // and without a host tab a bound t says there is no next pane.
 func TestTUnboundOrHostlessSaysSo(t *testing.T) {
 	tree := sampleTree()
-	tree.Tools = []query.ToolBinding{reportKey}
-	m := projectFrame(t, tree).WithToolView((&toolSpy{}).fn)
+	tree.Commands = []query.CommandBinding{reportKey}
+	m := projectFrame(t, tree).WithCommandView((&toolSpy{}).fn)
 	m, cmd := send(t, m, key("t"))
 	if cmd != nil || m.msg.text != "" {
 		t.Fatalf("unbound t: %+v", m.msg)
@@ -355,9 +355,8 @@ func TestTUnboundOrHostlessSaysSo(t *testing.T) {
 		t.Fatalf("key line offers an unbound t: %+v", m.keyHints())
 	}
 	m = projectFrame(t, sampleTree())
-	want := m.modeTarget()
 	m, cmd = send(t, m, key("t"))
-	if cmd != nil || m.msg.text != "no next pane: run mate console inside WezTerm or Ghostty; or run mate tool tracker "+want+" in a terminal" {
+	if cmd != nil || m.msg.text != "no next pane: run mate console inside WezTerm or Ghostty" {
 		t.Fatalf("hostless t: %+v", m.msg)
 	}
 }
@@ -367,7 +366,7 @@ func TestTUnboundOrHostlessSaysSo(t *testing.T) {
 // it is not drawn, and the Console's own row for that key stays.
 func TestKeySheetDrawsOnlyRoutedToolKeys(t *testing.T) {
 	tree := sampleTree()
-	tree.Tools = append(tree.Tools, query.ToolBinding{Key: "a", Label: "audit", Scope: "project", Role: "audit", Tool: "auditor"})
+	tree.Commands = append(tree.Commands, query.CommandBinding{Key: "a", Label: "audit", Scope: "project", Role: "audit"})
 	rows := loaded(t, tree, nil).keyRows()
 	if slices.Contains(rows, [2]string{"a", "project audit"}) || !slices.Contains(rows, [2]string{"a", "actions"}) {
 		t.Fatalf("key rows = %q, want a kept as actions and the unrouted binding not drawn", rows)

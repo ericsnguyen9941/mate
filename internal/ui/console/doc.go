@@ -10,7 +10,7 @@
 // read types and caller-supplied seams: LoadFunc (how to re-read the tree),
 // ActionFunc (how to invoke application services for start/stop/resume/
 // retry/repair/discard/onboard), StageFunc (stage.go: show an agent in the
-// next pane), ToolViewFunc (a tool key of Snapshot.Tools - `e`, the crew's
+// next pane), CommandViewFunc (a tool key of Snapshot.Commands - `e`, the crew's
 // report - in a tab beside the Console) and ClipboardFunc (OSC 52 for y). The CLI layer in cmd/mate is
 // the only place those seams are built, which is where the persistence,
 // runtime and host access actually happens (G6 gate, see

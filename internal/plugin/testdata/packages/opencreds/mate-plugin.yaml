@@ -1,0 +1,5 @@
+apiVersion: mate.plugin/v1
+name: Credential link
+open:
+  title: Open
+  url: "https://user:pass@board.example/"

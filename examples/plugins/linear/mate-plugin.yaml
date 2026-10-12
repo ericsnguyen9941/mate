@@ -1,0 +1,10 @@
+apiVersion: mate.plugin/v1
+name: Linear
+mcp:
+  type: http
+  url: https://mcp.linear.app/mcp
+skills:
+  - skills/workflow/SKILL.md
+open:
+  title: Open Linear
+  url: "{config.project_url}"

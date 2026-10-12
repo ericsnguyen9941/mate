@@ -58,15 +58,8 @@ func jevThreshold(value string) (float64, error) {
 	return t, nil
 }
 
-// baseDeps is spawn.LiveDeps with this binary's tools, so a Mate's manual
-// installs their skills beside its own. Commands that never read a pane, and
-// the console (which wires its own observer once for the whole run), use it
-// directly.
-func baseDeps() spawn.Deps {
-	deps := spawn.LiveDeps(harnesses)
-	deps.Tools = tools
-	return deps
-}
+// baseDeps supplies the runtime and harness registry for this binary.
+func baseDeps() spawn.Deps { return spawn.LiveDeps(harnesses) }
 
 // liveDeps is baseDeps plus the observer `.mate/.env` asks for, for a command
 // that reads a pane (send, state, a start's settle). A Jev configuration

@@ -22,12 +22,12 @@ import (
 // so on the status line.
 type StageFunc func(context.Context, StageTarget) error
 
-// ToolViewFunc opens the tool bound to key (query.Snapshot.Tools) on
-// target, in a tab beside the Console: `e` on a crew opens its report.
+// CommandViewFunc opens the configured command bound to key (query.Snapshot.Commands) on
+// target. The command may open a host tab or an external application.
 // target is the crew for a crew-scoped key, and only ProjectID for a
-// project-scoped one. A nil ToolViewFunc means there is no host tab, and
-// the key says so on the status line.
-type ToolViewFunc func(ctx context.Context, key string, target StageTarget) error
+// project-scoped one. A nil CommandViewFunc means no command launcher is
+// available; the key reports that on the status line.
+type CommandViewFunc func(ctx context.Context, key string, target StageTarget) error
 
 // StageTargetKind says whether a target is a Mate or a Crew.
 type StageTargetKind string
@@ -280,11 +280,9 @@ func (m Model) retryStage() (Model, tea.Cmd) {
 	return m.beginStage(m.staged.target)
 }
 
-// ownedKeys are the keys the Console handles itself on the tree, in any
-// pane (onKey, onListKey, onDetailKey, onBoxKey). Every other key a tool
-// binds is handed to that tool (beginToolView). The tool registry refuses a
-// binding on one of these (tool.ConsoleKeys, which a test holds equal to
-// this set and to the keys the handlers switch on).
+// ownedKeys are the console's tree keys. Configuration validation refuses
+// these keys; the contract test holds this set equal to ReservedKeys and
+// to the keys the tree handlers use.
 var ownedKeys = map[string]bool{
 	"?": true, "G": true, "a": true, "backspace": true, "ctrl+c": true,
 	"down": true, "end": true, "enter": true, "esc": true, "g": true,
@@ -293,12 +291,11 @@ var ownedKeys = map[string]bool{
 	"s": true, "shift+tab": true, "tab": true, "up": true, "y": true,
 }
 
-// toolHints are the key line's hints for the tool keys that act on every
-// row, the project-scope bindings, with each tool's own label. A crew key
+// commandHints lists configured project keys with their labels. A crew key
 // means something only on a crew row; the key sheet lists it.
-func (m Model) toolHints() []keyHint {
+func (m Model) commandHints() []keyHint {
 	var out []keyHint
-	for _, b := range m.tree.Tools {
+	for _, b := range m.tree.Commands {
 		if b.Scope == "project" && !ownedKeys[b.Key] {
 			out = append(out, keyHint{b.Key, b.Label})
 		}
@@ -318,9 +315,9 @@ func (m Model) keyProject() string {
 	return m.modeTarget()
 }
 
-// toolBound reports whether the snapshot binds a tool to key on any row.
-func (m Model) toolBound(key string) bool {
-	for _, b := range m.tree.Tools {
+// commandBound reports whether the snapshot binds a command to key on any row.
+func (m Model) commandBound(key string) bool {
+	for _, b := range m.tree.Commands {
 		if b.Key == key {
 			return true
 		}
@@ -328,27 +325,27 @@ func (m Model) toolBound(key string) bool {
 	return false
 }
 
-// beginToolView is a tool's key (query.Snapshot.Tools): open the tool bound
-// to key on the row the key acts on, in the host tab, and stay on the tree.
+// beginCommandView launches the configured key on its target row while
+// keeping the console on the tree.
 // A row the key means nothing on is said so, and nothing opens.
-func (m Model) beginToolView(key string) (Model, tea.Cmd) {
-	var bound []query.ToolBinding
-	for _, b := range m.tree.Tools {
+func (m Model) beginCommandView(key string) (Model, tea.Cmd) {
+	var bound []query.CommandBinding
+	for _, b := range m.tree.Commands {
 		if b.Key == key {
 			bound = append(bound, b)
 		}
 	}
 	if len(bound) == 0 {
-		m.msg = errMsg("no tool bound to " + key)
+		m.msg = errMsg("no command bound to " + key)
 		return m, nil
 	}
 	var (
-		b      query.ToolBinding
+		b      query.CommandBinding
 		target StageTarget
 		ok     bool
 	)
 	for _, b = range bound {
-		if target, ok = m.toolTarget(b.Scope); ok {
+		if target, ok = m.commandTarget(b.Scope); ok {
 			break
 		}
 	}
@@ -356,50 +353,45 @@ func (m Model) beginToolView(key string) (Model, tea.Cmd) {
 		m.msg = errMsg(key + " opens a " + bound[0].Scope + "'s " + bound[0].Label)
 		return m, nil
 	}
-	if m.toolView == nil {
+	if m.commandView == nil {
 		hint := "no next pane: " + m.noHostHint()
-		if b.Scope == "project" && b.Tool != "" {
-			// `mate tool <name> <project>` opens a tool on a project in
-			// the terminal it runs in.
-			hint += "; or run mate tool " + b.Tool + " " + target.ProjectID + " in a terminal"
-		}
 		m.msg = errMsg(hint)
 		return m, nil
 	}
-	m.msg = infoMsg(m.g.Arrow + " " + b.Label + " " + m.g.Dot + " opening " + toolTargetName(target) + m.g.Ellipsis)
-	fn := m.toolView
+	m.msg = infoMsg(m.g.Arrow + " " + b.Label + " " + m.g.Dot + " opening " + commandTargetName(target) + m.g.Ellipsis)
+	fn := m.commandView
 	ctx := m.baseCtx()
 	return m, func() tea.Msg {
-		return toolViewDoneMsg{err: fn(ctx, key, target), label: b.Label, target: target}
+		return commandViewDoneMsg{err: fn(ctx, key, target), label: b.Label, target: target}
 	}
 }
 
-type toolViewDoneMsg struct {
+type commandViewDoneMsg struct {
 	err    error
 	label  string
 	target StageTarget
 }
 
-func (m Model) onToolViewDone(msg toolViewDoneMsg) Model {
+func (m Model) onCommandViewDone(msg commandViewDoneMsg) Model {
 	if msg.err != nil {
 		m.msg = errMsg(oneLine(msg.err.Error()))
 		return m
 	}
-	m.msg = infoMsg(m.g.Arrow + " " + msg.label + " " + m.g.Dot + " " + toolTargetName(msg.target))
+	m.msg = infoMsg(m.g.Arrow + " " + msg.label + " " + m.g.Dot + " " + commandTargetName(msg.target))
 	return m
 }
 
-// toolTargetName is the crew a tool opened on, or its project.
-func toolTargetName(t StageTarget) string {
+// commandTargetName identifies the command's crew or project.
+func commandTargetName(t StageTarget) string {
 	if t.ID != "" {
 		return t.ID
 	}
 	return t.ProjectID
 }
 
-// toolTarget is what a key of scope acts on: on a crew row, that crew; on
+// commandTarget is what a key of scope acts on: on a crew row, that crew; on
 // a project row, that project.
-func (m Model) toolTarget(scope string) (StageTarget, bool) {
+func (m Model) commandTarget(scope string) (StageTarget, bool) {
 	switch scope {
 	case "crew":
 		return m.keyCrewTarget()

@@ -117,6 +117,7 @@ func (p Pi) Capabilities() harness.Capabilities {
 			Status: harness.CapUnsupported,
 			Reason: "pi has no allowance of its own: it calls whichever provider the --model names (deepseek, openrouter, ...), so no quota-axi row follows from the harness",
 		},
+		MCPConfig: harness.Cap[harness.MCPConfigurer]{Status: harness.CapUnsupported, Reason: mcpUnsupported},
 	}
 }
 
@@ -179,6 +180,12 @@ type piLaunch struct {
 	sessionID string
 }
 
+// mcpUnsupported is why the MCPConfig capability is unsupported: nothing
+// has measured how pi is given an MCP server, and it cannot run a Mate,
+// the only agent plugins reach. A launch carrying servers is refused
+// rather than started without them.
+const mcpUnsupported = "no way to give pi an MCP server has been measured, and it cannot run a Mate"
+
 // refuseMate is the refusal of a Mate on pi, naming the capability it
 // lacks.
 func refuseMate() error {
@@ -191,6 +198,9 @@ func refuseMate() error {
 // itself. The launch names the session, so the id is minted here.
 func (p Pi) Prepare(_ context.Context, req harness.PrepareRequest) (harness.Prepared, error) {
 	if err := req.Check(KindPi); err != nil {
+		return harness.Prepared{}, err
+	}
+	if err := harness.RefuseMCPServers(KindPi, mcpUnsupported, req.MCPServers); err != nil {
 		return harness.Prepared{}, err
 	}
 	if req.Role == harness.RoleMate {
@@ -220,6 +230,9 @@ func (p Pi) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchSpec
 	launch, ok := spec.Launch.(piLaunch)
 	if spec.Launch != nil && !ok {
 		return harness.LaunchSpec{}, observability.NewError(observability.CodeUsage, fmt.Sprintf("pi adapter got launch data %T that its Prepare did not make", spec.Launch))
+	}
+	if err := harness.RefuseMCPServers(KindPi, mcpUnsupported, spec.MCPServers); err != nil {
+		return harness.LaunchSpec{}, err
 	}
 	if spec.Role == harness.RoleMate {
 		return harness.LaunchSpec{}, refuseMate()

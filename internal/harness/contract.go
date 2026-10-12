@@ -184,6 +184,19 @@ type Capabilities struct {
 	// Quota names the quota-axi row that measures the harness. Without it
 	// dispatch treats the harness as having its whole allowance left.
 	Quota Cap[QuotaProvider]
+	// MCPConfig is handing a Mate its plugins' MCP servers
+	// (PrepareRequest.MCPServers, internal/plugin). Without it a launch
+	// carrying any is refused with ErrMCPUnsupported (RefuseMCPServers),
+	// and the Reason is what the dashboard shows as "harness unsupported".
+	MCPConfig Cap[MCPConfigurer]
+}
+
+// MCPConfigurer is how a harness is given MCP servers: the configuration
+// document its launch reads them from.
+type MCPConfigurer interface {
+	// MCPConfig renders servers in the harness's own MCP configuration
+	// format, refusing one it cannot be given as described.
+	MCPConfig(servers []MCPServer) ([]byte, error)
 }
 
 // GracefulStopper is a harness's own way to exit.

@@ -1,0 +1,10 @@
+apiVersion: mate.plugin/v1
+name: Tracker
+mcp:
+  type: http
+  url: https://mcp.tracker.example/mcp
+skills:
+  - skills/workflow/SKILL.md
+open:
+  title: Open Tracker
+  url: "{config.project_url}"

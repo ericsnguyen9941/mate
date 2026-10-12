@@ -136,6 +136,18 @@ const shopMate = Object.assign({}, env, { project: "shop", mate: mates.shop, exc
   ] } }
 ] });
 
-const out = { now_ms: NOW, workspace, now: Object.assign({}, env, { now }), projects, tasks: { "shop/db-migrate": dbTask }, mates: { shop: shopMate } };
+// GET /api/plugins?project=shop: one app plugins.yaml configures, one whose
+// package is broken.
+const shopPlugins = Object.assign({}, env, { project: "shop", apps: [
+  { instance: "linear-work", name: "Linear", status: "configured", harness: "claude",
+    open: { title: "Open Linear", url: "https://linear.app/acme/team/SHOP" },
+    mcp: { name: "linear-work", type: "http" }, skills: ["workflow"], error: null },
+  { instance: "notes", name: "notes", status: "configuration error", harness: "claude",
+    open: { title: "Open notes", url: "https://notes.example/shop" }, mcp: null, skills: [],
+    error: "/ws/.mate/plugins.yaml: instance notes: package path /ws/<img src=x onerror=alert(1)> is not a directory" }
+] });
+
+const out = { now_ms: NOW, workspace, now: Object.assign({}, env, { now }), projects, tasks: { "shop/db-migrate": dbTask }, mates: { shop: shopMate },
+  plugins: { shop: shopPlugins } };
 fs.writeFileSync(process.argv[2], JSON.stringify(out, null, 1) + "\n");
 console.log("ok", process.argv[2]);

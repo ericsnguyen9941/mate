@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/nguyenngocanh94/mate/internal/consolecmd"
 	"github.com/nguyenngocanh94/mate/internal/query"
-	"github.com/nguyenngocanh94/mate/internal/tool"
 )
 
 // A third tool needs no Console change: a key it binds that the Console
@@ -18,10 +18,10 @@ import (
 // and the key sheet offer it in its own words (plan section 10).
 func TestAThirdToolKeyIsRoutedFromEveryPane(t *testing.T) {
 	tree := sampleTree()
-	tree.Tools = append(tree.Tools, query.ToolBinding{Key: "x", Label: "notes", Scope: "project", Role: "notes", Tool: "notebook"})
+	tree.Commands = append(tree.Commands, query.CommandBinding{Key: "x", Label: "notes", Scope: "project", Role: "notes"})
 	for _, focus := range []pane{paneList, paneDetail} {
 		view := &toolSpy{}
-		m := loaded(t, tree, nil).WithToolView(view.fn)
+		m := loaded(t, tree, nil).WithCommandView(view.fn)
 		m.focus = focus
 		want := m.modeTarget()
 		m, cmd := send(t, m, key("x"))
@@ -43,9 +43,9 @@ func TestAThirdToolKeyIsRoutedFromEveryPane(t *testing.T) {
 
 	m, _, _ = bxPayments(t, 80, 36)
 	m = bxFocusBox(t, m)
-	m.tree.Tools = append(m.tree.Tools, query.ToolBinding{Key: "x", Label: "notes", Scope: "project", Role: "notes", Tool: "notebook"})
+	m.tree.Commands = append(m.tree.Commands, query.CommandBinding{Key: "x", Label: "notes", Scope: "project", Role: "notes"})
 	view := &toolSpy{}
-	m = m.WithToolView(view.fn)
+	m = m.WithCommandView(view.fn)
 	if _, cmd := send(t, m, key("x")); cmd == nil {
 		t.Fatal("x from the box returned no Cmd")
 	} else {
@@ -61,7 +61,7 @@ var keyHandlers = []string{"onKey", "onListKey", "onDetailKey", "onBoxKey"}
 
 // TestOwnedKeysAreTheHandlersKeys holds three lists equal: ownedKeys, the
 // keys the tree's handlers compare `key` with in their source, and
-// tool.ConsoleKeys, the keys the tool registry refuses a binding on.
+// consolecmd.ReservedKeys, the keys configuration validation reserves.
 func TestOwnedKeysAreTheHandlersKeys(t *testing.T) {
 	fset := token.NewFileSet()
 	handled := map[string]bool{}
@@ -112,8 +112,8 @@ func TestOwnedKeysAreTheHandlersKeys(t *testing.T) {
 	if got := slices.Sorted(maps.Keys(handled)); !slices.Equal(got, owned) {
 		t.Errorf("the handlers switch on %q, ownedKeys is %q", got, owned)
 	}
-	if reserved := slices.Sorted(slices.Values(tool.ConsoleKeys())); !slices.Equal(reserved, owned) {
-		t.Errorf("tool.ConsoleKeys is %q, ownedKeys is %q", reserved, owned)
+	if reserved := slices.Sorted(slices.Values(consolecmd.ReservedKeys())); !slices.Equal(reserved, owned) {
+		t.Errorf("consolecmd.ReservedKeys is %q, ownedKeys is %q", reserved, owned)
 	}
 }
 

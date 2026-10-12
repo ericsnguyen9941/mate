@@ -1,0 +1,5 @@
+apiVersion: mate.plugin/v1
+name: File server
+mcp:
+  type: http
+  url: file:///etc/passwd

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -267,5 +268,118 @@ func TestContextRefreshPostponesOverAPendingComposer(t *testing.T) {
 	changed, err := contextRefresh(ctx, w, deps, "shop", false)
 	if changed || err == nil || err.Error() != "refresh postponed: Mate composer is pending" {
 		t.Fatalf("refresh = %v, %v; want postponed with the composer called pending", changed, err)
+	}
+}
+
+// claudeWithoutMCP is Claude declaring that it cannot be given MCP servers.
+type claudeWithoutMCP struct{ claude.Claude }
+
+func (c claudeWithoutMCP) Capabilities() harness.Capabilities {
+	caps := c.Claude.Capabilities()
+	caps.MCPConfig = harness.Cap[harness.MCPConfigurer]{Status: harness.CapUnsupported, Reason: "a test harness that cannot take them"}
+	return caps
+}
+
+// A refresh whose fresh start could not come up - the project's plugins do
+// not resolve, or its harness cannot be given their MCP servers - keeps the
+// running Mate: nothing is stowed for the first two, and when plugins.yaml
+// breaks while the stow runs, nothing is stopped.
+func TestContextRefreshKeepsTheMateWhenItsPluginsCannotStart(t *testing.T) {
+	const broken = "apiVersion: mate.plugins/v1\ninstances:\n  broken:\n    path: plugins/missing\n    projects:\n      shop: {}\n"
+	for _, tc := range []struct {
+		scenario, want string
+		stowed         bool
+	}{
+		{"broken-plugins", "plugin configuration is invalid: ", false},
+		{"harness-without-mcp", "a test harness that cannot take them", false},
+		{"broken-during-stow", "plugin configuration is invalid: ", true},
+	} {
+		t.Run(tc.scenario, func(t *testing.T) {
+			w, deps := consoleFixture(t, "shop")
+			ctx := context.Background()
+			if err := os.WriteFile(w.ProjectDoc("shop"), []byte("# Shop\nFixture project\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			before, err := spawn.StartMate(ctx, w, deps, spawn.StartRequest{Project: "shop"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rt := deps.Runtime.(*runtime.Fake)
+			handle, _, err := spawn.MateHandle(ctx, w, deps, "shop")
+			if err != nil {
+				t.Fatal(err)
+			}
+			rt.SetReadOutput(handle, claudeEmptyScreen)
+			pluginsYAML := filepath.Join(w.StateDir(), "plugins.yaml")
+			switch tc.scenario {
+			case "broken-plugins":
+				if err := os.WriteFile(pluginsYAML, []byte(broken), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			case "harness-without-mcp":
+				pkg := filepath.Join(w.Root(), "plugins", "tracker")
+				if err := os.MkdirAll(pkg, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(pkg, "mate-plugin.yaml"), []byte("apiVersion: mate.plugin/v1\nname: Tracker\nmcp:\n  type: http\n  url: https://mcp.tracker.example/mcp\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(pluginsYAML, []byte("apiVersion: mate.plugins/v1\ninstances:\n  tracker:\n    path: plugins/tracker\n    projects:\n      shop: {}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				reg, err := harness.NewRegistry(nil, claudeWithoutMCP{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				deps.Harnesses = reg
+			}
+			finished := false
+			deps.Sleep = func(context.Context, time.Duration) error {
+				if finished {
+					return nil
+				}
+				items, err := w.ReadOutbox("shop")
+				if err != nil {
+					return err
+				}
+				for _, item := range items {
+					if item.Source == store.OutboxSourceStow && item.State == store.OutboxSent {
+						finished = true
+						path, _ := refreshMeta(w, "shop", "refresh-request")
+						req, _ := store.ReadMeta(path)
+						if err := writeCheckpoint(w, "shop", req["nonce"]); err != nil {
+							return err
+						}
+						_ = w.AppendSent("shop", store.SentEntry{Source: store.SourceMate, Target: store.SourceUser, Text: "stowed"})
+						if tc.scenario == "broken-during-stow" {
+							if err := os.WriteFile(pluginsYAML, []byte(broken), 0o600); err != nil {
+								return err
+							}
+						}
+					}
+				}
+				return nil
+			}
+
+			changed, err := contextRefresh(ctx, w, deps, "shop", false)
+			if changed || err == nil || !strings.HasPrefix(err.Error(), "refresh postponed: a fresh Mate could not start: ") || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("refresh = %v, %v; want postponed naming %q", changed, err, tc.want)
+			}
+			if got := len(rt.SentText) == 1; got != tc.stowed {
+				t.Fatalf("stow sent = %v (%q), want %v", got, rt.SentText, tc.stowed)
+			}
+			for _, c := range rt.Calls {
+				if strings.HasPrefix(c, "StopAgent") {
+					t.Fatalf("the Mate was stopped: %v", rt.Calls)
+				}
+			}
+			meta, err := w.ReadMateMeta("shop")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta[spawn.MetaSessionID] != before.SessionID || len(rt.StartArgv) != 1 {
+				t.Fatalf("the Mate was replaced: meta %v, starts %d", meta, len(rt.StartArgv))
+			}
+		})
 	}
 }

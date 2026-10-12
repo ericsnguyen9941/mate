@@ -9,7 +9,6 @@ import (
 
 	"github.com/nguyenngocanh94/mate/assets"
 	"github.com/nguyenngocanh94/mate/internal/harness"
-	"github.com/nguyenngocanh94/mate/internal/tool"
 )
 
 var (
@@ -18,7 +17,7 @@ var (
 )
 
 // SkillNames are mate's own skills, installed beside the manual in the
-// order Write lays them down, before the tools' (Params.ToolSkills). Each
+// order Write lays them down. Each
 // one is `assets/mate/skills/<name>/SKILL.md.tmpl` in the embedded FS and
 // `<mate>/<SkillsDir>/<name>/SKILL.md` on disk.
 var SkillNames = []string{"harness-adapters", "crew-dispatch", "stuck-crew-recovery", "decision-authority", "diagnostic-reasoning", "stow", "mate-commands", "task-intake", "brief-writing", "crew-spawn", "review-delivery", "event-handling", "project-memory", "token-review"}
@@ -77,48 +76,11 @@ type Params struct {
 	// crew's `.meta` and `.status` file lives. The Mate reads it, never
 	// writes it.
 	CrewsDir string
-	// ToolSkills are the skills of the tools this binary drives, in the
-	// registry's order (ToolSkillsFrom): each is installed beside mate's
-	// own, and its line goes in the manual's list of skills.
-	ToolSkills []ToolSkill
 }
 
-// ToolSkill is one tool's skill, as its profile declares it (tool.Skill).
-type ToolSkill struct {
-	// Name is the skill's directory name.
-	Name string
-	// Template is its SKILL.md, a text/template these Params fill.
-	Template string
-	// Manual is its line, or lines, in the manual's list of skills; empty
-	// for none. It is written as it is.
-	Manual string
-}
-
-// ToolSkillsFrom is the skill of every tool reg drives whose Skill is
-// verified, in registration order.
-func ToolSkillsFrom(reg tool.Registry) []ToolSkill {
-	var out []ToolSkill
-	for _, n := range reg.Names() {
-		p, err := reg.Lookup(n)
-		if err != nil {
-			continue
-		}
-		if s := p.Capabilities().Skill; s.Verified() {
-			out = append(out, ToolSkill{Name: s.Impl.SkillName(), Template: s.Impl.SkillMarkdown(), Manual: s.Impl.ManualSection()})
-		}
-	}
-	return out
-}
-
-// Skills are the names of every skill Write installs, in its order: mate's
-// own (SkillNames), then the tools'.
-func (p Params) Skills() []string {
-	names := slices.Clone(SkillNames)
-	for _, s := range p.ToolSkills {
-		names = append(names, s.Name)
-	}
-	return names
-}
+// Skills are the names of Mate's built-in skills. User skills are managed
+// by the user and discovered by the harness in its own skill directory.
+func (p Params) Skills() []string { return slices.Clone(SkillNames) }
 
 // HarnessParams is one harness as the harness-adapters skill describes it.
 type HarnessParams struct {
@@ -231,15 +193,7 @@ func Render(p Params) ([]byte, error) {
 func RenderSkill(name string, p Params) ([]byte, error) {
 	tmpl, ok := skillTemplates[name]
 	if !ok {
-		i := slices.IndexFunc(p.ToolSkills, func(s ToolSkill) bool { return s.Name == name })
-		if i < 0 {
-			return nil, fmt.Errorf("mateassets: unknown skill %q", name)
-		}
-		parsed, err := template.New(name).Parse(p.ToolSkills[i].Template)
-		if err != nil {
-			return nil, fmt.Errorf("mateassets: parse skill %s: %w", name, err)
-		}
-		tmpl = parsed
+		return nil, fmt.Errorf("mateassets: unknown skill %q", name)
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, p); err != nil {

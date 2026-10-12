@@ -124,6 +124,20 @@ func contextRefresh(ctx context.Context, w *store.Workspace, deps spawn.Deps, pr
 	if err := store.WriteMeta(requestPath, req); err != nil {
 		return false, err
 	}
+	// The fresh start must be able to come up before the Mate is asked to
+	// stow, let alone stopped: plugins that do not resolve for this project,
+	// or MCP servers its harness cannot be given, would leave it with no
+	// Mate at all. Asked after the request is written, so an automatic
+	// refresh waits out refreshRetryAfter rather than retrying every tick.
+	preflight := func() error {
+		if err := spawn.PreflightMatePlugins(w, deps, project, harness.Kind(meta[spawn.MetaHarness])); err != nil {
+			return fmt.Errorf("refresh postponed: a fresh Mate could not start: %w", err)
+		}
+		return nil
+	}
+	if err := preflight(); err != nil {
+		return false, err
+	}
 	_, offset, err := w.ReadSent(project, 0)
 	if err != nil {
 		return false, err
@@ -172,6 +186,10 @@ func contextRefresh(ctx context.Context, w *store.Workspace, deps spawn.Deps, pr
 	}
 	if ctx.Err() != nil {
 		return false, ctx.Err()
+	}
+	// Again, since the stow took a turn in which plugins.yaml could change.
+	if err := preflight(); err != nil {
+		return false, err
 	}
 	if err := w.ArchiveMateSession(project, current); err != nil {
 		return false, err

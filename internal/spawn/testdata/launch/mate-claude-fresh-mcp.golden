@@ -1,0 +1,287 @@
+starts: 1
+
+== herdr argv (last start) ==
+"agent"
+"start"
+"mate-shop"
+"--kind"
+"claude"
+"--pane"
+"w1:p1"
+"--session"
+"{{HERDR_SESSION}}"
+"--timeout"
+"10000"
+"--"
+"--dangerously-skip-permissions"
+"--session-id"
+"11111111-2222-3333-4444-555555555555"
+"--settings"
+"{{WORKSPACE}}/.mate/projects/shop/mate/.claude/settings.json"
+"--setting-sources"
+"project"
+"--strict-mcp-config"
+"--tools"
+"Bash,Read,Write,Edit,Glob,Grep,Skill"
+"--autocompact"
+"300000"
+"--model"
+"opus"
+"--effort"
+"medium"
+"--mcp-config"
+"{{WORKSPACE}}/.mate/projects/shop/mate/mcp-plugins.json"
+
+== launch spec ==
+kind: claude
+cwd: {{WORKSPACE}}/.mate/projects/shop/mate
+delivery: cwd_manual
+context_path: 
+context_required: false
+max_inline_bytes: 100000
+max_file_bytes: 0
+model: opus
+effort: medium
+effort_omitted: false
+codex_home: 
+claude_config_dir: {{HOME}}/.claude
+task_prompt: ""
+
+== launch args ==
+"--dangerously-skip-permissions"
+"--session-id"
+"11111111-2222-3333-4444-555555555555"
+"--settings"
+"{{WORKSPACE}}/.mate/projects/shop/mate/.claude/settings.json"
+"--setting-sources"
+"project"
+"--strict-mcp-config"
+"--tools"
+"Bash,Read,Write,Edit,Glob,Grep,Skill"
+"--autocompact"
+"300000"
+"--model"
+"opus"
+"--effort"
+"medium"
+"--mcp-config"
+"{{WORKSPACE}}/.mate/projects/shop/mate/mcp-plugins.json"
+
+== launch env (set) ==
+MATE_PROJECT_ID=shop
+MATE_AGENT_ID=mate-shop
+MATE_AGENT_ROLE=mate
+MATE_RUNTIME_SESSION_ID={{HERDR_SESSION}}
+MATE_CALLER=mate
+CODEX_HOME={{CODEX_HOME}}
+
+== launch env (exported into the pane before start) ==
+MATE_PROJECT_ID=shop
+MATE_AGENT_ID=mate-shop
+MATE_AGENT_ROLE=mate
+MATE_RUNTIME_SESSION_ID={{HERDR_SESSION}}
+MATE_CALLER=mate
+CODEX_HOME={{CODEX_HOME}}
+
+== launch env (unset) ==
+CLAUDE_CONFIG_DIR
+CLAUDECODE
+CLAUDE_CODE_SESSION_ID
+CLAUDE_CODE_CHILD_SESSION
+CLAUDE_CODE_SESSION_ATTENDED
+CLAUDE_CODE_ENTRYPOINT
+CLAUDE_CODE_EXECPATH
+CLAUDE_CODE_MESSAGING_SOCKET
+CLAUDE_CODE_MESSAGING_TOKEN
+CLAUDE_PID
+CLAUDE_EFFORT
+
+== pane env (tab create) ==
+label: mate
+cwd: {{WORKSPACE}}/.mate/projects/shop/mate
+MATE_PROJECT_ID=shop
+MATE_AGENT_ID=mate-shop
+MATE_AGENT_ROLE=mate
+MATE_RUNTIME_SESSION_ID={{HERDR_SESSION}}
+MATE_CALLER=mate
+CODEX_HOME={{CODEX_HOME}}
+
+== prompts ==
+
+== notes ==
+- the captain ruled on 2026-09-14 that Mate and Crew launches carry the harness permission bypass; there is no external sandbox of any kind, because a Crew runs on the operator's own machine on real project code
+- --dangerously-skip-permissions suppresses per-tool permission prompts; Claude exposes no sandbox option to remove
+- two separate one-time walls remain, neither cleared by this flag - naming only one, as an earlier version of this note did, is the exact understatement this record exists to correct: (1) Claude's per-absolute-path directory-trust confirmation, measured 2026-09-14; (2) --dangerously-skip-permissions itself raises a second, separate blocking 'Bypass Permissions mode' acceptance screen the first time a given CLAUDE_CONFIG_DIR sees it - measured 2026-09-14 on a linked worktree of an already-trusted primary repo with an isolated config dir, then persisted to that config dir's settings.json so it never reappears there (why a machine that accepted it long ago never surfaces it)
+- whether mate should auto-accept that second screen for the operator is a separate open captain call (gomate-claude-bypass-mode-screen), not implemented here
+- the bypass is unconditional: there is no config key or CLI flag to opt out, a deliberate choice consistent with unattended Crew/Mate operation
+- no context flag is passed: Claude Code loads CLAUDE.md from the directory it starts in, and the caller declared that file already loads the manual
+- plugin MCP servers come only from --mcp-config mcp-plugins.json; --strict-mcp-config keeps every other MCP source out and --tools filters built-in tools only (docs/evidence/claude-mcp-probe-2026-10-12.md)
+
+== files the launch created or changed ==
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/settings.json mode=-rw-r--r-- bytes=615 ---
+{
+  "autoMemoryEnabled": false,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "'{{BIN_DIR}}/mate' hook mate-session",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "'{{BIN_DIR}}/mate' hook mate-stop",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "'{{BIN_DIR}}/mate' hook mate-prompt",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/settings.json ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/brief-writing/SKILL.md mode=-rw-r--r-- bytes=5854 ---
+(rendered asset) sha256=200ec4fc8ccd83817602a913d28665524b12aa77cdd5ea51367218e3591d8d3e
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/brief-writing/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-dispatch/SKILL.md mode=-rw-r--r-- bytes=11351 ---
+(rendered asset) sha256=b0a4936e0fb35bfdcbe929f06a06242aed4f9c444cff3763e9b1d59c74886abf
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-dispatch/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-spawn/SKILL.md mode=-rw-r--r-- bytes=3340 ---
+(rendered asset) sha256=372d4fdb8fd6d930a0eca6e1ef9534547fe01e1b8b62449ab8fc7edd82b68d3c
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-spawn/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/decision-authority/SKILL.md mode=-rw-r--r-- bytes=4510 ---
+(rendered asset) sha256=ef9dcc0850c14acba55bd4f2702752d09fd8af0011aa1597e44c469aed824045
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/decision-authority/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/diagnostic-reasoning/SKILL.md mode=-rw-r--r-- bytes=4345 ---
+(rendered asset) sha256=165318fcd133ec6d2d6b84177aadf33b9a354ac7b0eba57f546d88b8b8d0a6b3
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/diagnostic-reasoning/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/event-handling/SKILL.md mode=-rw-r--r-- bytes=11555 ---
+(rendered asset) sha256=4de7d5d8d8c32d7359f2c2353374e802a7ae028b4e72de0202932039db8f36f6
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/event-handling/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/harness-adapters/SKILL.md mode=-rw-r--r-- bytes=9555 ---
+(rendered asset) sha256=ebe4d66e2344247af6c654b5fccba5ea85b87ac4d296c0de2a1951e2ab8aaa40
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/harness-adapters/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md mode=-rw-r--r-- bytes=30680 ---
+(rendered asset) sha256=4e8347da3ffbc0ec07242efec211ec0d1463285ef5c7b3dfada6846d153fb5dd
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-local-tools-notes/SKILL.md mode=-rw-r--r-- bytes=67 ---
+(rendered asset) sha256=38673516eaefddc125ba3da53ec4253f6b89a142cb5aaf5a9e339724a1dfb31b
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-local-tools-notes/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-tracker-work-workflow/SKILL.md mode=-rw-r--r-- bytes=175 ---
+(rendered asset) sha256=20cf965d46c6c79d6ae2abc176bab049526e0c63bd592319fefbee16b178b57d
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-tracker-work-workflow/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/project-memory/SKILL.md mode=-rw-r--r-- bytes=7292 ---
+(rendered asset) sha256=3cea3f39fb1a98d01f24ab2e112f8f71703559d35ddfb0b8c0dfe2346f9903d8
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/project-memory/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md mode=-rw-r--r-- bytes=9679 ---
+(rendered asset) sha256=dc9d737657283f51acfc190ec371b889a1a23d93717c728dc6f7842719403a0b
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/stow/SKILL.md mode=-rw-r--r-- bytes=15580 ---
+(rendered asset) sha256=7986e900f33ba4027b3674f49a81ed4645daf5d4ba9eeefa51e5a82ece49e9a2
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/stow/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/stuck-crew-recovery/SKILL.md mode=-rw-r--r-- bytes=7268 ---
+(rendered asset) sha256=77d5dd4f67ee64fdff5649fc62d8546ef64f40f8d6b207d966d8b1fdcb70c6ff
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/stuck-crew-recovery/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/task-intake/SKILL.md mode=-rw-r--r-- bytes=6137 ---
+(rendered asset) sha256=4da95f8e976984fdc9925d163cf4f89607ed20013dd9ef66e06a944a5b433ba5
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/task-intake/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/token-review/SKILL.md mode=-rw-r--r-- bytes=8413 ---
+(rendered asset) sha256=d05c25bfe95ba94f52b1831403019de9fff10b50542eab7eb4ecb2600e03ffb9
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/token-review/SKILL.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/AGENTS.md mode=-rw-r--r-- bytes=23428 ---
+(rendered asset) sha256=f70801eb4ceae7bcc63941e734e75842da72b88659b02a36c9d7aba0c1718289
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/AGENTS.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/CLAUDE.md mode=-rw-r--r-- bytes=11 ---
+@AGENTS.md
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/CLAUDE.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/backlog.md mode=-rw-r--r-- bytes=69 ---
+# Backlog
+
+## In flight
+
+## Held for the captain
+
+## Queued
+
+## Done
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/backlog.md ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=229 ---
+agent=mate-shop
+effort=medium
+harness=claude
+launched_at=2026-09-17T10:00:00Z
+model=opus
+pane=w1:p1
+session={{HERDR_SESSION}}
+session_id=11111111-2222-3333-4444-555555555555
+started_at=2026-09-17T10:00:00Z
+tab=w1:t1
+workspace=w1
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/mcp-plugins.json mode=-rw-r--r-- bytes=365 ---
+{
+  "mcpServers": {
+    "local-tools": {
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "cd \"$1\" && shift && exec \"$@\"",
+        "mate-mcp-cwd",
+        "{{WORKSPACE}}/plugins/local/bin",
+        "node",
+        "server.js"
+      ]
+    },
+    "tracker-work": {
+      "type": "http",
+      "url": "https://mcp.tracker.example/mcp"
+    }
+  }
+}
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/mcp-plugins.json ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/memory.md mode=-rw-r--r-- bytes=75 ---
+# Memory
+<!-- memory tiers: see the stow skill -->
+
+## Captain
+
+## Lessons
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/memory.md ---

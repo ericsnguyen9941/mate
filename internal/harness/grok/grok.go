@@ -116,6 +116,7 @@ func (g Grok) Capabilities() harness.Capabilities {
 			Status: harness.CapUnsupported,
 			Reason: "quota-axi has no provider row for Grok; the account allowance is grok's own grok usage, which dispatch does not read",
 		},
+		MCPConfig: harness.Cap[harness.MCPConfigurer]{Status: harness.CapUnsupported, Reason: mcpUnsupported},
 	}
 }
 
@@ -164,6 +165,12 @@ type grokLaunch struct {
 	resumeID  string
 }
 
+// mcpUnsupported is why the MCPConfig capability is unsupported: nothing
+// has measured how grok is given an MCP server, and it cannot run a Mate,
+// the only agent plugins reach. A launch carrying servers is refused
+// rather than started without them.
+const mcpUnsupported = "no way to give grok an MCP server has been measured, and it cannot run a Mate"
+
 // refuseMate is the refusal of a Mate on grok, naming the capability it lacks.
 func refuseMate() error {
 	return observability.NewError(observability.CodeUsage,
@@ -175,6 +182,9 @@ func refuseMate() error {
 // The launch names the session, so the id is minted here.
 func (g Grok) Prepare(_ context.Context, req harness.PrepareRequest) (harness.Prepared, error) {
 	if err := req.Check(KindGrok); err != nil {
+		return harness.Prepared{}, err
+	}
+	if err := harness.RefuseMCPServers(KindGrok, mcpUnsupported, req.MCPServers); err != nil {
 		return harness.Prepared{}, err
 	}
 	if req.Role == harness.RoleMate {
@@ -203,6 +213,9 @@ func (g Grok) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchSp
 	launch, ok := spec.Launch.(grokLaunch)
 	if spec.Launch != nil && !ok {
 		return harness.LaunchSpec{}, observability.NewError(observability.CodeUsage, fmt.Sprintf("grok adapter got launch data %T that its Prepare did not make", spec.Launch))
+	}
+	if err := harness.RefuseMCPServers(KindGrok, mcpUnsupported, spec.MCPServers); err != nil {
+		return harness.LaunchSpec{}, err
 	}
 	if spec.Role == harness.RoleMate {
 		return harness.LaunchSpec{}, refuseMate()

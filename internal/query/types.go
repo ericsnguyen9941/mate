@@ -33,9 +33,8 @@ type Snapshot struct {
 	// Harnesses are the harnesses the binary launches, in registration
 	// order (Harnesses.List): what a UI offers and how it draws each.
 	Harnesses []Harness
-	// Tools are the console keys of the tools the binary drives, in
-	// registration order: what a UI binds and draws on its key line.
-	Tools []ToolBinding
+	// Commands are the user-configured console keys, in configuration order: what a UI binds and draws on its key line.
+	Commands []CommandBinding
 	// Warnings lists every Unknown field in the tree, in tree order. Empty
 	// means every field either read successfully or is legitimately absent -
 	// it does not mean the snapshot is fresh.

@@ -89,14 +89,17 @@ func cmdDashboard(args []string, stdout, stderr io.Writer) error {
 	return server.Serve(ctx, ln)
 }
 
-// dashboardDeps wires the two answers the database does not hold. Diff is
+// dashboardDeps wires the answers the database does not hold. Diff is
 // the CLI's own crewDiffText, so the page shows byte for byte what
 // `mate diff` prints; BranchExists is `internal/gitx` over the primary
 // checkout of the crew's own repo, which is where a branch outliving its
-// worktree lives (see crewDiffText's own note).
+// worktree lives (see crewDiffText's own note). PluginHarness is the
+// harness profile's MCPConfig capability (pluginHarness), so the dashboard
+// names no harness.
 func dashboardDeps(w *store.Workspace) dashboard.Deps {
 	git := gitx.New()
 	return dashboard.Deps{
+		PluginHarness: pluginHarness,
 		Diff: func(ctx context.Context, project, crew string) (string, error) {
 			return crewDiffText(ctx, w, git, project, crew, false)
 		},

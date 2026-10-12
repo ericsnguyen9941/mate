@@ -27,6 +27,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/projects/{project}/tasks/{crew}/diff", s.cached(s.handleDiff))
 	s.mux.HandleFunc("GET /api/events", s.handleEvents)
 	s.mux.HandleFunc("GET /api/now", s.cached(s.handleNow))
+	s.mux.HandleFunc("GET /api/plugins", s.respond(s.handlePlugins, false))
 	s.mux.Handle("GET /office/fonts/licenses/", http.StripPrefix("/office/fonts/licenses/", etagFileServer(fontLicensesFS())))
 	s.mux.Handle("GET /", etagFileServer(uiFS()))
 }

@@ -79,11 +79,10 @@ func (m Model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.msg = footerMsg{}
 		return m.startLoad()
 	}
-	// Any other key a tool binds (Snapshot.Tools) is the tool's, from every
-	// pane. The Console's own keys (ownedKeys) are never handed over; the
-	// tool registry refuses a binding on one (tool.ErrReservedKey).
-	if !ownedKeys[key] && m.toolBound(key) {
-		return m.beginToolView(key)
+	// Configured commands (Snapshot.Commands) are available from every pane.
+	// Validation reserves the Console's own keys (ownedKeys).
+	if !ownedKeys[key] && m.commandBound(key) {
+		return m.beginCommandView(key)
 	}
 	switch m.focus {
 	case paneBox:

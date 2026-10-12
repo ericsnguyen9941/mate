@@ -29,7 +29,7 @@ It is the number to hand back to `/api/events?since=`, so a page always polls fr
 
 `generated_at` is when the snapshot behind the bytes was computed, not when they were served.
 Workspace, project, model-call and diff responses are cached per `last_event_id`: while the id stands still they return the bytes already built, and when it moves every cached answer is dropped at once.
-Crew task and Mate conversation responses are rebuilt on each request: running execution clocks and recording-heartbeat age can change without a new event. Usage is never extrapolated between harness records. The events endpoint is also uncached.
+Crew task and Mate conversation responses are rebuilt on each request: running execution clocks and recording-heartbeat age can change without a new event. Usage is never extrapolated between harness records. The events endpoint is also uncached, and so is `/api/plugins` (section 3b), which reads files rather than the timeline.
 
 A timestamp is the database's own string: RFC3339 with nanoseconds, in UTC (`db.TimeFormat`).
 It is passed through and never reformatted, so a value on the page and a row in the database compare byte for byte.
@@ -188,6 +188,55 @@ A failed box read leaves `inbox` empty and puts the reason in `inbox_error` rath
   ]
 }
 ```
+
+## 3b. `GET /api/plugins?project=<p>`
+
+The apps a project's Mate receives from `.mate/plugins.yaml` (docs/plans/plugins-and-office-2026-10-12.md), as validated local metadata, for Mate Office's Apps block (section 11).
+It reads `plugins.yaml` and the bound packages' manifests through `internal/plugin` on every request and is not cached: an edit to the file is not an event.
+It writes nothing, calls no MCP server or tracker, and runs no command; opening a link is the browser's job, never the server's.
+`project` is required; a missing or unknown one is a 404 that names it.
+
+```json
+{
+  "generated_at": "2026-09-19T10:47:00.000000000Z",
+  "last_event_id": 412,
+  "project": "shop",
+  "apps": [
+    {"instance": "linear-work", "name": "Linear", "status": "configured", "harness": "claude",
+     "open": {"title": "Open Linear", "url": "https://linear.app/acme/team/SHOP"},
+     "mcp": {"name": "linear-work", "type": "http"}, "skills": ["workflow"], "error": null}
+  ]
+}
+```
+
+One row per enabled instance bound to the project, in `plugins.yaml` order.
+`name` is the manifest's; `open.url` is the package's link with this project's config substituted, and it is the only URL in the answer - the MCP endpoint, a stdio command and binding config stay out.
+`mcp` is `null` for a package without a server, `open` for one without a link, and `skills` lists skill names, `[]` when none.
+
+`status` is one of three words, and each is about configuration only:
+
+| `status` | Meaning |
+| --- | --- |
+| `configured` | the configuration is valid and the Mate's harness can take it |
+| `configuration error` | `error` says what is wrong, with the file, instance and project it is in |
+| `harness unsupported` | valid, but the app has an MCP server and the Mate's harness cannot be given one; `error` says why |
+
+Whether the Mate is logged in to an app, or its tools answer, is unknown here: there is no auth, connected or ready field, and a valid file is not evidence of either.
+The place to check is `/mcp` in the Mate's Claude pane.
+
+`harness` is the running Mate's (`actor.harness`, section 9); for a Mate that is not running it is `workspace.yaml`'s `defaults.mate_harness`, which a new start uses, and `unknown` when that is empty.
+Whether a harness can be given MCP servers is the harness profile's answer, not the dashboard's: the server asks `Deps.PluginHarness(kind)`, which `mate dashboard` and the console's dashboard wire to the profile's `MCPConfig` capability (`harness.Capabilities`), so `internal/dashboard` names no harness (the harness ratchet, `internal/harness/ratchet_test.go`).
+A harness whose `MCPConfig` is not verified answers with the capability's `Reason`, which is the app's `error`; a kind the binary does not have answers that it is unknown.
+The same capability decides the launch: a Mate launch carrying MCP servers on a harness without it is refused with `ErrMCPUnsupported`, so the dashboard and `mate mate start` cannot disagree.
+An `unknown` harness, or a server started without that seam, calls no app `harness unsupported`.
+Only an app with an MCP server can be `harness unsupported`; a skills-only or open-only app stays `configured`.
+While any app is unsupported the Mate will not start, so a `configured` app beside it carries an `error` saying so.
+
+A broken `plugins.yaml` is an answer, not a 500.
+A problem in the file as a whole (YAML that does not parse, a wrong `apiVersion`) is `200` with `"apps": []` and the problem in a top-level `error`.
+A problem located at one instance is also in the top-level `error`, and every row of the project says `configuration error`: the one at fault carries the problem, the others that the Mate will not start with this file, because a Mate start refuses the whole file (`internal/spawn`).
+Those rows are read from the file without validating it, so their `name` is the instance id and they carry no `open`, `mcp` or skills.
+A valid file has no top-level `error`.
 
 ## 4. `GET /api/projects/{project}/tasks/{crew}`
 
@@ -555,10 +604,15 @@ It holds to every rule of section 10 - same origin only, GET only, text set with
 
 `Usage details` is a link to `../#/p/<project>/t/<crew>/usage` (names `encodeURIComponent`-ed) that opens the admin page in a new tab (`target="_blank"`, `rel="noopener"`); the Mate has none.
 
-Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, and for an open drawer `/api/projects/{p}/mate` or `/api/projects/{p}/tasks/{crew}`.
+The Mate drawer ends with an Apps block from `/api/plugins?project=<p>` (section 3b), read only while that drawer is open: one line per app with its name, its status chip and, only for a `configured` app with an `http(s)` `open.url`, an `Open` link to that URL in a new tab (`target="_blank"`, `rel="noopener"`).
+A `configuration error` shows its message as text; when any app has an MCP server one line says "Login and tool status: check /mcp in the Mate's Claude pane", because the page does not know.
+A project with no apps has no block, and a failed read shows `Apps: ?` while the rest of the drawer still draws.
+It is a view, not a place to manage apps: no form, button or request beyond that GET.
+
+Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, and for an open drawer `/api/projects/{p}/mate` plus `/api/plugins?project=<p>`, or `/api/projects/{p}/tasks/{crew}`.
 It long-polls `/api/events` from the lowest `last_event_id` it holds (`wait=5` with a drawer open, 20 otherwise) and re-reads the floor when anyone moved.
 
 The typefaces are the design's - Geist, Geist Mono and Bricolage Grotesque - as latin WOFF2 subsets under `ui/office/fonts/`.
 All three are under the SIL Open Font License 1.1; the licences are embedded from `internal/dashboard/fontlicenses/` and served at `/office/fonts/licenses/<Family>-OFL.txt`, kept outside `ui/` because they name web addresses.
 
-`internal/dashboard/ui_office_test.go` proves the page, its assets, the fonts and their licences are served from the binary and tests `/api/now`; it runs `ui_office_test.cjs`, which drives `office.js` in node against `testdata/office/busy.json` (built by `gen.cjs` beside it) for the drawers, the stuck crew, unknowns and the phone sheet.
+`internal/dashboard/ui_office_test.go` proves the page, its assets, the fonts and their licences are served from the binary and tests `/api/now`; it runs `ui_office_test.cjs`, which drives `office.js` in node against `testdata/office/busy.json` (built by `gen.cjs` beside it) for the drawers, the Apps block, the stuck crew, unknowns and the phone sheet.

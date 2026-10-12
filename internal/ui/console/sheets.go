@@ -378,10 +378,10 @@ var toolKeyRows = [2]string{"", "tool keys"}
 // Console owns (ownedKeys) is never pressed through to its tool, so it is
 // not offered, and the Console's own row for that key stays.
 func (m Model) keyRows() [][2]string {
-	out := make([][2]string, 0, len(keyTable)+len(m.tree.Tools))
+	out := make([][2]string, 0, len(keyTable)+len(m.tree.Commands))
 	for _, k := range keyTable {
 		if k == toolKeyRows {
-			for _, b := range m.tree.Tools {
+			for _, b := range m.tree.Commands {
 				if !ownedKeys[b.Key] {
 					out = append(out, [2]string{b.Key, b.Scope + " " + b.Label})
 				}
