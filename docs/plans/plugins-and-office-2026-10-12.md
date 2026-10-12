@@ -84,6 +84,8 @@ Launcher chưa nhận `mcp_servers`. Help local **codex-cli 0.162.1** hỗ trợ
 Ghi ngay trong gate đầu là **unverified/unsupported cho config plugin**; không
 quảng cáo Codex parity. Claude pilot không chờ Codex. Nếu muốn hỗ trợ Codex,
 probe parser + read tool + auth riêng dưới đúng launch flags trước khi bật.
+Parser dotted `mcp_servers` dưới `--strict-config` đã đo OK, phần còn lại chưa:
+[evidence](../evidence/codex-mcp-config-audit-2026-10-12.md).
 
 Version/help chỉ là evidence cú pháp; không có live MCP proof trong lần sửa
 plan này. Gate phải có recording/version/argv redacted và tool result, không
