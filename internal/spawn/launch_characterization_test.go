@@ -408,6 +408,9 @@ type mateCase struct {
 	mate   store.MateConfig
 	env    map[string]string
 	resume bool
+	// plugins binds an http, a stdio and a disabled plugin instance to the
+	// project before the start.
+	plugins bool
 }
 
 func TestLaunchCharacterizationMate(t *testing.T) {
@@ -425,6 +428,9 @@ func TestLaunchCharacterizationMate(t *testing.T) {
 		// Codex does not take max: recorded, left out of the argv.
 		{name: "mate-codex-fresh-effort-omitted", kind: codex.KindCodex, mate: store.MateConfig{Effort: "max"}},
 		{name: "mate-codex-resume", kind: codex.KindCodex, resume: true},
+		// Plugins add their skills to the Mate's directory; the argv does
+		// not carry their MCP servers yet, so it is mate-claude-fresh-default's.
+		{name: "mate-claude-plugins", kind: claude.KindClaude, plugins: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -445,6 +451,10 @@ func TestLaunchCharacterizationMate(t *testing.T) {
 				if err := f.w.SaveProject("shop", cfg); err != nil {
 					t.Fatal(err)
 				}
+			}
+			if tc.plugins {
+				writePluginPackages(t, f.w.Root())
+				writePluginsYAML(t, f.w, pluginsYAML(true))
 			}
 			f.before = f.collect(t)
 			ctx := context.Background()

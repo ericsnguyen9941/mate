@@ -38,6 +38,23 @@ type PrepareRequest struct {
 	// NewSessionID mints the id of a fresh session, for a harness that names
 	// its session at launch. Nil mints a random UUID; tests pin it.
 	NewSessionID func() string
+	// MCPServers are the MCP servers this launch exposes to the agent: a
+	// Mate's plugins (internal/plugin), never a Crew's. A harness that
+	// writes them into a config file names it in Prepared.Files; Build gets
+	// the same list on AgentSpec.MCPServers.
+	MCPServers []MCPServer
+}
+
+// MCPServer is one MCP server the launch must expose to the agent. Name is
+// the server name the harness publishes tools under (mcp__<Name>__<tool>).
+// Type is "http" (URL set) or "stdio" (Command set; Cwd is absolute or
+// empty). It carries no environment and no credential.
+type MCPServer struct {
+	Name    string
+	Type    string
+	URL     string
+	Command []string
+	Cwd     string
 }
 
 // Check refuses a request a harness cannot lay out: a path that is not
@@ -126,6 +143,9 @@ type AgentSpec struct {
 	// the spec, so it is recorded, and is left out of the argv.
 	Model  string
 	Effort Effort
+	// MCPServers are PrepareRequest.MCPServers of the launch this spec was
+	// prepared for, so Build can turn them into flags.
+	MCPServers []MCPServer
 }
 
 // LaunchPlan is a harness's launch before it is checked: every field a

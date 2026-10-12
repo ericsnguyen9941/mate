@@ -155,12 +155,16 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 	decision = checkResume(profile, decision)
 
 	// 2. The Mate's directory: the manual, rendered again on every start,
-	// and the files the harness launches with.
-	mateDir := w.MateDir(project)
-	if err := prepareMateDir(w, deps, project, cfg, profile, mateDir); err != nil {
+	// the skills of its plugins, and the files the harness launches with.
+	plugins, err := resolveMatePlugins(w, project)
+	if err != nil {
 		return StartResult{}, err
 	}
-	prep, err := prepareMateLaunch(ctx, w, deps, profile, mateDir, decision)
+	mateDir := w.MateDir(project)
+	if err := prepareMateDir(w, deps, project, cfg, profile, mateDir, plugins.skills); err != nil {
+		return StartResult{}, err
+	}
+	prep, err := prepareMateLaunch(ctx, w, deps, profile, mateDir, decision, plugins.servers)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -195,7 +199,7 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 	}
 
 	// From here on every failure must undo the tab and leave no meta.
-	result, err := startInTab(ctx, w, deps, project, profile, mateDir, decision, prep, session, tab)
+	result, err := startInTab(ctx, w, deps, project, profile, mateDir, decision, prep, plugins.servers, session, tab)
 	if err != nil {
 		compensate(ctx, deps, w, project, session, tab)
 		if !decision.Resume || ctx.Err() != nil {
@@ -208,14 +212,14 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 		fresh := resumeDecision{Note: fmt.Sprintf(
 			"resuming the %s session %s failed (%v); started a fresh session instead",
 			kind, decision.SessionID, oneLineErr(err))}
-		if prep, err = prepareMateLaunch(ctx, w, deps, profile, mateDir, fresh); err != nil {
+		if prep, err = prepareMateLaunch(ctx, w, deps, profile, mateDir, fresh, plugins.servers); err != nil {
 			return StartResult{}, err
 		}
 		tab, err = openMateTab(ctx, deps, session, project, mateDir)
 		if err != nil {
 			return StartResult{}, err
 		}
-		result, err = startInTab(ctx, w, deps, project, profile, mateDir, fresh, prep, session, tab)
+		result, err = startInTab(ctx, w, deps, project, profile, mateDir, fresh, prep, plugins.servers, session, tab)
 		if err != nil {
 			compensate(ctx, deps, w, project, session, tab)
 			return StartResult{}, err
@@ -307,7 +311,7 @@ func decideResume(meta map[string]string, kind harness.Kind, req StartRequest) r
 // fresh one for a harness that names its session at launch, or none for a
 // harness whose id exists only once the first prompt opens its session,
 // which StopMate records (task 35).
-func startInTab(ctx context.Context, w *store.Workspace, deps Deps, project string, profile harness.Profile, mateDir string, decision resumeDecision, prep harness.Prepared, session runtime.SessionHandle, tab runtime.TabHandle) (StartResult, error) {
+func startInTab(ctx context.Context, w *store.Workspace, deps Deps, project string, profile harness.Profile, mateDir string, decision resumeDecision, prep harness.Prepared, servers []harness.MCPServer, session runtime.SessionHandle, tab runtime.TabHandle) (StartResult, error) {
 	env, err := mateEnv(deps.Harnesses, project, session)
 	if err != nil {
 		return StartResult{}, err
@@ -316,7 +320,7 @@ func startInTab(ctx context.Context, w *store.Workspace, deps Deps, project stri
 	if err != nil {
 		return StartResult{}, err
 	}
-	launch, err := buildLaunchSpec(ctx, profile, project, mateDir, decision, prep, env, deps.Harnesses.EnvKeys(), cfg.Mate)
+	launch, err := buildLaunchSpec(ctx, profile, project, mateDir, decision, prep, servers, env, deps.Harnesses.EnvKeys(), cfg.Mate)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -447,9 +451,9 @@ func refuseIfLive(ctx context.Context, w *store.Workspace, deps Deps, project st
 }
 
 // prepareMateDir renders the Mate's cwd: the operating manual, the skills
-// where the harness finds them, and the memory and backlog files mateassets
-// creates only when missing.
-func prepareMateDir(w *store.Workspace, deps Deps, project string, cfg store.ProjectConfig, profile harness.Profile, mateDir string) error {
+// - its own and its plugins' - where the harness finds them, and the memory
+// and backlog files mateassets creates only when missing.
+func prepareMateDir(w *store.Workspace, deps Deps, project string, cfg store.ProjectConfig, profile harness.Profile, mateDir string, pluginSkills []mateassets.PluginSkill) error {
 	if err := os.MkdirAll(mateDir, 0o755); err != nil {
 		return err
 	}
@@ -465,7 +469,7 @@ func prepareMateDir(w *store.Workspace, deps Deps, project string, cfg store.Pro
 	for _, r := range cfg.Repos {
 		repos = append(repos, mateassets.RepoParams{Name: r.Name, Path: w.RepoDir(r.Path), DefaultBranch: r.DefaultBranch})
 	}
-	return mateassets.Write(mateDir, mateassets.Params{
+	if err := mateassets.Write(mateDir, mateassets.Params{
 		ProjectName:      project,
 		WorkspaceRoot:    w.Root(),
 		Repos:            repos,
@@ -481,14 +485,17 @@ func prepareMateDir(w *store.Workspace, deps Deps, project string, cfg store.Pro
 		MatevBin:         binary,
 		MateDir:          mateDir,
 		CrewsDir:         w.CrewsDir(project),
-	})
+	}); err != nil {
+		return err
+	}
+	return writePluginSkills(mateDir, profile, pluginSkills)
 }
 
 // prepareMateLaunch asks the harness to lay out this start and writes what
 // it names: the name it reads the manual under, its settings and hooks. A
 // fresh start's session id is minted here, for a harness that names its
-// session at launch.
-func prepareMateLaunch(ctx context.Context, w *store.Workspace, deps Deps, profile harness.Profile, mateDir string, decision resumeDecision) (harness.Prepared, error) {
+// session at launch. servers are the Mate's plugin MCP servers.
+func prepareMateLaunch(ctx context.Context, w *store.Workspace, deps Deps, profile harness.Profile, mateDir string, decision resumeDecision, servers []harness.MCPServer) (harness.Prepared, error) {
 	binary, err := deps.binary()
 	if err != nil {
 		return harness.Prepared{}, err
@@ -500,6 +507,7 @@ func prepareMateLaunch(ctx context.Context, w *store.Workspace, deps Deps, profi
 		ContextPath:  filepath.Join(mateDir, mateassets.ManualName),
 		Binary:       binary,
 		NewSessionID: deps.NewSessionID,
+		MCPServers:   servers,
 	}
 	if decision.Resume {
 		req.ResumeSessionID = decision.SessionID
@@ -533,9 +541,9 @@ func ownHooks(deps Deps, profile harness.Profile, mateDir string) ([]harness.Own
 }
 
 // buildLaunchSpec asks the harness's launcher for the argv of the launch it
-// prepared. The cwd is the Mate directory, which is also where the manual
-// is.
-func buildLaunchSpec(ctx context.Context, profile harness.Profile, project, mateDir string, decision resumeDecision, prep harness.Prepared, env []runtime.EnvVar, envKeys []string, profiles ...store.MateConfig) (harness.LaunchSpec, error) {
+// prepared, with the same MCP servers it was prepared with. The cwd is the
+// Mate directory, which is also where the manual is.
+func buildLaunchSpec(ctx context.Context, profile harness.Profile, project, mateDir string, decision resumeDecision, prep harness.Prepared, servers []harness.MCPServer, env []runtime.EnvVar, envKeys []string, profiles ...store.MateConfig) (harness.LaunchSpec, error) {
 	spec := harness.AgentSpec{
 		ID:          AgentNamePrefix + "-" + project,
 		Role:        harness.RoleMate,
@@ -548,8 +556,9 @@ func buildLaunchSpec(ctx context.Context, profile harness.Profile, project, mate
 		// every start, which is the only way a Mate restarted into a fresh
 		// `tab create` (a Crew still holds the workspace) keeps its
 		// identity.
-		Env:     launchEnv(env, profile),
-		EnvKeys: envKeys,
+		Env:        launchEnv(env, profile),
+		EnvKeys:    envKeys,
+		MCPServers: servers,
 	}
 	if decision.Resume {
 		spec.ResumeSessionID = decision.SessionID
