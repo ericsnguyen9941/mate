@@ -338,3 +338,42 @@ func TestTemplates(t *testing.T) {
 		t.Fatal("unknown skill variable accepted")
 	}
 }
+
+// TestExamplePackages keeps the shipped example packages valid for the resolver.
+func TestExamplePackages(t *testing.T) {
+	pkg, err := filepath.Abs(filepath.Join("..", "..", "examples", "plugins", "linear"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := workspace(t, `apiVersion: mate.plugins/v1
+instances:
+  linear-work:
+    path: `+pkg+`
+    projects:
+      shop:
+        config:
+          project_url: https://linear.app/acme/project/shop-1234/overview
+        key: t
+`)
+	got, err := Resolve(root, "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantServers := []MCPServer{{Name: "linear-work", Type: "http", URL: "https://mcp.linear.app/mcp"}}
+	if !reflect.DeepEqual(got.Servers, wantServers) {
+		t.Errorf("servers = %+v, want %+v", got.Servers, wantServers)
+	}
+	if len(got.Links) != 1 || got.Links[0].URL != "https://linear.app/acme/project/shop-1234/overview" || got.Links[0].Key != "t" {
+		t.Errorf("links = %+v", got.Links)
+	}
+	if len(got.Skills) != 1 || got.Skills[0].Name != "workflow" {
+		t.Fatalf("skills = %+v", got.Skills)
+	}
+	content := string(got.Skills[0].Content)
+	if !strings.HasPrefix(content, "---\nname: linear-work-workflow\n") {
+		t.Errorf("skill frontmatter = %q", content[:min(len(content), 60)])
+	}
+	if strings.Contains(content, "{instance_id}") {
+		t.Error("skill still has {instance_id}")
+	}
+}
