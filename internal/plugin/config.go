@@ -67,6 +67,18 @@ type rawBinding struct {
 // Config. Unknown fields, extra YAML documents and invalid values are
 // *ConfigError naming the file and, where known, the instance and project.
 func Load(workspaceRoot string) (Config, error) {
+	return readConfig(workspaceRoot, true)
+}
+
+// ReadConfig reads <workspaceRoot>/.mate/plugins.yaml and checks its own
+// shape without reading any package: every Manifest is nil and every
+// OpenURL empty. It lists what the file says even when a package is
+// missing or broken; Load is what a Mate start runs.
+func ReadConfig(workspaceRoot string) (Config, error) {
+	return readConfig(workspaceRoot, false)
+}
+
+func readConfig(workspaceRoot string, packages bool) (Config, error) {
 	root, err := filepath.Abs(workspaceRoot)
 	if err != nil {
 		return Config{}, err
@@ -79,6 +91,13 @@ func Load(workspaceRoot string) (Config, error) {
 	if err != nil {
 		return Config{}, &ConfigError{File: file, Msg: err.Error()}
 	}
+	return parseConfig(root, file, data, packages)
+}
+
+// parseConfig validates data as the plugins.yaml at file in the workspace
+// root. With packages, every enabled instance's manifest, skills, open link
+// and console key are checked as well.
+func parseConfig(root, file string, data []byte, packages bool) (Config, error) {
 	fail := func(instance, project, format string, args ...any) error {
 		return &ConfigError{File: file, Instance: instance, Project: project, Msg: fmt.Sprintf(format, args...)}
 	}
@@ -111,7 +130,7 @@ func Load(workspaceRoot string) (Config, error) {
 			in.Path = filepath.Join(root, in.Path)
 		}
 		in.Path = filepath.Clean(in.Path)
-		if in.Enabled {
+		if in.Enabled && packages {
 			if st, err := os.Stat(in.Path); err != nil || !st.IsDir() {
 				return Config{}, fail(id, "", "package path %s is not a directory", in.Path)
 			}
@@ -134,7 +153,7 @@ func Load(workspaceRoot string) (Config, error) {
 			if rb.Key != "" && strings.TrimSpace(rb.Key) != rb.Key {
 				return Config{}, fail(id, project, "key %q has surrounding spaces", rb.Key)
 			}
-			if in.Enabled {
+			if in.Enabled && packages {
 				if b.Key != "" && in.Manifest.Open == nil {
 					return Config{}, fail(id, project, "key %q needs an open link, but %s declares none", b.Key, filepath.Join(in.Path, ManifestFile))
 				}

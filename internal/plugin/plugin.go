@@ -1,7 +1,8 @@
 // Package plugin resolves local plugin packages bound to projects in
 // <workspace>/.mate/plugins.yaml. It only reads and validates files and returns
-// what one project receives: MCP servers, skill contents and links. It writes
-// nothing, starts nothing, and knows no particular application.
+// what one project receives: MCP servers, skill contents and links. AddBinding
+// is its one writer, of plugins.yaml alone; Doctor checks the file offline.
+// It starts nothing, contacts nothing, and knows no particular application.
 package plugin
 
 import "strings"

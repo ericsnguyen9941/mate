@@ -35,18 +35,28 @@ func loadPluginLinks(ws *store.Workspace, cfg consolecmd.Config) (pluginLinks, e
 			if l.Key == "" {
 				continue
 			}
-			if slices.Contains(consolecmd.ReservedKeys(), l.Key) {
-				return nil, fmt.Errorf("%s: instance %q key %q is reserved by the console", plugin.ConfigFile, l.Instance, l.Key)
-			}
-			for _, b := range cfg.Bindings {
-				if b.Scope == "project" && b.Key == l.Key {
-					return nil, fmt.Errorf("%s: instance %q key %q is already bound on project rows in .mate/console.yaml", plugin.ConfigFile, l.Instance, l.Key)
-				}
+			if owner := consoleKeyOwner(cfg, l.Key); owner != "" {
+				return nil, fmt.Errorf("%s: instance %q key %q is %s", plugin.ConfigFile, l.Instance, l.Key, owner)
 			}
 			links[p.Name] = append(links[p.Name], l)
 		}
 	}
 	return links, nil
+}
+
+// consoleKeyOwner says what already owns key on project rows - the console
+// itself or a project binding in console.yaml - or "" when a plugin link
+// may take it. The console start and `mate plugin` ask the same question.
+func consoleKeyOwner(cfg consolecmd.Config, key string) string {
+	if slices.Contains(consolecmd.ReservedKeys(), key) {
+		return "reserved by the console"
+	}
+	for _, b := range cfg.Bindings {
+		if b.Scope == "project" && b.Key == key {
+			return "already bound on project rows in .mate/console.yaml"
+		}
+	}
+	return ""
 }
 
 // bindings adds one key-line entry per key and instance, however many

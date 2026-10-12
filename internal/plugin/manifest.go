@@ -67,64 +67,15 @@ type rawOpen struct {
 // loadManifest reads and validates <pkg>/mate-plugin.yaml for instance id,
 // including every skill file it lists.
 func loadManifest(pkg, id string) (*Manifest, error) {
-	file := filepath.Join(pkg, ManifestFile)
-	fail := func(format string, args ...any) error {
-		return &ConfigError{File: file, Instance: id, Msg: fmt.Sprintf(format, args...)}
-	}
-	data, err := os.ReadFile(file)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, fail("package has no %s", ManifestFile)
-	}
+	m, skills, err := parseManifest(pkg, id)
 	if err != nil {
-		return nil, fail("%v", err)
+		return nil, err
 	}
-	var raw rawManifest
-	if err := decodeStrict(data, &raw); err != nil {
-		return nil, fail("%v", err)
+	fail := func(format string, args ...any) error {
+		return &ConfigError{File: m.File, Instance: id, Msg: fmt.Sprintf(format, args...)}
 	}
-	if raw.APIVersion != manifestAPIVersion {
-		return nil, fail("apiVersion must be %s, got %q", manifestAPIVersion, raw.APIVersion)
-	}
-	if strings.TrimSpace(raw.Name) == "" {
-		return nil, fail("name is required")
-	}
-	m := &Manifest{File: file, Name: raw.Name}
-
-	if r := raw.MCP; r != nil {
-		mcp := &MCP{Type: r.Type, URL: r.URL, Command: r.Command}
-		switch r.Type {
-		case "http":
-			if len(r.Command) > 0 || r.Cwd != "" {
-				return nil, fail("mcp: type http takes url, not command or cwd")
-			}
-			if err := checkURL(r.URL); err != nil {
-				return nil, fail("mcp.url: %v", err)
-			}
-		case "stdio":
-			if r.URL != "" {
-				return nil, fail("mcp: type stdio takes command, not url")
-			}
-			if len(r.Command) == 0 || strings.TrimSpace(r.Command[0]) == "" {
-				return nil, fail("mcp: type stdio requires command argv")
-			}
-			if r.Cwd != "" {
-				mcp.Cwd = r.Cwd
-				if !filepath.IsAbs(mcp.Cwd) {
-					mcp.Cwd = filepath.Join(pkg, mcp.Cwd)
-				}
-				mcp.Cwd = filepath.Clean(mcp.Cwd)
-				if st, err := os.Stat(mcp.Cwd); err != nil || !st.IsDir() {
-					return nil, fail("mcp.cwd %s is not a directory", mcp.Cwd)
-				}
-			}
-		default:
-			return nil, fail("mcp.type must be http or stdio, got %q", r.Type)
-		}
-		m.MCP = mcp
-	}
-
 	seen := map[string]string{}
-	for _, rel := range raw.Skills {
+	for _, rel := range skills {
 		s, err := loadSkill(pkg, rel, id)
 		if err != nil {
 			return nil, fail("skill %q: %v", rel, err)
@@ -135,13 +86,74 @@ func loadManifest(pkg, id string) (*Manifest, error) {
 		seen[s.Name] = rel
 		m.Skills = append(m.Skills, s)
 	}
+	return m, nil
+}
+
+// parseManifest reads and validates <pkg>/mate-plugin.yaml for instance id
+// without reading its skills, and returns the skill paths it lists.
+func parseManifest(pkg, id string) (*Manifest, []string, error) {
+	file := filepath.Join(pkg, ManifestFile)
+	fail := func(format string, args ...any) error {
+		return &ConfigError{File: file, Instance: id, Msg: fmt.Sprintf(format, args...)}
+	}
+	data, err := os.ReadFile(file)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil, fail("package has no %s", ManifestFile)
+	}
+	if err != nil {
+		return nil, nil, fail("%v", err)
+	}
+	var raw rawManifest
+	if err := decodeStrict(data, &raw); err != nil {
+		return nil, nil, fail("%v", err)
+	}
+	if raw.APIVersion != manifestAPIVersion {
+		return nil, nil, fail("apiVersion must be %s, got %q", manifestAPIVersion, raw.APIVersion)
+	}
+	if strings.TrimSpace(raw.Name) == "" {
+		return nil, nil, fail("name is required")
+	}
+	m := &Manifest{File: file, Name: raw.Name}
+
+	if r := raw.MCP; r != nil {
+		mcp := &MCP{Type: r.Type, URL: r.URL, Command: r.Command}
+		switch r.Type {
+		case "http":
+			if len(r.Command) > 0 || r.Cwd != "" {
+				return nil, nil, fail("mcp: type http takes url, not command or cwd")
+			}
+			if err := checkURL(r.URL); err != nil {
+				return nil, nil, fail("mcp.url: %v", err)
+			}
+		case "stdio":
+			if r.URL != "" {
+				return nil, nil, fail("mcp: type stdio takes command, not url")
+			}
+			if len(r.Command) == 0 || strings.TrimSpace(r.Command[0]) == "" {
+				return nil, nil, fail("mcp: type stdio requires command argv")
+			}
+			if r.Cwd != "" {
+				mcp.Cwd = r.Cwd
+				if !filepath.IsAbs(mcp.Cwd) {
+					mcp.Cwd = filepath.Join(pkg, mcp.Cwd)
+				}
+				mcp.Cwd = filepath.Clean(mcp.Cwd)
+				if st, err := os.Stat(mcp.Cwd); err != nil || !st.IsDir() {
+					return nil, nil, fail("mcp.cwd %s is not a directory", mcp.Cwd)
+				}
+			}
+		default:
+			return nil, nil, fail("mcp.type must be http or stdio, got %q", r.Type)
+		}
+		m.MCP = mcp
+	}
 
 	if o := raw.Open; o != nil {
 		if strings.TrimSpace(o.Title) == "" {
-			return nil, fail("open.title is required")
+			return nil, nil, fail("open.title is required")
 		}
 		if o.URL == "" {
-			return nil, fail("open.url is required")
+			return nil, nil, fail("open.url is required")
 		}
 		// Check variable syntax now; the URL itself is checked here when it
 		// has no variables, and per binding after substitution otherwise.
@@ -150,11 +162,11 @@ func loadManifest(pkg, id string) (*Manifest, error) {
 			err = checkURL(o.URL)
 		}
 		if err != nil {
-			return nil, fail("open.url: %v", err)
+			return nil, nil, fail("open.url: %v", err)
 		}
 		m.Open = &Open{Title: o.Title, URL: o.URL}
 	}
-	return m, nil
+	return m, raw.Skills, nil
 }
 
 // loadSkill resolves rel inside pkg, refusing paths or symlinks that leave

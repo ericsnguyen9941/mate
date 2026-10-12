@@ -251,6 +251,10 @@ When configuring a tracker, record its absolute location, CLI/API or skill, work
 
 For a board shortcut, add a project-scoped command to `/ws/.mate/console.yaml` following `/usr/local/bin/mate console --help`. The key is the captain's choice; opening a board is separate from reading or updating tasks.
 
+### Plugins
+
+`mate plugin doctor [<instance-id>] [--project <project>]` checks the plugins in `/ws/.mate/plugins.yaml` offline, one `ok`/`fail` line each; `mate plugin list` shows them; `mate plugin add` is the captain's. You never log in to a plugin: after a change and a Mate restart the captain runs `/mcp` in your pane, and only one live read through its tools proves they work.
+
 ### Live crew backlog
 
 ```text
