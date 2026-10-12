@@ -52,9 +52,12 @@ instances:
     projects:
       blog: {}
 `)
-	_, err := AddBinding(root, AddRequest{Instance: "notes", Path: filepath.Join(packagesDir(t), "skillsonly")})
+	res, err := AddBinding(root, AddRequest{Instance: "notes", Path: filepath.Join(packagesDir(t), "skillsonly")})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !res.Replaced || !reflect.DeepEqual(res.Promoted, []string{"blog", "shop"}) {
+		t.Fatalf("promotion result: %+v", res)
 	}
 	cfg, err := Load(root)
 	if err != nil {

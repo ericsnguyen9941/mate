@@ -46,9 +46,9 @@ The file keeps its order and most comments stay; blank lines and indentation
 may change. Legacy --project installs and projects maps remain readable;
 re-running add without --project explicitly promotes that instance to workspace.
 
-list prints workspace instances. doctor checks files, commands, links, keys
-and harness compatibility offline; it never logs in, contacts a server or
-calls a tool. --project on doctor only selects the Mate harness to check,
+list prints instances with their workspace config and any legacy project
+bindings. doctor checks files, commands, links, keys and harness
+compatibility offline; it never logs in, contacts a server or calls a tool. --project on doctor only selects the Mate harness to check,
 not the plugin's installation scope. Exit 1 on any failed check.
 `
 
@@ -156,6 +156,9 @@ func printAdded(stdout io.Writer, res plugin.AddResult, id, project string) {
 			what = "replaced"
 		}
 		fmt.Fprintf(stdout, "wrote %s: %s workspace instance %s (%s)\n", res.File, what, id, res.Manifest.Name)
+		if len(res.Promoted) > 0 {
+			fmt.Fprintf(stdout, "note: replaced the legacy bindings of %s with this workspace config\n", strings.Join(res.Promoted, ", "))
+		}
 		if res.Disabled {
 			fmt.Fprintln(stdout, "note: instance is disabled; enable it in plugins.yaml to use it")
 		}
@@ -190,7 +193,7 @@ func cmdPluginDoctor(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("plugin doctor", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprintln(stderr, "usage: "+pluginDoctorUsage) }
-	project := fs.String("project", "", "check only this project's bindings")
+	project := fs.String("project", "", "check as this project's Mate receives it (its harness; not the installation scope)")
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}

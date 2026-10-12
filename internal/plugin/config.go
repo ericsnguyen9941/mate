@@ -107,9 +107,10 @@ func readConfig(workspaceRoot string, packages bool, only string) (Config, error
 //
 // A non-empty only narrows both the check and the result to what project
 // only receives: the file itself (YAML, apiVersion, fields outside any
-// instance, duplicate instance ids) and the instances bound to only, with
-// that one binding. A problem that lies wholly in another project's binding,
-// or in an instance only is not bound to, is not this project's to refuse.
+// instance, duplicate instance ids), every workspace instance, and the
+// legacy instances bound to only, with that one binding. A problem that lies
+// wholly in another project's binding, or in a legacy instance only is not
+// bound to, is not this project's to refuse.
 func parseConfig(root, file string, data []byte, packages bool, only string) (Config, error) {
 	fail := func(instance, project, format string, args ...any) error {
 		return &ConfigError{File: file, Instance: instance, Project: project, Msg: fmt.Sprintf(format, args...)}

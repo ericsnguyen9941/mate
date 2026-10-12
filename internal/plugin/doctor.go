@@ -32,8 +32,9 @@ type DoctorOptions struct {
 	LookPath func(file string) (string, error)
 }
 
-// Check is one doctor result. Subject is "plugins.yaml", an instance id, or
-// "<instance>/<project>".
+// Check is one doctor result. Subject is "plugins.yaml", an instance id,
+// "<instance>/<project>", or "<instance>/workspace" for the default harness
+// future projects start with.
 type Check struct {
 	Subject string
 	Name    string
@@ -209,6 +210,9 @@ func keyProblem(in Instance, project, key string, m *Manifest, cfg Config, owner
 			continue
 		}
 		if ob, ok := other.BindingFor(project); ok && ob.Key == key {
+			if project == "" {
+				return fmt.Errorf("instance %s binds the same key for the workspace", other.ID)
+			}
 			return fmt.Errorf("instance %s binds the same key on this project", other.ID)
 		}
 	}

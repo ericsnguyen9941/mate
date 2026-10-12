@@ -34,9 +34,13 @@ type AddResult struct {
 	Created bool
 	// NewInstance is true when the instance was added to the file.
 	NewInstance bool
-	// Replaced is true when the project already had a binding of this
-	// instance, now overwritten.
+	// Replaced is true when the instance already existed: a workspace add
+	// overwrote its config and key, a --project add overwrote that
+	// project's binding.
 	Replaced bool
+	// Promoted names, sorted, the legacy projects whose bindings a workspace
+	// add removed in favour of the one workspace config.
+	Promoted []string
 	// Disabled is true when the instance is enabled: false; the binding is
 	// written but gives nothing until it is enabled.
 	Disabled bool
@@ -92,7 +96,7 @@ func AddBinding(workspaceRoot string, req AddRequest) (AddResult, error) {
 		return AddResult{}, fail("instance id must match [a-z0-9][a-z0-9-]*")
 	}
 	if strings.TrimSpace(req.Project) != req.Project {
-		return AddResult{}, fail("project name must be non-empty without surrounding spaces")
+		return AddResult{}, fail("project name must have no surrounding spaces")
 	}
 	if strings.TrimSpace(req.Path) == "" {
 		return AddResult{}, fail("package path is required")
@@ -208,6 +212,12 @@ func AddBinding(workspaceRoot string, req AddRequest) (AddResult, error) {
 	}
 	if req.Project == "" {
 		res.Replaced = !res.NewInstance
+		if legacy := mappingValue(inst, "projects"); legacy != nil {
+			for i := 0; i+1 < len(legacy.Content); i += 2 {
+				res.Promoted = append(res.Promoted, legacy.Content[i].Value)
+			}
+			sort.Strings(res.Promoted)
+		}
 		removeField(inst, "projects")
 		removeField(inst, "config")
 		removeField(inst, "key")
