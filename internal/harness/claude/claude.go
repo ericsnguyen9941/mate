@@ -137,7 +137,7 @@ func (c Claude) Capabilities() harness.Capabilities {
 			Evidence: harness.Evidence{
 				Version:  "claude-code 2.1.287",
 				Measured: "2026-10-12 (docs/evidence/claude-mcp-probe-2026-10-12.md)",
-				Proof:    "live TestLiveClaudeMCPProbe and TestLiveClaudeMateLaunchMCP: under the Mate's flags a --mcp-config server's tool was listed and called, fresh and on --resume, and no global server leaked",
+				Proof:    "live TestLiveClaudeMCPProbe and TestLiveClaudeMateLaunchMCP, stdio servers through claude -p only: under the Mate's flags a --mcp-config stdio server's tool was listed and called, fresh and on --resume, and no global server leaked; an http server, its OAuth login and the interactive pane are not measured (the Linear pilot, docs/evidence/linear-pilot-2026-10-12.md)",
 			},
 		},
 	}

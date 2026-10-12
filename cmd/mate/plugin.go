@@ -43,7 +43,8 @@ add writes one explicit binding. --set gives the binding's config; the keys
 are the package's own, and every key its open.url needs must be set. --key is
 an optional console shortcut on the project's row. Running add again for the
 same instance and project replaces that binding and keeps every other one; an
-instance's package path is changed only by editing the file. add rewrites
+instance's package path is changed only by editing the file.
+Re-running add replaces the whole binding: config and key not given again are lost. add rewrites
 plugins.yaml: order and most comments stay, blank lines and hand-chosen
 indentation do not. Only the captain runs add.
 

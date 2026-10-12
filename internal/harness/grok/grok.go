@@ -165,13 +165,13 @@ type grokLaunch struct {
 	resumeID  string
 }
 
-// refuseMate is the refusal of a Mate on grok, naming the capability it lacks.
 // mcpUnsupported is why the MCPConfig capability is unsupported: nothing
 // has measured how grok is given an MCP server, and it cannot run a Mate,
 // the only agent plugins reach. A launch carrying servers is refused
 // rather than started without them.
 const mcpUnsupported = "no way to give grok an MCP server has been measured, and it cannot run a Mate"
 
+// refuseMate is the refusal of a Mate on grok, naming the capability it lacks.
 func refuseMate() error {
 	return observability.NewError(observability.CodeUsage,
 		"the Grok harness cannot run a Mate: it declares no verified Hooks capability ("+hooksReason+"); it can still run a Crew")

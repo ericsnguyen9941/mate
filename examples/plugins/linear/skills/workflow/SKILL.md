@@ -30,9 +30,10 @@ captain so the table can be fixed.
 
 ## Finding the project
 
-Do not assume any team or project ID. Read `project_url` from `PROJECT.md` or
-the binding config, take the project name from it, and find the project with
-the project search tool. Work only inside that project.
+Do not assume any team or project ID. Run `mate plugin list` and read
+`project_url=` on this project's line under `{instance_id}` (the binding
+config), take the project name from it, and find the project with the project
+search tool. Work only inside that project.
 
 ## Rules
 
@@ -50,5 +51,7 @@ the project search tool. Work only inside that project.
 - Linear does not lock issues for you. One dispatcher is the rule that prevents
   double work.
 - If a Linear call fails, note the issue ID and tell the captain the sync is
-  unconfirmed. A failed write is not a success. Example of a payload you may
-  send: {"issueId": "<ID>", "body": "Started, Crew spawned"}.
+  unconfirmed. A failed write is not a success. A comment payload might look
+  like {"issueId": "<ID>", "body": "Started, Crew spawned"}, but that shape
+  is a guess, not read from Linear: take the real parameters from the tool's
+  schema in `/mcp`.

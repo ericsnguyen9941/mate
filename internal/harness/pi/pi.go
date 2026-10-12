@@ -180,14 +180,14 @@ type piLaunch struct {
 	sessionID string
 }
 
-// refuseMate is the refusal of a Mate on pi, naming the capability it
-// lacks.
 // mcpUnsupported is why the MCPConfig capability is unsupported: nothing
 // has measured how pi is given an MCP server, and it cannot run a Mate,
 // the only agent plugins reach. A launch carrying servers is refused
 // rather than started without them.
 const mcpUnsupported = "no way to give pi an MCP server has been measured, and it cannot run a Mate"
 
+// refuseMate is the refusal of a Mate on pi, naming the capability it
+// lacks.
 func refuseMate() error {
 	return observability.NewError(observability.CodeUsage,
 		"the pi harness cannot run a Mate: it declares no verified Hooks capability ("+hooksReason+"); it can still run a Crew")

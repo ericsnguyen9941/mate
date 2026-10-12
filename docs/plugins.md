@@ -12,7 +12,7 @@ rulings: [plans/plugins-and-office-2026-10-12.md](plans/plugins-and-office-2026-
 apiVersion: mate.plugin/v1
 name: Tracker
 mcp:
-  type: http                 # or stdio, with command: [argv] and optional cwd
+  type: http                 # or stdio, with command: [argv] and cwd (default: the package root)
   url: https://mcp.tracker.example/mcp
 skills:
   - skills/workflow/SKILL.md # {instance_id} is replaced by the instance id
@@ -46,6 +46,7 @@ mate mate stop shop && mate mate start shop
 Then, in the Mate's pane, run `/mcp` and log in to `tracker-work` (only when
 the package has an MCP server), and ask the Mate for one read through its
 tools. That read, not `doctor`, is the proof the tools work.
+Measured so far: a stdio server through `claude -p` only; an http server, its OAuth login and the interactive pane are unmeasured until the Linear pilot ([evidence/linear-pilot-2026-10-12.md](evidence/linear-pilot-2026-10-12.md)).
 
 - `add` is the captain's (a Mate or Crew is refused). It writes one explicit
   binding. `--set` is the binding's opaque config; every key the package's
@@ -58,8 +59,8 @@ tools. That read, not `doctor`, is the proof the tools work.
 - `doctor [<instance-id>] [--project <p>]` is offline and prints one
   `ok`/`fail` line per check: the file loads, package, manifest, each skill
   file, the stdio command (a name with `/` is resolved from the server's
-  `cwd` or the package root; a bare name on `PATH`; an http server is not
-  contacted), `open.url`, console key, project, and whether the Mate's
+  `cwd`, the package root unless the manifest sets one; a bare name on
+  `PATH`; an http server is not contacted), `open.url`, console key, project, and whether the Mate's
   harness (the running Mate's, else the workspace default) can take MCP
   servers. It never logs in or calls a tool. Exit 1 on any failure.
 - `list` prints instances, packages and bindings; no Mate needs to run.
