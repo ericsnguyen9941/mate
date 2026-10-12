@@ -109,7 +109,7 @@ func (s *Server) handlePlugins(ctx context.Context, r *http.Request, env envelop
 	}
 	var unsupported []string
 	for _, in := range cfg.Instances {
-		b, ok := in.Projects[project]
+		b, ok := in.BindingFor(project)
 		if !ok || !in.Enabled || in.Manifest == nil {
 			continue
 		}
@@ -186,7 +186,7 @@ func boundInstances(root, project string) []string {
 		if e := mapValue(in, "enabled"); e != nil && e.Value == "false" {
 			continue
 		}
-		if mapValue(mapValue(in, "projects"), project) != nil {
+		if mapValue(in, "projects") == nil || mapValue(in, "config") != nil || mapValue(in, "key") != nil || mapValue(mapValue(in, "projects"), project) != nil {
 			ids = append(ids, instances.Content[i].Value)
 		}
 	}

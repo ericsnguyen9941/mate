@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	pluginAddUsage    = "mate plugin add <package-path> --as <instance-id> --project <project> [--set key=value ...] [--key <console-key>] [--workspace <dir>]"
+	pluginAddUsage    = "mate plugin add <package-path> --as <instance-id> [--set key=value ...] [--key <console-key>] [--workspace <dir>]"
 	pluginDoctorUsage = "mate plugin doctor [<instance-id>] [--project <project>] [--workspace <dir>]"
 	pluginListUsage   = "mate plugin list [--workspace <dir>]"
 )
@@ -27,35 +27,29 @@ const pluginHelp = `usage:
   ` + pluginDoctorUsage + `
   ` + pluginListUsage + `
 
-A plugin is a local package directory holding mate-plugin.yaml, which may
-declare an MCP server, skills and an open link. Its bindings to projects live
-in <workspace>/.mate/plugins.yaml; editing that file by hand is fine. Only a
-project's Mate receives its plugins, at Mate start.
+A plugin is a local package with mate-plugin.yaml: MCP servers, skills and
+an open link are optional. Install it once in <workspace>/.mate/plugins.yaml;
+every project's Mate receives it on its next start, including future projects.
+Crews receive no plugins. Configuration changes never restart running agents.
 
-Setup, four steps:
-  1. mate plugin add <package-path> --as <instance-id> --project <project> [--set key=value ...]
-  2. mate plugin doctor <instance-id> --project <project>
-  3. restart the project's Mate: mate mate stop <project>, then mate mate start <project>
-  4. if the package has an MCP server, run /mcp in the Mate's pane and log in
-     to <instance-id>; then ask the Mate for one read through its tools.
+Setup:
+  1. mate plugin add <package-path> --as <instance-id> [--set key=value ...]
+  2. mate plugin doctor <instance-id>
+  3. restart the Mate(s) that should receive it
+  4. if the package has an MCP server, run /mcp in the Mate's pane and log in;
+     verify one read through its tools.
 
-add writes one explicit binding. --set gives the binding's config; the keys
-are the package's own, and every key its open.url needs must be set. --key is
-an optional console shortcut on the project's row. Running add again for the
-same instance and project replaces that binding and keeps every other one; an
-instance's package path is changed only by editing the file.
-Re-running add replaces the whole binding: config and key not given again are lost. add rewrites
-plugins.yaml: order and most comments stay, blank lines and hand-chosen
-indentation do not. Only the captain runs add.
+add writes workspace config and an optional console key, replacing that
+instance's config/key while keeping other instances. The package path of an
+existing instance changes only by hand. Only the captain runs add.
+The file keeps its order and most comments stay; blank lines and indentation
+may change. Legacy --project installs and projects maps remain readable;
+re-running add without --project explicitly promotes that instance to workspace.
 
-doctor checks offline, one line per check: the file loads as a Mate start
-reads it, the package, manifest and skill files exist, the MCP command is
-found (an http server is not contacted), open.url resolves, the console key
-is free, the project exists and the Mate's harness can take MCP servers. It
-never logs in, contacts a server or calls a tool: /mcp and a live read in the
-Mate's pane are the proof the tools work. It exits 1 when any check fails.
-
-list prints each instance, its package and its project bindings.
+list prints workspace instances. doctor checks files, commands, links, keys
+and harness compatibility offline; it never logs in, contacts a server or
+calls a tool. --project on doctor only selects the Mate harness to check,
+not the plugin's installation scope. Exit 1 on any failed check.
 `
 
 // cmdPlugin dispatches `mate plugin <add|doctor|list>`.
@@ -101,7 +95,7 @@ func cmdPluginAdd(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprintln(stderr, "usage: "+pluginAddUsage) }
 	as := fs.String("as", "", "instance id, which also names the MCP server")
-	project := fs.String("project", "", "project to bind")
+	project := fs.String("project", "", "legacy project binding (omit for workspace installation)")
 	key := fs.String("key", "", "optional console shortcut on the project row")
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	set := setFlags{}
@@ -113,9 +107,9 @@ func cmdPluginAdd(args []string, stdout, stderr io.Writer) error {
 		fs.Usage()
 		return newUsageError("mate plugin add: want exactly 1 argument: <package-path>")
 	}
-	if *as == "" || *project == "" {
+	if *as == "" {
 		fs.Usage()
-		return newUsageError("mate plugin add: --as and --project are required")
+		return newUsageError("mate plugin add: --as is required")
 	}
 	if caller := spawn.CallerFromEnv(); caller != spawn.CallerUser {
 		return observability.NewError(observability.CodePermission,
@@ -125,7 +119,7 @@ func cmdPluginAdd(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := w.Project(*project); !ok {
+	if _, ok := w.Project(*project); *project != "" && !ok {
 		return fmt.Errorf("mate plugin add: %w: %s", store.ErrNoProject, *project)
 	}
 	pkg, err := filepath.Abs(fs.Arg(0))
@@ -156,6 +150,22 @@ func cmdPluginAdd(args []string, stdout, stderr io.Writer) error {
 }
 
 func printAdded(stdout io.Writer, res plugin.AddResult, id, project string) {
+	if project == "" {
+		what := "added"
+		if res.Replaced {
+			what = "replaced"
+		}
+		fmt.Fprintf(stdout, "wrote %s: %s workspace instance %s (%s)\n", res.File, what, id, res.Manifest.Name)
+		if res.Disabled {
+			fmt.Fprintln(stdout, "note: instance is disabled; enable it in plugins.yaml to use it")
+		}
+		fmt.Fprintln(stdout, "restart each Mate that should receive the plugin; new Mate starts inherit it automatically")
+		if res.Manifest.MCP != nil {
+			fmt.Fprintf(stdout, "then run /mcp in the Mate's pane and log in to %s; verify one read through its tools\n", id)
+		}
+		fmt.Fprintf(stdout, "check offline: mate plugin doctor %s\n", id)
+		return
+	}
 	what := "added"
 	if res.Replaced {
 		what = "replaced"
@@ -252,6 +262,9 @@ func cmdPluginList(args []string, stdout, stderr io.Writer) error {
 			line += "  (disabled)"
 		}
 		fmt.Fprintln(stdout, line)
+		if in.Workspace != nil {
+			fmt.Fprintln(stdout, pluginBindingLine("workspace", *in.Workspace))
+		}
 		names := make([]string, 0, len(in.Projects))
 		for p := range in.Projects {
 			names = append(names, p)
@@ -305,4 +318,20 @@ func pluginMateHarness(w *store.Workspace) func(string) (string, string) {
 		}
 		return "", ""
 	}
+}
+
+func pluginBindingLine(scope string, b plugin.Binding) string {
+	line := "  " + scope
+	if b.Key != "" {
+		line += "  key " + b.Key
+	}
+	keys := make([]string, 0, len(b.Config))
+	for k := range b.Config {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		line += "  " + k + "=" + b.Config[k]
+	}
+	return line
 }

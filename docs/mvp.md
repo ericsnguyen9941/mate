@@ -25,7 +25,7 @@ Mate không có code trong cwd; muốn biết gì về repo thì gọi `mate` ho
 - Dữ liệu task hiện có (kể cả `.beads/` và tracker cũ) được giữ nguyên. Không có migration dữ liệu task tự động. Skill cũ do Mate từng sinh cần được người dùng kiểm tra và bỏ hoặc viết lại nếu còn gọi wrapper đã xoá; skill người dùng không bị ghi đè hay xoá khi sinh manual.
 - Hướng dẫn cấu hình và chuyển tiếp: [task-management.md](task-management.md). Beads integration cũ: [evidence](evidence/beads-integration-2026-10-07.md). Một lựa chọn local để tham khảo là Backlog.md; đây không phải dependency/mặc định của Mate.
 
-Đề xuất tiếp theo (chưa triển khai, đã thu hẹp sau review): [lát mỏng cho pilot Linear](plans/plugins-and-office-2026-10-12.md). Local package/config cung cấp MCP trực tiếp cho harness, skill và URL mở app; harness tự login, Office chỉ đọc metadata và mở link. Chưa có Plugin Host/shared OAuth/daemon/native views; quyết định tiếp sau pilot hai tuần. Editor/removal registry vẫn là diff chưa commit, cần checkpoint trước implementation. Không đưa task schema hay registry app biên dịch sẵn trở lại core.
+Plugin pilot đã triển khai bằng local package và `.mate/plugins.yaml`; cấu hình mới áp dụng toàn workspace, mọi Mate hiện tại và tương lai nhận khi start. MCP được đưa trực tiếp cho harness, kèm skill và URL mở app; harness tự login, Office chỉ đọc metadata và mở link. Chưa có Plugin Host/shared OAuth/daemon/native views; quyết định tiếp sau pilot hai tuần. Không đưa task schema hay registry app biên dịch sẵn trở lại core. Hướng dẫn: [plugins](plugins.md); thiết kế ban đầu: [pilot Linear](plans/plugins-and-office-2026-10-12.md).
 
 ## 2. Quyết định đã chốt
 

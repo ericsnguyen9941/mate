@@ -33,10 +33,13 @@ type Instance struct {
 	Enabled bool
 	// Manifest is nil for a disabled instance: its package is not read.
 	Manifest *Manifest
+	// Workspace applies to every current and future project.
+	Workspace *Binding
+	// Projects is the legacy project-scoped configuration.
 	Projects map[string]Binding
 }
 
-// Binding binds an instance to one project. Config values are opaque.
+// Binding holds workspace configuration or a legacy project override.
 type Binding struct {
 	Config map[string]string
 	Key    string
@@ -54,6 +57,8 @@ type rawConfig struct {
 type rawInstance struct {
 	Path     string                 `yaml:"path"`
 	Enabled  *bool                  `yaml:"enabled"`
+	Config   map[string]string      `yaml:"config"`
+	Key      string                 `yaml:"key"`
 	Projects map[string]*rawBinding `yaml:"projects"`
 }
 
@@ -124,10 +129,10 @@ func parseConfig(root, file string, data []byte, packages bool, only string) (Co
 	}
 
 	cfg := Config{File: file}
-	keyOwner := map[string]map[string]string{} // project -> key -> instance
 	for _, id := range lay.ids {
 		ri := raw.Instances[id]
-		if _, bound := ri.Projects[only]; only != "" && !bound {
+		global := lay.workspace[id]
+		if _, bound := ri.Projects[only]; only != "" && !bound && !global {
 			continue
 		}
 		if !instanceIDRe.MatchString(id) {
@@ -149,15 +154,26 @@ func parseConfig(root, file string, data []byte, packages bool, only string) (Co
 				return Config{}, err
 			}
 		}
-		for _, project := range sortedKeys(ri.Projects) {
-			if only != "" && project != only {
+		bindings := ri.Projects
+		if _, exists := bindings[""]; exists {
+			return Config{}, fail(id, "", "project name must be non-empty without surrounding spaces")
+		}
+		if global {
+			bindings = make(map[string]*rawBinding, len(ri.Projects)+1)
+			for name, binding := range ri.Projects {
+				bindings[name] = binding
+			}
+			bindings[""] = &rawBinding{Config: ri.Config, Key: ri.Key}
+		}
+		for _, project := range sortedKeys(bindings) {
+			if only != "" && project != only && project != "" {
 				continue
 			}
-			rb := ri.Projects[project]
+			rb := bindings[project]
 			if rb == nil {
 				rb = &rawBinding{}
 			}
-			if strings.TrimSpace(project) == "" || strings.TrimSpace(project) != project {
+			if (project == "" && !global) || strings.TrimSpace(project) != project {
 				return Config{}, fail(id, project, "project name must be non-empty without surrounding spaces")
 			}
 			b := Binding{Config: rb.Config, Key: rb.Key}
@@ -176,21 +192,35 @@ func parseConfig(root, file string, data []byte, packages bool, only string) (Co
 						return Config{}, fail(id, project, "open.url: %v", err)
 					}
 				}
-				if b.Key != "" {
-					owners := keyOwner[project]
-					if owners == nil {
-						owners = map[string]string{}
-						keyOwner[project] = owners
-					}
-					if other, dup := owners[b.Key]; dup {
-						return Config{}, fail(id, project, "duplicate key %q, already used by instance %s", b.Key, other)
-					}
-					owners[b.Key] = id
-				}
 			}
-			in.Projects[project] = b
+			if project == "" {
+				in.Workspace = &b
+			} else {
+				in.Projects[project] = b
+			}
 		}
 		cfg.Instances = append(cfg.Instances, in)
+	}
+	if packages {
+		contexts := map[string]bool{"": true}
+		for _, in := range cfg.Instances {
+			for project := range in.Projects {
+				contexts[project] = true
+			}
+		}
+		for _, project := range sortedKeys(contexts) {
+			owners := map[string]string{}
+			for _, in := range cfg.Instances {
+				b, ok := in.BindingFor(project)
+				if !ok || !in.Enabled || b.Key == "" {
+					continue
+				}
+				if owner, dup := owners[b.Key]; dup {
+					return Config{}, fail(in.ID, project, "duplicate key %q, already used by instance %s", b.Key, owner)
+				}
+				owners[b.Key] = in.ID
+			}
+		}
 	}
 	return cfg, nil
 }
@@ -219,8 +249,9 @@ func decodeStrict(data []byte, out any) error {
 // layout records the order of instance ids in plugins.yaml and the lines
 // each instance and project binding spans, so decode errors can name them.
 type layout struct {
-	ids   []string
-	spans []span
+	ids       []string
+	spans     []span
+	workspace map[string]bool
 }
 
 type span struct {
@@ -230,7 +261,7 @@ type span struct {
 
 func readLayout(file string, data []byte) (layout, error) {
 	var doc yaml.Node
-	var l layout
+	l := layout{workspace: map[string]bool{}}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return l, &ConfigError{File: file, Msg: err.Error()}
 	}
@@ -253,8 +284,19 @@ func readLayout(file string, data []byte) (layout, error) {
 			seen[k.Value] = k.Line
 			l.ids = append(l.ids, k.Value)
 			l.spans = append(l.spans, span{instance: k.Value, start: k.Line, end: lastLine(v)})
+			l.workspace[k.Value] = true
 			if v.Kind != yaml.MappingNode {
 				continue
+			}
+			for f := 0; f+1 < len(v.Content); f += 2 {
+				if v.Content[f].Value == "projects" {
+					l.workspace[k.Value] = false
+				}
+			}
+			for f := 0; f+1 < len(v.Content); f += 2 {
+				if v.Content[f].Value == "config" || v.Content[f].Value == "key" {
+					l.workspace[k.Value] = true
+				}
 			}
 			for f := 0; f+1 < len(v.Content); f += 2 {
 				if v.Content[f].Value != "projects" || v.Content[f+1].Kind != yaml.MappingNode {
@@ -294,6 +336,9 @@ func (l layout) concerns(err error, project string) bool {
 
 // binds reports whether instance has a binding for project.
 func (l layout) binds(instance, project string) bool {
+	if l.workspace[instance] {
+		return true
+	}
 	for _, s := range l.spans {
 		if s.instance == instance && s.project == project {
 			return true

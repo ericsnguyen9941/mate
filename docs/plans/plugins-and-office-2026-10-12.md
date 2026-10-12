@@ -1,5 +1,11 @@
 # Plugin ngoài: lát mỏng cho pilot Linear
 
+> Workspace scope correction (2026-10-12): new installations put `config` and
+> `key` directly under the instance and apply to every current/future Mate
+> project. The project bindings below describe the original pilot design;
+> existing files remain readable for compatibility. See [current setup](../plugins.md).
+
+
 Ngày: 2026-10-12. Trạng thái: **đề xuất đã thu hẹp sau review**, chưa triển khai.
 Thay thế draft cùng ngày về Plugin Host/shared OAuth. Mục tiêu trước mắt là
 pilot Linear hai tuần trên **Mate Claude**, rồi dùng evidence để quyết bước sau.

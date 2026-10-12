@@ -192,7 +192,7 @@ A failed box read leaves `inbox` empty and puts the reason in `inbox_error` rath
 ## 3b. `GET /api/plugins?project=<p>`
 
 The apps a project's Mate receives from `.mate/plugins.yaml` (docs/plans/plugins-and-office-2026-10-12.md), as validated local metadata, for Mate Office's Apps block (section 11).
-It reads `plugins.yaml` and the bound packages' manifests through `internal/plugin` on every request and is not cached: an edit to the file is not an event.
+It reads `plugins.yaml` and the workspace packages' manifests through `internal/plugin` on every request and is not cached: an edit to the file is not an event.
 It writes nothing, calls no MCP server or tracker, and runs no command; opening a link is the browser's job, never the server's.
 `project` is required; a missing or unknown one is a 404 that names it.
 
@@ -209,7 +209,9 @@ It writes nothing, calls no MCP server or tracker, and runs no command; opening 
 }
 ```
 
-One row per enabled instance bound to the project, in `plugins.yaml` order.
+One row per enabled workspace instance (plus legacy bindings for this project),
+in `plugins.yaml` order. The project parameter selects the Mate/harness status;
+it does not limit a workspace installation to that project.
 `name` is the manifest's; `open.url` is the package's link with this project's config substituted, and it is the only URL in the answer - the MCP endpoint, a stdio command and binding config stay out.
 `mcp` is `null` for a package without a server, `open` for one without a link, and `skills` lists skill names, `[]` when none.
 

@@ -26,10 +26,10 @@ func TestPluginHelpPrintsSyntaxAndSetup(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	for _, want := range []string{
-		"mate plugin add <package-path> --as <instance-id> --project <project> [--set key=value ...] [--key <console-key>] [--workspace <dir>]",
+		"mate plugin add <package-path> --as <instance-id> [--set key=value ...] [--key <console-key>] [--workspace <dir>]",
 		"mate plugin doctor [<instance-id>] [--project <project>] [--workspace <dir>]",
 		"mate plugin list [--workspace <dir>]",
-		"  1. mate plugin add", "  2. mate plugin doctor", "  3. restart the project's Mate: mate mate stop <project>, then mate mate start <project>",
+		"  1. mate plugin add", "  2. mate plugin doctor", "  3. restart the Mate(s) that should receive it",
 		"  4. if the package has an MCP server, run /mcp",
 		"most comments stay", "never logs in",
 	} {
@@ -128,7 +128,7 @@ func TestPluginAddRefusals(t *testing.T) {
 		{"different path", []string{other, "--as", "board", "--project", "shop", "--set", "id=1"}, 1, string(filepath.Separator) + "pkg, not "},
 		{"reserved key", []string{pkg, "--as", "board", "--project", "shop", "--set", "id=1", "--key", "q"}, 1, `key "q" is reserved by the console`},
 		{"unknown project", []string{pkg, "--as", "board", "--project", "docs", "--set", "id=1"}, 1, "no such project: docs"},
-		{"no --as", []string{pkg, "--project", "shop"}, 2, "--as and --project are required"},
+		{"no --as", []string{pkg, "--project", "shop"}, 2, "--as is required"},
 		{"bad --set", []string{pkg, "--as", "board", "--project", "shop", "--set", "id"}, 2, `want key=value, got "id"`},
 		{"two paths", []string{pkg, pkg, "--as", "board", "--project", "shop"}, 2, "want exactly 1 argument"},
 	} {
@@ -220,5 +220,27 @@ func TestPluginMateHarnessPrefersARunningMate(t *testing.T) {
 	}
 	if k, _ := pluginMateHarness(w2)("shop"); k != "" {
 		t.Fatalf("no default: %q, want unknown", k)
+	}
+}
+
+func TestPluginWorkspaceAddListDoctor(t *testing.T) {
+	t.Setenv("MATE_CALLER", "")
+	w := pluginFixture(t, nil)
+	pkg := filepath.Join(w.Root(), "pkg")
+	code, out, stderr := runMate(t, "plugin", "add", pkg, "--as", "board", "--set", "id=workspace", "--key", "b", "--workspace", w.Root())
+	if code != 0 || !strings.Contains(out, "workspace instance") {
+		t.Fatalf("add: %d %s%s", code, out, stderr)
+	}
+	data, err := os.ReadFile(pluginsFile(w))
+	if err != nil || strings.Contains(string(data), "projects:") {
+		t.Fatalf("workspace config: %s, %v", data, err)
+	}
+	code, out, stderr = runMate(t, "plugin", "list", "--workspace", w.Root())
+	if code != 0 || !strings.Contains(out, "workspace  key b  id=workspace") {
+		t.Fatalf("list: %d %s%s", code, out, stderr)
+	}
+	code, out, stderr = runMate(t, "plugin", "doctor", "board", "--workspace", w.Root())
+	if code != 0 || !strings.Contains(out, "board/shop: open.url: ok") || !strings.Contains(out, "board/blog: open.url: ok") {
+		t.Fatalf("doctor: %d %s%s", code, out, stderr)
 	}
 }
