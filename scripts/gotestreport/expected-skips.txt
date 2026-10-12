@@ -9,3 +9,6 @@
 # Live Herdr/harness proofs are named TestLive* and skip unless MATE_LIVE=1. A green
 # suite that skipped them is not evidence those features work.
 TestLive*
+# Claude MCP probe under the Mate launch flags (docs/evidence/claude-mcp-probe-2026-10-12.md);
+# already covered by TestLive*, listed by name so the claim is reviewable.
+TestLiveClaudeMCPProbe
