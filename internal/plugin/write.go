@@ -107,6 +107,14 @@ func AddBinding(workspaceRoot string, req AddRequest) (AddResult, error) {
 			mode = st.Mode().Perm()
 		}
 	}
+	// The file as it stands must already be one valid plugins.yaml in
+	// shape: decoding to a node keeps only the first YAML document, so an
+	// unchecked rewrite could silently drop the rest or another mistake.
+	if !res.Created && len(bytes.TrimSpace(data)) > 0 {
+		if _, err := parseConfig(root, file, data, false); err != nil {
+			return AddResult{}, fmt.Errorf("%w; fix the file by hand, then add again", err)
+		}
+	}
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return AddResult{}, &ConfigError{File: file, Msg: err.Error()}

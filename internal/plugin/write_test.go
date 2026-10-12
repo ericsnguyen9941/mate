@@ -265,3 +265,26 @@ func TestAddBindingNeedsAWorkspace(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestAddBindingRefusesABrokenFileUntouched(t *testing.T) {
+	pkgs := packagesDir(t)
+	for _, tc := range []struct{ name, yaml, want string }{
+		{"second document", "apiVersion: mate.plugins/v1\ninstances: {}\n---\ninstances:\n  x:\n    path: /x\n", "expected one YAML document"},
+		{"unknown field", "apiVersion: mate.plugins/v1\ninstances:\n  notes:\n    pth: $PKG/skillsonly\n", "field pth not found"},
+		{"wrong apiVersion", "apiVersion: mate.plugins/v0\ninstances: {}\n", "apiVersion must be"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := workspace(t, tc.yaml)
+			before := readPlugins(t, root)
+			_, err := AddBinding(root, AddRequest{Instance: "local", Path: filepath.Join(pkgs, "stdio"), Project: "shop"})
+			file := filepath.Join(root, ".mate", "plugins.yaml")
+			if err == nil || !strings.Contains(err.Error(), file) || !strings.Contains(err.Error(), tc.want) ||
+				!strings.Contains(err.Error(), "fix the file by hand") {
+				t.Fatalf("err = %v, want %s, %q and fix by hand", err, file, tc.want)
+			}
+			if got := readPlugins(t, root); got != before {
+				t.Fatalf("plugins.yaml changed:\n%s", got)
+			}
+		})
+	}
+}
