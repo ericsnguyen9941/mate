@@ -67,7 +67,8 @@ func substitute(tmpl string, lookup func(string) (string, bool)) (string, int, e
 	}
 }
 
-// checkURL accepts only absolute http and https URLs with a host.
+// checkURL accepts only absolute http and https URLs with a host and no
+// userinfo, so no credentials live in plugin config or resolved URLs.
 func checkURL(s string) error {
 	if strings.IndexFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
 		return fmt.Errorf("URL %q contains whitespace or control characters", s)
@@ -81,6 +82,9 @@ func checkURL(s string) error {
 	}
 	if u.Host == "" {
 		return fmt.Errorf("URL %q has no host", s)
+	}
+	if u.User != nil {
+		return fmt.Errorf("URL %q must not contain credentials", s)
 	}
 	return nil
 }

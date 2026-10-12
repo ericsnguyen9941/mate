@@ -1,0 +1,5 @@
+apiVersion: mate.plugin/v1
+name: Credential server
+mcp:
+  type: http
+  url: https://user:pass@mcp.tracker.example/mcp
