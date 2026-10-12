@@ -67,18 +67,20 @@ type rawBinding struct {
 // Config. Unknown fields, extra YAML documents and invalid values are
 // *ConfigError naming the file and, where known, the instance and project.
 func Load(workspaceRoot string) (Config, error) {
-	return readConfig(workspaceRoot, true)
+	return readConfig(workspaceRoot, true, "")
 }
 
 // ReadConfig reads <workspaceRoot>/.mate/plugins.yaml and checks its own
 // shape without reading any package: every Manifest is nil and every
 // OpenURL empty. It lists what the file says even when a package is
-// missing or broken; Load is what a Mate start runs.
+// missing or broken; Load checks everything a Mate start reads, and
+// Resolve is what a Mate start runs.
 func ReadConfig(workspaceRoot string) (Config, error) {
-	return readConfig(workspaceRoot, false)
+	return readConfig(workspaceRoot, false, "")
 }
 
-func readConfig(workspaceRoot string, packages bool) (Config, error) {
+// readConfig reads plugins.yaml; see parseConfig for packages and only.
+func readConfig(workspaceRoot string, packages bool, only string) (Config, error) {
 	root, err := filepath.Abs(workspaceRoot)
 	if err != nil {
 		return Config{}, err
@@ -91,13 +93,19 @@ func readConfig(workspaceRoot string, packages bool) (Config, error) {
 	if err != nil {
 		return Config{}, &ConfigError{File: file, Msg: err.Error()}
 	}
-	return parseConfig(root, file, data, packages)
+	return parseConfig(root, file, data, packages, only)
 }
 
 // parseConfig validates data as the plugins.yaml at file in the workspace
 // root. With packages, every enabled instance's manifest, skills, open link
 // and console key are checked as well.
-func parseConfig(root, file string, data []byte, packages bool) (Config, error) {
+//
+// A non-empty only narrows both the check and the result to what project
+// only receives: the file itself (YAML, apiVersion, fields outside any
+// instance, duplicate instance ids) and the instances bound to only, with
+// that one binding. A problem that lies wholly in another project's binding,
+// or in an instance only is not bound to, is not this project's to refuse.
+func parseConfig(root, file string, data []byte, packages bool, only string) (Config, error) {
 	fail := func(instance, project, format string, args ...any) error {
 		return &ConfigError{File: file, Instance: instance, Project: project, Msg: fmt.Sprintf(format, args...)}
 	}
@@ -107,7 +115,7 @@ func parseConfig(root, file string, data []byte, packages bool) (Config, error) 
 		return Config{}, err
 	}
 	var raw rawConfig
-	if err := decodeStrict(data, &raw); err != nil {
+	if err := decodeStrict(data, &raw); err != nil && (only == "" || lay.concerns(err, only)) {
 		instance, project := lay.locate(err)
 		return Config{}, fail(instance, project, "%v", err)
 	}
@@ -119,6 +127,9 @@ func parseConfig(root, file string, data []byte, packages bool) (Config, error) 
 	keyOwner := map[string]map[string]string{} // project -> key -> instance
 	for _, id := range lay.ids {
 		ri := raw.Instances[id]
+		if _, bound := ri.Projects[only]; only != "" && !bound {
+			continue
+		}
 		if !instanceIDRe.MatchString(id) {
 			return Config{}, fail(id, "", "instance id must match [a-z0-9][a-z0-9-]*")
 		}
@@ -139,6 +150,9 @@ func parseConfig(root, file string, data []byte, packages bool) (Config, error) 
 			}
 		}
 		for _, project := range sortedKeys(ri.Projects) {
+			if only != "" && project != only {
+				continue
+			}
 			rb := ri.Projects[project]
 			if rb == nil {
 				rb = &rawBinding{}
@@ -182,18 +196,24 @@ func parseConfig(root, file string, data []byte, packages bool) (Config, error) 
 }
 
 // decodeStrict decodes exactly one YAML document, refusing unknown fields
-// and duplicate mapping keys.
+// and duplicate mapping keys. A *yaml.TypeError (an unknown field or a
+// value of the wrong type) still leaves out holding every other value.
 func decodeStrict(data []byte, out any) error {
 	d := yaml.NewDecoder(bytes.NewReader(data))
 	d.KnownFields(true)
-	if err := d.Decode(out); err != nil && err != io.EOF {
+	err := d.Decode(out)
+	if err == io.EOF {
+		err = nil
+	}
+	var typeErr *yaml.TypeError
+	if err != nil && !errors.As(err, &typeErr) {
 		return err
 	}
 	var extra any
-	if err := d.Decode(&extra); err != io.EOF {
+	if d.Decode(&extra) != io.EOF {
 		return errors.New("expected one YAML document")
 	}
-	return nil
+	return err
 }
 
 // layout records the order of instance ids in plugins.yaml and the lines
@@ -249,6 +269,37 @@ func readLayout(file string, data []byte) (layout, error) {
 		}
 	}
 	return l, nil
+}
+
+// concerns reports whether a decode error touches what project receives:
+// any part of it outside every instance, in an instance bound to project
+// but outside its bindings, or in project's own binding. Only a
+// *yaml.TypeError can be narrowed; any other error concerns every project.
+func (l layout) concerns(err error, project string) bool {
+	var typeErr *yaml.TypeError
+	if !errors.As(err, &typeErr) {
+		return true
+	}
+	for _, msg := range typeErr.Errors {
+		instance, p := l.locate(errors.New(msg))
+		switch {
+		case instance == "", p == project:
+			return true
+		case p == "" && l.binds(instance, project):
+			return true
+		}
+	}
+	return false
+}
+
+// binds reports whether instance has a binding for project.
+func (l layout) binds(instance, project string) bool {
+	for _, s := range l.spans {
+		if s.instance == instance && s.project == project {
+			return true
+		}
+	}
+	return false
 }
 
 func lastLine(n *yaml.Node) int {

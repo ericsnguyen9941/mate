@@ -21,7 +21,8 @@ type Manifest struct {
 	Open   *Open
 }
 
-// MCP describes the package's MCP server. Cwd, if set, is absolute.
+// MCP describes the package's MCP server. Cwd is absolute for a stdio
+// server, the package root when the manifest sets none, and empty for http.
 type MCP struct {
 	Type    string
 	URL     string
@@ -132,15 +133,16 @@ func parseManifest(pkg, id string) (*Manifest, []string, error) {
 			if len(r.Command) == 0 || strings.TrimSpace(r.Command[0]) == "" {
 				return nil, nil, fail("mcp: type stdio requires command argv")
 			}
-			if r.Cwd != "" {
-				mcp.Cwd = r.Cwd
-				if !filepath.IsAbs(mcp.Cwd) {
-					mcp.Cwd = filepath.Join(pkg, mcp.Cwd)
-				}
-				mcp.Cwd = filepath.Clean(mcp.Cwd)
-				if st, err := os.Stat(mcp.Cwd); err != nil || !st.IsDir() {
-					return nil, nil, fail("mcp.cwd %s is not a directory", mcp.Cwd)
-				}
+			// Without a cwd the server runs in the package root, so a
+			// relative command or file argument means the same thing at
+			// every launch whatever directory the harness starts it from.
+			mcp.Cwd = r.Cwd
+			if !filepath.IsAbs(mcp.Cwd) {
+				mcp.Cwd = filepath.Join(pkg, mcp.Cwd)
+			}
+			mcp.Cwd = filepath.Clean(mcp.Cwd)
+			if st, err := os.Stat(mcp.Cwd); err != nil || !st.IsDir() {
+				return nil, nil, fail("mcp.cwd %s is not a directory", mcp.Cwd)
 			}
 		default:
 			return nil, nil, fail("mcp.type must be http or stdio, got %q", r.Type)

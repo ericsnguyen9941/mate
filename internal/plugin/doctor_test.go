@@ -122,6 +122,7 @@ func TestDoctorFailures(t *testing.T) {
 		yaml string
 		opts DoctorOptions
 		want []string
+		ok   string // a line the checks must hold
 	}{{
 		name: "schema",
 		yaml: "apiVersion: mate.plugins/v1\ninstances:\n  x:\n    pth: /x\n",
@@ -148,9 +149,10 @@ func TestDoctorFailures(t *testing.T) {
 		opts: DoctorOptions{LookPath: noPath},
 		want: []string{"local: mcp command node: fail: node is not on PATH"},
 	}, {
-		name: "slash command resolves from package root",
+		name: "slash command without cwd resolves from the package root",
 		yaml: "apiVersion: mate.plugins/v1\ninstances:\n  slash:\n    path: " + slash + "\n    projects: {shop: {}}\n",
 		opts: DoctorOptions{LookPath: noPath},
+		ok:   "slash: mcp command ./bin/serve: ok (" + filepath.Join(slash, "bin", "serve") + ")\n",
 	}, {
 		name: "slash command resolves from cwd",
 		yaml: "apiVersion: mate.plugins/v1\ninstances:\n  slash:\n    path: " + slashCwd + "\n    projects: {shop: {}}\n",
@@ -216,6 +218,9 @@ func TestDoctorFailures(t *testing.T) {
 				if !strings.HasPrefix(got[i], strings.ReplaceAll(w, "$PKG", pkgs)) {
 					t.Fatalf("fail %d = %q, want prefix %q\nall:\n%s", i, got[i], w, lines(checks))
 				}
+			}
+			if tc.ok != "" && !strings.Contains(lines(checks), tc.ok) {
+				t.Fatalf("checks lack %q:\n%s", tc.ok, lines(checks))
 			}
 		})
 	}

@@ -111,7 +111,7 @@ func AddBinding(workspaceRoot string, req AddRequest) (AddResult, error) {
 	// shape: decoding to a node keeps only the first YAML document, so an
 	// unchecked rewrite could silently drop the rest or another mistake.
 	if !res.Created && len(bytes.TrimSpace(data)) > 0 {
-		if _, err := parseConfig(root, file, data, false); err != nil {
+		if _, err := parseConfig(root, file, data, false, ""); err != nil {
 			return AddResult{}, fmt.Errorf("%w; fix the file by hand, then add again", err)
 		}
 	}
@@ -210,7 +210,7 @@ func AddBinding(workspaceRoot string, req AddRequest) (AddResult, error) {
 	if err := enc.Close(); err != nil {
 		return AddResult{}, err
 	}
-	if _, err := parseConfig(root, file, out.Bytes(), true); err != nil {
+	if _, err := parseConfig(root, file, out.Bytes(), true, ""); err != nil {
 		return AddResult{}, err
 	}
 	if err := writeAtomic(file, out.Bytes(), mode); err != nil {

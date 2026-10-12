@@ -19,7 +19,7 @@ const (
 
 // MCPServer is one MCP server a project receives. Name is the instance id;
 // Mate adds no alias or namespace. Type is http (URL set) or stdio (Command
-// set; Cwd is absolute or empty).
+// set; Cwd is absolute, the package root unless the manifest names one).
 type MCPServer struct {
 	Name    string
 	Type    string
@@ -74,11 +74,16 @@ func (e *ConfigError) Error() string {
 }
 
 // Resolve reads <workspaceRoot>/.mate/plugins.yaml and the manifest of every
-// enabled instance, and returns what project receives. A missing plugins.yaml
-// yields an empty Resolved. Any configuration problem, including one in
-// another project's binding, is a *ConfigError.
+// enabled instance bound to project, and returns what project receives. A
+// missing plugins.yaml yields an empty Resolved. A problem in the file
+// itself (YAML, apiVersion, a field outside any instance, a duplicate
+// instance id) or in an instance bound to project (its fields, package,
+// manifest, skills, open link, or project's binding and key) is a
+// *ConfigError. A problem only another project's binding has, or an
+// instance project is not bound to, is not: one project's broken binding
+// keeps no other project's Mate from starting. Load checks everything.
 func Resolve(workspaceRoot, project string) (Resolved, error) {
-	cfg, err := Load(workspaceRoot)
+	cfg, err := readConfig(workspaceRoot, true, project)
 	if err != nil {
 		return Resolved{}, err
 	}

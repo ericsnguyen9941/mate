@@ -151,7 +151,7 @@ func doctorInstance(in Instance, projects []string, cfg Config, opts DoctorOptio
 		case "http":
 			add(in.ID, "mcp http "+m.MCP.URL, nil, "not contacted")
 		case "stdio":
-			path, err := findCommand(m.MCP.Command[0], m.MCP.Cwd, in.Path, lookPath)
+			path, err := findCommand(m.MCP.Command[0], m.MCP.Cwd, lookPath)
 			add(in.ID, "mcp command "+m.MCP.Command[0], err, path)
 		}
 	}
@@ -213,10 +213,10 @@ func keyProblem(in Instance, project, key string, m *Manifest, cfg Config, owner
 }
 
 // findCommand resolves an MCP stdio command[0] the way a launch runs it: a
-// name with a slash is a file relative to the server's cwd (the package
-// root when the manifest sets none) and must be executable; a bare name is
-// looked up on PATH.
-func findCommand(name, cwd, pkg string, lookPath func(string) (string, error)) (string, error) {
+// name with a slash is a file relative to the server's cwd (absolute; the
+// package root when the manifest sets none) and must be executable; a bare
+// name is looked up on PATH.
+func findCommand(name, cwd string, lookPath func(string) (string, error)) (string, error) {
 	if !strings.Contains(name, "/") {
 		p, err := lookPath(name)
 		if err != nil {
@@ -226,11 +226,7 @@ func findCommand(name, cwd, pkg string, lookPath func(string) (string, error)) (
 	}
 	p := name
 	if !filepath.IsAbs(p) {
-		dir := cwd
-		if dir == "" {
-			dir = pkg
-		}
-		p = filepath.Join(dir, p)
+		p = filepath.Join(cwd, p)
 	}
 	st, err := os.Stat(p)
 	switch {

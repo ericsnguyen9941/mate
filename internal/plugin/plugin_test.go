@@ -244,6 +244,82 @@ func TestResolveRefusesInvalidConfig(t *testing.T) {
 	}
 }
 
+func TestResolveStdioCwdDefaultsToPackageRoot(t *testing.T) {
+	pkg := pkgDir(t, "apiVersion: mate.plugin/v1\nname: Serve\nmcp:\n  type: stdio\n  command: [./bin/serve]\n",
+		map[string]string{"bin/serve": "#!/bin/sh\n"})
+	root := workspace(t, "apiVersion: mate.plugins/v1\ninstances:\n  serve:\n    path: "+pkg+"\n    projects: {shop: {}}\n")
+	got, err := Resolve(root, "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []MCPServer{{Name: "serve", Type: "stdio", Command: []string{"./bin/serve"}, Cwd: pkg}}
+	if !reflect.DeepEqual(got.Servers, want) {
+		t.Fatalf("servers %+v, want %+v", got.Servers, want)
+	}
+	if !filepath.IsAbs(got.Servers[0].Cwd) {
+		t.Fatalf("cwd %q is not absolute", got.Servers[0].Cwd)
+	}
+}
+
+// One project's broken binding refuses that project and Load, and leaves
+// every other project's plugins as they are.
+func TestResolveIgnoresAnotherProjectsBinding(t *testing.T) {
+	head := "apiVersion: mate.plugins/v1\ninstances:\n"
+	shopWork := "        config: {project_url: \"https://tracker.example/shop\"}\n        key: t\n"
+	work := func(blog string) string {
+		return "  work:\n    path: $PKG/full\n    projects:\n      shop:\n" + shopWork + "      blog:\n" + blog
+	}
+	okBlog := work("        config: {project_url: \"https://tracker.example/blog\"}\n")
+	want := Resolved{
+		Servers: []MCPServer{{Name: "work", Type: "http", URL: "https://mcp.tracker.example/mcp"}},
+		Skills:  []Skill{{Instance: "work", Name: "workflow", Content: []byte(strings.ReplaceAll(fullSkill, "tracker-work", "work"))}},
+		Links:   []Link{{Instance: "work", Title: "Open Tracker", URL: "https://tracker.example/shop", Key: "t"}},
+	}
+	for _, tc := range []struct {
+		name, yaml, msg string
+	}{
+		{name: "blog config substitutes a javascript URL",
+			yaml: head + work("        config: {project_url: \"javascript:alert(1)\"}\n"), msg: "must use http or https"},
+		{name: "blog binding misses its config",
+			yaml: head + work("        config: {}\n"), msg: "needs {config.project_url}"},
+		{name: "unknown field in the blog binding",
+			yaml: head + work("        config: {project_url: \"https://tracker.example/blog\"}\n        keys: [u]\n"), msg: "field keys not found"},
+		{name: "blog binding value of the wrong type",
+			yaml: head + work("        config: [x]\n"), msg: "cannot unmarshal"},
+		{name: "blog key without open link",
+			yaml: head + okBlog +
+				"  srv:\n    path: $PKG/stdio\n    projects:\n      blog: {key: s}\n", msg: "needs an open link"},
+		{name: "duplicate key in blog",
+			yaml: head + work("        config: {project_url: \"https://tracker.example/blog\"}\n        key: b\n") +
+				"  board:\n    path: $PKG/openonly\n    projects:\n      blog: {config: {team: a, project_id: \"1\"}, key: b}\n", msg: `duplicate key "b"`},
+		{name: "instance bound only to blog has no package",
+			yaml: head + okBlog + "  gone:\n    path: $PKG/no-such-package\n    projects:\n      blog: {}\n", msg: "is not a directory"},
+		{name: "instance bound only to blog has a broken manifest",
+			yaml: head + okBlog + "  srv:\n    path: $PKG/unknownfield\n    projects:\n      blog: {}\n", msg: "field env not found"},
+		{name: "unknown field in an instance bound only to blog",
+			yaml: head + okBlog + "  board:\n    path: $PKG/openonly\n    enable: true\n    projects:\n      blog: {config: {team: a, project_id: \"1\"}}\n", msg: "field enable not found"},
+		{name: "invalid id of an instance bound only to blog",
+			yaml: head + okBlog + "  Board:\n    path: $PKG/openonly\n    projects:\n      blog: {config: {team: a, project_id: \"1\"}}\n", msg: "instance id must match"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := workspace(t, tc.yaml)
+			got, err := Resolve(root, "shop")
+			if err != nil {
+				t.Fatalf("shop refused for blog's problem: %v", err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("shop got  %+v\nwant %+v", got, want)
+			}
+			if _, err := Resolve(root, "blog"); err == nil || !strings.Contains(err.Error(), tc.msg) {
+				t.Fatalf("blog: %v, want %q", err, tc.msg)
+			}
+			if _, err := Load(root); err == nil || !strings.Contains(err.Error(), tc.msg) {
+				t.Fatalf("Load: %v, want %q", err, tc.msg)
+			}
+		})
+	}
+}
+
 func TestSkillSymlinkCannotLeavePackage(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "secret.md")
 	if err := os.WriteFile(outside, []byte("outside\n"), 0o600); err != nil {
