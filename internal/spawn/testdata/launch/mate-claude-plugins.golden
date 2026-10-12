@@ -188,8 +188,8 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=38673516eaefddc125ba3da53ec4253f6b89a142cb5aaf5a9e339724a1dfb31b
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-local-tools-notes/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-tracker-work-workflow/SKILL.md mode=-rw-r--r-- bytes=108 ---
-(rendered asset) sha256=c9bea0e9e5ab20c5e0962f13b94e0b1c1e995bc65b436f828cfe4b3aa873596f
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-tracker-work-workflow/SKILL.md mode=-rw-r--r-- bytes=175 ---
+(rendered asset) sha256=20cf965d46c6c79d6ae2abc176bab049526e0c63bd592319fefbee16b178b57d
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-tracker-work-workflow/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/project-memory/SKILL.md mode=-rw-r--r-- bytes=7292 ---

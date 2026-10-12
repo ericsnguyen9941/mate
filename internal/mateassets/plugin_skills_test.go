@@ -88,9 +88,29 @@ func TestWritePluginSkillsRefusesAConflict(t *testing.T) {
 			return filepath.Dir(writeSkillFile(t, dir, "plugin-t-w", "# mine\n"))
 		},
 	}, {
-		name: "marker not on the first line",
+		name: "marker on line 3 without frontmatter",
 		setup: func(t *testing.T, dir string) string {
-			return filepath.Dir(writeSkillFile(t, dir, "plugin-t-w", "# mine\n"+PluginSkillMarker("t")+"\n"))
+			return filepath.Dir(writeSkillFile(t, dir, "plugin-t-w", "# mine\n\n"+PluginSkillMarker("t")+"\n"))
+		},
+	}, {
+		name: "marker above a frontmatter",
+		setup: func(t *testing.T, dir string) string {
+			return filepath.Dir(writeSkillFile(t, dir, "plugin-t-w", PluginSkillMarker("t")+"\n---\nname: w\n---\n# mine\n"))
+		},
+	}, {
+		name: "marker inside a frontmatter",
+		setup: func(t *testing.T, dir string) string {
+			return filepath.Dir(writeSkillFile(t, dir, "plugin-t-w", "---\n"+PluginSkillMarker("t")+"\nname: w\n---\n# mine\n"))
+		},
+	}, {
+		name: "marker two lines after the frontmatter",
+		setup: func(t *testing.T, dir string) string {
+			return filepath.Dir(writeSkillFile(t, dir, "plugin-t-w", "---\nname: w\n---\n\n"+PluginSkillMarker("t")+"\n# mine\n"))
+		},
+	}, {
+		name: "frontmatter never closed",
+		setup: func(t *testing.T, dir string) string {
+			return filepath.Dir(writeSkillFile(t, dir, "plugin-t-w", "---\nname: w\n"+PluginSkillMarker("t")+"\n"))
 		},
 	}, {
 		name: "directory with other files and no skill",
@@ -153,6 +173,87 @@ func TestWritePluginSkillsRefusesAConflict(t *testing.T) {
 				t.Errorf("a refused write changed the directory:\nbefore %s\nafter  %s", before, after)
 			}
 		})
+	}
+}
+
+// A skill that opens with frontmatter keeps "---" on line 1, so the harness
+// still reads its name and description; the marker goes on the line right
+// after the closing "---", in the frontmatter's line ending.
+func TestWritePluginSkillsKeepsFrontmatterFirst(t *testing.T) {
+	m := PluginSkillMarker("t")
+	for _, tc := range []struct{ name, content, want string }{
+		{"no frontmatter", "# W\n", m + "\n# W\n"},
+		{"empty", "", m + "\n"},
+		{"a rule that is not frontmatter", "# W\n---\nx\n", m + "\n# W\n---\nx\n"},
+		{"frontmatter", "---\nname: w\ndescription: d\n---\n# W\n", "---\nname: w\ndescription: d\n---\n" + m + "\n# W\n"},
+		{"frontmatter only, closed at the end", "---\nname: w\n---", "---\nname: w\n---\n" + m + "\n"},
+		{"CRLF frontmatter", "---\r\nname: w\r\n---\r\n# W\r\n", "---\r\nname: w\r\n---\r\n" + m + "\r\n# W\r\n"},
+		{"CRLF frontmatter closed at the end", "---\r\nname: w\r\n---", "---\r\nname: w\r\n---\r\n" + m + "\r\n"},
+		{"empty frontmatter", "---\n---\nbody\n", "---\n---\n" + m + "\nbody\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			skill := []PluginSkill{{Instance: "t", Name: "w", Content: []byte(tc.content)}}
+			if err := WritePluginSkills(dir, testSkillsDir, skill); err != nil {
+				t.Fatal(err)
+			}
+			if got := readSkill(t, dir, "plugin-t-w"); got != tc.want {
+				t.Fatalf("got  %q\nwant %q", got, tc.want)
+			}
+			// Recognised as generated: rewritten on the next call...
+			skill[0].Content = []byte(tc.content + "\nmore\n")
+			if err := WritePluginSkills(dir, testSkillsDir, skill); err != nil {
+				t.Fatalf("own skill refused on rewrite: %v", err)
+			}
+			want2, err := renderPluginSkill(skill[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := readSkill(t, dir, "plugin-t-w"); got != string(want2) {
+				t.Fatalf("rewrite got %q, want %q", got, want2)
+			}
+			// ...and removed once stale.
+			if err := WritePluginSkills(dir, testSkillsDir, nil); err != nil {
+				t.Fatal(err)
+			}
+			if exists(t, filepath.Join(dir, testSkillsDir, "plugin-t-w")) {
+				t.Fatal("stale skill with frontmatter was not removed")
+			}
+		})
+	}
+}
+
+// A frontmatter not closed within the cap is refused, before anything is
+// written; one closed just inside it is accepted.
+func TestWritePluginSkillsRefusesUnclosedFrontmatter(t *testing.T) {
+	long := "---\n" + strings.Repeat("x: y\n", maxPluginSkillFrontmatter/5) + "---\n"
+	for _, tc := range []struct{ name, content string }{
+		{"never closed", "---\nname: w\n# W\n"},
+		{"opening line only", "---"},
+		{"opening line only, CRLF", "---\r\n"},
+		{"closed past the cap", long},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			err := WritePluginSkills(dir, testSkillsDir, []PluginSkill{
+				{Instance: "a", Name: "ok", Content: []byte("# ok\n")},
+				{Instance: "t", Name: "w", Content: []byte(tc.content)},
+			})
+			if err == nil || !strings.Contains(err.Error(), "not closed") {
+				t.Fatalf("err = %v, want an unclosed frontmatter refusal", err)
+			}
+			if exists(t, filepath.Join(dir, testSkillsDir)) {
+				t.Error("a refused call still wrote")
+			}
+		})
+	}
+	fits := "---\n" + strings.Repeat("x", maxPluginSkillFrontmatter-len("---\n")-len("\n---\n")) + "\n---\n# W\n"
+	dir := t.TempDir()
+	if err := WritePluginSkills(dir, testSkillsDir, []PluginSkill{{Instance: "t", Name: "w", Content: []byte(fits)}}); err != nil {
+		t.Fatalf("frontmatter closed exactly at the cap refused: %v", err)
+	}
+	if !generatedPluginSkill(filepath.Join(dir, testSkillsDir, "plugin-t-w")) {
+		t.Fatal("a skill with frontmatter at the cap is not recognised as generated")
 	}
 }
 
