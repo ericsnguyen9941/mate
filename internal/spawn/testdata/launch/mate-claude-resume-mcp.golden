@@ -1,4 +1,4 @@
-starts: 1
+starts: 2
 
 == herdr argv (last start) ==
 "agent"
@@ -7,14 +7,14 @@ starts: 1
 "--kind"
 "claude"
 "--pane"
-"w1:p1"
+"w2:p1"
 "--session"
 "{{HERDR_SESSION}}"
 "--timeout"
 "10000"
 "--"
 "--dangerously-skip-permissions"
-"--session-id"
+"--resume"
 "11111111-2222-3333-4444-555555555555"
 "--settings"
 "{{WORKSPACE}}/.mate/projects/shop/mate/.claude/settings.json"
@@ -29,6 +29,8 @@ starts: 1
 "opus"
 "--effort"
 "medium"
+"--mcp-config"
+"{{WORKSPACE}}/.mate/projects/shop/mate/mcp-plugins.json"
 
 == launch spec ==
 kind: claude
@@ -47,7 +49,7 @@ task_prompt: ""
 
 == launch args ==
 "--dangerously-skip-permissions"
-"--session-id"
+"--resume"
 "11111111-2222-3333-4444-555555555555"
 "--settings"
 "{{WORKSPACE}}/.mate/projects/shop/mate/.claude/settings.json"
@@ -62,6 +64,8 @@ task_prompt: ""
 "opus"
 "--effort"
 "medium"
+"--mcp-config"
+"{{WORKSPACE}}/.mate/projects/shop/mate/mcp-plugins.json"
 
 == launch env (set) ==
 MATE_PROJECT_ID=shop
@@ -111,6 +115,7 @@ CODEX_HOME={{CODEX_HOME}}
 - whether mate should auto-accept that second screen for the operator is a separate open captain call (gomate-claude-bypass-mode-screen), not implemented here
 - the bypass is unconditional: there is no config key or CLI flag to opt out, a deliberate choice consistent with unattended Crew/Mate operation
 - no context flag is passed: Claude Code loads CLAUDE.md from the directory it starts in, and the caller declared that file already loads the manual
+- plugin MCP servers come only from --mcp-config mcp-plugins.json; --strict-mcp-config keeps every other MCP source out and --tools filters built-in tools only (docs/evidence/claude-mcp-probe-2026-10-12.md)
 
 == files the launch created or changed ==
 
@@ -236,19 +241,43 @@ CODEX_HOME={{CODEX_HOME}}
 ## Done
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/backlog.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=229 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=292 ---
 agent=mate-shop
 effort=medium
 harness=claude
 launched_at=2026-09-17T10:00:00Z
 model=opus
-pane=w1:p1
+pane=w2:p1
+resumed=true
+resumed_from=11111111-2222-3333-4444-555555555555
 session={{HERDR_SESSION}}
 session_id=11111111-2222-3333-4444-555555555555
 started_at=2026-09-17T10:00:00Z
-tab=w1:t1
-workspace=w1
+tab=w2:t1
+workspace=w2
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta ---
+
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/mcp-plugins.json mode=-rw-r--r-- bytes=365 ---
+{
+  "mcpServers": {
+    "local-tools": {
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "cd \"$1\" && shift && exec \"$@\"",
+        "mate-mcp-cwd",
+        "{{WORKSPACE}}/plugins/local/bin",
+        "node",
+        "server.js"
+      ]
+    },
+    "tracker-work": {
+      "type": "http",
+      "url": "https://mcp.tracker.example/mcp"
+    }
+  }
+}
+--- end {{WORKSPACE}}/.mate/projects/shop/mate/mcp-plugins.json ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/memory.md mode=-rw-r--r-- bytes=75 ---
 # Memory

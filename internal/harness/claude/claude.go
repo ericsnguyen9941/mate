@@ -208,6 +208,10 @@ type claudeLaunch struct {
 	// settingsPath is the --settings file. Claude takes it together with
 	// the session identity, fresh or resumed.
 	settingsPath string
+	// mcpConfigPath is the --mcp-config file of a Mate whose project has
+	// plugin MCP servers (MCPConfigFile), empty when it has none. Prepare
+	// runs for a resumed start too, so a resume carries it as well.
+	mcpConfigPath string
 	// manualInCwd says the cwd already loads the operating manual on its
 	// own, so the launch carries no context flag. Claude Code reads
 	// `CLAUDE.md` from the directory it starts in, and a Mate's cwd holds
@@ -220,8 +224,10 @@ type claudeLaunch struct {
 // Prepare implements Launcher. Every Claude launch names its session and
 // carries a settings file with it, fresh or resumed. A Mate also gets the
 // `CLAUDE.md` that loads its manual from the cwd and the hook settings of
-// its cwd's `.claude/`; a Crew gets hook-less settings beside its brief, so
-// nothing lands in its worktree.
+// its cwd's `.claude/`, and, when its project has plugin MCP servers, the
+// --mcp-config file `mcp-plugins.json` (mateMCPFile); a Crew gets hook-less
+// settings beside its brief, so nothing lands in its worktree, and no MCP
+// server.
 func (c Claude) Prepare(_ context.Context, req harness.PrepareRequest) (harness.Prepared, error) {
 	if err := req.Check(KindClaude); err != nil {
 		return harness.Prepared{}, err
@@ -239,7 +245,19 @@ func (c Claude) Prepare(_ context.Context, req harness.PrepareRequest) (harness.
 		}
 		launch.settingsPath = ClaudeSettingsPath(req.Cwd)
 		launch.manualInCwd = true
+		mcp, mcpPath, err := mateMCPFile(req)
+		if err != nil {
+			return harness.Prepared{}, err
+		}
+		if mcp != nil {
+			files = append(files, *mcp)
+		}
+		launch.mcpConfigPath = mcpPath
 		return harness.Prepared{Files: files, SessionID: sessionID, Launch: launch}, nil
+	}
+	if len(req.MCPServers) > 0 {
+		return harness.Prepared{}, observability.NewError(observability.CodeUsage,
+			"claude launch: a Crew takes no MCP servers; plugins are the Mate's")
 	}
 	// A Claude launch can only carry a session id together with a settings
 	// file, and decision 9 wants session_id= recorded from the first day,
@@ -363,6 +381,11 @@ func (c Claude) Build(_ context.Context, spec harness.AgentSpec) (harness.Launch
 				"claude settings path is not a regular file", harness.ErrContextRequired)
 		}
 	}
+	if launch.mcpConfigPath != "" || len(spec.MCPServers) > 0 {
+		if err := checkMCPConfig(spec, launch); err != nil {
+			return harness.LaunchSpec{}, err
+		}
+	}
 	configDir, setConfigDir, err := ClaudeConfigDirForLaunch(c.ConfigDir)
 	if err != nil {
 		return harness.LaunchSpec{}, observability.WrapError(observability.CodeUsage, "claude config directory", err)
@@ -405,6 +428,19 @@ func (c Claude) Build(_ context.Context, spec harness.AgentSpec) (harness.Launch
 	if c.Info().SupportsEffort(spec.Effort) {
 		extra = append(extra, "--effort", string(spec.Effort))
 	}
+	if launch.mcpConfigPath != "" {
+		// Plugin MCP servers come only from this file: --strict-mcp-config
+		// above still keeps every other MCP source out, and --tools stays
+		// as it is because it filters built-in tools only. Measured on
+		// Claude Code 2.1.287 under these exact flags: the server loads, no
+		// global server leaks, an mcp__<server>__<tool> is called with the
+		// --tools allowlist unchanged, and --resume with the same
+		// --mcp-config calls it again
+		// (docs/evidence/claude-mcp-probe-2026-10-12.md). Last on the argv, so
+		// a Mate without plugins keeps the argv, and the cached prefix, it
+		// always had.
+		extra = append(extra, "--mcp-config", launch.mcpConfigPath)
+	}
 	// dangerousPermissionNotes records why --dangerously-skip-permissions is
 	// carried and what it does not cover; see the analogous (not identical -
 	// Codex carries its own extra bullets) record on the Codex adapter
@@ -441,6 +477,9 @@ func (c Claude) Build(_ context.Context, spec harness.AgentSpec) (harness.Launch
 		out.Notes = append(append([]string(nil), dangerousPermissionNotes...),
 			"no context flag is passed: Claude Code loads CLAUDE.md from the directory it starts in, and the caller declared that file already loads the manual",
 		)
+		if launch.mcpConfigPath != "" {
+			out.Notes = append(out.Notes, "plugin MCP servers come only from --mcp-config "+MCPConfigFile+"; --strict-mcp-config keeps every other MCP source out and --tools filters built-in tools only (docs/evidence/claude-mcp-probe-2026-10-12.md)")
+		}
 		return harness.NewLaunchSpec(out)
 	}
 	if c.InlineFallback {
@@ -477,6 +516,29 @@ func (c Claude) Build(_ context.Context, spec harness.AgentSpec) (harness.Launch
 		)
 	}
 	return harness.NewLaunchSpec(out)
+}
+
+// checkMCPConfig refuses a launch whose MCP servers would not reach Claude
+// as Prepare laid them out: a Crew's (plugins are the Mate's), servers no
+// --mcp-config file was written for, or a file that is not there.
+func checkMCPConfig(spec harness.AgentSpec, launch claudeLaunch) error {
+	switch {
+	case spec.Role != harness.RoleMate:
+		return observability.NewError(observability.CodeUsage, "claude launch: a Crew takes no MCP servers; plugins are the Mate's")
+	case launch.mcpConfigPath == "":
+		return observability.NewError(observability.CodeUsage,
+			fmt.Sprintf("claude launch has %d MCP servers but its Prepare wrote no --mcp-config file for them", len(spec.MCPServers)))
+	case !filepath.IsAbs(launch.mcpConfigPath):
+		return observability.NewError(observability.CodeUsage, "claude --mcp-config path must be absolute")
+	}
+	info, err := os.Stat(launch.mcpConfigPath)
+	if err != nil {
+		return observability.WrapError(observability.CodeUsage, "claude --mcp-config file is not readable", err)
+	}
+	if !info.Mode().IsRegular() {
+		return observability.NewError(observability.CodeUsage, "claude --mcp-config path is not a regular file")
+	}
+	return nil
 }
 
 const (

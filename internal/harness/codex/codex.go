@@ -291,6 +291,9 @@ func (c Codex) Prepare(_ context.Context, req harness.PrepareRequest) (harness.P
 	if err := req.Check(KindCodex); err != nil {
 		return harness.Prepared{}, err
 	}
+	if err := refuseMCPServers(req.MCPServers); err != nil {
+		return harness.Prepared{}, err
+	}
 	manual, err := os.ReadFile(req.ContextPath)
 	if err != nil {
 		return harness.Prepared{}, err
@@ -308,6 +311,25 @@ func (c Codex) Prepare(_ context.Context, req harness.PrepareRequest) (harness.P
 	return harness.Prepared{Files: files, SessionID: req.ResumeSessionID, ContextPath: override}, nil
 }
 
+// refuseMCPServers refuses a launch that carries MCP servers. codex-cli
+// 0.162.1 parses `-c mcp_servers.<name>.url|command` under --strict-config,
+// but nothing past parsing is proven: no tool call, no auth, no resume
+// (docs/evidence/codex-mcp-config-audit-2026-10-12.md). So a Codex Mate is
+// refused before launch rather than started as if its plugins' tools were
+// there, and no -c mcp_servers is ever passed.
+func refuseMCPServers(servers []harness.MCPServer) error {
+	if len(servers) == 0 {
+		return nil
+	}
+	names := make([]string, len(servers))
+	for i, s := range servers {
+		names[i] = s.Name
+	}
+	return observability.WrapError(observability.CodeUsage, fmt.Sprintf(
+		"the codex harness cannot give an agent MCP servers (%s): unsupported, since only config parsing is proven (docs/evidence/codex-mcp-config-audit-2026-10-12.md); run this Mate on claude or disable these plugins for the project",
+		strings.Join(names, ", ")), harness.ErrMCPUnsupported)
+}
+
 // Build implements Launcher: a startable Codex spec, or an error.
 func (c Codex) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchSpec, error) {
 	if spec.Kind != "" && spec.Kind != KindCodex {
@@ -315,6 +337,9 @@ func (c Codex) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchS
 	}
 	if spec.Launch != nil {
 		return harness.LaunchSpec{}, observability.NewError(observability.CodeUsage, fmt.Sprintf("codex adapter got launch data %T that its Prepare did not make", spec.Launch))
+	}
+	if err := refuseMCPServers(spec.MCPServers); err != nil {
+		return harness.LaunchSpec{}, err
 	}
 	resumeID := strings.TrimSpace(spec.ResumeSessionID)
 	if spec.ResumeSessionID != "" {

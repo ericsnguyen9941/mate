@@ -136,3 +136,51 @@ claude -p 'Call the tool mcp__probe-inst__read_probe again, this time with id "r
    kết nối claude.ai connector ("claude.ai Claude Docs") qua mcp-proxy, tức đó
    là nguồn MCP global mà `--strict-mcp-config` đang chặn. Với strict, không lượt
    probe nào thấy connector.
+
+## PR 4 verification
+
+Task 4 nối `--mcp-config` vào launch Mate thật (`Claude{}.Prepare` ghi
+`<mate>/mcp-plugins.json`, `Build` thêm `--mcp-config <file>` cuối argv, fresh
+lẫn `--resume`; `--tools` và `--strict-mcp-config` giữ nguyên theo kết luận ở
+trên). Đo lại trên chính argv do `Build` sinh.
+
+- Claude Code `2.1.287 (Claude Code)`, macOS, 2026-10-12, branch `feat/plugin-pilot`.
+- Lệnh: `MATE_LIVE=1 go test ./internal/harness/claude -run TestLiveClaudeMateLaunchMCP -v -count=1`
+- Kết quả: `--- PASS: TestLiveClaudeMateLaunchMCP (16.38s)`, `exit=0`.
+- Server: một `harness.MCPServer` stdio `probe-inst`, `Command: ["./mcpfixture"]`,
+  `Cwd: <tmp>/pkg` (thư mục chứa fixture); cwd của Mate là `<tmp>/mate`, không
+  có fixture, nên server chỉ lên được nếu chạy đúng trong `Cwd` của nó.
+- File do `Prepare` sinh (path redacted):
+  `{"mcpServers":{"probe-inst":{"command":"/bin/sh","args":["-c","cd \"$1\" && shift && exec \"$@\"","mate-mcp-cwd","<tmp>/pkg","./mcpfixture"]}}}`
+  (in thụt lề trong file thật). Không env, không token.
+
+| Lượt | argv (sau `claude -p '<prompt>'`, cộng `--output-format json --verbose`) | init | tool_use → result | fixture |
+| --- | --- | --- | --- | --- |
+| fresh | `--dangerously-skip-permissions --session-id <uuid> --settings <tmp>/mate/.claude/settings.json --setting-sources project --strict-mcp-config --tools Bash,Read,Write,Edit,Glob,Grep,Skill --autocompact 300000 --model opus --effort medium --mcp-config <tmp>/mate/mcp-plugins.json` | MCP tools `["mcp__probe-inst__read_probe"]`, `mcp_servers [{"name":"probe-inst","source":"dynamic","status":"connected"}]` | `mcp__probe-inst__read_probe {"id":"abc123"}` → `probe:abc123:ok` | `server/discover, initialize, notifications/initialized, tools/list, tools/call` |
+| resume | giống trên, `--resume <cùng uuid>` thay cho `--session-id` | như trên | `{"id":"resume456"}` → `probe:resume456:ok` | như trên |
+
+Không server global nào lọt (init chỉ có `probe-inst`). Phán quyết: **tool
+được gọi ở cả hai lượt dưới argv thật của Mate.**
+
+### `cwd` của server stdio: Claude 2.1.287 bỏ qua
+
+Đo tay trước khi viết `MCPConfig` (cùng env sạch như test, `claude -p "Reply ok."
+--dangerously-skip-permissions --setting-sources project --strict-mcp-config
+--tools Bash --mcp-config <file> --output-format json --verbose`, cwd của phiên
+là `<tmp>/cwd`):
+
+| Config | Kết quả |
+| --- | --- |
+| `{"command":"./mcpfixture","args":[],"cwd":"<tmp>/pkg"}` | `status: failed`, không tool MCP: lệnh tương đối không được tìm trong `cwd`. |
+| `{"command":"<tmp>/pkg/mcpfixture","args":[],"cwd":"<tmp>/pkg"}` | `connected`, có `mcp__abs__read_probe`: khoá `cwd` lạ không làm hỏng config, chỉ bị bỏ. |
+| `{"command":"/bin/sh","args":["-c","pwd -P > <tmp>/pwd.txt; exec <tmp>/pkg/mcpfixture"],"cwd":"<tmp>/pkg"}` | `connected`; `pwd.txt` = `<tmp>/cwd`, tức cwd của phiên, không phải `cwd` đã khai. |
+
+Khớp với schema trong binary 2.1.287: stdio nhận `type?`, `command`, `args`,
+`env`, `timeout`, `alwaysLoad`; transport spawn với `cwd` = project dir của
+phiên. Vì vậy `MCPConfig` không ghi khoá `cwd`; server có `Cwd` được chạy qua
+`/bin/sh -c 'cd "$1" && shift && exec "$@"' mate-mcp-cwd <cwd> <command...>`
+(thư mục và lệnh là tham số vị trí, không nằm trong script). Lượt live ở trên
+chứng minh cách này chạy (`./mcpfixture` tương đối lên được).
+
+Phát hiện phụ: env của process `claude` tới được server stdio (fixture nhận
+`MCP_FIXTURE_LOG` từ env của `claude`, không từ config).

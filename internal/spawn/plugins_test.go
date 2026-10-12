@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -181,7 +182,9 @@ func wantServers(root string) []harness.MCPServer {
 // A Mate start resolves the project's plugins: the enabled instances'
 // servers reach the harness's Prepare and Build, their skills are written
 // with the marker beside the Mate's own, the disabled instance gives
-// nothing, and no binding config lands in any file.
+// nothing, and no binding config lands in any file. Claude gets the servers
+// as its --mcp-config file; Codex, which cannot take them, refuses the
+// start before anything is launched.
 func TestStartMateMaterializesPlugins(t *testing.T) {
 	for _, kind := range []harness.Kind{claude.KindClaude, codex.KindCodex} {
 		t.Run(string(kind), func(t *testing.T) {
@@ -194,15 +197,48 @@ func TestStartMateMaterializesPlugins(t *testing.T) {
 			reg, log := recording(t, deps.Harnesses)
 			deps.Harnesses = reg
 
-			if _, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: kind}); err != nil {
-				t.Fatalf("StartMate: %v", err)
-			}
+			_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: kind})
 			want := wantServers(w.Root())
 			if got := log.lastPrepare(t).MCPServers; !reflect.DeepEqual(got, want) {
 				t.Errorf("PrepareRequest.MCPServers = %+v\nwant %+v", got, want)
 			}
-			if got := log.lastBuild(t).MCPServers; !reflect.DeepEqual(got, want) {
-				t.Errorf("AgentSpec.MCPServers = %+v\nwant %+v", got, want)
+			if kind == codex.KindCodex {
+				if !errors.Is(err, harness.ErrMCPUnsupported) {
+					t.Fatalf("codex StartMate err = %v, want ErrMCPUnsupported", err)
+				}
+				for _, s := range []string{"codex", "unsupported", "docs/evidence/codex-mcp-config-audit-2026-10-12.md"} {
+					if !strings.Contains(err.Error(), s) {
+						t.Errorf("codex refusal does not name %q: %v", s, err)
+					}
+				}
+				if observability.ExitCode(err) != observability.ExitUsage {
+					t.Errorf("exit code = %d, want %d", observability.ExitCode(err), observability.ExitUsage)
+				}
+				if len(rt.StartArgv) != 0 || len(rt.Tabs) != 0 {
+					t.Fatalf("a refused start reached Herdr: %d starts, %d tabs", len(rt.StartArgv), len(rt.Tabs))
+				}
+				if meta := readMeta(t, w, "shop"); len(meta) != 0 {
+					t.Fatalf("a refused start left a meta: %v", meta)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("StartMate: %v", err)
+				}
+				if got := log.lastBuild(t).MCPServers; !reflect.DeepEqual(got, want) {
+					t.Errorf("AgentSpec.MCPServers = %+v\nwant %+v", got, want)
+				}
+				cfg := claude.MCPConfigPath(w.MateDir("shop"))
+				data, err := os.ReadFile(cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if wantCfg, _ := claude.MCPConfig(want); string(data) != string(wantCfg) {
+					t.Errorf("%s = %s, want %s", cfg, data, wantCfg)
+				}
+				argv := rt.StartArgv[len(rt.StartArgv)-1]
+				if i := slices.Index(argv, "--mcp-config"); i < 0 || i+1 >= len(argv) || argv[i+1] != cfg {
+					t.Errorf("Herdr argv %q does not carry --mcp-config %s", argv, cfg)
+				}
 			}
 
 			for dir, text := range map[string]string{
@@ -372,6 +408,10 @@ func TestStartMateRemovesStalePluginSkills(t *testing.T) {
 	want := wantServers(w.Root())[1:]
 	if got := log.lastPrepare(t).MCPServers; !reflect.DeepEqual(got, want) {
 		t.Errorf("PrepareRequest.MCPServers after disabling = %+v, want %+v", got, want)
+	}
+	wantCfg, _ := claude.MCPConfig(want)
+	if got, _ := os.ReadFile(claude.MCPConfigPath(w.MateDir("shop"))); string(got) != string(wantCfg) {
+		t.Errorf("mcp-plugins.json after disabling = %s, want %s", got, wantCfg)
 	}
 }
 

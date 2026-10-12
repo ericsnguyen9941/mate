@@ -67,6 +67,10 @@ var (
 	// ErrContextTooLarge is returned when context exceeds the delivery limit
 	// or would be silently truncated.
 	ErrContextTooLarge = errors.New("required context exceeds delivery limit")
+	// ErrMCPUnsupported is returned, before anything is launched, when a
+	// launch carries MCP servers (PrepareRequest.MCPServers) that its harness
+	// has no proven way to hand the agent.
+	ErrMCPUnsupported = errors.New("the harness does not support MCP servers")
 )
 
 // EnvVar is a harness-level environment assignment.

@@ -428,9 +428,11 @@ func TestLaunchCharacterizationMate(t *testing.T) {
 		// Codex does not take max: recorded, left out of the argv.
 		{name: "mate-codex-fresh-effort-omitted", kind: codex.KindCodex, mate: store.MateConfig{Effort: "max"}},
 		{name: "mate-codex-resume", kind: codex.KindCodex, resume: true},
-		// Plugins add their skills to the Mate's directory; the argv does
-		// not carry their MCP servers yet, so it is mate-claude-fresh-default's.
-		{name: "mate-claude-plugins", kind: claude.KindClaude, plugins: true},
+		// Plugins add their skills to the Mate's directory and their MCP
+		// servers as mcp-plugins.json; the argv is mate-claude-fresh-default's
+		// plus --mcp-config last, fresh and resumed.
+		{name: "mate-claude-fresh-mcp", kind: claude.KindClaude, plugins: true},
+		{name: "mate-claude-resume-mcp", kind: claude.KindClaude, plugins: true, resume: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
