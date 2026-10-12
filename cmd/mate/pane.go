@@ -15,48 +15,20 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/nguyenngocanh94/mate/internal/panerun"
-	"github.com/nguyenngocanh94/mate/internal/tool"
 )
 
-// roleStage is the column role mate owns: the agent stage (docs/mvp.md
-// M13). A tool's tab takes the role its key binding names (toolRoles); the
-// tool registry refuses a binding that names this one.
-const roleStage = tool.StageRole
+// roleStage is the console's agent column. Other panes are configured commands.
+const roleStage = "stage"
 
-// paneIdle is what each column of a fixed role says while it shows
-// nothing. A tool's tab says its Viewer's Placeholder (paneIdleOf).
 var paneIdle = map[string]string{
 	roleStage: "mate · agent\r\n\r\nEnter on a Mate or Crew row in the console shows it here.",
-}
-
-// paneIdleOf is what the pane of role says while it shows nothing: a
-// fixed role's line, or the placeholder of the tool whose key binds role.
-func paneIdleOf(role string, tools tool.Registry) (string, bool) {
-	if idle, ok := paneIdle[role]; ok {
-		return idle, true
-	}
-	for _, b := range tools.Bindings() {
-		if b.Role != role {
-			continue
-		}
-		if p, err := tools.Lookup(b.Tool); err == nil {
-			return p.Capabilities().Viewer.Impl.Placeholder(), true
-		}
-	}
-	return "", false
-}
-
-// paneRoles is every role a pane can serve, for the usage line:
-// "stage|review|tasks".
-func paneRoles(tools tool.Registry) string {
-	return strings.Join(slices.Concat([]string{roleStage}, toolRoles(tools)), "|")
 }
 
 // cmdPane dispatches `mate pane serve`, the program the Console's columns
 // run. It is not for people: the Console starts it in the panes it lays
 // out.
 func cmdPane(args []string, stdout, stderr io.Writer) error {
-	roles := paneRoles(tools)
+	roles := "stage|command-<n>"
 	if len(args) == 0 || args[0] != "serve" {
 		return newUsageError("usage: mate pane serve --socket <path> --role " + roles + " [--owner <pid>]")
 	}
@@ -65,10 +37,16 @@ func cmdPane(args []string, stdout, stderr io.Writer) error {
 	socket := fs.String("socket", "", "unix socket the Console sends to")
 	role := fs.String("role", "", "one of "+strings.ReplaceAll(roles, "|", ", "))
 	owner := fs.Int("owner", 0, "the Console's pid; the pane ends when it is gone")
+	customIdle := fs.String("idle", "", "waiting text for a configured command tab")
 	if err := fs.Parse(args[1:]); err != nil {
 		return &usageError{err}
 	}
-	idle, ok := paneIdleOf(*role, tools)
+	idle, ok := paneIdle[*role]
+	if strings.HasPrefix(*role, "command-") && *customIdle != "" {
+		if n, err := strconv.Atoi(strings.TrimPrefix(*role, "command-")); err == nil && n >= 0 {
+			idle, ok = *customIdle, true
+		}
+	}
 	if *socket == "" || !ok {
 		return newUsageError("mate pane serve: --socket and --role " + roles + " are required")
 	}

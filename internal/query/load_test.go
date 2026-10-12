@@ -542,9 +542,9 @@ func TestLoadReadsWhatTheMateHoldsForTheCaptain(t *testing.T) {
 
 // The tool keys cmd/mate hands Load reach the snapshot as data, in the
 // order given, and the snapshot holds its own copy.
-func TestLoadCarriesToolBindings(t *testing.T) {
+func TestLoadCarriesCommandBindings(t *testing.T) {
 	ws := newWorkspace(t, "shop")
-	tools := []ToolBinding{
+	tools := []CommandBinding{
 		{Key: "e", Label: "report", Scope: "crew", Role: "review"},
 		{Key: "t", Label: "tasks", Scope: "project", Role: "tasks"},
 	}
@@ -552,14 +552,14 @@ func TestLoadCarriesToolBindings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if !reflect.DeepEqual(snap.Tools, tools) {
-		t.Fatalf("Tools = %+v, want %+v", snap.Tools, tools)
+	if !reflect.DeepEqual(snap.Commands, tools) {
+		t.Fatalf("Commands = %+v, want %+v", snap.Commands, tools)
 	}
 	tools[0].Key = "z"
-	if snap.Tools[0].Key != "e" {
+	if snap.Commands[0].Key != "e" {
 		t.Fatal("the snapshot shares the caller's slice")
 	}
-	if snap, err = Load(context.Background(), ws, testHarnesses, nil); err != nil || snap.Tools != nil {
-		t.Fatalf("Load with no tools: Tools = %+v, %v; want none", snap.Tools, err)
+	if snap, err = Load(context.Background(), ws, testHarnesses, nil); err != nil || snap.Commands != nil {
+		t.Fatalf("Load with no tools: Commands = %+v, %v; want none", snap.Commands, err)
 	}
 }

@@ -31,9 +31,13 @@ func cmdConsole(dir string, stdout, stderr io.Writer) error {
 
 // cmdConsoleLaunch is `mate console [<workspace-dir>]`: the interactive
 // console, and on a known host (WezTerm, Ghostty) it lays out the stage
-// column before the TUI starts, so Enter fills it. `e` opens the report
-// tab later, in the same window.
+// column before the TUI starts, so Enter fills it. Configured terminal
+// commands open their tabs later, in the same window.
 func cmdConsoleLaunch(args []string, stdout, stderr io.Writer) error {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		_, err := io.WriteString(stdout, consoleSetupHelp)
+		return err
+	}
 	if len(args) > 1 {
 		return newUsageError("usage: mate console [<workspace-dir>]")
 	}
@@ -48,8 +52,47 @@ func cmdConsoleLaunch(args []string, stdout, stderr io.Writer) error {
 	return runConsole(resolved, stdout, stderr, true)
 }
 
+const consoleSetupHelp = `Usage: mate console [<workspace-dir>]
+
+Editor setup
+1. Install your editor's CLI and check it in your terminal: code --version,
+   zed --version, or your chosen editor's equivalent. For VS Code on macOS,
+   use the Command Palette: "Shell Command: Install 'code' command in PATH".
+2. Create or edit <workspace-dir>/.mate/console.yaml, preserving any existing
+   bindings. This is the workspace root, not the Mate's own working directory.
+
+bindings:
+  - key: e
+    scope: crew
+    label: report
+    command: [code, --reuse-window, "{report_path}"]
+    mode: external
+
+For Zed, use command: [zed, "{report_path}"] with mode: external.
+For a terminal editor, use command: [nvim, "{report_path}"] with mode: terminal.
+Use an absolute executable path if the CLI is not on PATH.
+
+3. Reopen the console, select a Crew row and press e. Press ? for key help.
+   If report.md does not exist yet, the binding reports it; use {crew_dir}
+   instead of {report_path} to open the Crew's folder.
+
+Available paths: {workspace_dir}, {project_dir}, {crew_dir}, {report_path}.
+The last two require scope: crew. scope: project opens on a project row.
+cwd defaults to the crew/project directory; a relative cwd uses workspace root.
+command is an argv list, passed without a shell or environment expansion.
+terminal opens/reuses a managed tab in WezTerm/Ghostty.
+external launches a GUI without a host tab; omit --wait (10-second timeout).
+No editor binding is installed by default. Keys reserved by the console or
+already bound in the same scope are refused. Configuration loads at startup.
+Full reference: docs/console-commands.md in the Mate source repository.
+`
+
 func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	ws, err := store.Open(dir)
+	if err != nil {
+		return err
+	}
+	commands, err := loadConsoleCommands(ws)
 	if err != nil {
 		return err
 	}
@@ -118,7 +161,8 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	defer stopRecovery()
 
 	load := func(loadCtx context.Context) (query.Snapshot, error) {
-		snap, err := query.LoadLive(loadCtx, ws, consoleHarnesses(), consoleTools(), consoleLiveness(loadCtx, ws, deps))
+		bindings := consoleCommandBindings(commands)
+		snap, err := query.LoadLive(loadCtx, ws, consoleHarnesses(), bindings, consoleLiveness(loadCtx, ws, deps))
 		if err != nil {
 			return snap, err
 		}
@@ -159,24 +203,18 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	}
 	var columns *consoleColumns
 	if h != nil {
-		if columns, err = newConsoleColumns(h, os.Getenv, tools); err != nil {
+		if columns, err = newConsoleColumns(h, os.Getenv); err != nil {
 			addNotice("no next pane: " + err.Error())
 		} else {
 			defer columns.close()
+			if err := columns.addCommandTabs(commands); err != nil {
+				return err
+			}
 			// `mate console` lays the columns out now; `mate <dir>` at the
 			// first Enter, which finds them gone and makes them.
-			layoutFailed := false
 			if split {
 				if err := columns.layout(ctx); err != nil {
-					layoutFailed = true
-					// Said on the status line: stderr is under the alt
-					// screen by the time anyone could read it.
 					addNotice("no next pane: " + err.Error())
-				}
-			}
-			if !layoutFailed {
-				for _, n := range columns.missingTools(tools) {
-					addNotice(n)
 				}
 			}
 		}
@@ -198,7 +236,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 		WithNoticeClassifier(noticeClient != nil).
 		WithContext(ctx).
 		WithStage(consoleStage(ws, deps, columns)).
-		WithToolView(consoleToolView(ws, columns, tools)).
+		WithCommandView(consoleCommandView(ws, columns, commands, runConsoleLauncher)).
 		WithNoHostHint(host.NoHostHint(os.Getenv)).
 		WithKindGlyphs(probeKindGlyphs(os.Getenv)).
 		WithHarnessIcons(probeNerdIcons(os.Getenv, execOutput)).

@@ -1,8 +1,4 @@
-// Package capability is the vocabulary a registry's contract declares its
-// optional parts in: a Cap per capability, with a named status and what it
-// rests on. The harness registry (internal/harness) and the tool registry
-// (internal/tool) share it, and so share one contract rule, Check
-// (docs/plans/workspace-layout-and-tools-2026-10-08.md, section 5.2).
+// Package capability describes optional harness features and their evidence.
 package capability
 
 import (
@@ -75,7 +71,7 @@ type Checkable interface {
 }
 
 // Declarations reads every field of a capabilities struct (harness.
-// Capabilities, tool.Capabilities) by reflection, so a field added to a
+// Capabilities) by reflection, so a field added to a
 // contract is read without anyone listing it. Every field must be a Cap
 // over an interface: Impl is set exactly when it is not nil.
 func Declarations(set any) ([]Declaration, error) {

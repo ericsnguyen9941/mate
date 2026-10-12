@@ -40,7 +40,7 @@ func TestConsoleGalleryRendersRegisteredProjects(t *testing.T) {
 	}
 
 	load := func(ctx context.Context) (query.Snapshot, error) {
-		return query.Load(ctx, ws, consoleHarnesses(), consoleTools())
+		return query.Load(ctx, ws, consoleHarnesses(), nil)
 	}
 	// New picks the glyph set from the locale, and the assertions spell the
 	// Unicode arrow; force that set so a shell without UTF-8 draws the same.
@@ -97,7 +97,7 @@ func TestConsoleHarnessPickerPutsTheWorkspaceDefaultFirst(t *testing.T) {
 
 	var got []console.ActionRequest
 	load := func(ctx context.Context) (query.Snapshot, error) {
-		return query.Load(ctx, ws, consoleHarnesses(), consoleTools())
+		return query.Load(ctx, ws, consoleHarnesses(), nil)
 	}
 	act := func(_ context.Context, req console.ActionRequest) (string, error) {
 		got = append(got, req)

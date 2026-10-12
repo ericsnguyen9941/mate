@@ -194,7 +194,7 @@ func TestConsoleActionModeTogglesTheAutoFlagAndTheLabel(t *testing.T) {
 	}
 
 	// And the snapshot the Console renders follows the flag.
-	snap, err := query.Load(ctx, w, consoleHarnesses(), consoleTools())
+	snap, err := query.Load(ctx, w, consoleHarnesses(), nil)
 	if err != nil {
 		t.Fatalf("query.Load: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestConsoleActionModeTogglesTheAutoFlagAndTheLabel(t *testing.T) {
 	if err := w.SetAuto("shop", true); err != nil {
 		t.Fatal(err)
 	}
-	if snap, err = query.Load(ctx, w, consoleHarnesses(), consoleTools()); err != nil {
+	if snap, err = query.Load(ctx, w, consoleHarnesses(), nil); err != nil {
 		t.Fatalf("query.Load: %v", err)
 	}
 	if snap.Projects[0].Mode != query.ModeAuto {
@@ -263,7 +263,7 @@ func newRecordingColumns(t *testing.T) *recordingColumns {
 	r.consoleColumns = &consoleColumns{
 		h: layoutCounter{n: &r.layouts, closed: &r.closedRoles, fronts: &r.fronts}, dir: dir,
 		stage: filepath.Join(dir, "stage.sock"),
-		tabs: map[string]toolTab{
+		tabs: map[string]commandTab{
 			roleReview: {col: host.Column{Role: roleReview}, socket: filepath.Join(dir, "review.sock")},
 			roleTasks:  {col: host.Column{Role: roleTasks}, socket: filepath.Join(dir, "tasks.sock")},
 			rolePlan:   {col: host.Column{Role: rolePlan}, socket: filepath.Join(dir, "plan.sock")},
@@ -357,9 +357,7 @@ func TestConsoleStageNilHostIsNil(t *testing.T) {
 	if consoleStage(w, deps, nil) != nil {
 		t.Fatal("consoleStage(nil) must be nil")
 	}
-	if consoleToolView(w, nil, tools) != nil {
-		t.Fatal("consoleToolView(nil) must be nil")
-	}
+
 }
 
 // TestConsoleStageRefusesAStoppedMateWithTheStoppedState: a project whose
@@ -504,14 +502,14 @@ func TestConsoleReviewMakesTheTabForACrew(t *testing.T) {
 	rec := newRecordingColumns(t)
 	absent := filepath.Join(rec.dir, "absent.sock")
 	live := rec.tabs[roleReview].socket
-	rec.tabs[roleReview] = toolTab{col: host.Column{Role: roleReview, Argv: []string{"/bin/mate", "pane", "serve", "--role", roleReview}}, socket: absent}
+	rec.tabs[roleReview] = commandTab{col: host.Column{Role: roleReview, Argv: []string{"/bin/mate", "pane", "serve", "--role", roleReview}}, socket: absent}
 	var opened []host.Column
 	var laid [][]host.Column
 	rec.h = reviewHost{
 		layout: func(cols []host.Column) { laid = append(laid, cols) },
 		open:   func(col host.Column) { opened = append(opened, col); _ = os.Symlink(live, absent) },
 	}
-	if err := consoleToolView(w, rec.consoleColumns, tools)(context.Background(), "e", console.StageTarget{Kind: console.StageCrew, ID: "k3", ProjectID: "shop"}); err != nil {
+	if err := configuredReviewView(w, rec)(context.Background(), "e", console.StageTarget{Kind: console.StageCrew, ID: "k3", ProjectID: "shop"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(laid) != 0 {
@@ -533,7 +531,7 @@ func TestConsoleReviewRemakesATabWhoseRunnerDied(t *testing.T) {
 	rec := newRecordingColumns(t)
 	dead := filepath.Join(rec.dir, "dead-review.sock")
 	live := rec.tabs[roleReview].socket
-	rec.tabs[roleReview] = toolTab{col: host.Column{Role: roleReview, Argv: []string{"/bin/mate", "pane", "serve", "--role", roleReview}}, socket: dead}
+	rec.tabs[roleReview] = commandTab{col: host.Column{Role: roleReview, Argv: []string{"/bin/mate", "pane", "serve", "--role", roleReview}}, socket: dead}
 	prev := columnStartWait
 	columnStartWait = 100 * time.Millisecond
 	t.Cleanup(func() { columnStartWait = prev })
@@ -548,7 +546,7 @@ func TestConsoleReviewRemakesATabWhoseRunnerDied(t *testing.T) {
 			}
 		},
 	}
-	if err := consoleToolView(w, rec.consoleColumns, tools)(context.Background(), "e", console.StageTarget{Kind: console.StageCrew, ID: "k3", ProjectID: "shop"}); err != nil {
+	if err := configuredReviewView(w, rec)(context.Background(), "e", console.StageTarget{Kind: console.StageCrew, ID: "k3", ProjectID: "shop"}); err != nil {
 		t.Fatal(err)
 	}
 	if opened != 2 || !slices.Equal(closed, []string{roleReview}) || len(rec.of(roleReview)) != 1 || len(rec.of(roleStage)) != 0 {
@@ -583,78 +581,4 @@ func (h reviewHost) Close(_ context.Context, roles ...string) error {
 		h.close(roles)
 	}
 	return nil
-}
-
-// `e` opens the crew's own folder, and report.md inside it once that file
-// exists. The worktree and the workspace `.mate/` are not the report. The
-// folder stays after the crew stops, so `e` still opens it.
-func TestConsoleReviewOpensTheCrewReport(t *testing.T) {
-	w, deps := consoleFixture(t, "shop")
-	res := spawnFakeCrew(t, w, deps, "shop", "k3")
-	rec := newRecordingColumns(t)
-	view := consoleToolView(w, rec.consoleColumns, tools)
-	fn := func(ctx context.Context, target console.StageTarget) error { return view(ctx, "e", target) }
-	target := console.StageTarget{Kind: console.StageCrew, ID: "k3", ProjectID: "shop"}
-	ctx := context.Background()
-
-	if err := fn(ctx, target); err != nil {
-		t.Fatalf("open the folder: %v", err)
-	}
-	dir := w.CrewDir("shop", "k3")
-	review := rec.of(roleReview)
-	if len(review) != 1 || !slices.Equal(review[0].Argv, []string{"/opt/fresh", dir}) || review[0].Dir != dir {
-		t.Fatalf("review shown %+v, want Fresh on the crew folder %s", review, dir)
-	}
-	wt := res.Worktree
-	if !filepath.IsAbs(wt) {
-		wt = filepath.Join(w.Root(), wt)
-	}
-	if review[0].Dir == wt || review[0].Dir == w.StateDir() {
-		t.Fatalf("opened %s, which is the worktree or the workspace .mate", review[0].Dir)
-	}
-	if rec.fronts != 1 {
-		t.Fatalf("fronts = %d, want the existing tab selected", rec.fronts)
-	}
-
-	report := w.CrewReport("shop", "k3")
-	if err := os.WriteFile(report, []byte("# report\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := fn(ctx, target); err != nil {
-		t.Fatalf("open the report: %v", err)
-	}
-	review = rec.of(roleReview)
-	if len(review) != 2 || !slices.Equal(review[1].Argv, []string{"/opt/fresh", report}) || review[1].Dir != dir {
-		t.Fatalf("review shown %+v, want Fresh on %s with dir %s", review, report, dir)
-	}
-	if rec.fronts != 2 {
-		t.Fatalf("fronts = %d, want the tab selected again for the new file", rec.fronts)
-	}
-
-	if _, err := spawn.StopCrew(ctx, w, deps, "shop", "k3", true); err != nil {
-		t.Fatalf("StopCrew: %v", err)
-	}
-	if err := fn(ctx, target); err != nil {
-		t.Fatalf("a stopped crew's report: %v", err)
-	}
-	if got := rec.of(roleReview); len(got) != 3 || !slices.Equal(got[2].Argv, []string{"/opt/fresh", report}) {
-		t.Fatalf("after stop, review shown %+v", got)
-	}
-
-	err := fn(ctx, console.StageTarget{Kind: console.StageMate, ProjectID: "shop"})
-	if err == nil || !strings.Contains(err.Error(), "e opens a crew's report") {
-		t.Fatalf("mate: %v, want a refusal that e opens a crew's report", err)
-	}
-	err = fn(ctx, console.StageTarget{Kind: console.StageCrew, ID: "nope", ProjectID: "shop"})
-	if err == nil || !strings.Contains(err.Error(), "no folder") {
-		t.Fatalf("missing crew: %v, want no folder", err)
-	}
-	rec.findTool = func(string) string { return "" }
-	err = fn(ctx, target)
-	if err == nil || !strings.Contains(err.Error(), "brew install fresh-editor") {
-		t.Fatalf("no fresh: %v", err)
-	}
-	if len(rec.of(roleReview)) != 3 {
-		t.Fatal("the tab was told to run a tool that is not installed")
-	}
 }

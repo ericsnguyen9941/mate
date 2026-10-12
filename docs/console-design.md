@@ -8,7 +8,7 @@ Mỗi board có một golden cùng tên trong `internal/ui/console/testdata/gold
 
 mate là pane bên trái, khoảng 20% cửa sổ, rộng 32–48 cột.
 Bên phải là cột agent của host (WezTerm, Ghostty), dựng lúc mở console (M13): Enter trên hàng Mate/Crew cho nó chạy `herdr agent attach <agent>`.
-Phím `e` trên hàng Crew (kể cả crew đã dừng) mở một tab trong cùng cửa sổ, cạnh tab console, và chạy Fresh trên `report.md` trong folder của crew (`projects/<p>/crews/<id>/`) khi file đó đã có, còn không thì mở chính folder. Đổi crew thì cùng tab đổi file và được chọn lại. Enter không mở và không đóng tab đó. Tab, không phải cột và không phải cửa sổ mới: cột chỉ còn khoảng nửa phần cửa sổ còn lại, còn cửa sổ mới che console.
+Editor do người dùng khai báo trong `.mate/console.yaml`: phím, scope, argv và mode `terminal` (tab trong cùng cửa sổ, mở/reuse khi nhấn phím) hoặc `external` (launcher GUI như Zed/VS Code). Không có editor hay phím `e` mặc định. `{report_path}` mở report đã có, `{crew_dir}` mở folder Crew, kể cả Crew đã dừng. Enter chỉ mở agent. Cách setup: `mate console --help` hoặc [console-commands.md](console-commands.md).
 mate không vẽ terminal của agent, không PTY, không session header.
 Không có title bar, chữ "mate console", đường dẫn workspace, đồng hồ, khung cửa sổ.
 

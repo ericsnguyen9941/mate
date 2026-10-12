@@ -11,18 +11,12 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/brief"
 	"github.com/nguyenngocanh94/mate/internal/harness/catalog"
-	"github.com/nguyenngocanh94/mate/internal/tool"
-	"github.com/nguyenngocanh94/mate/internal/tool/beads"
 )
 
 var update = flag.Bool("update", false, "update golden files in testdata/")
 
 func fixedParams() Params {
 	harnesses, err := HarnessesFrom(catalog.Default(), "claude")
-	if err != nil {
-		panic(err)
-	}
-	tools, err := tool.NewRegistry(beads.New())
 	if err != nil {
 		panic(err)
 	}
@@ -42,7 +36,6 @@ func fixedParams() Params {
 		MatevBin:         "/usr/local/bin/mate",
 		MateDir:          "/ws/.mate/projects/shop/mate",
 		CrewsDir:         "/ws/.mate/projects/shop/crews",
-		ToolSkills:       ToolSkillsFrom(tools),
 	}
 }
 

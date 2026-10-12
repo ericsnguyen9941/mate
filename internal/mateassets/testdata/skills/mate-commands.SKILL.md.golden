@@ -1,6 +1,6 @@
 ---
 name: mate-commands
-description: Read before using an unfamiliar mate command.
+description: Read before using an unfamiliar mate command or helping the captain set up console editor bindings.
 ---
 
 ## 4. The `mate` command contract
@@ -234,13 +234,22 @@ Each refusal of `mate merge` starts with `merge refused:` and changes nothing - 
 - `<url> is closed, not open` or `is merged, not open` (pr) - there is nothing to merge; a merged one needs `crew stop` (`pr-merged:` already told you).
 - `gh could not merge <url>` (pr) - GitHub refused (a failing check, a conflict, a required review). Read the reason after it, send the Crew one line to fix it on the same branch, and merge again after its next hand-back.
 
-### Tool commands
+### Console editor setup
 
-```text
-mate tool <name> <project> [--workspace <dir>] -- <arguments>
-```
+When the captain asks to set up an editor, change its key, or fix an editor launch:
 
-`mate tool` runs an installed tool's own command on the project; every argument after `--` reaches the tool whole. What to pass a tool is in its skill: record, choose, dispatch and accept work with the task tool's skill, if one is installed. A tool's data lives in the project directory, not in mate's state.
+1. Run `/usr/local/bin/mate console --help` for the current config schema and setup examples; it prints help without opening a console.
+2. Inspect `/ws/.mate/console.yaml` if it exists and check the chosen editor's CLI. The config belongs at the workspace root, even though your cwd is `/ws/.mate/projects/shop/mate`.
+3. For an authorized config change, preserve other bindings and change only the requested binding. Choose `external` for a GUI launcher or `terminal` for a host tab. Pass the command as argv; `{report_path}` requires an existing report, while `{crew_dir}` opens the persistent Crew folder.
+4. Tell the captain the exact file, key and target row, and have them reopen the console and press the key. Treat CLI availability and saved YAML as setup checks; confirm the editor actually opens only after that key press succeeds. The captain owns reopening their console.
+
+### External task management
+
+The captain chooses their tracker through `/ws/.mate/WORKSPACE.md`, `/ws/.mate/projects/shop/PROJECT.md` or a user-managed harness skill. Mate has no task-tool wrapper, automatic tracker recall or built-in task-manager binding.
+
+When configuring a tracker, record its absolute location, CLI/API or skill, workflow states and who updates it in the captain's instructions. Run its own commands in that location; your cwd is not the tracker. Read its workflow before using it, preserve task IDs in briefs and update delivery after acceptance. Use backlog.md for requested work when no tracker is configured.
+
+For a board shortcut, add a project-scoped command to `/ws/.mate/console.yaml` following `/usr/local/bin/mate console --help`. The key is the captain's choice; opening a board is separate from reading or updating tasks.
 
 ### Live crew backlog
 
@@ -310,7 +319,7 @@ mate recall <project> [--live] [--max-bytes <n>] [--workspace <dir>]
 `recall` is your session-start digest (section 3), and it only reads.
 It opens with `# mate recall <project>` and one contract line, then prints numbered parts, live state first and memory last, so a digest cut short loses the part you can recover with one read and never the crews:
 
-1. Live state: `mode:`, the `mate backlog` table, a `== Tool: <name> ==` block for each tool with something to say, such as the task tool's active and ready work, every unresolved inbox item with what it needs and its status file, and every line queued in your outbox.
+1. Live state: `mode:`, the `mate backlog` table, every unresolved inbox item with what it needs and its status file, and every line queued in your outbox.
 2. `mate project facts`: one block per repo, `head:` included, or `repos: none`.
 3. `/ws/.mate/projects/shop/PROJECT.md`, then a `warning:` for each anchor its own repo's default branch has moved past.
 4. `/ws/.mate/projects/shop/mate/backlog.md` without `## Done`, then the `## In flight` ids that are not an open crew in part 1 and the open crews with no `- <id>` line there, matched by id only.
