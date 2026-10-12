@@ -1,0 +1,4 @@
+apiVersion: mate.plugin/v1
+name: Missing skill
+skills:
+  - skills/nope/SKILL.md

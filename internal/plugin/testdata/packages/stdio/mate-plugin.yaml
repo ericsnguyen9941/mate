@@ -1,0 +1,6 @@
+apiVersion: mate.plugin/v1
+name: Local server
+mcp:
+  type: stdio
+  command: [node, server.js, --read-only]
+  cwd: bin

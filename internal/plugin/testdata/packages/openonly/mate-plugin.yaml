@@ -1,0 +1,5 @@
+apiVersion: mate.plugin/v1
+name: Board
+open:
+  title: Open board
+  url: "https://board.example/{config.team}/projects/{config.project_id}"

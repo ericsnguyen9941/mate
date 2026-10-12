@@ -1,0 +1,9 @@
+apiVersion: mate.plugins/v1
+instances:
+  tracker-work:
+    path: ../packages/full
+    projects:
+      shop:
+        config:
+          project_url: https://tracker.example/project/shop/overview
+        key: t

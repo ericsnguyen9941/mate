@@ -1,0 +1,4 @@
+apiVersion: mate.plugin/v1
+name: Escape
+skills:
+  - ../full/skills/workflow/SKILL.md

@@ -1,0 +1,5 @@
+apiVersion: mate.plugin/v1
+name: Script link
+open:
+  title: Open
+  url: "javascript:alert(1)"

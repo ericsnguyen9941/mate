@@ -1,0 +1,7 @@
+apiVersion: mate.plugin/v1
+name: Env server
+mcp:
+  type: stdio
+  command: [server]
+  env:
+    TOKEN: secret
