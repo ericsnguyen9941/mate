@@ -3,7 +3,6 @@ package spawn_test
 import (
 	"context"
 	"os"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -569,22 +568,21 @@ func TestStartMateStopsOnAStateJevNamesAsTheCaptains(t *testing.T) {
 	}
 }
 
-// Jev naming a key-pressing dialog on a layout no profile measured still
-// presses nothing: the highlight check cannot see the option to confirm.
+// Jev naming a key-pressing dialog on a layout no profile measured presses
+// nothing at all: mate answers only dialogs its harness profile measured.
 func TestStartMatePressesNoKeyIntoAnUnmeasuredDialogJevNames(t *testing.T) {
-	w := newWorkspace(t, "shop")
-	rt := runtime.NewFake()
-	deps := fakeDeps(t, rt)
-	deps.Observer = jevNamesTheState{scr.PaneTrustDir}
-	rt.NextStartupScreen = "welcome to something nobody measured\nplease choose:\n  a) yes\n  b) no\n"
-	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop"})
-	if err == nil {
-		t.Fatal("an unmeasured dialog was answered")
-	}
-	for _, k := range rt.SentKeys {
-		if slices.Contains(k.Keys, "enter") {
-			t.Fatalf("enter pressed into an unmeasured dialog: %v", rt.SentKeys)
-		}
+	for _, st := range []scr.PaneState{scr.PaneTrustDir, scr.PaneUpdate} {
+		t.Run(string(st), func(t *testing.T) {
+			w := newWorkspace(t, "shop")
+			rt := runtime.NewFake()
+			deps := fakeDeps(t, rt)
+			deps.Observer = jevNamesTheState{st}
+			rt.NextStartupScreen = "welcome to something nobody measured\nplease choose:\n  a) yes\n  b) no\n"
+			_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop"})
+			if err == nil || !strings.Contains(err.Error(), "has not measured") || len(rt.SentKeys) != 0 {
+				t.Fatalf("err = %v, keys %v; want a refusal for an unmeasured %s and nothing pressed", err, rt.SentKeys, st)
+			}
+		})
 	}
 }
 

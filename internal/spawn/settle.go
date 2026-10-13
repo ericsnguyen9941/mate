@@ -219,6 +219,13 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 			if reading.State == scr.PaneUpdate {
 				class = harness.StartupScreenUpdateDialog
 			}
+			// Keys go only into a dialog the profile itself classified;
+			// one named by another source (Jev) is a layout no profile
+			// measured, and pressing even a select key there is blind.
+			if reading.Startup != class {
+				return settled, startupRefusal(handle, kind, screen,
+					fmt.Sprintf("%s shows %s, which mate's %s profile has not measured (named by %s, %s); mate pressed nothing", kind, reading.State, kind, reading.Source, reading.Reason))
+			}
 			what := startupDialogs[class]
 			if settled.markAnswered(class) {
 				return settled, startupRefusal(handle, kind, screen,
@@ -229,8 +236,6 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 				return settled, startupRefusal(handle, kind, screen,
 					fmt.Sprintf("%s drew more than %d startup dialogs in one launch; mate stops answering rather than press keys in a loop", kind, startupMaxDialogs))
 			}
-			// The highlight check in answerStartupDialog is the guard for a
-			// layout no profile measured: it confirms nothing it cannot see.
 			presses, err := answerStartupDialog(ctx, rt, handle, kind, screens, dialogs, class, what, sleep)
 			settled.Presses = append(settled.Presses, presses...)
 			if err != nil {
