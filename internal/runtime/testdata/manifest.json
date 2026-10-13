@@ -10,6 +10,7 @@
     "Headless named server starts with zero workspaces.",
     "workspace create with a duplicate label creates a second workspace; EnsureProjectWorkspace must list-and-reuse, not create blindly.",
     "agent start that returns agent_not_ready still leaves a live agent (blocked, launch_pending). Wait --until blocked on that agent exits 0.",
+    "0.9.3 (2026-10-13): agent start --timeout on a harness held by a startup dialog fails with timeout and leaves the agent detected but unnamed (name null); agent rename <pane_id> <name> names it and agent get <name> then finds it.",
     "session-list.json is sanitized to default + this lab session; the live fleet is not committed."
   ]
 }

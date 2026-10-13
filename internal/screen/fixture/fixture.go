@@ -86,3 +86,65 @@ func reason(obs screen.Observation, cls Classification) string {
 	}
 	return ""
 }
+
+// startupStates maps the profile's measured startup classification to the
+// pane state. Unrecognized is unknown: the stub cannot read it.
+var startupStates = map[harness.StartupScreen]screen.PaneState{
+	harness.StartupScreenReady:        screen.PaneReady,
+	harness.StartupScreenTrustDialog:  screen.PaneTrustDir,
+	harness.StartupScreenUpdateDialog: screen.PaneUpdate,
+	harness.StartupScreenHooksReview:  screen.PaneHooksReview,
+	harness.StartupScreenBypassDialog: screen.PaneBypass,
+}
+
+// StateOf is the pane state of a measured startup classification, and
+// PaneUnknown for one the profile did not recognise.
+func StateOf(startup harness.StartupScreen) screen.PaneState {
+	if state, ok := startupStates[startup]; ok {
+		return state
+	}
+	return screen.PaneUnknown
+}
+
+// ObserveState implements screen.StateObserver: the startup classifier,
+// then the composer read (docs/plans/pane-state-jev-2026-10-13.md section
+// 4). A turn in flight is busy even under a composer the startup classifier
+// calls ready; a typed line is draft only on a screen no startup dialog
+// matches and the harness does not draw as part of its hook review. Ready
+// comes from the startup classifier alone. Anything else is unknown.
+func (Observer) ObserveState(_ context.Context, profile harness.ScreenProfile, pane string) (screen.StateReading, error) {
+	plain := StripSGR(pane)
+	startup := profile.ClassifyStartup(plain)
+	state := StateOf(startup)
+	if state == screen.PaneReady || state == screen.PaneUnknown {
+		if composer := composerState(profile, startup, pane, plain); composer != screen.PaneUnknown {
+			state = composer
+		}
+	}
+	if state == screen.PaneUnknown {
+		return screen.StateReading{State: screen.PaneUnknown, Startup: startup, Source: Source,
+			Reason: "fixture: startup screen " + string(startup)}, nil
+	}
+	return screen.StateReading{State: state, Startup: startup, Confidence: 1, Source: Source}, nil
+}
+
+// composerState is the pane state the composer read names over a startup
+// classification that is ready or unrecognised: busy for a turn in flight,
+// draft for a typed line on an unrecognised screen, unknown otherwise.
+func composerState(profile harness.ScreenProfile, startup harness.StartupScreen, pane, plain string) screen.PaneState {
+	switch ClassifyComposer(profile, pane).State {
+	case screen.ComposerBusy:
+		return screen.PaneBusy
+	case screen.ComposerDraft:
+		if startup != harness.StartupScreenUnrecognized {
+			return screen.PaneUnknown
+		}
+		if h, ok := profile.(harness.HookReviewScreens); ok && h.InHookReview(plain) {
+			return screen.PaneUnknown
+		}
+		return screen.PaneDraft
+	}
+	return screen.PaneUnknown
+}
+
+var _ screen.StateObserver = Observer{}

@@ -49,6 +49,10 @@ type Herdr struct {
 	// production, that its own stdio is a terminal - so a caller that cannot
 	// use the answers does not ask the questions.
 	AttachPreflight func(ctx context.Context) error
+	// AdoptSleep is the pause between the ListAgents polls of a timed-out
+	// start (adoptTimedOutStart). Nil sleeps for real; tests replace it so
+	// the adoption window costs them no wall time.
+	AdoptSleep func(ctx context.Context, d time.Duration) error
 }
 
 // paneShellBudget is how long a freshly created pane is given to draw a shell
@@ -60,6 +64,21 @@ const (
 	paneBusyAttempts = 25
 	paneBusyRetry    = 100 * time.Millisecond
 )
+
+// startAdoptWindow bounds how long a timed-out `agent start` waits for Herdr
+// to list the agent in its pane, polling every startAdoptPoll. A harness
+// slower than the start timeout is still loading, not a failed start
+// (docs/plans/pane-state-jev-2026-10-13.md section 5); the start timeout
+// (spawn.DefaultStartTimeout, 10 s) plus this window keeps the 60 s an
+// `agent start` was given before that timeout came down.
+const (
+	startAdoptWindow = 50 * time.Second
+	startAdoptPoll   = time.Second
+)
+
+// errAgentNotListed is an adoption that found no agent in the pane yet:
+// the one outcome worth polling again.
+var errAgentNotListed = errors.New("Herdr lists no agent in the pane yet")
 
 // NewHerdr returns a Herdr adapter over runner.
 func NewHerdr(runner process.Runner) *Herdr {
@@ -1011,6 +1030,13 @@ func (h *Herdr) StartAgent(ctx context.Context, spec AgentStartSpec) (AgentHandl
 				return handle, nil
 			}
 		}
+		if herdrCodeOf(err) == HerdrTimeout {
+			aerr := h.adoptTimedOutStart(ctx, handle)
+			if aerr == nil {
+				return handle, nil
+			}
+			return AgentHandle{}, withAdoptReason(err, aerr)
+		}
 		if herdrCodeOf(err) != HerdrAgentPaneBusy {
 			return AgentHandle{}, err
 		}
@@ -1025,6 +1051,91 @@ func (h *Herdr) StartAgent(ctx context.Context, spec AgentStartSpec) (AgentHandl
 		last = NewHerdrError(HerdrAgentPaneBusy, "pane is not an available shell")
 	}
 	return AgentHandle{}, h.wrapPaneBusyExhausted(ctx, session.Name, last, handle.Name, spec.Tab().PaneID, paneBusyAttempts, paneBusyRetry)
+}
+
+// adoptTimedOutStart names the agent a timed-out `agent start` left in the
+// pane. A harness held by a startup dialog never becomes interactive, so
+// Herdr 0.9.3 times out with the agent detected but unnamed (measured
+// 2026-10-13, codex-cli 0.162.1's hook review). Only one agent of the
+// launched kind in this pane, unnamed or already ours, is adopted. A pane
+// Herdr lists no agent in yet is polled again, every startAdoptPoll for
+// startAdoptWindow, since a slow harness may not be detected by then;
+// anything else leaves the start failed at once.
+func (h *Herdr) adoptTimedOutStart(ctx context.Context, handle AgentHandle) error {
+	polls := int(startAdoptWindow / startAdoptPoll)
+	for attempt := 0; ; attempt++ {
+		err := h.adoptOnce(ctx, handle)
+		if !errors.Is(err, errAgentNotListed) {
+			return err
+		}
+		if attempt >= polls {
+			return fmt.Errorf("%w after %s", err, startAdoptWindow)
+		}
+		if err := h.adoptSleep(ctx, startAdoptPoll); err != nil {
+			return err
+		}
+	}
+}
+
+// adoptOnce is one ListAgents read of adoptTimedOutStart.
+func (h *Herdr) adoptOnce(ctx context.Context, handle AgentHandle) error {
+	agents, err := h.ListAgents(ctx, handle.Session)
+	if err != nil {
+		return err
+	}
+	var found []ObservedAgent
+	for _, a := range agents {
+		if a.Handle.Tab.PaneID == handle.Tab.PaneID {
+			found = append(found, a)
+		}
+	}
+	if len(found) == 0 {
+		return fmt.Errorf("pane %s: %w", handle.Tab.PaneID, errAgentNotListed)
+	}
+	if len(found) != 1 || found[0].Handle.Kind != handle.Kind {
+		return fmt.Errorf("pane %s holds %d agents, none ours to adopt", handle.Tab.PaneID, len(found))
+	}
+	switch found[0].Handle.Name {
+	case handle.Name:
+		return nil
+	case "":
+		_, err := h.run(ctx, handle.Session.Name, []string{"agent", "rename", handle.Tab.PaneID, handle.Name})
+		return err
+	default:
+		return fmt.Errorf("pane %s holds agent %s", handle.Tab.PaneID, found[0].Handle.Name)
+	}
+}
+
+func (h *Herdr) adoptSleep(ctx context.Context, d time.Duration) error {
+	if h.AdoptSleep != nil {
+		return h.AdoptSleep(ctx, d)
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// withAdoptReason is the start's own timeout with why the agent in the
+// pane could not be adopted: the message says it and details carry it, and
+// the error is still the Herdr timeout IsTimeout recognises.
+func withAdoptReason(timeout, reason error) error {
+	var coded *observability.Error
+	if !errors.As(timeout, &coded) {
+		return fmt.Errorf("%w; mate could not adopt an agent in the pane: %v", timeout, reason)
+	}
+	details := map[string]any{}
+	for k, v := range coded.Details {
+		details[k] = v
+	}
+	details["adopt_reason"] = reason.Error()
+	out := coded.WithDetails(details)
+	out.Message += "; mate could not adopt an agent in the pane: " + reason.Error()
+	return out
 }
 
 // wrapPaneBusyExhausted turns Herdr's raw agent_pane_busy refusal (its own

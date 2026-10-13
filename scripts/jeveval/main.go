@@ -3,6 +3,7 @@
 // PR 0 gate (docs/plans/jev-observer-2026-10-08.md, section 5).
 //
 //	go run ./scripts/jeveval [-cassette dir] [-replay] [-list]
+//	go run ./scripts/jeveval -question state [-cassette dir] [-replay] [-list]
 //	go run ./scripts/jeveval -log <workspace>/.mate/jev.log
 //
 // The key is read from the file MATE_JEV_API_KEY_FILE names, else
@@ -59,10 +60,15 @@ func main() {
 	cassette := flag.String("cassette", "", "record responses into (or, with -replay, read them from) this directory")
 	replay := flag.Bool("replay", false, "answer from -cassette instead of calling Jev")
 	list := flag.Bool("list", false, "print the corpus and its deterministic labels; call nothing")
+	question := flag.String("question", "", "\"state\" asks the pane-state question alone instead of the three-question eval")
 	logFile := flag.String("log", "", "summarise this .mate/jev.log; call nothing")
 	flag.Parse()
 	var err error
-	if *logFile != "" {
+	if *question != "" && *question != "state" {
+		err = fmt.Errorf("unknown -question %q (only \"state\")", *question)
+	} else if *question == "state" {
+		err = runState(os.Stdout, *cassette, *replay, *list)
+	} else if *logFile != "" {
 		err = summarizeLog(os.Stdout, *logFile)
 	} else {
 		err = run(os.Stdout, *cassette, *replay, *list)

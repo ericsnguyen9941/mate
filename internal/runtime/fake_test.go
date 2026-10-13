@@ -71,6 +71,26 @@ func TestFakeWaitUntilBlockedIsSuccess(t *testing.T) {
 	}
 }
 
+// WaitErrOnce fails the next WaitAgent only: the wait after it sees the
+// agent's real status.
+func TestFakeWaitErrOnceFailsOneWait(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	rt, launch, session, tab := boot(t)
+	res := mustReserve(t, rt, session, "mate_001")
+	h, err := rt.StartAgent(ctx, mustStartSpec(t, tab, res, launch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt.WaitErrOnce = runtime.NewHerdrError(runtime.HerdrTimeout, "timed out waiting for agent status")
+	if _, err := rt.WaitAgent(ctx, h, runtime.DefaultWait(time.Second)); !runtime.IsTimeout(err) {
+		t.Fatalf("first wait err = %v, want the one-shot timeout", err)
+	}
+	if _, err := rt.WaitAgent(ctx, h, runtime.DefaultWait(time.Second)); err != nil {
+		t.Fatalf("second wait err = %v, want the idle agent seen", err)
+	}
+}
+
 func TestFakeAwaitReadinessTreatsBlockedAsSuccess(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

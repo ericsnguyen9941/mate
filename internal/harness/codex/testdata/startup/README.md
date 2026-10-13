@@ -119,3 +119,23 @@ review lists two:
 
 Trusting writes `[hooks.state."<hooks.json>:session_start:0:0"] trusted_hash` into
 `$CODEX_HOME/config.toml`; the next launch with the same hook bytes draws no review.
+
+Captured 2026-10-13 from a real `mate mate start matemarketing --harness codex`
+refusal against codex-cli 0.162.1, with the workspace under the operator's home:
+
+- `codex-0.162.1-hooks-sessionstart-own-home.txt` - Codex draws the Source with
+  the home directory as `~` (`~/workspace/...`), not the absolute path in
+  hooks.json. The lines from the hook list down are the refusal's verbatim last
+  12 screen lines; the banner and event title above them are copied from
+  `codex-0.162.1-hooks-sessionstart-own.txt`, which the refusal did not print.
+  Every earlier capture ran under `/private/tmp`, so none showed the `~`.
+
+Captured 2026-10-13 with `herdr agent read mate-matemarketing --source visible`
+(Herdr 0.9.3, codex-cli 0.162.1) during a real
+`mate mate start matemarketing --harness codex`, hook not yet trusted:
+
+- `codex-0.162.1-loading-composer.txt` - what Codex draws first: banner, cwd,
+  the logo and an empty composer (`› Ask Codex to do anything`). It looks
+  ready, but 1-6 s later Codex replaces it with the hook review dialog.
+- `codex-0.162.1-hooks-review.txt` - that dialog, the same wording and footer
+  as 0.156.1's.

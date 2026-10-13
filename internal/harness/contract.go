@@ -145,6 +145,16 @@ type ScreenProfile interface {
 	Busy(lines []string) (evidence string, ok bool)
 }
 
+// HookReviewScreens is implemented by a ScreenProfile whose harness walks
+// its hook review through screens past the first dialog - lists and tables
+// whose highlighted row carries the composer glyph (codex-cli 0.156.1 and
+// 0.162.1). Such a screen is not a composer holding a draft, whatever
+// ClassifyComposer reads off it; the startup state leaves it to Jev.
+type HookReviewScreens interface {
+	// InHookReview reports whether screen is one of those lists or tables.
+	InHookReview(screen string) bool
+}
+
 // ReadSource is a `herdr agent read --source`.
 type ReadSource string
 

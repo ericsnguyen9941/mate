@@ -39,8 +39,10 @@ var observeSites = []struct {
 	// composer the send types into: that observer can take seconds, and the
 	// pane may have moved on.
 	{file: "send/send.go", fn: "Send", verifiers: []string{"stillTypeable("}},
-	// A startup dialog is answered only by answerStartupDialog, below.
-	{file: "spawn/settle.go", fn: "settleStartupPrompt", verifiers: []string{"answerStartupDialog("}},
+	// The settle names the pane state through ObserveState (a plain
+	// observer's Observation mapped by observedState); a startup dialog is
+	// answered only by answerStartupDialog, below.
+	{file: "spawn/settle.go", fn: "ObserveState", via: map[string]string{"settleStartupPrompt": "answerStartupDialog("}},
 	// The confirm key goes only when the highlight is on the option the
 	// harness's StartupAnswer confirms (the fixture's Highlight, from
 	// StartupTargetSelected), and a fresh read classified by the profile

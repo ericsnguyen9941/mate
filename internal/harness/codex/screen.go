@@ -37,6 +37,16 @@ func (codexScreen) ReadyScreen() string {
 	return "› " + CodexComposerPlaceholder + "\n"
 }
 
+// InHookReview implements harness.HookReviewScreens: the event table or
+// one event's hook list, as ReviewOwn reads them.
+func (codexScreen) InHookReview(screen string) bool {
+	if _, ok := ParseCodexHooksTable(screen); ok {
+		return true
+	}
+	_, ok := ParseCodexHookEvent(screen)
+	return ok
+}
+
 // ComposerGlyph implements ScreenProfile.
 func (codexScreen) ComposerGlyph() string { return codexComposerGlyph }
 

@@ -6,11 +6,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/harness/claude"
 	"github.com/nguyenngocanh94/mate/internal/harness/codex"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
+	scr "github.com/nguyenngocanh94/mate/internal/screen"
+	"github.com/nguyenngocanh94/mate/internal/screen/fixture"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 )
 
@@ -160,5 +163,100 @@ func TestStartMateClaudeWritesNoCodexHooks(t *testing.T) {
 	}
 	if _, err := os.Stat(codex.CodexHooksPath(w.MateDir("shop"))); !os.IsNotExist(err) {
 		t.Fatalf("a Claude Mate got a Codex hooks file: %v", err)
+	}
+}
+
+// jevSeesHooks is the chain with Jev sure, at 0.92 as measured on the
+// trusted hook table, that every screen the stub cannot read is the hook
+// review.
+type jevSeesHooks struct{}
+
+func (jevSeesHooks) Observe(ctx context.Context, p harness.ScreenProfile, pane string) (scr.Observation, error) {
+	return fixture.New().Observe(ctx, p, pane)
+}
+
+func (jevSeesHooks) ObserveState(ctx context.Context, p harness.ScreenProfile, pane string) (scr.StateReading, error) {
+	r, err := fixture.New().(scr.StateObserver).ObserveState(ctx, p, pane)
+	if err != nil || r.State != scr.PaneUnknown {
+		return r, err
+	}
+	return scr.StateReading{State: scr.PaneHooksReview, Startup: r.Startup, Confidence: 0.92, Source: "jev", Reason: "pane_state dialog_hooks_review 0.92"}, nil
+}
+
+// tableLingers is the fake runtime over a Codex pane that still shows the
+// trusted hook table on the first read after the review's last esc, and the
+// composer after that.
+type tableLingers struct {
+	*runtime.Fake
+	pane  *scriptedPane
+	ready string
+	after int
+}
+
+func (c *tableLingers) ReadAgent(ctx context.Context, h runtime.AgentHandle, src harness.ReadSource, lines int) (string, error) {
+	out, err := c.Fake.ReadAgent(ctx, h, src, lines)
+	if len(c.pane.sent()) == 5 {
+		if c.after++; c.after == 1 {
+			c.Fake.SetReadOutput(h, c.ready)
+		}
+	}
+	return out, err
+}
+
+// ReviewOwn returns on its last esc; the settle's next read can still show
+// the trusted hook table, which Jev names the hook review. Only the
+// profile's own classification of the dialog counts as it drawn again; Jev's
+// reading of the table after mate trusted its hooks is read past.
+func TestStartMateReadsPastTheTrustedHookTableJevNames(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	fake := runtime.NewFake()
+	deps := fakeDeps(t, fake)
+	deps.Observer = jevSeesHooks{}
+	deps.StartupPromptTimeout = 5 * time.Second
+	source := codex.CodexHooksPath(w.MateDir("shop"))
+	command := codex.CodexSessionHookCommand(deps.Binary)
+	own := ownScreen(t, screen(t, "codex-0.156.1-hooks-sessionstart-own.txt"), captureOneBlock, source, command)
+	trustedTable := screen(t, "codex-0.156.1-hooks-table-trusted.txt")
+	pane := newScriptedPane(t, fake,
+		scriptStep{screen: screen(t, "codex-0.156.1-hooks-review.txt"), key: "enter"},
+		scriptStep{screen: screen(t, "codex-0.156.1-hooks-table-review.txt"), key: "enter"},
+		scriptStep{screen: own, key: "t"},
+		scriptStep{screen: trustedScreen(own), key: "esc"},
+		scriptStep{screen: trustedTable, key: "esc"},
+		scriptStep{screen: trustedTable},
+	)
+	deps.Runtime = &tableLingers{Fake: fake, pane: pane, ready: screen(t, "codex-0.156.1-ready.txt")}
+
+	res, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex})
+	if err != nil {
+		t.Fatalf("StartMate: %v", err)
+	}
+	if !res.HooksTrusted || strings.Join(pane.sent(), ",") != "enter,enter,t,esc,esc" {
+		t.Fatalf("trusted %v, presses %v; want mate's own hook trusted with enter,enter,t,esc,esc", res.HooksTrusted, pane.sent())
+	}
+}
+
+// The hook review dialog the profile itself classifies, drawn again after
+// mate trusted its hooks, is still refused.
+func TestStartMateRefusesTheHookReviewDialogDrawnAgain(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	fake := runtime.NewFake()
+	deps := fakeDeps(t, fake)
+	deps.Observer = jevSeesHooks{}
+	source := codex.CodexHooksPath(w.MateDir("shop"))
+	command := codex.CodexSessionHookCommand(deps.Binary)
+	own := ownScreen(t, screen(t, "codex-0.156.1-hooks-sessionstart-own.txt"), captureOneBlock, source, command)
+	dialog := screen(t, "codex-0.156.1-hooks-review.txt")
+	newScriptedPane(t, fake,
+		scriptStep{screen: dialog, key: "enter"},
+		scriptStep{screen: screen(t, "codex-0.156.1-hooks-table-review.txt"), key: "enter"},
+		scriptStep{screen: own, key: "t"},
+		scriptStep{screen: trustedScreen(own), key: "esc"},
+		scriptStep{screen: screen(t, "codex-0.156.1-hooks-table-trusted.txt"), key: "esc"},
+		scriptStep{screen: dialog},
+	)
+	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex})
+	if err == nil || !strings.Contains(err.Error(), "hook review is on screen again") {
+		t.Fatalf("err = %v, want the redrawn hook review refused", err)
 	}
 }

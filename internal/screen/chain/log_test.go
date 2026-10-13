@@ -60,11 +60,21 @@ func TestParseLogLineReadsWhatStringWrote(t *testing.T) {
 		{Time: time.Date(2026, 10, 8, 9, 0, 3, 0, time.UTC), Kind: "claude", Hash: "ba9876543210", Latency: time.Second,
 			Source: "fixture", Composer: screen.ComposerBusy, Dialog: screen.DialogNone, Confidence: 0.5, Used: chain.UsedNo,
 			Fallback: chain.FallbackThreshold},
+		{Time: time.Date(2026, 10, 13, 9, 0, 4, 0, time.UTC), Kind: "codex", Hash: "ba9876543210", Latency: time.Second,
+			Source: "jev", Composer: "-", Dialog: "-", Confidence: 0.93, Caller: "settle", Used: chain.UsedYes, State: screen.PaneHooksReview},
+		{Time: time.Date(2026, 10, 13, 9, 0, 5, 0, time.UTC), Kind: "codex", Hash: "ba9876543210", Latency: time.Second,
+			Source: "fixture", Composer: "-", Dialog: "-", Confidence: 0.6, Caller: "settle", Used: chain.UsedNo, Fallback: chain.FallbackThreshold, State: screen.PaneTrustDir},
 	} {
 		got, err := chain.ParseLogLine(l.String())
 		if err != nil || got != l {
 			t.Fatalf("ParseLogLine(%q) = %+v, %v", l.String(), got, err)
 		}
+	}
+	if s := (chain.LogLine{Time: time.Date(2026, 10, 13, 9, 0, 4, 0, time.UTC), Kind: "codex", Hash: "h", Source: "jev", State: screen.PaneHooksReview}).String(); !strings.HasSuffix(s, " state=dialog_hooks_review") {
+		t.Fatalf("state not at the end: %q", s)
+	}
+	if l, err := chain.ParseLogLine("2026-10-08T09:00:00Z claude abc 1 jev composer=empty dialog=none conf=0.9"); err != nil || l.State != "" {
+		t.Fatalf("old line: %+v %v", l, err)
 	}
 	for _, bad := range []string{"", "2026-10-08T09:00:00Z claude abc", "yesterday claude abc 1 jev composer=empty dialog=none conf=0.9",
 		"2026-10-08T09:00:00Z claude abc -1 jev composer=empty dialog=none conf=0.9",

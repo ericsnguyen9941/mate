@@ -2,7 +2,9 @@ package spawn_test
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/harness/claude"
 	"github.com/nguyenngocanh94/mate/internal/harness/codex"
+	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	scr "github.com/nguyenngocanh94/mate/internal/screen"
 	"github.com/nguyenngocanh94/mate/internal/screen/fixture"
@@ -536,33 +539,101 @@ func TestStartMateRefusesWhenTheDialogChangesUnderTheSelectPress(t *testing.T) {
 	}
 }
 
-// jevNamesADialog is the chain's reading of a screen the profile does not
-// recognise when Jev, sure of itself, names a dialog on it: Jev's Dialog,
-// the fixture's Startup and no highlight.
-type jevNamesADialog struct{}
+// jevNamesTheState is the chain's state reading of a screen the profile
+// does not recognise: Jev, sure of itself, names state.
+type jevNamesTheState struct{ state scr.PaneState }
 
-func (jevNamesADialog) Observe(ctx context.Context, profile harness.ScreenProfile, pane string) (scr.Observation, error) {
-	obs, err := fixture.New().Observe(ctx, profile, pane)
-	obs.Dialog, obs.Highlight, obs.Confidence, obs.Source = scr.DialogHooksReview, -1, 0.95, "jev"
-	return obs, err
+func (j jevNamesTheState) Observe(ctx context.Context, p harness.ScreenProfile, pane string) (scr.Observation, error) {
+	return fixture.New().Observe(ctx, p, pane)
 }
 
-// Jev naming a dialog the harness profile does not recognise presses
-// nothing: the settle refuses as for any unrecognised screen, and says
-// what Jev saw.
-func TestStartMateRefusesAScreenOnlyJevNames(t *testing.T) {
-	w := newWorkspace(t, "shop")
-	rt := runtime.NewFake()
-	deps := fakeDeps(t, rt)
-	deps.Observer = jevNamesADialog{}
-	rt.NextStartupScreen = "welcome to something nobody measured\nplease choose:\n  a) yes\n  b) no\n"
-
-	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop"})
-	if err == nil || !strings.Contains(err.Error(), "startup screen not recognised") || !strings.Contains(err.Error(), "· jev says hooks-review") {
-		t.Fatalf("err = %v, want the unrecognised-screen refusal naming Jev's dialog", err)
+func (j jevNamesTheState) ObserveState(ctx context.Context, p harness.ScreenProfile, pane string) (scr.StateReading, error) {
+	r, err := fixture.New().(scr.StateObserver).ObserveState(ctx, p, pane)
+	if err != nil || r.State != scr.PaneUnknown {
+		return r, err
 	}
-	if len(rt.SentKeys) != 0 {
-		t.Fatalf("keys %v were pressed into a screen only Jev named", rt.SentKeys)
+	return scr.StateReading{State: j.state, Confidence: 0.95, Source: "jev", Reason: "pane_state " + string(j.state) + " 0.95"}, nil
+}
+
+func TestStartMateStopsOnAStateJevNamesAsTheCaptains(t *testing.T) {
+	for _, st := range []scr.PaneState{scr.PaneOther, scr.PaneToolPermission, scr.PaneAuthRequired, scr.PaneExited} {
+		t.Run(string(st), func(t *testing.T) {
+			w := newWorkspace(t, "shop")
+			rt := runtime.NewFake()
+			deps := fakeDeps(t, rt)
+			deps.Observer = jevNamesTheState{st}
+			rt.NextStartupScreen = "welcome to something nobody measured\nplease choose:\n  a) yes\n  b) no\n"
+			_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop"})
+			if err == nil || !strings.Contains(err.Error(), "startup stopped on "+string(st)) || len(rt.SentKeys) != 0 {
+				t.Fatalf("err = %v, keys %v; want a refusal naming %s and nothing pressed", err, rt.SentKeys, st)
+			}
+		})
+	}
+}
+
+// Jev naming a key-pressing dialog on a layout no profile measured presses
+// nothing at all: mate answers only dialogs its harness profile measured.
+func TestStartMatePressesNoKeyIntoAnUnmeasuredDialogJevNames(t *testing.T) {
+	for _, st := range []scr.PaneState{scr.PaneTrustDir, scr.PaneUpdate} {
+		t.Run(string(st), func(t *testing.T) {
+			w := newWorkspace(t, "shop")
+			rt := runtime.NewFake()
+			deps := fakeDeps(t, rt)
+			deps.Observer = jevNamesTheState{st}
+			rt.NextStartupScreen = "welcome to something nobody measured\nplease choose:\n  a) yes\n  b) no\n"
+			_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop"})
+			if err == nil || !strings.Contains(err.Error(), "has not measured") || len(rt.SentKeys) != 0 {
+				t.Fatalf("err = %v, keys %v; want a refusal for an unmeasured %s and nothing pressed", err, rt.SentKeys, st)
+			}
+		})
+	}
+}
+
+// codexDrawsTheDialogLate is the fake runtime over codex-cli 0.162.1 as
+// measured on 2026-10-13: the composer under its logo first, the hook
+// review a moment later, and Herdr never idle while the dialog is up.
+type codexDrawsTheDialogLate struct {
+	*runtime.Fake
+	reads  int
+	after  int    // reads that still show the composer
+	dialog string // what replaces it
+}
+
+func (c *codexDrawsTheDialogLate) ReadAgent(ctx context.Context, h runtime.AgentHandle, src harness.ReadSource, lines int) (string, error) {
+	c.reads++
+	if c.reads == c.after+1 {
+		c.Fake.SetReadOutput(h, c.dialog)
+	}
+	return c.Fake.ReadAgent(ctx, h, src, lines)
+}
+
+func TestStartMateWaitsOutCodexDrawingTheHookReviewLate(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	fake := runtime.NewFake()
+	deps := fakeDeps(t, fake)
+	source := codex.CodexHooksPath(w.MateDir("shop"))
+	command := codex.CodexSessionHookCommand(deps.Binary)
+	own := ownScreen(t, screen(t, "codex-0.156.1-hooks-sessionstart-own.txt"), captureOneBlock, source, command)
+	dialog := screen(t, "codex-0.162.1-hooks-review.txt")
+	loading := screen(t, "codex-0.162.1-loading-composer.txt")
+	newScriptedPane(t, fake,
+		scriptStep{screen: dialog, key: "enter"},
+		scriptStep{screen: screen(t, "codex-0.156.1-hooks-table-review.txt"), key: "enter"},
+		scriptStep{screen: own, key: "t"},
+		scriptStep{screen: trustedScreen(own), key: "esc"},
+		scriptStep{screen: screen(t, "codex-0.156.1-hooks-table-trusted.txt"), key: "esc"},
+		scriptStep{screen: loading},
+	)
+	fake.NextStartupScreen = loading // what Codex draws first
+	fake.WaitErrOnce = runtime.NewHerdrError(runtime.HerdrTimeout, "timed out waiting for agent status")
+	deps.Runtime = &codexDrawsTheDialogLate{Fake: fake, after: 1, dialog: dialog}
+
+	res, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex})
+	if err != nil {
+		t.Fatalf("StartMate: %v", err)
+	}
+	if !res.HooksTrusted {
+		t.Fatal("the hook review Codex drew after its composer was not answered")
 	}
 }
 
@@ -576,8 +647,8 @@ func (jevSeesNoDialog) Observe(ctx context.Context, profile harness.ScreenProfil
 	return obs, err
 }
 
-// Jev seeing no dialog adds nothing to the refusal: "jev says none" names
-// no dialog.
+// Jev seeing no dialog leaves the screen unknown: the refusal is the plain
+// unrecognised-screen one, naming the state and who read it.
 func TestStartMateRefusalNamesNoDialogJevDidNotSee(t *testing.T) {
 	w := newWorkspace(t, "shop")
 	rt := runtime.NewFake()
@@ -586,7 +657,7 @@ func TestStartMateRefusalNamesNoDialogJevDidNotSee(t *testing.T) {
 	rt.NextStartupScreen = "welcome to something nobody measured\nplease choose:\n  a) yes\n  b) no\n"
 
 	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop"})
-	if err == nil || !strings.Contains(err.Error(), "startup screen not recognised") || strings.Contains(err.Error(), "jev says") {
+	if err == nil || !strings.Contains(err.Error(), "startup screen not recognised") || !strings.Contains(err.Error(), "· state unknown from jev") {
 		t.Fatalf("err = %v, want the plain unrecognised-screen refusal", err)
 	}
 }
@@ -642,5 +713,88 @@ func TestStartMateRereadsTheHighlightBeforeTheConfirmKey(t *testing.T) {
 	}
 	if observer.calls != 2 {
 		t.Fatalf("observer read %d screens, want the dialog and the re-read after the select press", observer.calls)
+	}
+}
+
+// countsJevAsks is the chain over the fixture with a Jev that is never sure:
+// it counts every screen the stub left unknown, each one a request to Jev.
+type countsJevAsks struct{ asks int }
+
+func (c *countsJevAsks) Observe(ctx context.Context, p harness.ScreenProfile, pane string) (scr.Observation, error) {
+	return fixture.New().Observe(ctx, p, pane)
+}
+
+func (c *countsJevAsks) ObserveState(ctx context.Context, p harness.ScreenProfile, pane string) (scr.StateReading, error) {
+	r, err := fixture.New().(scr.StateObserver).ObserveState(ctx, p, pane)
+	if err == nil && r.State == scr.PaneUnknown {
+		c.asks++
+	}
+	return r, err
+}
+
+func injectionScreen(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "jeveval", "testdata", "screens", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// A typed line in the composer is a draft the stub reads itself: the start
+// stops on it with nothing pressed and Jev is never asked.
+func TestStartMateStopsOnADraftTheStubReads(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	observer := &countsJevAsks{}
+	deps.Observer = observer
+	rt.NextStartupScreen = injectionScreen(t, "claude_injection_draft_says_empty.txt")
+
+	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop"})
+	if err == nil || !strings.Contains(err.Error(), "startup stopped on draft (fixture") || len(rt.SentKeys) != 0 {
+		t.Fatalf("err = %v, keys %v; want the draft refusal from the fixture and nothing pressed", err, rt.SentKeys)
+	}
+	if observer.asks != 0 {
+		t.Fatalf("Jev was asked %d times about a draft the stub reads", observer.asks)
+	}
+}
+
+// A turn in flight is busy, not ready: the settle reads the pane again, and
+// starts once the composer is idle.
+func TestStartMateWaitsOutABusyPane(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	fake := runtime.NewFake()
+	deps := fakeDeps(t, fake)
+	observer := &countsJevAsks{}
+	deps.Observer = observer
+	busy := injectionScreen(t, "codex_injection_busy_output_says_empty.txt")
+	fake.NextStartupScreen = busy
+	// Herdr reports a busy harness as working, never idle.
+	fake.WaitErrOnce = runtime.NewHerdrError(runtime.HerdrTimeout, "timed out waiting for agent status")
+	late := &codexDrawsTheDialogLate{Fake: fake, after: 2, dialog: screen(t, "codex-0.156.1-ready.txt")}
+	deps.Runtime = late
+	deps.StartupPromptTimeout = 5 * time.Second
+
+	if _, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex}); err != nil {
+		t.Fatalf("StartMate: %v", err)
+	}
+	if late.reads < 3 || observer.asks != 0 {
+		t.Fatalf("reads %d, Jev asks %d; want the busy pane read again and Jev never asked", late.reads, observer.asks)
+	}
+}
+
+// Jev naming a bypass dialog on a harness with no bypass answer is refused
+// like every other startup screen: target_blocked, with the screen.
+func TestStartMateRefusesABypassJevNamesOnAHarnessWithoutOne(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	deps.Observer = jevNamesTheState{scr.PaneBypass}
+	rt.NextStartupScreen = "welcome to something nobody measured\nskip all permission prompts?\n  a) yes\n  b) no\n"
+	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex})
+	var coded *observability.Error
+	if !errors.As(err, &coded) || coded.Code != observability.CodeTargetBlocked || !strings.Contains(err.Error(), "skip all permission prompts?") || len(rt.SentKeys) != 0 {
+		t.Fatalf("err = %v, keys %v; want a target_blocked refusal carrying the screen and nothing pressed", err, rt.SentKeys)
 	}
 }

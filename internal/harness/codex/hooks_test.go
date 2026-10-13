@@ -231,6 +231,30 @@ func TestCommandMatch(t *testing.T) {
 	}
 }
 
+// Codex draws a Source under the home directory as `~/...`; mate's own
+// Source is the absolute hooks.json path. Only the real home may stand in.
+func TestCodexOwnHookUnderHomeMatchesTilde(t *testing.T) {
+	t.Setenv("HOME", "/Users/erics")
+	event, ok := ParseCodexHookEvent(startupFixture(t, "codex-0.162.1-hooks-sessionstart-own-home.txt"))
+	if !ok {
+		t.Fatalf("parse = %+v %v", event, ok)
+	}
+	own := harness.OwnHook{Event: "SessionStart", Source: "/Users/erics/workspace/.mate/projects/matemarketing/mate/.codex/hooks.json", Command: "'/opt/homebrew/bin/mate' hook mate-session --harness codex"}
+	if !ownHookMatches(own, event.Detail) {
+		t.Fatalf("own hook under home did not match %+v", event.Detail)
+	}
+	t.Setenv("HOME", "/Users/other")
+	if ownHookMatches(own, event.Detail) {
+		t.Fatal("~ matched a path outside HOME")
+	}
+	t.Setenv("HOME", "/Users/erics")
+	foreign := own
+	foreign.Source = "/Users/erics/elsewhere/.codex/hooks.json"
+	if ownHookMatches(foreign, event.Detail) {
+		t.Fatal("foreign hook matched")
+	}
+}
+
 func TestCodexV162UnnamedHookReview(t *testing.T) {
 	event, ok := ParseCodexHookEvent(startupFixture(t, "codex-0.162.1-hooks-sessionstart-own.txt"))
 	if !ok || event.Event != "SessionStart" || event.Selected() != 0 || !event.Hooks[0].NeedsReview {

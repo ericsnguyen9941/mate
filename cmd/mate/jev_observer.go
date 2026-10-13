@@ -24,7 +24,8 @@ const defaultJevThreshold = 0.85
 // `MATE_JEV` is `on` or `observer` and a readable key is set (jevSettings),
 // it is the chain - Jev first, the fixture observer when Jev
 // is unsure (internal/screen/chain) - logging every request to
-// `.mate/jev.log`, with the threshold `MATE_JEV_THRESHOLD` sets. Otherwise,
+// `.mate/jev.log` and keeping the screens it named a pane state for under
+// `.mate/screens`, with the threshold `MATE_JEV_THRESHOLD` sets. Otherwise,
 // and on any configuration problem, it is nil, which every Deps reads as the
 // fixture observer; the problem is the error, one line for the caller to
 // show.
@@ -41,7 +42,7 @@ func configuredObserver(ws *store.Workspace) (screen.Observer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return chain.New(jev.New(client), fixture.New(), threshold, chain.WithLog(ws.AppendJevLog)), nil
+	return chain.New(jev.New(client), fixture.New(), threshold, chain.WithLog(ws.AppendJevLog), chain.WithScreens(ws.ScreensDir())), nil
 }
 
 // jevThreshold reads MATE_JEV_THRESHOLD: unset is the default, anything

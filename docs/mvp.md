@@ -583,7 +583,7 @@ internal/send/           gửi một dòng vào pane agent qua Herdr, kiểm ch�
 internal/screen/         Observation và Observer: quan sát cấu trúc của một pane, không verdict
 internal/screen/fixture/ observer tất định bọc ScreenProfile của harness; mặc định trừ khi `MATE_JEV=on`
 internal/screen/jev/     observer qua Jev (TypeSafe): prompt ghim, cassette cho unit test
-internal/screen/chain/   Jev trước, fixture khi Jev không chắc; dedup 60 giây, breaker, `.mate/jev.log`
+internal/screen/chain/   Jev trước, fixture khi Jev không chắc; dedup 60 giây, breaker, `.mate/jev.log`, `.mate/screens/`
 internal/watch/          observer và triage
 internal/autopilot/      daemon chế độ tự động: digest 90 giây, xếp vào outbox của Mate
 internal/outbox/         hàng đợi `mate/.outbox`, người gửi duy nhất vào composer Mate, `wedged`
