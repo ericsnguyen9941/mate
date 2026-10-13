@@ -130,3 +130,5 @@ func (c *Chain) storeState(key cacheKey, entry cachedState) {
 	}
 	c.states[key] = entry
 }
+
+var _ screen.StateObserver = (*Chain)(nil)

@@ -95,3 +95,5 @@ func (o *Observer) ObserveState(ctx context.Context, _ harness.ScreenProfile, pa
 	return screen.StateReading{State: screen.PaneState(a.Choice), Confidence: a.Confidence, Source: Source,
 		Reason: fmt.Sprintf("pane_state %s %.2f", a.Choice, a.Confidence)}, nil
 }
+
+var _ screen.StateObserver = (*Observer)(nil)

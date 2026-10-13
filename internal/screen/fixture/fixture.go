@@ -146,3 +146,5 @@ func composerState(profile harness.ScreenProfile, startup harness.StartupScreen,
 	}
 	return screen.PaneUnknown
 }
+
+var _ screen.StateObserver = Observer{}
