@@ -267,6 +267,74 @@ func TestWatchOpensRuntimeLostOnlyOnce(t *testing.T) {
 	f.assertIncidents("k3 runtime_lost open")
 }
 
+// `crew stop` kills the agent before it writes the meta that closes the
+// task. In between, Herdr has no agent and the meta still names one; the
+// stop lock says that is a stop, not a lost agent (hellovietnam, 2026-10-13:
+// every stop had left a runtime_lost open).
+func TestWatchDoesNotOpenRuntimeLostWhileTheCrewIsBeingStopped(t *testing.T) {
+	f := newFixture(t)
+	f.poll()
+
+	unlock, err := f.ws.LockCrewStop(context.Background(), "shop", "k3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.rt.DropAgent(f.handle)
+	f.clock.advance(5 * time.Second)
+	f.poll()
+	f.assertIncidents()
+
+	f.writeMeta("k3", map[string]string{"harness": "codex", "state": "finished", "stopped_at": "2026-09-18T11:00:05Z"})
+	unlock()
+	f.clock.advance(5 * time.Second)
+	f.poll()
+	f.assertIncidents()
+}
+
+// The round listed the crew as open, and the stop finished before the round
+// asked Herdr about it: the meta the round read first is no longer the
+// crew's.
+func TestWatchDoesNotOpenRuntimeLostForACrewClosedDuringTheRound(t *testing.T) {
+	f := newFixture(t)
+	f.poll()
+
+	handle := f.handleFunc()
+	deps := f.deps()
+	deps.Handle = func(ctx context.Context, project, crew string) (runtime.AgentHandle, harness.ScreenProfile, error) {
+		h, screens, err := handle(ctx, project, crew)
+		f.rt.DropAgent(f.handle)
+		f.writeMeta(crew, map[string]string{"harness": "codex", "state": "finished", "stopped_at": "2026-09-18T11:00:05Z"})
+		return h, screens, err
+	}
+	f.w = watch.New(f.ws, deps)
+	f.poll()
+	f.assertIncidents()
+}
+
+// An incident left open on a crew that has since closed is resolved: the
+// crew is not coming back to clear it, and a log full of open incidents on
+// closed crews is noise the next reader has to rule out one by one.
+func TestWatchResolvesTheIncidentsOfAClosedCrew(t *testing.T) {
+	f := newFixture(t)
+	f.poll()
+	f.rt.DropAgent(f.handle)
+	f.clock.advance(5 * time.Second)
+	f.poll()
+	f.assertIncidents("k3 runtime_lost open")
+
+	f.writeMeta("k3", map[string]string{"harness": "codex", "state": "failed", "stopped_at": "2026-09-18T11:00:10Z"})
+	f.clock.advance(5 * time.Second)
+	f.poll()
+	f.assertIncidents("k3 runtime_lost open", "k3 runtime_lost resolved")
+	if text := f.incidents()[1].Text; !strings.Contains(text, "closed") {
+		t.Fatalf("resolve text = %q, want it to say the crew was closed", text)
+	}
+
+	f.clock.advance(5 * time.Second)
+	f.poll()
+	f.assertIncidents("k3 runtime_lost open", "k3 runtime_lost resolved")
+}
+
 func TestWatchKeepsTheTwoKindsApart(t *testing.T) {
 	f := newFixture(t)
 	f.appendStatus("k3", "working: reading the tests")

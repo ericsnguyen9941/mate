@@ -379,6 +379,64 @@ func (w *Watcher) pollProject(ctx context.Context, project string, now time.Time
 			errs = append(errs, fmt.Errorf("watch: observe crew %s of %s: %w", crew, project, err))
 		}
 	}
+	if err := w.resolveClosed(project, crews, now, open); err != nil {
+		errs = append(errs, fmt.Errorf("watch: resolve incidents of closed crews of %s: %w", project, err))
+	}
+	return errors.Join(errs...)
+}
+
+// stopped reports whether an agent Herdr no longer has went away because
+// the crew was stopped: a `crew stop` holds the crew's stop lock from before
+// it stops the agent until its meta closes the task, and a stop that
+// finished after this round listed the crew has already closed the meta.
+// Either way the agent left on purpose, and that is not `runtime_lost`.
+//
+// The lock is asked first: a stop releases it only after writing the meta,
+// so a free lock and an open meta read in that order cannot straddle one.
+func (w *Watcher) stopped(ref CrewRef) (bool, error) {
+	stopping, err := w.ws.CrewStopping(ref.Project, ref.Crew)
+	if err != nil || stopping {
+		return stopping, err
+	}
+	meta, err := w.ws.ReadCrewMeta(ref.Project, ref.Crew)
+	if err != nil {
+		return false, err
+	}
+	return crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed(), nil
+}
+
+// resolveClosed resolves the incidents still open on crews of the project
+// that have since closed. A closed crew is not watched, so nothing else would
+// ever clear them. A crew whose meta cannot be read is left alone: an
+// unreadable record says nothing about whether the task is over.
+func (w *Watcher) resolveClosed(project string, watched []string, now time.Time, open map[incidentKey]bool) error {
+	isWatched := make(map[string]bool, len(watched))
+	for _, crew := range watched {
+		isWatched[crew] = true
+	}
+	var keys []incidentKey
+	for key, isOpen := range open {
+		if isOpen && !isWatched[key.ref.Crew] {
+			keys = append(keys, key)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].ref.Crew != keys[j].ref.Crew {
+			return keys[i].ref.Crew < keys[j].ref.Crew
+		}
+		return keys[i].kind < keys[j].kind
+	})
+	var errs []error
+	for _, key := range keys {
+		meta, err := w.ws.ReadCrewMeta(project, key.ref.Crew)
+		if err != nil || len(meta) == 0 || !crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed() {
+			continue
+		}
+		if err := w.resolveIncident(key.ref, key.kind, now, open,
+			fmt.Sprintf("crew %s is closed", key.ref.Crew)); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	return errors.Join(errs...)
 }
 
@@ -418,6 +476,9 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 		if !runtime.IsAgentNotFound(err) {
 			// Herdr could not answer. "Mate could not look" is not "the
 			// agent is gone" (mvp.md decision 8).
+			return err
+		}
+		if stopped, err := w.stopped(ref); err != nil || stopped {
 			return err
 		}
 		if err := w.openIncident(ref, box.IncidentRuntimeLost, now, open,

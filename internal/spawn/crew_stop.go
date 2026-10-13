@@ -95,6 +95,18 @@ func StopCrew(ctx context.Context, w *store.Workspace, deps Deps, project, crew 
 		return StopResult{}, observability.NewError(observability.CodeNotFound,
 			fmt.Sprintf("no crew %s is recorded for project %s; %s is empty", crew, project, w.CrewMeta(project, crew)))
 	}
+	// The stop lock is held until the meta below closes the task: between
+	// the agent stopping and that write, the observer reads the lock and
+	// does not call the missing agent `runtime_lost`. A second stop of the
+	// same crew waits here, and then reads the meta the first one wrote.
+	unlock, err := w.LockCrewStop(ctx, project, crew)
+	if err != nil {
+		return StopResult{}, err
+	}
+	defer unlock()
+	if meta, err = w.ReadCrewMeta(project, crew); err != nil {
+		return StopResult{}, err
+	}
 
 	out := StopResult{
 		Project:   project,

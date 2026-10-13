@@ -683,6 +683,54 @@ func TestStopCrewDiscardWithNothingToDiscardFinishes(t *testing.T) {
 	}
 }
 
+// stoppingRuntime records, at the moment StopCrew stops the agent, whether
+// the crew's stop lock is held.
+type stoppingRuntime struct {
+	runtime.Adapter
+	w        *store.Workspace
+	stopping []bool
+}
+
+func (r *stoppingRuntime) StopAgent(ctx context.Context, handle runtime.AgentHandle, stop runtime.Stop) error {
+	stopping, err := r.w.CrewStopping("shop", "k3")
+	if err != nil {
+		return err
+	}
+	r.stopping = append(r.stopping, stopping)
+	return r.Adapter.StopAgent(ctx, handle, stop)
+}
+
+// StopCrew holds the crew's stop lock from before the agent is stopped until
+// the meta is written, so the observer reads the window between the two as a
+// stop rather than as a lost agent.
+func TestStopCrewHoldsTheStopLockWhileItStopsTheAgent(t *testing.T) {
+	w := crewWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	if _, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k3", BriefText: brieftest.Ship("work"),
+	}); err != nil {
+		t.Fatalf("SpawnCrew: %v", err)
+	}
+
+	spy := &stoppingRuntime{Adapter: rt, w: w}
+	deps.Runtime = spy
+	if _, err := spawn.StopCrew(context.Background(), w, deps, "shop", "k3", false); err != nil {
+		t.Fatalf("StopCrew: %v", err)
+	}
+	if len(spy.stopping) == 0 {
+		t.Fatal("StopCrew never stopped the agent")
+	}
+	for i, held := range spy.stopping {
+		if !held {
+			t.Fatalf("stop call %d ran without the crew's stop lock held", i)
+		}
+	}
+	if stopping, err := w.CrewStopping("shop", "k3"); err != nil || stopping {
+		t.Fatalf("CrewStopping after the stop = %v, %v; want the lock released", stopping, err)
+	}
+}
+
 // commitInWorktree makes one real commit on the crew's branch, so the
 // branch is strictly ahead of the project's default branch.
 func commitInWorktree(t *testing.T, worktree, file, contents string) {
