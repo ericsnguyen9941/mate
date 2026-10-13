@@ -88,6 +88,27 @@ func TestConfiguredObserver(t *testing.T) {
 	}
 }
 
+// The chain configuredObserver builds names pane states, and keeps the
+// screens it asked Jev about under the workspace's .mate/screens.
+func TestConfiguredObserverNamesPaneStatesAndKeepsScreens(t *testing.T) {
+	ws := noticeWorkspace(t)
+	key := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(key, []byte("test-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeEnv(t, ws, "MATE_JEV=on\nMATE_JEV_API_KEY_FILE="+key+"\n")
+	observer, err := configuredObserver(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := observer.(screen.StateObserver); !ok {
+		t.Errorf("observer %T does not implement screen.StateObserver", observer)
+	}
+	if got := ws.ScreensDir(); !strings.HasSuffix(filepath.ToSlash(got), ".mate/screens") {
+		t.Errorf("ScreensDir %q does not end in .mate/screens", got)
+	}
+}
+
 func errText(err error) string {
 	if err == nil {
 		return ""

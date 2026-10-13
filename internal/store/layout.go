@@ -70,6 +70,11 @@ func (w *Workspace) EnvFile() string { return filepath.Join(w.StateDir(), envFil
 // screen text or a key.
 func (w *Workspace) JevLog() string { return filepath.Join(w.StateDir(), jevLogName) }
 
+// ScreensDir is `<root>/.mate/screens`: the text of every screen the Jev
+// observer chain was asked to name a pane state for, one file per screen
+// (docs/plans/pane-state-jev-2026-10-13.md section 6).
+func (w *Workspace) ScreensDir() string { return filepath.Join(w.StateDir(), "screens") }
+
 // ProjectsDir is `<root>/.mate/projects`.
 func (w *Workspace) ProjectsDir() string { return filepath.Join(w.StateDir(), projectsDirName) }
 
