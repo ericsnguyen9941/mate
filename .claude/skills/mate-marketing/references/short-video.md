@@ -10,10 +10,12 @@ Video faceless dùng motion graphics và TTS rất dễ "mùi AI": người xem 
 
 1. **Hook, 3 giây đầu: chạm đúng pain của người xem, kèm một câu châm chọc.** Nói thẳng vào người xem ("Agent báo test pass. Bạn merge luôn, đúng không?"), không mở bằng một sự kiện trừu tượng ("Hai cộng ba, ra âm một"). Captain đã thử ba kiểu cho V1 ngày 13/10: hỏi thẳng vào nỗi đau thắng; "luật cấm" tự giới thiệu thì thua.
    - Khung đầu tiên (t=0) phải đọc được như một ảnh bìa: một câu chữ to, cùng một màn hình trông thật (cửa sổ terminal có prompt, đường dẫn, giờ). Không mở bằng title card trên nền trống, không fade in từ màn hình trống.
+   - Cho người xem biết nhiệm vụ trước khi lật. Người xem phải biết code lẽ ra làm gì ("Bạn bảo AI viết một hàm cộng hai số") trước khi thấy nó sai ("Hai cộng ba, ra âm một"). Lật khi chưa có bối cảnh thì người xem không hiểu, và cú lật thành lố: captain chê đúng chỗ này ở V1 ngày 13/10.
    - Để một câu hỏi bỏ ngỏ, chỉ xem tới cuối mới có lời đáp.
    - Không đưa số liệu của bên thứ ba vào hook. Nếu dùng thì đặt sau hook, như một cú chọc ("Bạn có đang ở trong mười phần trăm đó không?").
 2. **Vấn đề:** một câu, gọi đúng nỗi đau của người đã dùng coding agent.
 3. **Bằng chứng từ mate:** con số, log, sơ đồ hoặc ảnh console, lấy từ `material.md`.
+   - Kể thí nghiệm bằng vai và hành động mà người xem hiểu ngay: "tôi đóng vai con agent ẩu", "gọi một agent khác vào review", "nó tự chạy test", "không merge được". Lời đọc không dùng tên lệnh, SHA, verdict hay khái niệm riêng của mate (`review --check`, `changes-requested`, worktree, crew). Captain thấy phần bài test live của V1 bản đầu khó hiểu vì những chữ đó.
 4. **Bài học:** điều người xem làm được ngay, nói như một quy tắc. Ví dụ: "Cô lập cấu hình harness trước khi đo token."
 5. **Kết:** nhắc lại bài học và tên series. Không xin follow, không xin comment từ khoá.
 
