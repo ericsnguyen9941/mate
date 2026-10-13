@@ -324,6 +324,24 @@ test("the filing cabinet lists finished tasks by drawer, with their final state"
   assert.ok(roomOf(app.root, "shop").querySelector(".cab").classes.includes("open"), "its top drawer is pulled out");
 });
 
+test("the cabinet names the harness, observed model and requested effort, retaining unknowns", async () => {
+  const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "testdata/office/busy.json"), "utf8"));
+  const closed = fx.projects.shop.tasks.filter(t => t.closed);
+  Object.assign(closed[0], { harness: "codex", model: "requested-model", last_model: "observed-model", effort: "high" });
+  Object.assign(closed[1], { harness: "pi", model: "configured-model", last_model: "", effort: "low" });
+  Object.assign(closed[2], { harness: "", model: "", last_model: "", effort: "" });
+  const app = await boot({ fixture: fx, hash: "#cabinet/shop" });
+  assert.deepEqual(app.drawer().querySelector(".colh").children.map(n => n.text),
+    ["Task", "Harness / model / effort", "Final state", "Closed", "Tokens"]);
+  assert.ok(app.drawer().classes.includes("drawer-cabinet"));
+  const agents = app.drawer().querySelectorAll(".ta");
+  assert.equal(agents[0].text, "Codexobserved-modeleffort: high");
+  assert.equal(agents[0].querySelector(".mono").getAttribute("title"), "Last observed model");
+  assert.equal(agents[1].text, "Piconfigured-modeleffort: low");
+  assert.equal(agents[1].querySelector(".mono").getAttribute("title"), "Requested model");
+  assert.equal(agents[2].text, "harness ?model ?effort ?");
+});
+
 test("the Mate drawer lists the project's apps: status, an Open link only when configured, and where login is checked", async () => {
   const app = await boot({ hash: "#mate/shop" });
   assert.ok(app.requests.some(r => r.url === "/api/plugins?project=shop" && (r.method || "GET") === "GET"),

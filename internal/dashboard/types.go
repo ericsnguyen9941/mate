@@ -155,6 +155,10 @@ type Task struct {
 	// uses, so the page can name the harness even for a recording whose
 	// telemetry carries no version.
 	Harness string `json:"harness,omitempty"`
+	// Model and Effort are the requested launch settings retained in crew meta.
+	// LastModel is the observed model; absent settings remain unknown.
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
 }
 
 // InboxItem is one thing still waiting on a decision, flattened from
