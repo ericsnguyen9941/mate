@@ -189,6 +189,18 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 			}
 		case scr.PaneHooksReview:
 			class := harness.StartupScreenHooksReview
+			// ReviewOwn returns on its last esc, and the next read can
+			// still show the trusted hook table, which Jev names the
+			// review. Only the profile's own classification of the dialog
+			// is the review drawn again; another source's reading of a
+			// screen past it is waited out like any unnamed screen.
+			if settled.HooksTrusted && reading.Startup != class {
+				if time.Now().After(deadline) {
+					return settled, startupRefusal(handle, kind, screen,
+						fmt.Sprintf("%s still shows a hook screen %s after mate trusted its own hooks; mate pressed nothing further · state %s from %s", kind, budget.Round(time.Millisecond), reading.State, reading.Source))
+				}
+				break
+			}
 			if len(trusted) == 0 {
 				return settled, startupRefusal(handle, kind, screen,
 					fmt.Sprintf("%s asks to review hooks mate did not install; mate trusts only its own hooks and pressed nothing. Review them once in %s yourself (/hooks), then start again", kind, kind))
