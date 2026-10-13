@@ -229,6 +229,9 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 			return nil, err
 		}
 		out[i].Harness = facts.harness
+		if meta, err := s.ws.ReadCrewMeta(project, out[i].Crew); err == nil {
+			out[i].Model, out[i].Effort = meta["model"], meta["effort"]
+		}
 	}
 	return out, nil
 }
