@@ -2,6 +2,7 @@ package codex
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -100,8 +101,24 @@ func hooksReviewDialogs() []harness.StartupDialog {
 // must match whole.
 func ownHookMatches(o harness.OwnHook, h CodexReviewHook) bool {
 	return h.Event == o.Event &&
-		wrapMatch(h.SourceLines, codexHookProjectSource+o.Source) &&
+		sourceMatch(h.SourceLines, o.Source) &&
 		commandMatch(h.CommandLines, o.Command)
+}
+
+// sourceMatch is wrapMatch for the Source. Codex 0.162.1 draws a path under
+// the home directory as `~/...` (measured 2026-10-13 on a workspace in the
+// operator's home), so the absolute path also matches in that form, and
+// only for the real home.
+func sourceMatch(lines []string, path string) bool {
+	if wrapMatch(lines, codexHookProjectSource+path) {
+		return true
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	rest, ok := strings.CutPrefix(path, filepath.Clean(home)+string(filepath.Separator))
+	return ok && wrapMatch(lines, codexHookProjectSource+"~/"+rest)
 }
 
 // codexEllipsis is what Codex draws where it cut a long value.

@@ -119,3 +119,13 @@ review lists two:
 
 Trusting writes `[hooks.state."<hooks.json>:session_start:0:0"] trusted_hash` into
 `$CODEX_HOME/config.toml`; the next launch with the same hook bytes draws no review.
+
+Captured 2026-10-13 from a real `mate mate start matemarketing --harness codex`
+refusal against codex-cli 0.162.1, with the workspace under the operator's home:
+
+- `codex-0.162.1-hooks-sessionstart-own-home.txt` - Codex draws the Source with
+  the home directory as `~` (`~/workspace/...`), not the absolute path in
+  hooks.json. The lines from the hook list down are the refusal's verbatim last
+  12 screen lines; the banner and event title above them are copied from
+  `codex-0.162.1-hooks-sessionstart-own.txt`, which the refusal did not print.
+  Every earlier capture ran under `/private/tmp`, so none showed the `~`.
