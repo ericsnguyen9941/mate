@@ -1,0 +1,19 @@
+  >_ OpenAI Codex (v0.162.1)
+  permissions: YOLO mode
+
+  SessionStart hooks
+  1 hook needs review before it can run.
+
+› [!]  1  Unnamed hook · new
+
+  Event     SessionStart
+  Source    Project config - /private/tmp/mcp-lab/.mate/projects/shop/
+            mate/.codex/hooks.json
+  Command   '/private/tmp/mcp-lab/bin/mate' hook mate-session --harness
+            codex
+  Mode      Sync
+  Timeout   30s
+  Context   limit: 32000 approximate tokens
+  Trust     New hook - review required
+
+  t trust · esc back

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
@@ -121,18 +120,30 @@ func TestPiResumeNamesTheSameSession(t *testing.T) {
 	}
 }
 
-// A Mate on pi is refused at both ends, and the refusal names the
-// capability pi lacks.
-func TestPiRefusesAMateNamingHooks(t *testing.T) {
+func TestPiPreparesAMateWithHooksAndSkills(t *testing.T) {
 	req := crewRequest(t)
 	req.Role = harness.RoleMate
-	_, err := Pi{}.Prepare(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "Hooks") {
-		t.Fatalf("Prepare of a Mate = %v, want a refusal naming Hooks", err)
+	req.Binary = "/usr/bin/true"
+	p := Pi{SessionsDir: t.TempDir()}
+	prep, err := p.Prepare(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, err = Pi{}.Build(context.Background(), harness.AgentSpec{Role: harness.RoleMate, Kind: KindPi, Cwd: req.Cwd, ContextPath: req.ContextPath})
-	if err == nil || !strings.Contains(err.Error(), "Hooks") {
-		t.Fatalf("Build of a Mate = %v, want a refusal naming Hooks", err)
+	if len(prep.Files) == 0 {
+		t.Fatal("Mate has no extension")
+	}
+	for _, f := range prep.Files {
+		os.MkdirAll(filepath.Dir(f.Path), 0755)
+		if err := os.WriteFile(f.Path, f.Data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	spec, err := p.Build(context.Background(), harness.AgentSpec{Role: harness.RoleMate, Kind: KindPi, Cwd: req.Cwd, ContextPath: prep.ContextPath, Launch: prep.Launch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(spec.Args(), "-e") || !slices.Contains(spec.Args(), "--skill") {
+		t.Fatalf("args = %q", spec.Args())
 	}
 }
 

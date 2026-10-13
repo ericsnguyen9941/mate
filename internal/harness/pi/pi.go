@@ -3,10 +3,8 @@
 // Everything that knows pi lives here; the contract it implements is
 // internal/harness.
 //
-// pi runs Crews only. It has no hook mate can install yet, and a Mate's
-// memory and inbox rest on hooks (docs/plans/harness-registry-2026-09-30.md,
-// section 3.2). Every number here was measured on pi 0.99.1 in a Herdr 0.8.2
-// pane, docs/evidence/pi-contract-2026-10-01.md.
+// Mate hooks and native MCP are measured on pi 1.0.4; the Crew screen and
+// session contract originated on 0.99.1. See docs/evidence/codex-pi-mcp-2026-10-13.md.
 package pi
 
 import (
@@ -26,7 +24,7 @@ import (
 // KindPi is pi's kind, and what Herdr is told at `agent start --kind`.
 const KindPi harness.Kind = "pi"
 
-// Pi is the Profile of pi 0.99.1.
+// Pi is the Profile of pi; Mate and MCP require pi 1.0.4 or later.
 type Pi struct {
 	// SessionsDir is where mate keeps pi's sessions, one directory per
 	// cwd. Empty means pi's own: <agent dir>/sessions (sessionsRoot).
@@ -50,6 +48,8 @@ func (Pi) Info() harness.Info {
 		// shapes a pi Crew beyond the AGENTS.md and CLAUDE.md the other
 		// harnesses' documents already record.
 		ConfigDir: ".pi",
+		SkillsDir: ".pi/skills",
+		EnvKeys:   []string{AgentDirEnv},
 		// pi has no brand mark in Nerd Fonts 3.5, so it draws the same
 		// letter wherever Unicode is drawn.
 		Icon: harness.Icon{Nerd: "π", Unicode: "π", ASCII: "p"},
@@ -80,12 +80,6 @@ func measured(proof string) harness.Evidence {
 	return harness.Evidence{Version: "pi 0.99.1", Measured: "2026-10-01 (" + evidenceDoc + ")", Proof: proof}
 }
 
-// hooksReason is why pi has no Hooks, and so why it runs no Mate.
-const hooksReason = "pi runs no hook command: its only extension point is a TypeScript extension loaded with -e, and mate does not yet generate one. " +
-	"A Mate on pi needs a versioned mate-owned extension that calls `mate hook` and injects recall through before_agent_start, " +
-	"which HookInstaller does not yet take as a hook, and session_start reports reason \"startup\" on a resume too, so LiveOnly cannot rest on it " +
-	"(docs/plans/harness-registry-2026-09-30.md, section 3.2)"
-
 // Capabilities implements Profile.
 func (p Pi) Capabilities() harness.Capabilities {
 	return harness.Capabilities{
@@ -100,8 +94,9 @@ func (p Pi) Capabilities() harness.Capabilities {
 			Evidence: measured("probe/probe-run3-sessid.jsonl and probe-run4-resume-sessid.jsonl: --session-id with a caller's UUID created the session and, given again, resumed the same file with no dialog"),
 		},
 		Hooks: harness.Cap[harness.HookInstaller]{
-			Status: harness.CapUnsupported,
-			Reason: hooksReason,
+			Status:   harness.CapVerified,
+			Impl:     piHooks{},
+			Evidence: harness.Evidence{Version: "pi 1.0.4", Measured: "2026-10-13", Proof: "docs/evidence/codex-pi-mcp-2026-10-13.md"},
 		},
 		TurnEnd: harness.Cap[harness.TurnEndEvidence]{
 			Status:   harness.CapVerified,
@@ -117,7 +112,7 @@ func (p Pi) Capabilities() harness.Capabilities {
 			Status: harness.CapUnsupported,
 			Reason: "pi has no allowance of its own: it calls whichever provider the --model names (deepseek, openrouter, ...), so no quota-axi row follows from the harness",
 		},
-		MCPConfig: harness.Cap[harness.MCPConfigurer]{Status: harness.CapUnsupported, Reason: mcpUnsupported},
+		MCPConfig: harness.Cap[harness.MCPConfigurer]{Status: harness.CapVerified, Impl: piMCP{}, Evidence: harness.Evidence{Version: "pi 1.0.4", Measured: "2026-10-13", Proof: "docs/evidence/codex-pi-mcp-2026-10-13.md"}},
 	}
 }
 
@@ -154,12 +149,12 @@ func (s piSessions) Resumable(id string) error {
 	return nil
 }
 
-// piTurnEnd is pi's TurnEndEvidence: no Stop hook, but the session records
-// every assistant message once it is complete (sessionTurnEnded).
+// piTurnEnd uses the Mate extension's answer hook and the session's final
+// assistant records (also available to Crews without the extension).
 type piTurnEnd struct{}
 
 // LogsAnswers implements TurnEndEvidence.
-func (piTurnEnd) LogsAnswers() bool { return false }
+func (piTurnEnd) LogsAnswers() bool { return true }
 
 // EndsInTranscript implements TurnEndEvidence.
 func (piTurnEnd) EndsInTranscript() bool { return true }
@@ -169,28 +164,24 @@ func (piTurnEnd) TranscriptTurnEnded(session []byte, after time.Time) bool {
 	return sessionTurnEnded(session, after)
 }
 
-// PaneEnv implements Launcher. Every pi launch names its session directory
-// on the command line, so a pane needs nothing pinned.
-func (Pi) PaneEnv() ([]harness.EnvVar, error) { return nil, nil }
+// PaneEnv pins an explicitly selected pi agent home so auth and MCP caches
+// use the same home as the sessions inspected by this process.
+func (Pi) PaneEnv() ([]harness.EnvVar, error) {
+	if strings.TrimSpace(os.Getenv(AgentDirEnv)) == "" {
+		return nil, nil
+	}
+	root, err := sessionsRoot("")
+	if err != nil {
+		return nil, err
+	}
+	return []harness.EnvVar{{Key: AgentDirEnv, Value: filepath.Dir(root)}}, nil
+}
 
 // piLaunch is what pi's Prepare hands its Build.
 type piLaunch struct {
 	// sessionID names a fresh session (--session-id). A resumed one comes
 	// from AgentSpec.ResumeSessionID.
 	sessionID string
-}
-
-// mcpUnsupported is why the MCPConfig capability is unsupported: nothing
-// has measured how pi is given an MCP server, and it cannot run a Mate,
-// the only agent plugins reach. A launch carrying servers is refused
-// rather than started without them.
-const mcpUnsupported = "no way to give pi an MCP server has been measured, and it cannot run a Mate"
-
-// refuseMate is the refusal of a Mate on pi, naming the capability it
-// lacks.
-func refuseMate() error {
-	return observability.NewError(observability.CodeUsage,
-		"the pi harness cannot run a Mate: it declares no verified Hooks capability ("+hooksReason+"); it can still run a Crew")
 }
 
 // Prepare implements Launcher. A pi Crew needs no file of its own: the
@@ -200,11 +191,19 @@ func (p Pi) Prepare(_ context.Context, req harness.PrepareRequest) (harness.Prep
 	if err := req.Check(KindPi); err != nil {
 		return harness.Prepared{}, err
 	}
-	if err := harness.RefuseMCPServers(KindPi, mcpUnsupported, req.MCPServers); err != nil {
+	if req.Role == harness.RoleCrew && len(req.MCPServers) > 0 {
+		return harness.Prepared{}, observability.NewError(observability.CodeUsage, "pi plugin servers are only supplied to a Mate")
+	}
+	if _, err := MCPConfig(req.MCPServers); err != nil {
 		return harness.Prepared{}, err
 	}
+	var files []harness.LaunchFile
 	if req.Role == harness.RoleMate {
-		return harness.Prepared{}, refuseMate()
+		var err error
+		files, err = mateFiles(req)
+		if err != nil {
+			return harness.Prepared{}, err
+		}
 	}
 	var launch piLaunch
 	sessionID := req.ResumeSessionID
@@ -212,7 +211,7 @@ func (p Pi) Prepare(_ context.Context, req harness.PrepareRequest) (harness.Prep
 		sessionID = req.MintSessionID()
 		launch.sessionID = sessionID
 	}
-	return harness.Prepared{SessionID: sessionID, ContextPath: req.ContextPath, Launch: launch}, nil
+	return harness.Prepared{Files: files, SessionID: sessionID, ContextPath: req.ContextPath, Launch: launch}, nil
 }
 
 // contextFlag is the flag pi appends a file to its system prompt with. It
@@ -231,11 +230,8 @@ func (p Pi) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchSpec
 	if spec.Launch != nil && !ok {
 		return harness.LaunchSpec{}, observability.NewError(observability.CodeUsage, fmt.Sprintf("pi adapter got launch data %T that its Prepare did not make", spec.Launch))
 	}
-	if err := harness.RefuseMCPServers(KindPi, mcpUnsupported, spec.MCPServers); err != nil {
+	if _, err := MCPConfig(spec.MCPServers); err != nil {
 		return harness.LaunchSpec{}, err
-	}
-	if spec.Role == harness.RoleMate {
-		return harness.LaunchSpec{}, refuseMate()
 	}
 	cwd, path := spec.Cwd, spec.ContextPath
 	if cwd == "" || !filepath.IsAbs(cwd) {
@@ -265,6 +261,11 @@ func (p Pi) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchSpec
 		// model is still reached.
 		"--offline",
 	}
+	if spec.Role == harness.RoleMate {
+		args = append(args, "-e", extensionPath(cwd), "--skill", filepath.Join(cwd, p.Info().SkillsDir))
+	} else if len(spec.MCPServers) > 0 {
+		return harness.LaunchSpec{}, observability.NewError(observability.CodeUsage, "pi plugin servers are only supplied to a Mate")
+	}
 	if sessionID != "" {
 		if _, err := uuid.Parse(sessionID); err != nil {
 			return harness.LaunchSpec{}, observability.WrapError(observability.CodeUsage,
@@ -285,14 +286,28 @@ func (p Pi) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchSpec
 		args = append(args, "--thinking", string(spec.Effort))
 	}
 	args = append(args, contextFlag, path)
+	env, err := p.PaneEnv()
+	if err != nil {
+		return harness.LaunchSpec{}, err
+	}
+	env = append(append([]harness.EnvVar(nil), spec.Env...), env...)
+	files := []harness.GeneratedFile{{Path: path, Role: "canonical_context"}}
+	var checkContext func(harness.LaunchSpec) error
+	if spec.Role == harness.RoleMate {
+		files = append(files, harness.GeneratedFile{Path: extensionPath(cwd), Role: "pi_extension"}, harness.GeneratedFile{Path: launchConfigPath(cwd), Role: "pi_launch"})
+		servers := append([]harness.MCPServer(nil), spec.MCPServers...)
+		resume := spec.ResumeSessionID != ""
+		checkContext = func(s harness.LaunchSpec) error { return checkMateFiles(s.Cwd(), servers, resume) }
+	}
 	return harness.NewLaunchSpec(harness.LaunchPlan{
 		RuntimeKind:     p.Info().RuntimeKind,
 		Screen:          p.Screen(),
 		Args:            args,
 		Cwd:             cwd,
-		Env:             spec.Env,
-		EnvKeys:         spec.EnvKeys,
-		ContextFiles:    []harness.GeneratedFile{{Path: path, Role: "canonical_context"}},
+		Env:             env,
+		EnvKeys:         append(p.Info().EnvKeys, spec.EnvKeys...),
+		ContextFiles:    files,
+		CheckContext:    checkContext,
 		Delivery:        harness.DeliveryAppendSystemPromptFile,
 		ContextFlag:     contextFlag,
 		ContextPath:     path,

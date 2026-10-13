@@ -202,6 +202,7 @@ var (
 	codexNeedReviewLine = regexp.MustCompile(`^⚠ (\d+) hooks? needs? review before (?:it|they) can run\.$`)
 	codexEventCountLine = regexp.MustCompile(`^(\d+) hooks? needs? review before (?:it|they) can run\.$`)
 	codexHookItemLine   = regexp.MustCompile(`^(›\s*)?\[(.)\] Hook (\d+)(?: · (\S+))?$`)
+	codexHookItemV162   = regexp.MustCompile(`^(›\s*)?\[(.)\]\s+(\d+)\s+Unnamed hook(?: · (\S+))?$`)
 	codexEventTitle     = regexp.MustCompile(`^(\w+) hooks$`)
 )
 
@@ -378,6 +379,9 @@ func ParseCodexHookEvent(screen string) (CodexHookEvent, bool) {
 	selected := 0
 	for ; i < len(lines); i++ {
 		m := codexHookItemLine.FindStringSubmatch(lines[i])
+		if m == nil {
+			m = codexHookItemV162.FindStringSubmatch(lines[i])
+		}
 		if m == nil {
 			break
 		}

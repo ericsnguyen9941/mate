@@ -211,12 +211,13 @@ func cmdPluginDoctor(args []string, stdout, stderr io.Writer) error {
 		projects = append(projects, p.Name)
 	}
 	checks := plugin.Doctor(w.Root(), plugin.DoctorOptions{
-		Instance:  fs.Arg(0),
-		Project:   *project,
-		Projects:  projects,
-		Harness:   pluginMateHarness(w),
-		MCPConfig: pluginHarness,
-		KeyOwner:  pluginKeyOwner(w),
+		Instance:    fs.Arg(0),
+		Project:     *project,
+		Projects:    projects,
+		Harness:     pluginMateHarness(w),
+		MCPConfig:   pluginHarness,
+		ValidateMCP: pluginServerConfig,
+		KeyOwner:    pluginKeyOwner(w),
 	})
 	failed := 0
 	for _, c := range checks {

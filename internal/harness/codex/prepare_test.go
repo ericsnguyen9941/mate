@@ -77,39 +77,20 @@ func TestCodexSpecRefusedOnceItsChainOutgrowsTheCap(t *testing.T) {
 	}
 }
 
-// Codex has no proven way to hand an agent MCP servers, so a launch with any
-// is refused before it starts, by Prepare and by Build, naming the harness
-// and the evidence; no -c mcp_servers is ever built.
-func TestCodexRefusesMCPServers(t *testing.T) {
+func TestCodexDeliversMCPServers(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
-	servers := []harness.MCPServer{{Name: "tracker-work", Type: "http", URL: "https://mcp.tracker.example/mcp"}}
-	check := func(what string, err error) {
-		t.Helper()
-		if !errors.Is(err, harness.ErrMCPUnsupported) {
-			t.Fatalf("%s: err = %v, want ErrMCPUnsupported", what, err)
-		}
-		for _, want := range []string{"codex", "unsupported", "tracker-work", "docs/evidence/codex-mcp-config-audit-2026-10-12.md"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("%s: %q does not name %q", what, err, want)
-			}
-		}
-	}
 	req := harnesstest.PrepareFixture(t, harness.RoleMate)
-	req.MCPServers = servers
-	_, err := Codex{}.Prepare(context.Background(), req)
-	check("Prepare", err)
-
-	req.MCPServers = nil
-	prep, err := Codex{}.Prepare(context.Background(), req)
+	req.MCPServers = []harness.MCPServer{{Name: "tracker-work", Type: "http", URL: "https://mcp.tracker.example/mcp"}}
+	prep, err := (Codex{}).Prepare(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	harnesstest.WritePrepared(t, prep)
-	spec := harness.AgentSpec{Role: harness.RoleMate, Cwd: req.Cwd, ContextPath: prep.ContextPath}
-	if _, err := (Codex{}).Build(context.Background(), spec); err != nil {
-		t.Fatalf("without servers: %v", err)
+	spec, err := (Codex{}).Build(context.Background(), harness.AgentSpec{Role: harness.RoleMate, Cwd: req.Cwd, ContextPath: prep.ContextPath, MCPServers: req.MCPServers})
+	if err != nil {
+		t.Fatal(err)
 	}
-	spec.MCPServers = servers
-	_, err = Codex{}.Build(context.Background(), spec)
-	check("Build", err)
+	if !strings.Contains(strings.Join(spec.Args(), " "), "mcp_servers") {
+		t.Fatal("launch has no MCP config")
+	}
 }

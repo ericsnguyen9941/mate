@@ -30,7 +30,7 @@ Plugin pilot đã triển khai bằng local package và `.mate/plugins.yaml`; c�
 ## 2. Quyết định đã chốt
 
 1. Mate chỉ điều phối và ra quyết định. Không sửa code, không tự khảo sát repo. Ràng buộc bằng cấu trúc (cwd không chứa code), không bằng lời dặn.
-2. Crew chạy bằng harness có sẵn: Claude Code, Codex, pi, Grok. Mặc định Mate là Claude Code, Crew là Codex. Một harness làm Crew được khi nó được đăng ký trong `internal/harness/catalog` và qua suite hợp đồng ở đó (mọi capability có khai báo, launch dựng được, capture màn hình phân loại đúng, transcript đọc khớp fixture). Một harness chỉ làm Mate được khi capability `Hooks` của nó là `verified`, vì trí nhớ và inbox của Mate dựa vào hook; thiếu thì `mate mate start` từ chối và nêu tên capability, còn vai Crew không bị ảnh hưởng ([phương án registry harness](plans/harness-registry-2026-09-30.md) mục 3.7 và 9.3). pi và Grok chưa có `Hooks` verified nên hôm nay chỉ làm Crew: `mate mate start --harness pi` và `mate mate start --harness grok` bị từ chối, picker tạo Mate của Console không đưa hai harness đó ra (task 70).
+2. Crew chạy bằng harness có sẵn: Claude Code, Codex, pi, Grok. Mặc định Mate là Claude Code, Crew là Codex. Một harness làm Crew được khi nó được đăng ký trong `internal/harness/catalog` và qua suite hợp đồng ở đó (mọi capability có khai báo, launch dựng được, capture màn hình phân loại đúng, transcript đọc khớp fixture). Một harness chỉ làm Mate được khi capability `Hooks` của nó là `verified`, vì trí nhớ và inbox của Mate dựa vào hook; thiếu thì `mate mate start` từ chối và nêu tên capability, còn vai Crew không bị ảnh hưởng ([phương án registry harness](plans/harness-registry-2026-09-30.md) mục 3.7 và 9.3). pi từ 1.0.4 có extension hooks cho vai Mate và native MCP; [evidence mới](evidence/codex-pi-mcp-2026-10-13.md). Grok vẫn chưa có `Hooks` verified, chỉ làm Crew và không xuất hiện trong picker Mate.
 3. Runtime terminal là Herdr 0.8.2. Mapping: một Herdr session cho workspace, một Herdr workspace cho project, một tab cho Mate và một tab cho mỗi Crew.
 4. Giao tiếp học triệt để từ firstmate (`/Volumes/Work/Workspace/firstmate`), xem mục 4.
 5. Hai chế độ giao tiếp: tự động (mặc định, từ M18) và giám sát, xem mục 5.
@@ -547,7 +547,7 @@ Tri thức về code đi vào AGENTS.md của repo qua PR của crew.
 - `restart_mate` từ console khởi động lại Mate bằng harness mặc định của workspace, nên Mate Codex quay lại thành Mate Claude mới (tìm thấy 2026-09-24 khi viết acceptance task 38); giờ restart giữ harness trong `mate.meta`.
 - Composer của Codex trống giữa hai tool call, nên "bận rồi trống hai lần" không phải là hết lượt (đo 2026-09-24, task 38, codex-cli 0.156.1): console báo `stowed` trong khi Mate Codex còn đang ghi, và restart cắt lượt đó ("Conversation interrupted").
   Sửa: khi `mate.meta` có `transcript` của Mate Codex, stow chỉ kết thúc khi rollout có `task_complete` sau dòng `stow:` (`codex.CodexTurnCompletedAfter`); luật composer chỉ còn cho Mate Codex chưa có rollout.
-- pi chỉ làm Crew (đo 2026-10-01, pi 0.99.1, Herdr 0.8.2, pane 93x39, [evidence](evidence/pi-contract-2026-10-01.md); task 70).
+- Hợp đồng Crew pi ban đầu (đo 2026-10-01, pi 0.99.1, Herdr 0.8.2, pane 93x39, [evidence](evidence/pi-contract-2026-10-01.md); task 70).
   Pane pi đọc qua `visible`, vì `recent-unwrapped` có lúc gộp hai đường kẻ và hàng composer thành một dòng 664 ký tự, draft nằm kẹp giữa và không còn hàng composer nào để tìm.
   Composer là các hàng giữa hai đường kẻ `─` ngay trên hai dòng footer; khi bận, đường kẻ trên thành `── ⠴ Working ───` và composer vẫn vẽ, trống.
   Cấu hình toàn cục của người dùng chảy vào pane nếu không chặn: extension trong `~/.pi/agent/extensions` (ba cái trên máy đo) và skill trong `~/.agents/skills` được nạp; launch luôn có `--no-extensions --no-skills --no-approve --offline`.
@@ -596,7 +596,7 @@ internal/runtime/        copy v1
 internal/harness/        hợp đồng harness (Profile, capability, Registry, launch Prepare/Build, NewLaunchSpec, ScreenProfile: nguồn đọc pane, dialog startup, composer; TranscriptSource, QuotaProvider); không import package con nào
 internal/harness/claude/ mọi thứ riêng Claude Code: profile, launch, màn hình, settings và hook, transcript, capture startup
 internal/harness/codex/  mọi thứ riêng Codex: profile, launch, chuỗi chỉ dẫn, màn hình, hook, transcript, telemetry; kèm codexlab
-internal/harness/pi/     mọi thứ riêng pi, chỉ vai Crew: profile, launch, màn hình đọc qua `visible`, session và telemetry (mức thinking thật)
+internal/harness/pi/     mọi thứ riêng pi, Mate hooks/MCP và Crew: profile, launch, màn hình đọc qua `visible`, session và telemetry (mức thinking thật)
 internal/harness/catalog/ danh sách harness biên dịch sẵn, harness mặc định theo vai, và suite hợp đồng; chỉ binary import
 internal/harness/harnesstest/ fixture dùng chung cho test của các package harness
 internal/process/        copy v1

@@ -18,6 +18,8 @@ starts: 1
 "check_for_update_on_startup=false"
 "-c"
 "project_doc_max_bytes=131072"
+"-c"
+"mcp_servers={}"
 
 == launch spec ==
 kind: codex
@@ -41,6 +43,8 @@ task_prompt: ""
 "check_for_update_on_startup=false"
 "-c"
 "project_doc_max_bytes=131072"
+"-c"
+"mcp_servers={}"
 
 == launch env (set) ==
 MATE_PROJECT_ID=shop
@@ -157,8 +161,8 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=4de7d5d8d8c32d7359f2c2353374e802a7ae028b4e72de0202932039db8f36f6
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/event-handling/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/harness-adapters/SKILL.md mode=-rw-r--r-- bytes=9546 ---
-(rendered asset) sha256=79c841305b6719539a799cd62cf4d7e848e4fbfa99e0e1167418c265fef89e7a
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/harness-adapters/SKILL.md mode=-rw-r--r-- bytes=10131 ---
+(rendered asset) sha256=ae4026ba9641fe5ff03e454b192d43fd4c5fe95dd78e466806cb13b371158f6e
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/harness-adapters/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md mode=-rw-r--r-- bytes=31064 ---
