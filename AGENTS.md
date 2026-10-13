@@ -1,6 +1,7 @@
 # mate agent notes
 
-- Spec and task list: `docs/mvp.md`. Read it before touching code.
+- Spec: `docs/mvp.md`. Read it before touching code. Its task list stops at 2026-10-13.
+- Issues and tasks live in Linear: team `EricsNguyen` (key `CON`), project `mate`. Use the `linear` MCP server from `.mcp.json`. Teams `HVN` and `MIHU` belong to projects mate manages, not to this repo.
 - Module `github.com/nguyenngocanh94/mate`. Binary `cmd/mate`.
 - `make check` runs gofmt, `go vet`, and `go test -json ./...` through `scripts/gotestreport`.
   Any skipped test not declared in `scripts/gotestreport/expected-skips.txt` fails the build.
