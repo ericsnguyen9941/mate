@@ -23,11 +23,13 @@ Captain không lộ mặt. Gương mặt thay thế là giọng văn, quan đi�
 - **Người nói là captain**, ngôi thứ nhất ("tôi" / "I"). Không dùng giọng doanh nghiệp kiểu "chúng tôi", "đội ngũ mate".
 - **Đo trước, nói sau.** Mỗi khẳng định đi kèm một con số, một log hoặc một quyết định có trong repo. Đây là tính cách gốc của project: docs ghi "Đây là đề xuất, chưa đổi dòng code nào", evidence ghi rõ chỗ chưa chứng minh được. Bài đăng cũng vậy: nói đúng mức bằng chứng cho phép.
 - **Kể chỗ hỏng nhiều hơn khoe tính năng.** Ví dụ: Enter bị nuốt khi gửi chữ vào Codex, Mate đốt 66,5M token trong 3 ngày, 87K token cố định ở mọi lần gọi mà 50K không phải của mate. Giọng khô, thẳng, tự giễu nhẹ, không hype và không dùng chữ "cách mạng".
+- **Châm chọc người xem, kiểu dev trêu dev.** Hook và câu kết chọc đúng chỗ ngứa: vibe coder bị AI dắt mũi, merge vì agent nói "pass", trả tiền token cho thứ mình quên đã cài. Trêu để người xem bật cười rồi thấy mình trong đó, không khinh miệt. Ví dụ: "Chúc mừng. Hai cộng ba của bạn giờ bằng âm một."
+- **Hook được phép phóng đại, nói lóng, trào phúng.** Phóng đại phải lộ rõ là phóng đại, người xem biết đó là cường điệu ("đọc hết một cuốn tiểu thuyết chỉ để nói 'ok'", "AI bảo xoá production chắc bạn cũng gật"). Con số, tên, và mọi khẳng định về việc mate làm được vẫn nằm dưới ranh giới sự thật bên dưới.
 - **Ẩn dụ con tàu là gia vị**, mỗi bài nhiều nhất một lần: captain cầm lái, Mate là trưởng nhóm, crew lên đường, lên tàu. Câu thương hiệu có sẵn: "Bạn có ý tưởng. Mate có crew." và "Lợi thế riêng của một team nhỏ."
 - **Từ vựng thương hiệu:** "mate" viết thường là sản phẩm, "Mate" viết hoa là vai trò, "crew" là agent thực thi. Thuật ngữ kỹ thuật giữ tiếng Anh như trong docs (worktree, harness, token, brief).
 - **Bản tiếng Việt** viết câu ngắn, như dev nói với dev. **Bản tiếng Anh** viết theo giọng dev builder quốc tế, gọn, và dùng ví dụ họ quen.
 
-Ranh giới sự thật (guardrail cứng):
+Ranh giới sự thật (guardrail cứng, áp dụng cho số liệu và khẳng định, không áp dụng cho cường điệu đã lộ rõ):
 
 - Chỉ nói những gì code mate làm được hôm nay. Nguồn là `docs/mvp.md` và evidence.
 - Không có số liệu khách hàng, không testimonial. Không ngụ ý mate liên kết hay được Anthropic bảo trợ; mate là "dự án độc lập, xây để làm việc cùng Claude Code".

@@ -6,7 +6,12 @@ Số liệu về nền tảng nằm ở `docs/research/social-algorithms-2026-10
 
 ## Hình dạng một bài học
 
-1. **Hook, 3 giây đầu.** Đưa kết quả hoặc con số ra trước, ví dụ "66,5M token trong 3 ngày." Câu hỏi và giải thích để sau. Cả Reels lẫn TikTok đều đo việc người xem có lướt qua sớm hay không.
+Video faceless dùng motion graphics và TTS rất dễ "mùi AI": người xem nhận ra là vuốt đi. Vì vậy hook quyết định cả video. Viết hook trước mọi thứ, và đưa captain duyệt hook trước khi dựng.
+
+1. **Hook, 3 giây đầu: chạm đúng pain của người xem, kèm một câu châm chọc.** Nói thẳng vào người xem ("Agent báo test pass. Bạn merge luôn, đúng không?"), không mở bằng một sự kiện trừu tượng ("Hai cộng ba, ra âm một"). Captain đã thử ba kiểu cho V1 ngày 13/10: hỏi thẳng vào nỗi đau thắng; "luật cấm" tự giới thiệu thì thua.
+   - Khung đầu tiên (t=0) phải đọc được như một ảnh bìa: một câu chữ to, cùng một màn hình trông thật (cửa sổ terminal có prompt, đường dẫn, giờ). Không mở bằng title card trên nền trống, không fade in từ màn hình trống.
+   - Để một câu hỏi bỏ ngỏ, chỉ xem tới cuối mới có lời đáp.
+   - Không đưa số liệu của bên thứ ba vào hook. Nếu dùng thì đặt sau hook, như một cú chọc ("Bạn có đang ở trong mười phần trăm đó không?").
 2. **Vấn đề:** một câu, gọi đúng nỗi đau của người đã dùng coding agent.
 3. **Bằng chứng từ mate:** con số, log, sơ đồ hoặc ảnh console, lấy từ `material.md`.
 4. **Bài học:** điều người xem làm được ngay, nói như một quy tắc. Ví dụ: "Cô lập cấu hình harness trước khi đo token."

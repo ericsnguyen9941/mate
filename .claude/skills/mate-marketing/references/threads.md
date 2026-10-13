@@ -24,6 +24,7 @@ Bài kết thúc bằng một quan điểm có thể cãi lại, hoặc một c�
 
 ## Cấu trúc một bài
 
+- **Dòng đầu chọc đúng pain của người đọc.** Ví dụ: "Agent báo test pass. Bạn merge luôn, đúng không?". Câu này là hook, cùng giọng châm chọc với video.
 - **Dòng đầu tự đứng được.** Người lướt chỉ đọc dòng đầu, nên con số hay mệnh đề nằm ngay ở đó, không có câu dẫn.
 - **Thân bài ngắn.** Một bài Threads giới hạn 500 ký tự. Chuyện dài hơn thì viết thành chuỗi, mỗi bài trong chuỗi có một ý. Kiểm tra lại giới hạn trên app trước khi đăng.
 - **Đúng một topic tag mỗi bài.** Thử cả tag tiếng Việt và tiếng Anh, so insights, rồi ghi tag thắng vào `CAMPAIGN.md`. Tag có dấu ba chấm là tag có community: tham gia các community về lập trình và AI nếu có.
