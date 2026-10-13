@@ -117,5 +117,7 @@ turn rather than when the composer opens. The launch records its UUID, but pi
 intentionally creates no session file before a user or assistant message.
 Stopping before the first prompt therefore starts fresh on the next launch,
 with an explicit missing-session note. A recorded conversation resumes normally.
-Transcript metadata is populated by the first recall hook. Hook subprocesses wait at most five seconds and surface
-stderr diagnostics even when Mate intentionally returns exit status zero.
+Transcript metadata is populated by the first recall hook. The recall hook
+waits at most 30 seconds, like Codex's SessionStart hook; prompt and answer
+receipts block the composer and wait at most five. Every hook surfaces stderr
+diagnostics even when Mate intentionally returns exit status zero.

@@ -136,6 +136,10 @@ The explicit live fixture run is the evidence for the six combinations above.
 - Surface hook stderr even on exit 0, preserving any useful recall stdout and
   giving a recall fallback if diagnostics have no stdout. Hook wait is capped
   at five seconds; Node replay checks stderr visibility and a hung-child timeout.
+  Second review (after merge): recall (`mate-session`) now waits 30 seconds,
+  matching Codex's SessionStart bound; receipts keep five. Node replay runs a
+  six-second hook for both at once: recall returns its digest, the receipt
+  times out within 5.5 seconds. Offline only; not re-run live.
 - Repoint launch config through a same-directory temporary file plus rename;
   check all JSON decode errors explicitly. Regression checks ownership, retained
   fields and absence of temporary files.

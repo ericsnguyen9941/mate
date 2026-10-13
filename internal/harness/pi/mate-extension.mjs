@@ -7,7 +7,14 @@ const config = JSON.parse(
   readFileSync(new URL("./mate-launch.json", import.meta.url), "utf8"),
 );
 
-export function runHook(binary, args, payload, cwd, timeoutMs = 5000) {
+// Recall reads files and git metadata, so it gets the 30 second bound of
+// Codex's SessionStart hook. A prompt or answer receipt blocks the composer,
+// so it stays short.
+function hookTimeoutMs(args) {
+  return args[0] === "mate-session" ? 30000 : 5000;
+}
+
+export function runHook(binary, args, payload, cwd, timeoutMs = hookTimeoutMs(args)) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, ["hook", ...args], {
       cwd,
