@@ -53,6 +53,12 @@ const (
 	// dialog); the cap leaves room for a third without ever letting a
 	// redrawing harness be answered indefinitely.
 	startupMaxDialogs = 3
+	// startupReadyWait bounds the Herdr wait made when the pane reads
+	// ready. Measured 2026-10-13: Codex 0.162.1 in a fresh project draws an
+	// empty composer under its logo 1-6 s before the hook review replaces
+	// it, and Herdr does not report it idle while that dialog is up, so a
+	// wait this short that times out sends the settle back to the pane.
+	startupReadyWait = 3 * time.Second
 )
 
 // sleeper is the wait between polls; tests shorten it.
@@ -117,17 +123,26 @@ var startupDialogs = map[harness.StartupScreen]string{
 	harness.StartupScreenUpdateDialog: "update dialog",
 }
 
-// settleStartupPrompt polls the agent's pane until it shows the harness's
-// empty composer, answering the directory-trust dialog once if it appears.
-// It returns a target_blocked error, with the screen tail in the message and
-// in details, when the budget runs out on a screen it does not recognise,
-// when a select press does not move the highlight onto the accept option, or
-// when the dialog is still on screen after the confirm press.
+// settleStartupPrompt polls the agent's pane, names its PaneState each
+// time, and acts on that state until the harness is ready: an empty
+// composer that Herdr also reports idle, done or blocked. A measured dialog
+// (directory trust, release update) is answered once each; the hook review
+// is walked when trusted names mate's own hooks; every other dialog, and
+// a pane waiting for login, out of quota or exited, is refused at once with
+// no key pressed. Loading, busy and unknown screens are re-read until the
+// budget runs out, then refused. Every refusal is a target_blocked error
+// with the screen tail in the message and in details.
 //
-// observer reads every snapshot: the dialog on screen is its Observation's
-// Startup, and a dialog is confirmed only when its Highlight is the option
-// the harness's StartupAnswer confirms. The keys themselves are always the
-// profile's measured StartupAnswer.
+// A ready screen is not the end on its own: measured 2026-10-13, Codex
+// 0.162.1 in a fresh project draws an empty composer under its logo and
+// replaces it 1-6 s later with the hook review. A short Herdr wait
+// (startupReadyWait) that times out means the harness is not settled yet,
+// and the pane is read again.
+//
+// observer names the state (stateObserver). A dialog is confirmed only when
+// the Highlight answerStartupDialog reads is the option the harness's
+// StartupAnswer confirms; the keys themselves are always the profile's
+// measured StartupAnswer.
 //
 // trusted names the hooks mate itself installed for this launch (a Codex
 // Mate's SessionStart hook). Codex's hook review is walked, and those hooks
@@ -138,6 +153,13 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 		sleep = sleepCtx
 	}
 	kind, screens := profile.Kind(), profile.Screen()
+	states := stateObserver(observer)
+	// The chain must not be asked Jev on a screen the stub reads; plain
+	// observers are the fixture or test seams, never Jev.
+	dialogs := observer
+	if _, ok := observer.(scr.StateObserver); ok {
+		dialogs = fixture.New()
+	}
 	deadline := time.Now().Add(budget)
 	var settled Settlement
 	answered := 0
@@ -146,15 +168,27 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 		if err != nil {
 			return settled, err
 		}
-		observed, err := observer.Observe(scr.WithCaller(ctx, scr.CallerSettle), screens, screen)
+		reading, err := states.ObserveState(scr.WithCaller(ctx, scr.CallerSettle), screens, screen)
 		if err != nil {
 			return settled, err
 		}
-		class := observed.Startup
-		if class == harness.StartupScreenReady {
-			return settled, nil
-		}
-		if class == harness.StartupScreenHooksReview {
+		switch reading.State {
+		case scr.PaneReady:
+			_, err := rt.WaitAgent(ctx, handle, runtime.DefaultWait(startupReadyWait))
+			if err == nil {
+				return settled, nil
+			}
+			if !runtime.IsTimeout(err) {
+				return settled, err
+			}
+			// Not settled yet: the harness may still draw a dialog over
+			// the composer. Past the budget, the readiness wait that
+			// follows the settle decides, as before this loop waited.
+			if time.Now().After(deadline) {
+				return settled, nil
+			}
+		case scr.PaneHooksReview:
+			class := harness.StartupScreenHooksReview
 			if len(trusted) == 0 {
 				return settled, startupRefusal(handle, kind, screen,
 					fmt.Sprintf("%s asks to review hooks mate did not install; mate trusts only its own hooks and pressed nothing. Review them once in %s yourself (/hooks), then start again", kind, kind))
@@ -173,14 +207,19 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 			if err != nil {
 				return settled, err
 			}
-		} else if class == harness.StartupScreenBypassDialog {
-			answer, err := screens.StartupAnswer(class)
+		case scr.PaneBypass:
+			answer, err := screens.StartupAnswer(harness.StartupScreenBypassDialog)
 			if err != nil {
 				return settled, err
 			}
 			return settled, startupRefusal(handle, kind, screen,
 				fmt.Sprintf("%s asks to accept Bypass Permissions mode, which mate launches it with; mate does not accept it for you and pressed nothing. Run `%s --dangerously-skip-permissions` once yourself and choose %q; %s saves the choice and does not ask again. Then start again", kind, kind, answer.TargetLabel, kind))
-		} else if what, ok := startupDialogs[class]; ok {
+		case scr.PaneTrustDir, scr.PaneUpdate:
+			class := harness.StartupScreenTrustDialog
+			if reading.State == scr.PaneUpdate {
+				class = harness.StartupScreenUpdateDialog
+			}
+			what := startupDialogs[class]
 			if settled.markAnswered(class) {
 				return settled, startupRefusal(handle, kind, screen,
 					fmt.Sprintf("%s %s is still on screen after mate confirmed its selection; not pressing anything further", kind, what))
@@ -190,16 +229,23 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 				return settled, startupRefusal(handle, kind, screen,
 					fmt.Sprintf("%s drew more than %d startup dialogs in one launch; mate stops answering rather than press keys in a loop", kind, startupMaxDialogs))
 			}
-			presses, err := answerStartupDialog(ctx, rt, handle, kind, screens, observer, class, what, sleep)
+			// The highlight check in answerStartupDialog is the guard for a
+			// layout no profile measured: it confirms nothing it cannot see.
+			presses, err := answerStartupDialog(ctx, rt, handle, kind, screens, dialogs, class, what, sleep)
 			settled.Presses = append(settled.Presses, presses...)
 			if err != nil {
 				return settled, err
 			}
 			// Fall through to the next poll, which must find the next
 			// dialog or the composer.
-		} else if time.Now().After(deadline) {
+		case scr.PaneDraft, scr.PaneToolPermission, scr.PaneOther, scr.PaneAuthRequired, scr.PaneQuotaExhausted, scr.PaneExited:
 			return settled, startupRefusal(handle, kind, screen,
-				fmt.Sprintf("%s startup screen not recognised after %s: not the empty composer and not a measured startup dialog; mate refuses to press keys into a screen it cannot name%s", kind, budget.Round(time.Millisecond), jevSays(observed)))
+				fmt.Sprintf("%s startup stopped on %s (%s, %s); mate pressed nothing", kind, reading.State, reading.Source, reading.Reason))
+		default: // loading, busy, unknown
+			if time.Now().After(deadline) {
+				return settled, startupRefusal(handle, kind, screen,
+					fmt.Sprintf("%s startup screen not recognised after %s: not the empty composer and not a measured startup dialog; mate refuses to press keys into a screen it cannot name · state %s from %s", kind, budget.Round(time.Millisecond), reading.State, reading.Source))
+			}
 		}
 		if err := sleep(ctx, startupPollInterval); err != nil {
 			return settled, err
@@ -207,13 +253,25 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 	}
 }
 
-// jevSays is what Jev named the dialog on a screen the harness profile
-// could not, for the refusal: Jev's word is reported, never acted on.
-func jevSays(observed scr.Observation) string {
-	if observed.Source != "jev" || observed.Dialog == scr.DialogNone {
-		return ""
+// stateObserver is the observer that names the pane's state: observer
+// itself when it can, otherwise observer's Observation mapped through the
+// fixture's one table from startup classification to state.
+func stateObserver(observer scr.Observer) scr.StateObserver {
+	if s, ok := observer.(scr.StateObserver); ok {
+		return s
 	}
-	return " · jev says " + string(observed.Dialog)
+	return observedState{observer}
+}
+
+// observedState names a plain Observer's state from its Startup.
+type observedState struct{ scr.Observer }
+
+func (o observedState) ObserveState(ctx context.Context, profile harness.ScreenProfile, pane string) (scr.StateReading, error) {
+	obs, err := o.Observe(ctx, profile, pane)
+	if err != nil {
+		return scr.StateReading{}, err
+	}
+	return scr.StateReading{State: fixture.StateOf(obs.Startup), Startup: obs.Startup, Confidence: obs.Confidence, Source: obs.Source, Reason: obs.Reason}, nil
 }
 
 // answerStartupDialog performs one dialog's measured sequence for one

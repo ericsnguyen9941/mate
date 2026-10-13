@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/harness/claude"
 	"github.com/nguyenngocanh94/mate/internal/harness/codex"
 	"github.com/nguyenngocanh94/mate/internal/screen"
@@ -50,5 +51,16 @@ func TestFixtureStateFromTheMeasuredStartup(t *testing.T) {
 	r, _ := o.ObserveState(context.Background(), codex.Codex{}.Screen(), "welcome to something nobody measured\n  a) yes\n  b) no\n")
 	if r.State != screen.PaneUnknown || r.Confidence != 0 {
 		t.Errorf("unmeasured screen = %+v, want unknown at 0", r)
+	}
+}
+
+// StateOf is the one mapping from a measured startup classification to a
+// pane state; an unrecognised screen has no state the stub can name.
+func TestStateOfNamesOnlyMeasuredStartups(t *testing.T) {
+	if got := fixture.StateOf(harness.StartupScreenHooksReview); got != screen.PaneHooksReview {
+		t.Errorf("hooks review = %s", got)
+	}
+	if got := fixture.StateOf(harness.StartupScreenUnrecognized); got != screen.PaneUnknown {
+		t.Errorf("unrecognised = %s, want unknown", got)
 	}
 }

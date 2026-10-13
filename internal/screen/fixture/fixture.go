@@ -97,11 +97,20 @@ var startupStates = map[harness.StartupScreen]screen.PaneState{
 	harness.StartupScreenBypassDialog: screen.PaneBypass,
 }
 
+// StateOf is the pane state of a measured startup classification, and
+// PaneUnknown for one the profile did not recognise.
+func StateOf(startup harness.StartupScreen) screen.PaneState {
+	if state, ok := startupStates[startup]; ok {
+		return state
+	}
+	return screen.PaneUnknown
+}
+
 // ObserveState implements screen.StateObserver.
 func (Observer) ObserveState(_ context.Context, profile harness.ScreenProfile, pane string) (screen.StateReading, error) {
 	startup := profile.ClassifyStartup(StripSGR(pane))
-	state, ok := startupStates[startup]
-	if !ok {
+	state := StateOf(startup)
+	if state == screen.PaneUnknown {
 		return screen.StateReading{State: screen.PaneUnknown, Startup: startup, Source: Source,
 			Reason: "fixture: startup screen " + string(startup)}, nil
 	}

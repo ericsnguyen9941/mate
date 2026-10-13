@@ -29,13 +29,16 @@ type Fake struct {
 	CreateTabErr        error
 	RemoveTabErr        error
 	WaitErr             error
-	PromptErr           error
-	ReadErr             error
-	AttachErr           error
-	StopErr             error
-	LookupErr           error
-	ListErr             error
-	InspectErr          error
+	// WaitErrOnce is returned by the next WaitAgent and then cleared, so a
+	// test can model one short wait timing out before the agent settles.
+	WaitErrOnce error
+	PromptErr   error
+	ReadErr     error
+	AttachErr   error
+	StopErr     error
+	LookupErr   error
+	ListErr     error
+	InspectErr  error
 	// SessionNotRunning makes LookupSession report the named session as
 	// not running, so status/stop can be tested without EnsureSession.
 	SessionNotRunning bool
@@ -595,6 +598,10 @@ func (f *Fake) WaitAgent(_ context.Context, handle AgentHandle, until WaitCondit
 	defer f.mu.Unlock()
 	f.record("WaitAgent")
 	if err := CheckWaitTimeout(until.Timeout); err != nil {
+		return ObservedAgent{}, err
+	}
+	if err := f.WaitErrOnce; err != nil {
+		f.WaitErrOnce = nil
 		return ObservedAgent{}, err
 	}
 	if f.WaitErr != nil {
