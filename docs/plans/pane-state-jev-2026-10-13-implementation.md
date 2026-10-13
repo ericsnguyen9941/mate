@@ -1,56 +1,56 @@
-# Pane state at startup: implementation plan
+# Trạng thái pane lúc khởi động: plan triển khai
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Cho agent thực thi:** SUB-SKILL BẮT BUỘC: dùng superpowers:subagent-driven-development (khuyên dùng) hoặc superpowers:executing-plans để làm plan này từng task một. Các bước dùng checkbox (`- [ ]`) để theo dõi.
 
-**Goal:** A Mate or Crew whose harness stops on a startup dialog (first case: Codex 0.162.1 hook review on a fresh project) gets through it: Herdr's start timeout is recovered, the stub reads the pane first, Jev names the pane state only when the stub cannot, and mate acts on the state from its own table.
+**Mục tiêu:** Mate hoặc Crew có harness dừng ở một dialog lúc khởi động (ca đầu tiên: dialog review hook của Codex 0.162.1 trên project mới) phải vượt qua được: timeout của Herdr lúc start được gỡ, stub đọc pane trước, Jev chỉ phân loại trạng thái pane khi stub chịu thua, và mate hành động theo trạng thái bằng bảng của chính mình.
 
-**Architecture:** The Herdr adapter adopts the unnamed agent a timed-out `agent start` leaves in the pane (`agent rename <pane> <name>`). `internal/screen` gains `PaneState` and a `StateObserver` interface; the fixture observer maps its measured startup classification to a state, the Jev observer asks one new question whose labels are the states, and the chain asks Jev only when the fixture cannot name the state, logging every Jev answer and saving the screen text. `settleStartupPrompt` loops on the state and treats `ready` as done only when Herdr also reports the agent idle, done or blocked.
+**Kiến trúc:** Adapter Herdr nhận lại agent chưa có tên mà một lần `agent start` timeout để lại trong pane (`agent rename <pane> <tên>`). `internal/screen` có thêm `PaneState` và interface `StateObserver`; observer fixture ánh xạ phân loại khởi động đã đo sang trạng thái, observer Jev hỏi một câu hỏi mới có nhãn chính là các trạng thái, và chain chỉ hỏi Jev khi fixture không gọi tên được trạng thái, ghi log mọi câu trả lời của Jev và lưu nguyên văn màn hình. `settleStartupPrompt` lặp theo trạng thái và chỉ coi `ready` là xong khi Herdr cũng báo agent idle, done hoặc blocked.
 
-**Tech Stack:** Go 1.27, Herdr 0.9.3 CLI (JSON), Jev (TypeSafe jev-1.13.0) over `internal/notice`.
+**Công nghệ:** Go 1.27, CLI Herdr 0.9.3 (JSON), Jev (TypeSafe jev-1.13.0) qua `internal/notice`.
 
-**Spec:** `docs/plans/pane-state-jev-2026-10-13.md` (read it first; this plan argues from it).
+**Spec:** `docs/plans/pane-state-jev-2026-10-13.md` (đọc trước; plan này lập luận từ spec).
 
-## Global Constraints
+## Ràng buộc chung
 
-- Branch `fix/codex-hook-source-home`; it already holds the `~` Source fix (1efc008), the spec (40bfeb9) and the 0.162.1 captures (04a99e3).
-- Scope is the startup settle only (StartMate, StartCrew, Crew relaunch). `send`, `watch`, `stow` and `mate state` behave exactly as before.
-- Jev never chooses a key. Mate's table (spec section 3) chooses the action for a state.
-- The three existing Jev questions, `RequestBody` and `PromptHash` stay byte-for-byte the same (the 2026-10-08 evidence rests on them).
-- Stub first: when the fixture names the state, the settle makes no Jev call.
-- No automatic stub learning. Screens Jev was asked about are written to `.mate/screens/<kind>/<hash12>.txt`; mate never reads them back.
-- Never press "Trust all"; hooks are trusted only through `HookInstaller.ReviewOwn`.
-- `make check` must pass. Live tests are `TestLive*`, skip without `MATE_LIVE=1`, and any new skip must be declared in `scripts/gotestreport/expected-skips.txt`.
-- Commit messages: terse, imperative, no agent co-author line (AGENTS.md).
-- Env prefix `MATE_`, state dir `.mate/`.
+- Nhánh `fix/codex-hook-source-home`; đã có bản sửa Source `~` (1efc008), spec (40bfeb9) và các màn hình 0.162.1 (04a99e3).
+- Phạm vi chỉ là settle lúc khởi động (StartMate, StartCrew, Crew relaunch). `send`, `watch`, `stow` và `mate state` giữ nguyên hành vi.
+- Jev không bao giờ chọn phím. Bảng của mate (spec mục 3) chọn hành động cho từng trạng thái.
+- Ba câu hỏi Jev hiện có, `RequestBody` và `PromptHash` giữ nguyên từng byte (evidence 2026-10-08 dựa trên chúng).
+- Stub trước: khi fixture gọi tên được trạng thái, settle không gọi Jev.
+- Không tự học stub. Màn hình nào Jev được hỏi thì ghi vào `.mate/screens/<kind>/<hash12>.txt`; mate không bao giờ đọc lại.
+- Không bao giờ bấm "Trust all"; hook chỉ được trust qua `HookInstaller.ReviewOwn`.
+- `make check` phải pass. Live test tên `TestLive*`, skip khi không có `MATE_LIVE=1`, và mọi skip mới phải khai trong `scripts/gotestreport/expected-skips.txt`.
+- Commit message: ngắn, mệnh lệnh, không có dòng co-author của agent (AGENTS.md).
+- Tiền tố env `MATE_`, thư mục state `.mate/`.
 
-## Review Focus
+## Trọng tâm review
 
-1. Herdr times out and the pane holds an agent of another kind, or a named agent that is not ours: the start must fail as before, never adopt it. (Task 1 tests.)
-2. A screen the fixture reads as `ready` that turns into a dialog a second later: the settle must not return until Herdr agrees. (Task 5, loading-then-dialog test.)
-3. Jev is off, errors, or answers below the threshold on a screen the fixture cannot read: the settle must behave as today (poll, then refuse with the screen), pressing nothing. (Task 4 and Task 5 tests.)
-4. Jev names a key-pressing state (`dialog_trust_dir`) on a layout no harness profile measured: the existing highlight check must refuse rather than press Enter blind. (Task 5 test.)
-5. The screen log is written concurrently by two settles, or the same screen is seen many times: one file per hash, `seen` counts up, no torn file. (Task 4 tests.)
+1. Herdr timeout và pane có agent khác loại, hoặc có agent đã đặt tên không phải của mình: start phải thất bại như trước, không bao giờ nhận lại agent đó. (Test của Task 1.)
+2. Màn hình fixture đọc là `ready` nhưng một giây sau hiện dialog: settle không được trả về cho tới khi Herdr đồng ý. (Task 5, test composer rồi mới tới dialog.)
+3. Jev tắt, lỗi hoặc trả lời dưới ngưỡng trên màn hình fixture không đọc được: settle phải cư xử như hôm nay (đọc lại, rồi từ chối kèm màn hình), không bấm phím nào. (Test của Task 4 và Task 5.)
+4. Jev gọi tên một trạng thái có bấm phím (`dialog_trust_dir`) trên bố cục mà không profile harness nào đã đo: bước kiểm tra highlight hiện có phải từ chối thay vì bấm Enter mù. (Test của Task 5.)
+5. Log màn hình được hai settle ghi đồng thời, hoặc cùng một màn hình gặp nhiều lần: mỗi hash một file, `seen` tăng dần, file không bị ghi dở. (Test của Task 4.)
 
 ---
 
-### Task 1: Herdr adopts the agent a timed-out start leaves in the pane
+### Task 1: Herdr nhận lại agent mà một lần start timeout để lại trong pane
 
-**Files:**
-- Modify: `internal/runtime/herdr.go` (StartAgent retry loop, around lines 1003-1023)
-- Modify: `internal/runtime/errors.go` (add `IsTimeout` beside `IsAgentNotFound`)
-- Modify: `internal/spawn/deps.go:85-87` (`DefaultStartTimeout`)
-- Create: `internal/runtime/testdata/error-start-timeout.json`, `agent-list-unnamed-in-pane.json`, `agent-list-named-in-pane.json`, `agent-rename.json`
-- Modify: `internal/runtime/testdata/manifest.json` (one note)
-- Test: `internal/runtime/herdr_test.go`, `internal/runtime/errors_test.go` (or the existing file that tests `IsAgentNotFound`)
+**File:**
+- Sửa: `internal/runtime/herdr.go` (vòng retry của StartAgent, khoảng dòng 1003-1023)
+- Sửa: `internal/runtime/errors.go` (thêm `IsTimeout` cạnh `IsAgentNotFound`)
+- Sửa: `internal/spawn/deps.go:85-87` (`DefaultStartTimeout`)
+- Tạo: `internal/runtime/testdata/error-start-timeout.json`, `agent-list-unnamed-in-pane.json`, `agent-list-named-in-pane.json`, `agent-list-unnamed-other-kind.json`, `agent-rename.json`
+- Sửa: `internal/runtime/testdata/manifest.json` (một ghi chú)
+- Test: `internal/runtime/herdr_test.go`, `internal/runtime/errors_test.go` (hoặc file đang test `IsAgentNotFound`)
 
-**Interfaces:**
-- Produces: `func IsTimeout(err error) bool` in package `runtime` (true for Herdr code `timeout`).
-- Produces: `Herdr.StartAgent` returns a live handle (no error) when `agent start` fails with `timeout` and `agent list` shows exactly one agent in `spec.Tab().PaneID` whose kind is `spec.Kind()` and whose name is empty (it is renamed to `spec.Name()`) or already `spec.Name()`.
-- Produces: `spawn.DefaultStartTimeout == 10 * time.Second`.
+**Interface:**
+- Cung cấp: `func IsTimeout(err error) bool` trong package `runtime` (true với mã Herdr `timeout`).
+- Cung cấp: `Herdr.StartAgent` trả về handle sống (không lỗi) khi `agent start` lỗi `timeout` và `agent list` cho thấy đúng một agent trong `spec.Tab().PaneID`, kind là `spec.Kind()`, tên rỗng (sẽ được đổi thành `spec.Name()`) hoặc đã là `spec.Name()`.
+- Cung cấp: `spawn.DefaultStartTimeout == 10 * time.Second`.
 
-- [ ] **Step 1: Add the testdata**
+- [ ] **Bước 1: Thêm testdata**
 
-`internal/runtime/testdata/error-start-timeout.json` (measured 2026-10-13, Herdr 0.9.3):
+`internal/runtime/testdata/error-start-timeout.json` (đo ngày 2026-10-13, Herdr 0.9.3):
 ```json
 {
   "error": {
@@ -61,7 +61,7 @@
 }
 ```
 
-`internal/runtime/testdata/agent-list-unnamed-in-pane.json` (Herdr prints `"name": null` for an agent it detected but never named):
+`internal/runtime/testdata/agent-list-unnamed-in-pane.json` (Herdr in `"name": null` cho agent nó đã nhận ra nhưng chưa từng đặt tên):
 ```json
 {
   "id": "cli:agent:list",
@@ -86,7 +86,9 @@
 }
 ```
 
-`internal/runtime/testdata/agent-list-named-in-pane.json`: the same document with `"name": "someone-else"`.
+`internal/runtime/testdata/agent-list-named-in-pane.json`: cùng nội dung nhưng `"name": "someone-else"`.
+
+`internal/runtime/testdata/agent-list-unnamed-other-kind.json`: cùng nội dung với `agent-list-unnamed-in-pane.json` nhưng `"agent": "codex"` (launch trong test dùng kind claude).
 
 `internal/runtime/testdata/agent-rename.json`:
 ```json
@@ -106,11 +108,11 @@
 }
 ```
 
-Add to `manifest.json` `notes`: `"0.9.3 (2026-10-13): agent start --timeout on a harness held by a startup dialog fails with timeout and leaves the agent detected but unnamed (name null); agent rename <pane_id> <name> names it and agent get <name> then finds it."`
+Thêm vào `notes` của `manifest.json`: `"0.9.3 (2026-10-13): agent start --timeout on a harness held by a startup dialog fails with timeout and leaves the agent detected but unnamed (name null); agent rename <pane_id> <name> names it and agent get <name> then finds it."`
 
-- [ ] **Step 2: Write the failing tests**
+- [ ] **Bước 2: Viết test fail**
 
-In `internal/runtime/herdr_test.go`, next to `TestHerdrStartNotReadyReturnsLiveHandle`:
+Trong `internal/runtime/herdr_test.go`, cạnh `TestHerdrStartNotReadyReturnsLiveHandle`:
 
 ```go
 // A harness held by a startup dialog never becomes interactive, so `agent
@@ -146,7 +148,7 @@ func TestHerdrStartTimeoutAdoptsTheUnnamedAgentInThePane(t *testing.T) {
 }
 
 func TestHerdrStartTimeoutFailsWithoutOurAgentInThePane(t *testing.T) {
-	for _, list := range []string{"agent-list-empty.json", "agent-list-named-in-pane.json"} {
+	for _, list := range []string{"agent-list-empty.json", "agent-list-named-in-pane.json", "agent-list-unnamed-other-kind.json"} {
 		t.Run(list, func(t *testing.T) {
 			rt, launch, session, tab := bootHerdr(t, func(_ context.Context, spec process.Spec) (process.Result, error) {
 				switch {
@@ -168,9 +170,9 @@ func TestHerdrStartTimeoutFailsWithoutOurAgentInThePane(t *testing.T) {
 }
 ```
 
-Check `argvHas` accepts two positional args in order; if it only matches a prefix, assert with `slices.Index` instead. Also add a test that an agent of another kind in the pane is not adopted: copy `agent-list-unnamed-in-pane.json` to `agent-list-unnamed-other-kind.json` with `"agent": "codex"` and add it to the table above.
+Kiểm tra `argvHas` có khớp hai đối số liên tiếp theo thứ tự không; nếu nó chỉ khớp tiền tố thì assert bằng `slices.Index`.
 
-In the errors test file, add:
+Trong file test của errors, thêm:
 ```go
 func TestIsTimeout(t *testing.T) {
 	if !runtime.IsTimeout(runtime.NewHerdrError(runtime.HerdrTimeout, "timed out waiting for agent status")) {
@@ -182,14 +184,14 @@ func TestIsTimeout(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2b: Run them to see them fail**
+- [ ] **Bước 2b: Chạy để thấy test fail**
 
-Run: `go test ./internal/runtime -run 'TestHerdrStartTimeout|TestIsTimeout' -v`
-Expected: FAIL (`IsTimeout` undefined; then the adopt test fails with the timeout error).
+Chạy: `go test ./internal/runtime -run 'TestHerdrStartTimeout|TestIsTimeout' -v`
+Kỳ vọng: FAIL (`IsTimeout` chưa định nghĩa; sau đó test nhận lại agent fail với lỗi timeout).
 
-- [ ] **Step 3: Implement**
+- [ ] **Bước 3: Triển khai**
 
-`internal/runtime/errors.go`, after `IsAgentNotFound`, the same shape:
+`internal/runtime/errors.go`, sau `IsAgentNotFound`, cùng dạng:
 ```go
 // IsTimeout reports whether err is Herdr's timeout: a start or a wait whose
 // condition did not hold in time. The startup settle reads a wait timeout
@@ -207,7 +209,7 @@ func IsTimeout(err error) bool {
 }
 ```
 
-`internal/runtime/herdr.go`, in the StartAgent retry loop, beside the `HerdrAgentNotReady` branch:
+`internal/runtime/herdr.go`, trong vòng retry của StartAgent, cạnh nhánh `HerdrAgentNotReady`:
 ```go
 		if herdrCodeOf(err) == HerdrTimeout {
 			if h.adoptTimedOutStart(ctx, handle) == nil {
@@ -216,7 +218,7 @@ func IsTimeout(err error) bool {
 			return AgentHandle{}, err
 		}
 ```
-and the method:
+và method:
 ```go
 // adoptTimedOutStart names the agent a timed-out `agent start` left in the
 // pane. A harness held by a startup dialog never becomes interactive, so
@@ -250,14 +252,14 @@ func (h *Herdr) adoptTimedOutStart(ctx context.Context, handle AgentHandle) erro
 }
 ```
 
-`internal/spawn/deps.go`: change `DefaultStartTimeout = 60 * time.Second` to `10 * time.Second` and its comment to: "`agent start --timeout`. A harness held by a startup dialog never becomes interactive; the Herdr adapter adopts it after this timeout and the settle answers the dialog (docs/plans/pane-state-jev-2026-10-13.md section 5). Herdr accepts > 3000 and <= 300000 ms."
+`internal/spawn/deps.go`: đổi `DefaultStartTimeout = 60 * time.Second` thành `10 * time.Second`, và comment thành: "`agent start --timeout`. A harness held by a startup dialog never becomes interactive; the Herdr adapter adopts it after this timeout and the settle answers the dialog (docs/plans/pane-state-jev-2026-10-13.md section 5). Herdr accepts > 3000 and <= 300000 ms."
 
-- [ ] **Step 4: Run tests**
+- [ ] **Bước 4: Chạy test**
 
-Run: `go test ./internal/runtime ./internal/spawn`
-Expected: PASS. If a golden under `internal/spawn/testdata/launch/` prints the default start timeout, update it with the repo's golden update flag (look for `-update` in `internal/spawn/*_test.go`) and confirm only `--timeout` changed.
+Chạy: `go test ./internal/runtime ./internal/spawn`
+Kỳ vọng: PASS. Nếu golden nào trong `internal/spawn/testdata/launch/` in ra timeout start mặc định, cập nhật bằng flag cập nhật golden của repo (tìm `-update` trong `internal/spawn/*_test.go`) và xác nhận chỉ có `--timeout` đổi.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add internal/runtime internal/spawn/deps.go internal/spawn/testdata
@@ -266,15 +268,15 @@ git commit -m "Adopt the unnamed agent a timed-out Herdr start leaves in the pan
 
 ---
 
-### Task 2: PaneState and the fixture's reading of it
+### Task 2: PaneState và cách fixture đọc ra nó
 
-**Files:**
-- Create: `internal/screen/state.go`
-- Modify: `internal/screen/fixture/fixture.go`
+**File:**
+- Tạo: `internal/screen/state.go`
+- Sửa: `internal/screen/fixture/fixture.go`
 - Test: `internal/screen/fixture/state_test.go`
 
-**Interfaces:**
-- Produces (package `screen`):
+**Interface:**
+- Cung cấp (package `screen`):
 ```go
 type PaneState string
 
@@ -312,9 +314,9 @@ type StateObserver interface {
 	ObserveState(ctx context.Context, profile harness.ScreenProfile, pane string) (StateReading, error)
 }
 ```
-- Produces: `fixture.Observer` implements `StateObserver`.
+- Cung cấp: `fixture.Observer` implement `StateObserver`.
 
-- [ ] **Step 1: Write the failing test** (`internal/screen/fixture/state_test.go`)
+- [ ] **Bước 1: Viết test fail** (`internal/screen/fixture/state_test.go`)
 
 ```go
 package fixture_test
@@ -371,16 +373,16 @@ func TestFixtureStateFromTheMeasuredStartup(t *testing.T) {
 	}
 }
 ```
-Check the Claude bypass capture name under `internal/harness/claude/testdata/startup/` and add a `screen.PaneBypass` case for it.
+Tìm tên file màn hình bypass của Claude trong `internal/harness/claude/testdata/startup/` và thêm một case `screen.PaneBypass` cho nó.
 
-- [ ] **Step 2: Run to see it fail**
+- [ ] **Bước 2: Chạy để thấy test fail**
 
-Run: `go test ./internal/screen/fixture -run TestFixtureStateFromTheMeasuredStartup`
-Expected: FAIL to compile (`screen.StateObserver` undefined).
+Chạy: `go test ./internal/screen/fixture -run TestFixtureStateFromTheMeasuredStartup`
+Kỳ vọng: FAIL vì không biên dịch được (`screen.StateObserver` chưa định nghĩa).
 
-- [ ] **Step 3: Implement**
+- [ ] **Bước 3: Triển khai**
 
-`internal/screen/state.go`: the declarations in **Interfaces** with doc comments: `PaneState` is "what a pane is waiting for, from the list mate defines (docs/plans/pane-state-jev-2026-10-13.md section 3); an observer names one, the caller decides what to do"; `StateObserver` says "the startup settle asks it; the fixture observer answers from the harness's measured startup classifier, the chain asks Jev only when the fixture answers PaneUnknown".
+`internal/screen/state.go`: các khai báo ở mục **Interface**, kèm doc comment (tiếng Anh như code của repo). `PaneState` là "what a pane is waiting for, from the list mate defines (docs/plans/pane-state-jev-2026-10-13.md section 3); an observer names one, the caller decides what to do". `StateObserver` ghi "the startup settle asks it; the fixture observer answers from the harness's measured startup classifier, the chain asks Jev only when the fixture answers PaneUnknown".
 
 `internal/screen/fixture/fixture.go`:
 ```go
@@ -405,14 +407,14 @@ func (Observer) ObserveState(_ context.Context, profile harness.ScreenProfile, p
 	return screen.StateReading{State: state, Startup: startup, Confidence: 1, Source: Source}, nil
 }
 ```
-If `harness` defines more `StartupScreen` values than these five plus Unrecognized, map each one; a value the table misses must stay `PaneUnknown`.
+Nếu `harness` định nghĩa thêm giá trị `StartupScreen` ngoài năm giá trị này và Unrecognized, ánh xạ từng giá trị; giá trị nào bảng không có thì phải giữ là `PaneUnknown`.
 
-- [ ] **Step 4: Run tests**
+- [ ] **Bước 4: Chạy test**
 
-Run: `go test ./internal/screen/...`
-Expected: PASS.
+Chạy: `go test ./internal/screen/...`
+Kỳ vọng: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add internal/screen
@@ -421,17 +423,17 @@ git commit -m "Add pane states and read them from the measured startup classifie
 
 ---
 
-### Task 3: Jev names the pane state
+### Task 3: Jev gọi tên trạng thái pane
 
-**Files:**
-- Create: `internal/screen/jev/state.go`
+**File:**
+- Tạo: `internal/screen/jev/state.go`
 - Test: `internal/screen/jev/state_test.go`
 
-**Interfaces:**
-- Consumes: `screen.PaneState`, `screen.PaneStates`, `screen.StateReading`, `screen.StateObserver` (Task 2).
-- Produces (package `jev`): `const AxisState Axis = "pane_state"`; `func StateRequestBody(prepared string) ([]byte, error)`; `func StatePromptHash() string`; `func ParseState(data []byte) (Answer, error)`; `(*Observer).ObserveState(ctx, profile, pane) (screen.StateReading, error)`.
+**Interface:**
+- Dùng: `screen.PaneState`, `screen.PaneStates`, `screen.StateReading`, `screen.StateObserver` (Task 2).
+- Cung cấp (package `jev`): `const AxisState Axis = "pane_state"`; `func StateRequestBody(prepared string) ([]byte, error)`; `func StatePromptHash() string`; `func ParseState(data []byte) (Answer, error)`; `(*Observer).ObserveState(ctx, profile, pane) (screen.StateReading, error)`.
 
-- [ ] **Step 1: Write the failing tests** (`internal/screen/jev/state_test.go`, package `jev`)
+- [ ] **Bước 1: Viết test fail** (`internal/screen/jev/state_test.go`, package `jev`)
 
 ```go
 package jev
@@ -518,14 +520,14 @@ func TestParseStateRefusesALabelOutsideMatesStates(t *testing.T) {
 	}
 }
 ```
-`roundTrip` already exists in `jev_test.go`; if `notice.New(...).WithTransport` or the response shape (`respond` helper) differ, use the helper `jev_test.go` uses (`respond(200, body)`). If `ObserveState` with a nil profile is awkward, pass `codex.Codex{}.Screen()`.
+`roundTrip` đã có trong `jev_test.go`. Nếu `notice.New(...).WithTransport` hoặc cách dựng response khác, dùng helper mà `jev_test.go` đang dùng (`respond(200, body)`). Nếu gọi `ObserveState` với profile nil gây khó, truyền `codex.Codex{}.Screen()`.
 
-- [ ] **Step 2: Run to see them fail**
+- [ ] **Bước 2: Chạy để thấy test fail**
 
-Run: `go test ./internal/screen/jev -run 'State'`
-Expected: FAIL to compile.
+Chạy: `go test ./internal/screen/jev -run 'State'`
+Kỳ vọng: FAIL vì không biên dịch được.
 
-- [ ] **Step 3: Implement** (`internal/screen/jev/state.go`)
+- [ ] **Bước 3: Triển khai** (`internal/screen/jev/state.go`)
 
 ```go
 package jev
@@ -574,7 +576,9 @@ func StatePromptHash() string {
 	return HashOf(body)[:12]
 }
 ```
-`ParseState` must apply exactly `Parse`'s per-question checks to the single state question. Refactor `Parse`'s loop body into `func parseAnswers(data []byte, qs map[string]question) (Response, error)` (keep `Parse(data) = parseAnswers(data, questions)` so its behaviour and tests are unchanged), then:
+Tiêu chí và hướng dẫn gửi cho Jev giữ bằng tiếng Anh như ba câu hỏi hiện có.
+
+`ParseState` phải áp dụng đúng các bước kiểm tra theo từng câu hỏi của `Parse` cho câu hỏi trạng thái. Tách thân vòng lặp của `Parse` thành `func parseAnswers(data []byte, qs map[string]question) (Response, error)` (giữ `Parse(data) = parseAnswers(data, questions)` để hành vi và test của nó không đổi), rồi:
 ```go
 // ParseState validates a state answer as Parse validates the others.
 func ParseState(data []byte) (Answer, error) {
@@ -613,12 +617,12 @@ func (o *Observer) ObserveState(ctx context.Context, _ harness.ScreenProfile, pa
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [ ] **Bước 4: Chạy test**
 
-Run: `go test ./internal/screen/... ./internal/notice/...`
-Expected: PASS, including the existing evidence and cassette tests (the three-question request is unchanged).
+Chạy: `go test ./internal/screen/... ./internal/notice/...`
+Kỳ vọng: PASS, kể cả các test evidence và cassette hiện có (request ba câu hỏi không đổi).
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add internal/screen/jev
@@ -627,26 +631,26 @@ git commit -m "Ask Jev for the pane state in a question of its own"
 
 ---
 
-### Task 4: The chain asks Jev only when the stub cannot, and keeps the screen
+### Task 4: Chain chỉ hỏi Jev khi stub chịu thua, và lưu lại màn hình
 
-**Files:**
-- Create: `internal/screen/chain/state.go`, `internal/screen/chain/screens.go`
-- Modify: `internal/screen/chain/chain.go` (new option), `internal/screen/chain/log.go` (`State` field)
-- Test: `internal/screen/chain/state_test.go`, `internal/screen/chain/screens_test.go`, existing log round-trip test in `internal/screen/chain/log_test.go`
+**File:**
+- Tạo: `internal/screen/chain/state.go`, `internal/screen/chain/screens.go`
+- Sửa: `internal/screen/chain/chain.go` (option mới), `internal/screen/chain/log.go` (trường `State`)
+- Test: `internal/screen/chain/state_test.go`, `internal/screen/chain/screens_test.go`, test round-trip log hiện có trong `internal/screen/chain/log_test.go`
 
-**Interfaces:**
-- Consumes: `screen.StateObserver`, `screen.StateReading` (Task 2); `jev.Prepare` (existing).
-- Produces: `(*Chain).ObserveState` (so `chain.New(...)` satisfies `screen.StateObserver` when both observers do); `func WithScreens(dir string) Option`; `LogLine.State screen.PaneState` written as ` state=<s>` at the end of the line and read back by `ParseLogLine`.
+**Interface:**
+- Dùng: `screen.StateObserver`, `screen.StateReading` (Task 2); `jev.Prepare` (đã có).
+- Cung cấp: `(*Chain).ObserveState` (nhờ đó `chain.New(...)` thoả `screen.StateObserver` khi cả hai observer đều thoả); `func WithScreens(dir string) Option`; `LogLine.State screen.PaneState`, ghi thành ` state=<s>` ở cuối dòng và được `ParseLogLine` đọc lại.
 
-Behaviour of `ObserveState(ctx, profile, pane)`:
-1. Ask the fallback (fixture). If it is not a `StateObserver`, return its error. If its state is not `PaneUnknown`, return it: **no Jev call, no log line**.
-2. If the primary is not a `StateObserver`, or `Skips(pane)`, or the breaker refuses, return the fixture's reading with the reason appended (as `withReason` does).
-3. Cache by `(kind, sha256(pane))` with the same 60 s TTL, in a map of its own (a state reading is not an Observation).
-4. Ask Jev. On error or `Confidence < threshold`, the result is the fixture's `PaneUnknown` reading with the reason; otherwise Jev's reading, `Startup` copied from the fixture.
-5. Log one line: `LogLine{Time, Kind, Hash, Latency, Source: result.Source, Composer: "-", Dialog: "-", Confidence: jev.Confidence, Caller, Used, Fallback, State: jev.State}` (leave `Composer` and `Dialog` empty so they print `-`).
-6. If `WithScreens` is set and Jev answered (error or not counts as asked only when it answered), record the screen (below). A failure to record is ignored like a failure to log.
+Hành vi của `ObserveState(ctx, profile, pane)`:
+1. Hỏi fallback (fixture). Nếu nó không phải `StateObserver` thì trả lỗi. Nếu trạng thái của nó khác `PaneUnknown` thì trả luôn: **không gọi Jev, không ghi log**.
+2. Nếu primary không phải `StateObserver`, hoặc `Skips(pane)`, hoặc breaker từ chối, trả kết quả của fixture kèm lý do nối thêm (như `withReason`).
+3. Cache theo `(kind, sha256(pane))`, TTL 60 giây như hiện nay, trong một map riêng (kết quả trạng thái không phải Observation).
+4. Hỏi Jev. Lỗi hoặc `Confidence < threshold`: kết quả là `PaneUnknown` của fixture kèm lý do. Ngược lại: kết quả của Jev, với `Startup` chép từ fixture.
+5. Ghi một dòng log: `LogLine{Time, Kind, Hash, Latency, Source: result.Source, Confidence: jev.Confidence, Caller, Used, Fallback, State: jev.State}` (để trống `Composer` và `Dialog` để chúng in ra `-`).
+6. Nếu có `WithScreens` và Jev đã trả lời (lỗi request thì không tính), lưu màn hình như dưới đây. Lưu thất bại thì bỏ qua, như ghi log thất bại.
 
-Screen record, `screens.go`:
+Lưu màn hình, `screens.go`:
 ```go
 // recordScreen keeps the text of a screen Jev was asked about for the
 // captain to turn into stubs by hand (docs/plans/pane-state-jev-2026-10-13.md
@@ -662,11 +666,11 @@ type screenRecord struct {
 	Text                     string // jev.Prepare(pane, "")
 }
 ```
-Header lines, exactly: `# first_seen: <RFC3339>`, `# last_seen: <RFC3339>`, `# seen: <n>`, `# harness: <kind>`, `# caller: <caller>`, `# stub: <fixture Startup>`, `# jev: <state> <confidence %.2f>`, then the text. Write through a temp file in the same directory and `os.Rename`, holding a package mutex, so two settles never tear a file. On an existing file keep `first_seen`, bump `seen`, set `last_seen`, and rewrite the `jev:` line with the newest answer.
+Các dòng header, chính xác: `# first_seen: <RFC3339>`, `# last_seen: <RFC3339>`, `# seen: <n>`, `# harness: <kind>`, `# caller: <caller>`, `# stub: <Startup của fixture>`, `# jev: <state> <confidence %.2f>`, rồi tới nội dung. Ghi qua một file tạm cùng thư mục rồi `os.Rename`, giữ một mutex của package, để hai settle không bao giờ làm file ghi dở. Với file đã có: giữ `first_seen`, tăng `seen`, cập nhật `last_seen`, và ghi lại dòng `jev:` theo câu trả lời mới nhất.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Bước 1: Viết test fail**
 
-`internal/screen/chain/state_test.go` (package `chain_test`), with a stub that implements both interfaces:
+`internal/screen/chain/state_test.go` (package `chain_test`), với một stub implement cả hai interface:
 ```go
 type stateStub struct {
 	reading screen.StateReading
@@ -687,13 +691,13 @@ func TestChainStateStubFirstJevWhenTheStubCannot(t *testing.T) {
 	ctx := screen.WithCaller(context.Background(), screen.CallerSettle)
 	jevSure := screen.StateReading{State: screen.PaneHooksReview, Confidence: 0.93, Source: "jev"}
 	cases := []struct {
-		name      string
-		fixture   screen.StateReading
-		jev       screen.StateReading
-		jevErr    error
-		want      screen.PaneState
-		jevCalls  int
-		logLines  int
+		name     string
+		fixture  screen.StateReading
+		jev      screen.StateReading
+		jevErr   error
+		want     screen.PaneState
+		jevCalls int
+		logLines int
 	}{
 		{"stub reads it", screen.StateReading{State: screen.PaneReady, Confidence: 1, Source: "fixture"}, jevSure, nil, screen.PaneReady, 0, 0},
 		{"stub cannot, jev sure", screen.StateReading{State: screen.PaneUnknown, Source: "fixture"}, jevSure, nil, screen.PaneHooksReview, 1, 1},
@@ -717,7 +721,7 @@ func TestChainStateStubFirstJevWhenTheStubCannot(t *testing.T) {
 	}
 }
 ```
-Add a cache case mirroring `TestChainAsksJevOncePerScreenAMinute` (same pane twice within 60 s: one Jev call).
+Thêm một case cache theo kiểu `TestChainAsksJevOncePerScreenAMinute`: cùng một pane hai lần trong 60 giây thì chỉ một lần gọi Jev.
 
 `internal/screen/chain/screens_test.go`:
 ```go
@@ -760,23 +764,23 @@ func TestChainKeepsNoScreenTheStubRead(t *testing.T) {
 	}
 }
 ```
-Add a concurrency test: 8 goroutines `ObserveState` the same uncached pane with a fresh chain each (so each asks Jev) and `WithScreens(dir)`; afterwards one file exists, it parses, and `# seen: 8`.
+Thêm một test đồng thời: 8 goroutine gọi `ObserveState` trên cùng một pane chưa cache, mỗi goroutine một chain mới (nên mỗi cái đều hỏi Jev) với `WithScreens(dir)`; xong thì chỉ có một file, đọc được, và có `# seen: 8`.
 
-In `log_test.go`, extend the round-trip case: a `LogLine` with `State: screen.PaneHooksReview` formats with ` state=dialog_hooks_review` and `ParseLogLine` returns the same `State`; a line without `state=` parses with an empty `State`.
+Trong `log_test.go`, mở rộng case round-trip: `LogLine` có `State: screen.PaneHooksReview` được in với ` state=dialog_hooks_review` và `ParseLogLine` trả lại đúng `State`; dòng không có `state=` thì đọc ra `State` rỗng.
 
-- [ ] **Step 2: Run to see them fail**
+- [ ] **Bước 2: Chạy để thấy test fail**
 
-Run: `go test ./internal/screen/chain -run 'State|Screen|Log'`
-Expected: FAIL to compile.
+Chạy: `go test ./internal/screen/chain -run 'State|Screen|Log'`
+Kỳ vọng: FAIL vì không biên dịch được.
 
-- [ ] **Step 3: Implement** `state.go`, `screens.go`, `WithScreens`, `LogLine.State` as specified above. Reuse `kindOf`, `admit`, `record` (breaker) and the clock. `scripts/jeveval -log` reads these lines through `ParseLogLine`; make sure it still compiles and its tests pass.
+- [ ] **Bước 3: Triển khai** `state.go`, `screens.go`, `WithScreens`, `LogLine.State` đúng như mô tả trên. Dùng lại `kindOf`, `admit`, `record` (breaker) và clock. `scripts/jeveval -log` đọc các dòng này qua `ParseLogLine`; bảo đảm nó vẫn biên dịch và test của nó vẫn pass.
 
-- [ ] **Step 4: Run tests**
+- [ ] **Bước 4: Chạy test**
 
-Run: `go test ./internal/screen/... ./scripts/jeveval/...`
-Expected: PASS.
+Chạy: `go test ./internal/screen/... ./scripts/jeveval/...`
+Kỳ vọng: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add internal/screen/chain scripts/jeveval
@@ -785,29 +789,30 @@ git commit -m "Ask Jev for the pane state only when the stub cannot and keep the
 
 ---
 
-### Task 5: The startup settle loops on the pane state
+### Task 5: Settle lúc khởi động lặp theo trạng thái pane
 
-**Files:**
-- Modify: `internal/spawn/settle.go` (`settleStartupPrompt`, new helpers)
-- Test: `internal/spawn/settle_test.go` (new tests; update `TestStartMateRefusesAScreenOnlyJevNames`)
+**File:**
+- Sửa: `internal/spawn/settle.go` (`settleStartupPrompt`, helper mới)
+- Test: `internal/spawn/settle_test.go` (test mới; thay `TestStartMateRefusesAScreenOnlyJevNames`)
+- Sửa: `internal/runtime/fake.go`, `internal/runtime/fake_test.go` (`WaitErrOnce`)
 
-**Interfaces:**
-- Consumes: `screen.StateObserver`, `screen.PaneState`, `screen.StateReading` (Task 2); `runtime.IsTimeout`, `runtime.DefaultWait` (Task 1 / existing); `fixture.New()` (implements `StateObserver` after Task 2).
-- Produces: unchanged signature `settleStartupPrompt(ctx, rt, handle, profile, observer scr.Observer, budget, sleep, trusted ...harness.OwnHook) (Settlement, error)`.
+**Interface:**
+- Dùng: `screen.StateObserver`, `screen.PaneState`, `screen.StateReading` (Task 2); `runtime.IsTimeout`, `runtime.DefaultWait` (Task 1 / đã có); `fixture.New()` (implement `StateObserver` sau Task 2).
+- Cung cấp: chữ ký không đổi `settleStartupPrompt(ctx, rt, handle, profile, observer scr.Observer, budget, sleep, trusted ...harness.OwnHook) (Settlement, error)`.
 
-Rules (spec sections 3 and 5):
-- `stateObserver(observer)`: `observer` if it implements `scr.StateObserver`, else `fixture.New().(scr.StateObserver)`.
-- `PaneReady`: `rt.WaitAgent(ctx, handle, runtime.DefaultWait(startupReadyWait))` with `startupReadyWait = 3 * time.Second`. Success: return. `runtime.IsTimeout(err)`: not ready yet, poll again. Any other error: return it.
-- `PaneTrustDir`, `PaneUpdate`: the existing dialog branch with `class` = `harness.StartupScreenTrustDialog` / `harness.StartupScreenUpdateDialog` (markAnswered, startupMaxDialogs, `answerStartupDialog`). Its highlight check stays the guard for a layout no profile measured.
-- `PaneHooksReview`: the existing hooks branch (`reviewOwnHooks` with `trusted`; refusal when `trusted` is empty).
-- `PaneBypass`: the existing bypass refusal.
+Luật (spec mục 3 và 5):
+- `stateObserver(observer)`: dùng `observer` nếu nó implement `scr.StateObserver`, ngược lại dùng `fixture.New().(scr.StateObserver)`.
+- `PaneReady`: `rt.WaitAgent(ctx, handle, runtime.DefaultWait(startupReadyWait))` với `startupReadyWait = 3 * time.Second`. Thành công: trả về. `runtime.IsTimeout(err)`: chưa sẵn sàng, đọc lại. Lỗi khác: trả lỗi.
+- `PaneTrustDir`, `PaneUpdate`: nhánh dialog hiện có với `class` = `harness.StartupScreenTrustDialog` / `harness.StartupScreenUpdateDialog` (markAnswered, startupMaxDialogs, `answerStartupDialog`). Bước kiểm tra highlight của nó vẫn là chốt chặn cho bố cục chưa profile nào đo.
+- `PaneHooksReview`: nhánh hook hiện có (`reviewOwnHooks` với `trusted`; từ chối khi `trusted` rỗng).
+- `PaneBypass`: câu từ chối bypass hiện có.
 - `PaneDraft`, `PaneToolPermission`, `PaneOther`, `PaneAuthRequired`, `PaneQuotaExhausted`, `PaneExited`: `startupRefusal(handle, kind, pane, fmt.Sprintf("%s startup stopped on %s (%s, %s); mate pressed nothing", kind, reading.State, reading.Source, reading.Reason))`.
-- `PaneLoading`, `PaneBusy`, `PaneUnknown`: poll; past the deadline refuse with the existing "startup screen not recognised after …" message, with `· state <state> from <source>` in place of `jevSays`.
-- Keep calling `observer.Observe` nowhere in this loop except where `answerStartupDialog` already does.
+- `PaneLoading`, `PaneBusy`, `PaneUnknown`: đọc lại; quá hạn thì từ chối bằng câu "startup screen not recognised after …" hiện có, thay `jevSays` bằng `· state <state> from <source>`.
+- Trong vòng lặp này không gọi `observer.Observe` ở đâu nữa, ngoài chỗ `answerStartupDialog` đang gọi.
 
-- [ ] **Step 1: Write the failing tests** (`internal/spawn/settle_test.go`)
+- [ ] **Bước 1: Viết test fail** (`internal/spawn/settle_test.go`)
 
-A runtime wrapper that changes the screen after reads and times the short wait out while a dialog is up:
+Wrapper runtime đổi màn hình sau một số lần đọc:
 ```go
 // codexDrawsTheDialogLate is the fake runtime over codex-cli 0.162.1 as
 // measured on 2026-10-13: the composer under its logo first, the hook
@@ -827,7 +832,8 @@ func (c *codexDrawsTheDialogLate) ReadAgent(ctx context.Context, h runtime.Agent
 	return c.Fake.ReadAgent(ctx, h, src, lines)
 }
 ```
-Test 1 (spec test 2). The scripted pane starts at the hook review; the wrapper shows the 0.162.1 loading composer on the first read only, and the first short wait times out (Herdr is not idle while the dialog is up):
+
+Test 1 (spec test 2). Pane được kịch bản hoá bắt đầu từ dialog hook; wrapper cho lần đọc đầu tiên thấy composer kèm logo của 0.162.1, và lần chờ ngắn đầu tiên timeout (Herdr không idle khi dialog đang hiện):
 ```go
 func TestStartMateWaitsOutCodexDrawingTheHookReviewLate(t *testing.T) {
 	w := newWorkspace(t, "shop")
@@ -860,9 +866,9 @@ func TestStartMateWaitsOutCodexDrawingTheHookReviewLate(t *testing.T) {
 }
 ```
 
-This needs one small fake change: `WaitErrOnce error` on `runtime.Fake`, returned by the next `WaitAgent` and then cleared (add it next to `WaitErr` in `internal/runtime/fake.go`, with a doc comment, and a fake test). `newScriptedPane` sets `NextStartupScreen` to its first step, so the test overrides it afterwards; `fakeDeps` must be built from `fake` before `deps.Runtime` is replaced by the wrapper. If the 0.162.1 table or list screens differ from 0.156.1 in the live run (Task 8), capture them then and swap them in here.
+Test này cần một thay đổi nhỏ ở fake: trường `WaitErrOnce error` trên `runtime.Fake`, được `WaitAgent` kế tiếp trả về rồi xoá (thêm cạnh `WaitErr` trong `internal/runtime/fake.go`, có doc comment, và một test cho fake). `newScriptedPane` đặt `NextStartupScreen` bằng bước đầu tiên của nó, nên test ghi đè sau đó; `fakeDeps` phải được dựng từ `fake` trước khi thay `deps.Runtime` bằng wrapper. Nếu ở lần chạy live (Task 8) màn hình bảng hoặc danh sách hook của 0.162.1 khác 0.156.1, chụp lại lúc đó rồi thay vào đây.
 
-Test 2 (spec test 4): replace `TestStartMateRefusesAScreenOnlyJevNames` with two tests using an observer that implements both interfaces:
+Test 2 (spec test 4): thay `TestStartMateRefusesAScreenOnlyJevNames` bằng hai test dùng một observer implement cả hai interface:
 ```go
 // jevNamesTheState is the chain's state reading of a screen the profile
 // does not recognise: Jev, sure of itself, names state.
@@ -914,23 +920,24 @@ func TestStartMatePressesNoKeyIntoAnUnmeasuredDialogJevNames(t *testing.T) {
 		}
 	}
 }
-``` Keep `TestStartMateRefusalNamesNoDialogJevDidNotSee` passing by asserting the new "state unknown from fixture" wording if its message changes.
+```
+Giữ `TestStartMateRefusalNamesNoDialogJevDidNotSee` pass; nếu câu thông báo đổi thì assert theo câu mới ("state unknown from fixture").
 
-Test 3 (spec test 6, stub first) is pinned at the chain in Task 4 (`stub reads it` → 0 Jev calls); here the existing `TestStartMateSettlesThroughTheProfilesReadSource` subtests must pass unchanged.
+Test 3 (spec test 6, stub trước) đã được chốt ở chain trong Task 4 (case `stub reads it` → 0 lần gọi Jev). Ở đây chỉ cần các subtest hiện có của `TestStartMateSettlesThroughTheProfilesReadSource` pass mà không sửa.
 
-- [ ] **Step 2: Run to see them fail**
+- [ ] **Bước 2: Chạy để thấy test fail**
 
-Run: `go test ./internal/spawn -run 'Late|JevNames|Unmeasured' -v`
-Expected: FAIL (the late-dialog start returns while the dialog is up, or fails on the wait; the state refusals do not exist).
+Chạy: `go test ./internal/spawn -run 'Late|JevNames|Unmeasured' -v`
+Kỳ vọng: FAIL (start với dialog hiện muộn trả về khi dialog vẫn còn, hoặc lỗi ở bước chờ; các câu từ chối theo trạng thái chưa có).
 
-- [ ] **Step 3: Implement** the loop per the rules above. Keep `startupMaxDialogs`, `markAnswered`, `answerStartupDialog`, `reviewOwnHooks`, `startupRefusal` as they are; add `startupReadyWait` with a comment citing the 2026-10-13 measurement (Codex 0.162.1 draws an empty composer 1-6 s before its hook review). Update the comments on `settleStartupPrompt` that say a ready screen ends the settle.
+- [ ] **Bước 3: Triển khai** vòng lặp theo các luật trên. Giữ nguyên `startupMaxDialogs`, `markAnswered`, `answerStartupDialog`, `reviewOwnHooks`, `startupRefusal`. Thêm `startupReadyWait` kèm comment trích phép đo ngày 2026-10-13 (Codex 0.162.1 vẽ composer trống 1-6 giây trước dialog hook). Sửa các comment của `settleStartupPrompt` đang nói rằng màn hình ready là kết thúc settle.
 
-- [ ] **Step 4: Run tests**
+- [ ] **Bước 4: Chạy test**
 
-Run: `go test ./internal/spawn/... ./internal/runtime/... ./cmd/mate/...`
-Expected: PASS. Every existing settle test must pass without edits other than the replaced Jev test and the refusal wording.
+Chạy: `go test ./internal/spawn/... ./internal/runtime/... ./cmd/mate/...`
+Kỳ vọng: PASS. Mọi test settle hiện có phải pass mà không sửa gì, trừ test Jev bị thay và câu từ chối.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add internal/spawn internal/runtime/fake.go internal/runtime/fake_test.go
@@ -939,54 +946,54 @@ git commit -m "Settle startup on the pane state and wait out a dialog drawn afte
 
 ---
 
-### Task 6: Wire the screen log into the workspace
+### Task 6: Nối log màn hình vào workspace
 
-**Files:**
-- Modify: `internal/store/layout.go` (add `func (w *Workspace) ScreensDir() string { return filepath.Join(w.StateDir(), "screens") }` with a doc comment pointing at spec section 6)
-- Modify: `cmd/mate/jev_observer.go` (`configuredObserver` passes `chain.WithScreens(ws.ScreensDir())`; update its comment)
-- Modify: `docs/mvp.md` or the doc that lists `.mate/` contents (search `jev.log` in `docs/` and add `screens/` beside it)
-- Test: `cmd/mate/jev_observer_test.go` (or the file that tests `configuredObserver`)
+**File:**
+- Sửa: `internal/store/layout.go` (thêm `func (w *Workspace) ScreensDir() string { return filepath.Join(w.StateDir(), "screens") }`, doc comment trỏ tới spec mục 6)
+- Sửa: `cmd/mate/jev_observer.go` (`configuredObserver` truyền `chain.WithScreens(ws.ScreensDir())`; sửa comment của nó)
+- Sửa: `docs/mvp.md` hoặc tài liệu đang liệt kê nội dung `.mate/` (tìm `jev.log` trong `docs/` và thêm `screens/` bên cạnh)
+- Test: `cmd/mate/jev_observer_test.go` (hoặc file đang test `configuredObserver`)
 
-**Interfaces:**
-- Consumes: `chain.WithScreens` (Task 4).
-- Produces: a `liveDeps` observer that implements `screen.StateObserver` when `MATE_JEV=on|observer`.
+**Interface:**
+- Dùng: `chain.WithScreens` (Task 4).
+- Cung cấp: observer của `liveDeps` implement `screen.StateObserver` khi `MATE_JEV=on|observer`.
 
-- [ ] **Step 1: Write the failing test**: with a workspace whose `.mate/.env` sets `MATE_JEV=on` and a key file (copy the setup the existing `configuredObserver` test uses), assert `configuredObserver` returns a value implementing `screen.StateObserver`, and `ws.ScreensDir()` ends in `.mate/screens`.
-- [ ] **Step 2: Run it**: `go test ./cmd/mate -run ConfiguredObserver` → FAIL (`ScreensDir` undefined).
-- [ ] **Step 3: Implement** the two one-line changes and the doc line.
-- [ ] **Step 4: Run**: `make check` → PASS.
-- [ ] **Step 5: Commit**: `git commit -m "Keep the screens Jev names under .mate/screens"`
+- [ ] **Bước 1: Viết test fail**: với workspace có `.mate/.env` đặt `MATE_JEV=on` và một file key (chép cách dựng mà test `configuredObserver` hiện có đang dùng), assert `configuredObserver` trả về giá trị implement `screen.StateObserver`, và `ws.ScreensDir()` kết thúc bằng `.mate/screens`.
+- [ ] **Bước 2: Chạy**: `go test ./cmd/mate -run ConfiguredObserver` → FAIL (`ScreensDir` chưa định nghĩa).
+- [ ] **Bước 3: Triển khai** hai thay đổi một dòng và dòng tài liệu.
+- [ ] **Bước 4: Chạy**: `make check` → PASS.
+- [ ] **Bước 5: Commit**: `git commit -m "Keep the screens Jev names under .mate/screens"`
 
 ---
 
-### Task 7: Measure the state question with jeveval
+### Task 7: Đo câu hỏi trạng thái bằng jeveval
 
-**Files:**
-- Modify: `scripts/jeveval/main.go`, `scripts/jeveval/call.go`, `scripts/jeveval/score.go`, `scripts/jeveval/corpus.go`
-- Create: `scripts/jeveval/testdata/cassette-state/` (recorded), `docs/evidence/pane-state-jev-2026-10-13.md`
+**File:**
+- Sửa: `scripts/jeveval/main.go`, `scripts/jeveval/call.go`, `scripts/jeveval/score.go`, `scripts/jeveval/corpus.go`
+- Tạo: `scripts/jeveval/testdata/cassette-state/` (ghi lại từ lần gọi thật), `docs/evidence/pane-state-jev-2026-10-13.md`
 - Test: `scripts/jeveval/jeveval_test.go`
 
-**Interfaces:**
-- Consumes: `jev.StateRequestBody`, `jev.ParseState`, `jev.StatePromptHash` (Task 3); `fixture.Observer.ObserveState` (Task 2).
-- Produces: `go run ./scripts/jeveval -question state [-cassette dir] [-replay] [-list]`.
+**Interface:**
+- Dùng: `jev.StateRequestBody`, `jev.ParseState`, `jev.StatePromptHash` (Task 3); `fixture.Observer.ObserveState` (Task 2).
+- Cung cấp: `go run ./scripts/jeveval -question state [-cassette dir] [-replay] [-list]`.
 
-- [ ] **Step 1: Write the failing test**: `-question state -list` on the corpus prints one row per startup screen with its deterministic state from `fixture.ObserveState` (`dialog_hooks_review` for `codex-0.162.1-hooks-review.txt`, `ready` for `codex-0.162.1-loading-composer.txt`); `-question state -replay -cassette testdata/cassette-state` scores against those labels. Follow the shape of the existing `-list` and `-replay` tests in `jeveval_test.go`.
-- [ ] **Step 2: Run**: `go test ./scripts/jeveval` → FAIL (unknown flag).
-- [ ] **Step 3: Implement** the flag: the corpus is the startup screens under `internal/harness/*/testdata/startup/` plus `scripts/jeveval/testdata/screens/`; the label is the fixture's state (screens the fixture reads as `unknown` are listed and scored as `unscored`); the request is `StateRequestBody`; the manifest records `StatePromptHash()`.
-- [ ] **Step 4: Record the cassette** (live call, captain approved Jev API use; costs cents): `go run ./scripts/jeveval -question state -cassette scripts/jeveval/testdata/cassette-state`. Then `go test ./scripts/jeveval` with replay → PASS.
-- [ ] **Step 5: Write the evidence** `docs/evidence/pane-state-jev-2026-10-13.md`: date, `StatePromptHash`, per-screen table (file, deterministic state, Jev state, confidence, match), accuracy on scored screens, and Jev's answers on the unscored ones. State plainly whether Jev is reliable enough for the settle at threshold 0.85; do not round up.
-- [ ] **Step 6: Commit**: `git commit -m "Measure Jev's pane state question on the startup corpus"`
+- [ ] **Bước 1: Viết test fail**: `-question state -list` trên corpus in một dòng cho mỗi màn hình khởi động kèm trạng thái xác định từ `fixture.ObserveState` (`dialog_hooks_review` cho `codex-0.162.1-hooks-review.txt`, `ready` cho `codex-0.162.1-loading-composer.txt`); `-question state -replay -cassette testdata/cassette-state` chấm điểm theo các nhãn đó. Theo đúng dạng các test `-list` và `-replay` hiện có trong `jeveval_test.go`.
+- [ ] **Bước 2: Chạy**: `go test ./scripts/jeveval` → FAIL (flag chưa có).
+- [ ] **Bước 3: Triển khai** flag: corpus là các màn hình khởi động trong `internal/harness/*/testdata/startup/` cộng `scripts/jeveval/testdata/screens/`; nhãn là trạng thái fixture đọc ra (màn hình fixture đọc là `unknown` vẫn được liệt kê, chấm là `unscored`); request là `StateRequestBody`; manifest ghi `StatePromptHash()`.
+- [ ] **Bước 4: Ghi cassette** (gọi thật, captain đã cho dùng API Jev; tốn vài cent): `go run ./scripts/jeveval -question state -cassette scripts/jeveval/testdata/cassette-state`. Sau đó `go test ./scripts/jeveval` với replay → PASS.
+- [ ] **Bước 5: Viết evidence** `docs/evidence/pane-state-jev-2026-10-13.md` (tiếng Việt như các evidence khác): ngày, `StatePromptHash`, bảng theo từng màn hình (file, trạng thái xác định, trạng thái Jev, độ tin cậy, khớp hay không), độ chính xác trên các màn hình được chấm, và câu trả lời của Jev trên các màn hình không chấm. Nói thẳng Jev có đủ tin cậy cho settle ở ngưỡng 0.85 hay không; không làm tròn lên.
+- [ ] **Bước 6: Commit**: `git commit -m "Measure Jev's pane state question on the startup corpus"`
 
 ---
 
-### Task 8: Live proof on the captain's workspace
+### Task 8: Bằng chứng chạy thật trên workspace của captain
 
-No new production code. Run on the machine with `MATE_LIVE=1` only where a test needs it.
+Không thêm code production. Chỉ đặt `MATE_LIVE=1` khi một test cần.
 
-- [ ] **Step 1**: `make check` → PASS; `make build`; `bin/mate --version`.
-- [ ] **Step 2**: Ask the captain before installing: `cp bin/mate /opt/homebrew/bin/.mate.new && mv -f /opt/homebrew/bin/.mate.new /opt/homebrew/bin/mate` (rename, never overwrite a running binary in place).
-- [ ] **Step 3**: In `/Users/erics/workspace`, confirm the `matemarketing` hook is not yet trusted (`grep matemarketing ~/.codex/config.toml` prints nothing under `hooks.state`), then `mate mate start matemarketing --harness codex`. Expected: started; `~/.codex/config.toml` now trusts exactly `.../matemarketing/mate/.codex/hooks.json:session_start:0:0`; no other hook gained trust (diff the `hooks.state` table before and after).
-- [ ] **Step 4**: `mate mate stop matemarketing` then `mate mate start matemarketing --harness codex` (resume): starts with no dialog.
-- [ ] **Step 5**: One Claude Mate restart (`mihu`): `mate mate stop mihu && mate mate start mihu` resumes as before.
-- [ ] **Step 6**: Record in `docs/evidence/pane-state-jev-2026-10-13.md`: versions (codex-cli, Herdr, Claude Code), the commands, the `jev.log` lines and any `.mate/screens/` files the runs produced, and the trust diff. Update the spec's status line to "triển khai xong; live proof <date>".
-- [ ] **Step 7**: Commit `git commit -m "Record the live startup proof for Codex hook review"` and open the PR with the `pr` skill's template.
+- [ ] **Bước 1**: `make check` → PASS; `make build`; `bin/mate --version`.
+- [ ] **Bước 2**: Hỏi captain trước khi cài: `cp bin/mate /opt/homebrew/bin/.mate.new && mv -f /opt/homebrew/bin/.mate.new /opt/homebrew/bin/mate` (đổi tên file, không bao giờ ghi đè tại chỗ một binary đang chạy).
+- [ ] **Bước 3**: Trong `/Users/erics/workspace`, xác nhận hook của `matemarketing` chưa được trust (`grep matemarketing ~/.codex/config.toml` không in gì dưới `hooks.state`), rồi chạy `mate mate start matemarketing --harness codex`. Kỳ vọng: start được; `~/.codex/config.toml` giờ trust đúng `.../matemarketing/mate/.codex/hooks.json:session_start:0:0`; không hook nào khác được trust thêm (so bảng `hooks.state` trước và sau).
+- [ ] **Bước 4**: `mate mate stop matemarketing` rồi `mate mate start matemarketing --harness codex` (resume): start không gặp dialog nào.
+- [ ] **Bước 5**: Restart một Claude Mate (`mihu`): `mate mate stop mihu && mate mate start mihu` resume như trước.
+- [ ] **Bước 6**: Ghi vào `docs/evidence/pane-state-jev-2026-10-13.md`: phiên bản (codex-cli, Herdr, Claude Code), các lệnh đã chạy, các dòng `jev.log` và mọi file `.mate/screens/` mà các lần chạy tạo ra, và phần chênh lệch trust. Đổi dòng trạng thái của spec thành "triển khai xong; live proof <ngày>".
+- [ ] **Bước 7**: Commit `git commit -m "Record the live startup proof for Codex hook review"` và mở PR theo template của skill `pr`.
