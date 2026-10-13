@@ -163,3 +163,39 @@ func TestSummarizeLog(t *testing.T) {
 		t.Fatalf("got\n%s\nwant\n%s", out.String(), want)
 	}
 }
+
+// -question state lists the startup and injection screens with the state the
+// fixture observer reads, the label the state question is scored by.
+func TestStateListLabelsFromFixture(t *testing.T) {
+	var out bytes.Buffer
+	if err := runState(&out, "", false, true); err != nil {
+		t.Fatal(err)
+	}
+	for file, state := range map[string]string{
+		"codex-0.162.1-hooks-review.txt":     "dialog_hooks_review",
+		"codex-0.162.1-loading-composer.txt": "ready",
+	} {
+		found := false
+		for _, line := range strings.Split(out.String(), "\n") {
+			if strings.Contains(line, file) && strings.Contains(line, "| "+state+" |") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s not listed as %s:\n%s", file, state, out.String())
+		}
+	}
+}
+
+// The recorded state cassette replays and scores against the fixture labels.
+func TestCommittedStateCassetteReplays(t *testing.T) {
+	var out bytes.Buffer
+	if err := runState(&out, filepath.Join("testdata", "cassette-state"), true, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{jev.StatePromptHash(), "### Summary", "Match on the scored screens"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("report lacks %q:\n%s", want, out.String())
+		}
+	}
+}
