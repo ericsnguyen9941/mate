@@ -26,7 +26,8 @@ import (
 // whether any of Jev's answer is in the reading the chain returned. A
 // caller can still drop a reading it was handed (watch, for a pane that
 // changed while Jev was asked); the log cannot see that. No screen text and
-// no key is ever in it. A line written before fixture, caller and used
+// no key is ever in it. A line from the pane state question ends with
+// state=<s>, Jev's answer. A line written before fixture, caller and used
 // were logged reads with them empty.
 type LogLine struct {
 	Time       time.Time
@@ -43,6 +44,9 @@ type LogLine struct {
 	// Used is "yes", "no", or "" on a line from before it was logged.
 	Used     string
 	Fallback string
+	// State is the pane state Jev named for a startup settle's question,
+	// "" on a line from the composer question.
+	State screen.PaneState
 }
 
 // The two values of LogLine.Used.
@@ -70,6 +74,9 @@ func (l LogLine) String() string {
 	if l.Fallback != "" {
 		out += " fallback=" + l.Fallback
 	}
+	if l.State != "" {
+		out += " state=" + string(l.State)
+	}
 	return out
 }
 
@@ -84,8 +91,8 @@ func BreakerLine(at time.Time, event string) string {
 // ParseLogLine reads one line String wrote.
 func ParseLogLine(line string) (LogLine, error) {
 	f := strings.Fields(line)
-	if len(f) < 8 || len(f) > 12 {
-		return LogLine{}, fmt.Errorf("%d fields, want 8 to 12", len(f))
+	if len(f) < 8 || len(f) > 13 {
+		return LogLine{}, fmt.Errorf("%d fields, want 8 to 13", len(f))
 	}
 	at, err := time.Parse(time.RFC3339, f[0])
 	if err != nil {
@@ -142,6 +149,14 @@ func ParseLogLine(line string) (LogLine, error) {
 			l.Caller = ""
 		}
 		rest = rest[2:]
+	}
+	if n := len(rest); n >= 1 && strings.HasPrefix(rest[n-1], "state=") {
+		st, _ := field(rest[n-1], "state")
+		if st == "" || st == "-" {
+			return LogLine{}, fmt.Errorf("state %q", st)
+		}
+		l.State = screen.PaneState(st)
+		rest = rest[:n-1]
 	}
 	switch len(rest) {
 	case 0:

@@ -54,15 +54,21 @@ func WithLog(appendLine func(line string) error) Option {
 	return func(c *Chain) { c.appendLine = appendLine }
 }
 
+// WithScreens makes ObserveState keep the text of every screen Jev answered
+// about under dir (screens.go). A failure to write is dropped.
+func WithScreens(dir string) Option { return func(c *Chain) { c.screensDir = dir } }
+
 // Chain is the chained observer.
 type Chain struct {
 	primary, fallback screen.Observer
 	threshold         float64
 	now               func() time.Time
 	appendLine        func(string) error
+	screensDir        string
 
 	mu      sync.Mutex
 	cache   map[cacheKey]cached
+	states  map[cacheKey]cachedState
 	breaker breaker
 }
 
@@ -81,7 +87,7 @@ type cached struct {
 // threshold is the confidence, in [0, 1], below which primary's answer is
 // not used.
 func New(primary, fallback screen.Observer, threshold float64, opts ...Option) screen.Observer {
-	c := &Chain{primary: primary, fallback: fallback, threshold: threshold, now: time.Now, cache: map[cacheKey]cached{}}
+	c := &Chain{primary: primary, fallback: fallback, threshold: threshold, now: time.Now, cache: map[cacheKey]cached{}, states: map[cacheKey]cachedState{}}
 	for _, o := range opts {
 		o(c)
 	}
