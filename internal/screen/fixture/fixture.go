@@ -86,3 +86,24 @@ func reason(obs screen.Observation, cls Classification) string {
 	}
 	return ""
 }
+
+// startupStates maps the profile's measured startup classification to the
+// pane state. Unrecognized is unknown: the stub cannot read it.
+var startupStates = map[harness.StartupScreen]screen.PaneState{
+	harness.StartupScreenReady:        screen.PaneReady,
+	harness.StartupScreenTrustDialog:  screen.PaneTrustDir,
+	harness.StartupScreenUpdateDialog: screen.PaneUpdate,
+	harness.StartupScreenHooksReview:  screen.PaneHooksReview,
+	harness.StartupScreenBypassDialog: screen.PaneBypass,
+}
+
+// ObserveState implements screen.StateObserver.
+func (Observer) ObserveState(_ context.Context, profile harness.ScreenProfile, pane string) (screen.StateReading, error) {
+	startup := profile.ClassifyStartup(StripSGR(pane))
+	state, ok := startupStates[startup]
+	if !ok {
+		return screen.StateReading{State: screen.PaneUnknown, Startup: startup, Source: Source,
+			Reason: "fixture: startup screen " + string(startup)}, nil
+	}
+	return screen.StateReading{State: state, Startup: startup, Confidence: 1, Source: Source}, nil
+}
