@@ -1351,7 +1351,7 @@
       el("section", { class: "ds", "aria-label": "Summary" }, el("div", { class: "csum" }, order.map(function (w) {
         return chip(counts[w].f, counts[w].n + " " + w);
       }).concat([el("span", { class: "tt" }, [el("b", { text: tok(sum) }), " tokens"])]))),
-      el("div", { class: "colh", "aria-hidden": "true" }, [el("span", { text: "Task" }), el("span", { text: "Final state" }), el("span", { text: "Closed" }), el("span", { text: "Tokens" })])
+      el("div", { class: "cab-table" }, [el("div", { class: "colh", "aria-hidden": "true" }, [el("span", { text: "Task" }), el("span", { text: "Harness / model / effort" }), el("span", { text: "Final state" }), el("span", { text: "Closed" }), el("span", { text: "Tokens" })])
     ].concat(groups.map(function (g) {
       return el("div", { class: "cg" }, [
         el("div", { class: "cgh" }, [el("i", { class: "knob" }), el("b", { text: g.dr.name }), el("span", { text: g.dr.range }), el("span", { class: "n", text: plural(g.items.length, "task", "tasks") })]),
@@ -1359,6 +1359,13 @@
           var f = finalState(t);
           return el("li", { class: "tr", title: t.text || null }, [
             el("span", { class: "tn", text: t.crew }),
+            el("span", { class: "ta", "aria-label": "Harness / model / effort" }, [
+              el("b", { text: harnessInfo(t.harness).name }),
+              el("span", { class: "mono", text: t.last_model || t.model || "model ?",
+                title: t.last_model ? "Last observed model" : t.model ? "Requested model" : "Model not recorded" }),
+              el("small", { text: t.effort ? "effort: " + t.effort : "effort ?",
+                title: "Requested effort; runtime effort may differ" })
+            ]),
             el("span", null, chip(f)),
             el("span", { class: "td", title: closedAt(t) }, [age(closedAt(t)) + " ago", el("small", { text: monthDay(closedAt(t)) })]),
             el("span", { class: "tt2", text: tok(t.tokens ? t.tokens.total : null) }),
@@ -1366,11 +1373,12 @@
           ]);
         }))
       ]);
-    }));
+    })))
+    ];
   }
 
   function drawer() {
-    var aside = el("aside", { class: "drawer", "aria-label": "Details", id: "drawer" });
+    var aside = el("aside", { class: "drawer" + (sel && sel.kind === "cab" ? " drawer-cabinet" : ""), "aria-label": "Details", id: "drawer" });
     if (!sel) { aside.setAttribute("hidden", ""); return aside; }
     aside.appendChild(el("span", { class: "grab", "aria-hidden": "true" }));
     var nodes = sel.kind === "mate" ? mateDrawer(sel.project) : sel.kind === "crew" ? crewDrawer(sel.project, sel.crew) : cabinetDrawer(sel.project);

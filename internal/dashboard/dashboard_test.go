@@ -575,3 +575,30 @@ func TestContextSurvivesUnknownPricingAndClearsOnFreshSession(t *testing.T) {
 		t.Fatalf("borrowed old context: %+v", rows[id])
 	}
 }
+
+func TestTaskLaunchSettingsAreReadAlongsideObservedModel(t *testing.T) {
+	f := newFixture(t)
+	meta, err := f.ws.ReadCrewMeta(fixtureProject, fixtureCrew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta["model"], meta["effort"], meta["state"] = "requested-model", "high", "failed"
+	if err := f.ws.WriteCrewMeta(fixtureProject, fixtureCrew, meta); err != nil {
+		t.Fatal(err)
+	}
+	var got ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
+	task := got.Tasks[0]
+	if task.Harness != "codex" || task.Model != "requested-model" || task.Effort != "high" || task.LastModel == "" || task.LastModel == task.Model {
+		t.Fatalf("task launch settings = %+v", task)
+	}
+}
+
+func TestTaskMissingLaunchSettingsRemainUnknown(t *testing.T) {
+	f := newFixture(t)
+	var got ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
+	if got.Tasks[0].Model != "" || got.Tasks[0].Effort != "" {
+		t.Fatalf("invented launch settings: %+v", got.Tasks[0])
+	}
+}
