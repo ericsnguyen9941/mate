@@ -137,7 +137,7 @@ tìm agent theo pane id (`ListAgents` đã có). Fake runtime mô phỏng đư�
   # first_seen: 2026-10-13T06:27:04Z
   # last_seen:  2026-10-13T06:27:09Z
   # seen: 3
-  # harness: codex 0.162.1
+  # harness: codex
   # caller: settle
   # stub: unrecognized
   # jev: dialog_hooks_review 0.94
