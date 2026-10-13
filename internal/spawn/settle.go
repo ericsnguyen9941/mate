@@ -259,7 +259,7 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 		case scr.PaneDraft, scr.PaneToolPermission, scr.PaneOther, scr.PaneAuthRequired, scr.PaneQuotaExhausted, scr.PaneExited:
 			return settled, startupRefusal(handle, kind, screen,
 				fmt.Sprintf("%s startup stopped on %s (%s, %s); mate pressed nothing", kind, reading.State, reading.Source, reading.Reason))
-		default: // loading, busy, unknown
+		default: // loading, busy, busy_background, unknown
 			if time.Now().After(deadline) {
 				return settled, startupRefusal(handle, kind, screen,
 					fmt.Sprintf("%s startup screen not recognised after %s: not the empty composer and not a measured startup dialog; mate refuses to press keys into a screen it cannot name · state %s from %s", kind, budget.Round(time.Millisecond), reading.State, reading.Source))

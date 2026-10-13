@@ -40,8 +40,10 @@ func (r StateRow) Match() bool {
 	return r.Err == "" && r.Scored() && screen.PaneState(r.Answer.Choice) == r.Label
 }
 
-// stateCorpus is the startup captures and the injection screens, each with
-// the state fixture.ObserveState gives it.
+// stateCorpus is the startup captures, the injection screens and the
+// composer captures, each with the state fixture.ObserveState gives it. The
+// composer captures joined on 2026-10-13, when the observer began asking the
+// question of a running pane it is about to call stale.
 func stateCorpus(root string) ([]StateRow, error) {
 	all, err := loadCorpus(root)
 	if err != nil {
@@ -50,7 +52,7 @@ func stateCorpus(root string) ([]StateRow, error) {
 	reg := catalog.Default()
 	var rows []StateRow
 	for _, s := range all {
-		if s.Source != sourceStartup && s.Source != sourceInjection {
+		if s.Source != sourceStartup && s.Source != sourceInjection && s.Source != sourceSend {
 			continue
 		}
 		p, err := reg.Lookup(s.Kind)

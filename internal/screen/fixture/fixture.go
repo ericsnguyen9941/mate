@@ -8,6 +8,7 @@ package fixture
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/screen"
@@ -110,8 +111,11 @@ func StateOf(startup harness.StartupScreen) screen.PaneState {
 // then the composer read (docs/plans/pane-state-jev-2026-10-13.md section
 // 4). A turn in flight is busy even under a composer the startup classifier
 // calls ready; a typed line is draft only on a screen no startup dialog
-// matches and the harness does not draw as part of its hook review. Ready
-// comes from the startup classifier alone. Anything else is unknown.
+// matches and the harness does not draw as part of its hook review; an empty
+// composer under a count of work a turn left running
+// (harness.BackgroundScreens) is busy_background, whatever the startup
+// classifier made of the transcript above it. Ready comes from the startup
+// classifier alone. Anything else is unknown.
 func (Observer) ObserveState(_ context.Context, profile harness.ScreenProfile, pane string) (screen.StateReading, error) {
 	plain := StripSGR(pane)
 	startup := profile.ClassifyStartup(plain)
@@ -130,11 +134,18 @@ func (Observer) ObserveState(_ context.Context, profile harness.ScreenProfile, p
 
 // composerState is the pane state the composer read names over a startup
 // classification that is ready or unrecognised: busy for a turn in flight,
-// draft for a typed line on an unrecognised screen, unknown otherwise.
+// busy_background for an empty composer under background work, draft for a
+// typed line on an unrecognised screen, unknown otherwise.
 func composerState(profile harness.ScreenProfile, startup harness.StartupScreen, pane, plain string) screen.PaneState {
 	switch ClassifyComposer(profile, pane).State {
 	case screen.ComposerBusy:
 		return screen.PaneBusy
+	case screen.ComposerEmpty:
+		if bg, ok := profile.(harness.BackgroundScreens); ok {
+			if _, running := bg.Background(strings.Split(plain, "\n")); running {
+				return screen.PaneBackground
+			}
+		}
 	case screen.ComposerDraft:
 		if startup != harness.StartupScreenUnrecognized {
 			return screen.PaneUnknown

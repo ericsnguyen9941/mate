@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/harness/claude"
 	"github.com/nguyenngocanh94/mate/internal/harness/harnesstest"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
@@ -97,6 +99,38 @@ func TestWatchDoesNotOpenStaleWhileTheComposerIsBusy(t *testing.T) {
 // The pane is read through the source the crew's ScreenProfile names. Codex
 // reads recent-unwrapped, so its screens read through ReadVisible catch a
 // read that spells the source instead of asking the profile.
+// A crew whose turn is over while a shell or monitor it started keeps
+// running is waiting on its own work, not stuck: Claude's footer counts that
+// work, and the pane holds still for as long as it runs (hellovietnam
+// ds-components-c, 2026-10-13, called stale while three UI test runs waited
+// for a simulator). Once the work is gone the same quiet is stale again.
+func TestWatchDoesNotOpenStaleWhileBackgroundWorkRuns(t *testing.T) {
+	f := newFixture(t)
+	f.screens = claude.Claude{}.Screen()
+	f.setScreen(fixtureScreen(t, "claude_idle_background.ansi"))
+	f.poll()
+	f.clock.advance(4 * time.Minute)
+	f.poll()
+	f.assertIncidents()
+
+	f.setScreen(fixtureScreen(t, "claude_empty.txt"))
+	f.clock.advance(5 * time.Second)
+	f.poll()
+	f.clock.advance(4 * time.Minute)
+	f.poll()
+	f.assertIncidents("k3 stale open")
+}
+
+// fixtureScreen is one of internal/screen/fixture's committed captures.
+func fixtureScreen(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "screen", "fixture", "testdata", "screens", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func TestWatchReadsThePaneThroughTheProfilesSource(t *testing.T) {
 	f := newFixture(t)
 	f.screens = harnesstest.ScreenReadingVisible(f.screens)
@@ -789,6 +823,54 @@ func TestWatchReadsTheComposerThroughTheObserver(t *testing.T) {
 	// The pane moved, which resolves the incident; the unread screen
 	// concludes nothing else.
 	f.assertIncidents("k3 stale open", "k3 stale resolved")
+}
+
+// statesSay is an observer that also names pane states, as the chain does:
+// every screen gets one state.
+type statesSay struct {
+	observerSays
+	state  screen.PaneState
+	states int
+}
+
+func (o *statesSay) ObserveState(context.Context, harness.ScreenProfile, string) (screen.StateReading, error) {
+	o.states++
+	return screen.StateReading{State: o.state, Confidence: 0.9, Source: "jev"}, nil
+}
+
+// A still pane is put to the observer's state question once, before stale
+// opens: a state it names as still working keeps stale shut, whatever the
+// fixture's composer says, and a ready one lets it open.
+func TestWatchAsksThePaneStateOnceBeforeStale(t *testing.T) {
+	f := newFixture(t)
+	says := &statesSay{
+		observerSays: observerSays{obs: screen.Observation{Composer: screen.ComposerEmpty, Deterministic: screen.ComposerEmpty, Source: "fixture"}},
+		state:        screen.PaneBackground,
+	}
+	deps := f.deps()
+	deps.Observer = says
+	f.w = watch.New(f.ws, deps)
+
+	f.poll()
+	if says.states != 0 {
+		t.Fatalf("state asked %d times before the threshold, want never", says.states)
+	}
+	for i := 0; i < 3; i++ {
+		f.clock.advance(4 * time.Minute)
+		f.poll()
+	}
+	f.assertIncidents()
+	if says.states != 1 {
+		t.Fatalf("state asked %d times over one still screen, want once", says.states)
+	}
+
+	says.state = screen.PaneReady
+	f.setScreen(codexIdleScreen + "\n")
+	f.clock.advance(5 * time.Second)
+	f.poll()
+	f.clock.advance(4 * time.Minute)
+	f.poll()
+	f.assertIncidents("k3 stale open")
 }
 
 // The observer is asked only when the pane's snapshot changes, and only once

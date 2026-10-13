@@ -239,6 +239,10 @@ type observation struct {
 	// asking is the observer call in flight for this crew, nil when none
 	// (observe.go).
 	asking *asking
+	// stateOf is the hash of the snapshot state was named for, empty before
+	// the stale rule has asked (observe.go's stillWorking).
+	stateOf string
+	state   screen.PaneState
 }
 
 // New builds an observer over a workspace. It does not poll until Start or
@@ -531,9 +535,12 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 	}
 	quiet := now.Sub(obs.changedAt)
 
-	// The stale incident is decided on the fixture's own reading
-	// (Deterministic): Jev calling a still pane busy neither keeps it from
-	// opening nor resolves it. The column shows the observer's composer.
+	// The stale incident is decided on the fixture's own composer reading
+	// (Deterministic): Jev's composer veto neither keeps it from opening nor
+	// resolves it. Before it opens, the pane's state is asked once per still
+	// snapshot (stillWorking), stub first and Jev only when the stub cannot
+	// name it: a pane between turns that waits on work it left running is
+	// not stale (2026-10-13). The column shows the observer's composer.
 	deterministic := read.deterministic
 	switch {
 	case open[incidentKey{ref, box.IncidentStale}]:
@@ -543,6 +550,13 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 			}
 		}
 	case quiet >= w.deps.staleAfter() && deterministic != send.StateBusy && !waiting(obs.verb):
+		working, err := w.stillWorking(ctx, obs, screens, screen, hash)
+		if err != nil {
+			return err
+		}
+		if working {
+			break
+		}
 		text := fmt.Sprintf("no status line and no pane change for %s; composer %s",
 			quiet.Round(time.Second), send.ComposerLabel(deterministic))
 		if obs.verb != "" {

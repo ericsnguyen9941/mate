@@ -119,3 +119,15 @@ Hook của matemarketing đã được captain tin cậy bằng tay (và Codex M
 - Không phân biệt được từ các lượt chạy này: lần start đầu 12.6 s có đi qua cơ chế nhận lại khi quá hạn start của Herdr (Task 1; hạn start là 10 s và lượt chạy mất 12.6 s gồm cả dialog trust thư mục và hook) hay Herdr trả về trước các dialog. mate không in dòng nào cho cả hai trường hợp.
 - Chưa gặp thật: một trạng thái do Jev gọi tên trên màn hình mà stub không đọc được.
 - Các màn hình bảng/danh sách hook của 0.162.1 được parser hiện có xử lý (hook kết thúc ở trạng thái trusted, start thành công); chúng không được chụp thành fixture.
+
+## Ghi lại 2026-10-13 tối: thêm `busy_background`, corpus thêm màn hình composer
+
+Lý do: crew `ds-components-c` của hellovietnam bị observer gọi `stale` lúc 22:28 trong khi Claude đã hết lượt và đang chờ một `Monitor` (ba lần chạy UI test nền). Footer của Claude ghi `⏵⏵ bypass permissions on · 1 shell, 1 monitor · ← for agents`. Captain duyệt: thêm trạng thái `busy_background` vào danh sách của mate, và để `watch` hỏi câu `pane_state` (stub trước, Jev khi stub chịu thua) trước khi mở `stale`.
+
+Thay đổi câu hỏi: thêm nhãn `busy_background` (15 nhãn), bỏ cụm "while it starts" trong hướng dẫn vì câu hỏi giờ còn được hỏi về pane đang chạy. Prompt hash mới `846bf5cf2ddf`. Corpus thêm 22 capture composer của `internal/screen/fixture/testdata/screens` (trong đó có `claude_idle_background.ansi`, chụp nguyên văn từ pane `ds-components-c`), tổng 60 màn hình, 0 request lỗi, p50 223 ms, p95 262 ms.
+
+- Trên màn hình được chấm: **35/44 (79,5%)**; 16 màn hình không chấm. Câu trả lời ≥ 0.85: 24, 22 khớp. Hai câu sai ≥ 0.85: `codex_slash_popup.txt` (fixture draft, Jev dialog_other 0.91) và `claude_injection_draft_says_empty.txt` (fixture draft, Jev ready 0.89, như lần trước).
+- **Jev không nhận ra `busy_background`**: `claude_idle_background.ansi` được Jev gọi `dialog_bypass` ở 0.53 (có lẽ vì footer có chữ "bypass permissions on"). Dưới ngưỡng nên không được dùng; với Claude, stub đọc footer và tự gọi `busy_background`. Với harness khác, Jev chưa được chứng minh là đỡ được trường hợp này.
+- Không có câu `busy_background` sai nào ≥ 0.85 (`codex_busy_visible_v157.txt`: busy_background 0.37; ở lượt thử với hướng dẫn cũ: 0.41). Rủi ro "Jev giấu một crew treo thật" chưa thấy trong corpus.
+- 12 màn hình hook của codex (chỗ settle thật sự dùng Jev): vẫn `dialog_hooks_review` cả 12, độ tin cậy 0.93–1.00 (trước 0.84–1.00).
+- Hồi quy trên màn hình stub đã đọc được: `claude-2.1.282-ready.txt` từ khớp thành `dialog_bypass` 0.55; một lượt thử giữ nguyên hướng dẫn cũ cũng ra `dialog_bypass` 0.49, nên nguyên nhân là nhãn mới hoặc độ dao động, không phải câu hướng dẫn. Không ảnh hưởng vận hành: stub đọc được màn hình này nên Jev không được hỏi.

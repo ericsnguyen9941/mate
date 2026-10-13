@@ -197,10 +197,11 @@ func TestCommittedStateCassetteReplays(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{jev.StatePromptHash(), "### Summary",
-		"- Match on the scored screens: 24/26 (92.3%); 12 screens unscored.",
-		"- Scored answers at or above 0.85: 20, of which 19 match.",
+		"- Match on the scored screens: 35/44 (79.5%); 16 screens unscored.",
+		"- Scored answers at or above 0.85: 24, of which 22 match.",
 		"- Failed requests or invalid answers: 0.",
-		"- `claude_injection_draft_says_empty.txt`: fixture draft, Jev ready (0.870)"} {
+		"- `claude_injection_draft_says_empty.txt`: fixture draft, Jev ready (0.890)",
+		"`claude_idle_background.ansi` | busy_background | dialog_bypass | no | 0.530"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("report lacks %q:\n%s", want, out.String())
 		}
