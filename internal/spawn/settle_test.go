@@ -2,6 +2,7 @@ package spawn_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/harness/claude"
 	"github.com/nguyenngocanh94/mate/internal/harness/codex"
+	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	scr "github.com/nguyenngocanh94/mate/internal/screen"
 	"github.com/nguyenngocanh94/mate/internal/screen/fixture"
@@ -779,5 +781,20 @@ func TestStartMateWaitsOutABusyPane(t *testing.T) {
 	}
 	if late.reads < 3 || observer.asks != 0 {
 		t.Fatalf("reads %d, Jev asks %d; want the busy pane read again and Jev never asked", late.reads, observer.asks)
+	}
+}
+
+// Jev naming a bypass dialog on a harness with no bypass answer is refused
+// like every other startup screen: target_blocked, with the screen.
+func TestStartMateRefusesABypassJevNamesOnAHarnessWithoutOne(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	deps.Observer = jevNamesTheState{scr.PaneBypass}
+	rt.NextStartupScreen = "welcome to something nobody measured\nskip all permission prompts?\n  a) yes\n  b) no\n"
+	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex})
+	var coded *observability.Error
+	if !errors.As(err, &coded) || coded.Code != observability.CodeTargetBlocked || !strings.Contains(err.Error(), "skip all permission prompts?") || len(rt.SentKeys) != 0 {
+		t.Fatalf("err = %v, keys %v; want a target_blocked refusal carrying the screen and nothing pressed", err, rt.SentKeys)
 	}
 }
