@@ -14,6 +14,9 @@ import (
 
 var screensMu sync.Mutex
 
+// screenHeaderLines is how many lines recordScreen writes before the text.
+const screenHeaderLines = 7
+
 type screenRecord struct {
 	Kind, Hash, Caller, Stub string
 	Jev                      screen.PaneState
@@ -38,7 +41,10 @@ func recordScreen(dir string, r screenRecord) error {
 	at := r.At.UTC().Format(time.RFC3339)
 	first, seen := at, 1
 	if old, err := os.ReadFile(path); err == nil {
-		for _, line := range strings.Split(string(old), "\n") {
+		// Only the header is read: the screen text after it may hold
+		// lines that look like header lines.
+		lines := strings.SplitN(string(old), "\n", screenHeaderLines+1)
+		for _, line := range lines[:min(len(lines), screenHeaderLines)] {
 			if !strings.HasPrefix(line, "#") {
 				break
 			}

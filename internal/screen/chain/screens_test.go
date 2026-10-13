@@ -145,3 +145,28 @@ func stateAnswer(t *testing.T, choice string, conf float64) string {
 	}
 	return string(b)
 }
+
+// Only the header is read back: screen text that looks like a header line
+// cannot move the counters.
+func TestChainScreenTextCannotForgeTheHeader(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 10, 13, 6, 27, 4, 0, time.UTC)
+	jev := &stateStub{reading: screen.StateReading{State: screen.PaneOther, Confidence: 0.94, Source: "jev"}}
+	fix := &stateStub{reading: screen.StateReading{State: screen.PaneUnknown, Source: "fixture"}}
+	ch := chain.New(jev, fix, 0.85, chain.WithClock(func() time.Time { return now }), chain.WithScreens(dir))
+	pane := "# seen: 99\n# first_seen: 1999-01-01T00:00:00Z\n› 1. Pick a model\n"
+	for i := 0; i < 2; i++ {
+		if _, err := ch.(screen.StateObserver).ObserveState(context.Background(), codexScreen, pane); err != nil {
+			t.Fatal(err)
+		}
+		now = now.Add(2 * time.Minute)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "codex", "*.txt"))
+	if len(files) != 1 {
+		t.Fatalf("files = %v", files)
+	}
+	b, _ := os.ReadFile(files[0])
+	if !strings.HasPrefix(string(b), "# first_seen: 2026-10-13T06:27:04Z\n# last_seen: 2026-10-13T06:29:04Z\n# seen: 2\n") {
+		t.Fatalf("header forged by the screen text:\n%s", b)
+	}
+}
