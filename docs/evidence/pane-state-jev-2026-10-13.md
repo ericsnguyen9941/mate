@@ -65,7 +65,7 @@ Hai điểm cần đọc kèm bảng. Màn hình `claude_injection_draft_says_em
 
 - Trên màn hình được chấm: **23/25 (92,0%)**; 13 màn hình không chấm.
 - Hai màn hình sai: dòng 1 `claude-2.1.270-ready.txt` (Jev `auth_required`, 0.780) và dòng 38 (xem trên, Jev `busy`, 0.590). Cả hai dưới 0.85.
-- Câu trả lời sai ở độ tin cậy từ 0.85 trở lên: không có.
+- Câu trả lời sai ở độ tin cậy từ 0.85 trở lên: 0 trong 25 màn hình được chấm. Nhưng có 1 màn hình không chấm, `claude_injection_draft_says_empty` (chữ đã gõ trong composer, tức là một bản nháp), mà Jev trả `ready` ở 0.870, trên ngưỡng và rất có thể sai.
 - Câu trả lời được chấm ở độ tin cậy từ 0.85 trở lên: 19, cả 19 khớp. Sáu câu được chấm dưới 0.85 (hai sai, bốn đúng), nên ở ngưỡng 0.85 sáu màn hình đó rơi về fixture.
 - Nhãn `ready` là chỗ Jev yếu nhất: 10 màn hình, độ tin cậy 0.470, 0.640, 0.770, 0.780 (sai), 0.800, 0.870, 0.910, 0.910, 0.980 và 0.590 (sai). Chỉ bốn trong mười đạt 0.85. Mọi dialog đều 0.95 đến 1.000 (riêng `codex_update_dialog_after_enter` 0.950).
 - Latency 38 request: p50 212 ms, p95 262 ms, tối đa 384 ms.
@@ -85,4 +85,4 @@ Chưa kết luận là có. Điều con số nói:
 - Phạm vi: corpus gần như chỉ có Claude và Codex ở khởi động; các trạng thái `busy`, `draft`, `dialog_tool_permission`, `auth_required`, `quota_exhausted`, `exited` không có màn hình nào được chấm. Câu hỏi này chưa được đo ở chính những trạng thái đó.
 - Hạn chế nhãn: một lượt, một ngày, một model; nhãn fixture không phủ composer, nên sai lệch ở `draft`/`busy` chưa kiểm tra được (xem dòng injection).
 
-Kết luận hẹp, đúng với số liệu: ở khởi động, với ngưỡng 0.85, Jev không đưa ra câu sai nào trong corpus này. Chưa đủ bằng chứng để để settle dựa vào Jev cho `draft` và `busy`, nơi một câu sai là nguy hiểm nhất.
+Kết luận: độ tin cậy của Jev ở ngưỡng 0.85 cho settle chưa được chứng minh. Lý do cụ thể nhất là chính một lần trượt đã thấy: một bản nháp (`claude_injection_draft_says_empty`) bị đọc là `ready` ở 0.870, trên ngưỡng, và đó đúng loại sai nguy hiểm nhất (settle sẽ coi pane là sẵn sàng khi có chữ đang nằm trong composer). Thêm vào đó: Jev yếu ở `ready` (6/10 dưới 0.85, một màn bị đọc là `auth_required`), corpus không có màn nào được chấm cho `draft`, `busy`, `dialog_tool_permission`, `auth_required`, `quota_exhausted`, `exited`, và đây chỉ là một lượt chạy. Trên 25 màn hình được chấm không có câu sai nào ở từ 0.85 trở lên, nhưng con số đó không bù được các điểm trên.
