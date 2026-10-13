@@ -6,6 +6,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/harness/catalog"
+	"github.com/nguyenngocanh94/mate/internal/plugin"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -96,4 +97,20 @@ func consoleHarnesses() query.Harnesses {
 		out.MateDefault = query.HarnessKind(k)
 	}
 	return out
+}
+
+func pluginServerConfig(kind, name string, server plugin.MCP) error {
+	if err := pluginHarness(kind); err != nil {
+		return err
+	}
+	k, err := harnesses.Parse(kind)
+	if err != nil {
+		return err
+	}
+	p, err := harnesses.Lookup(k)
+	if err != nil {
+		return err
+	}
+	_, err = p.Capabilities().MCPConfig.Impl.MCPConfig([]harness.MCPServer{{Name: name, Type: server.Type, URL: server.URL, Command: server.Command, Cwd: server.Cwd}})
+	return err
 }

@@ -65,10 +65,12 @@ func PreflightMatePlugins(w *store.Workspace, deps Deps, project string, kind ha
 	if err != nil {
 		return err
 	}
-	if c := profile.Capabilities().MCPConfig; !c.Verified() {
+	c := profile.Capabilities().MCPConfig
+	if !c.Verified() {
 		return harness.RefuseMCPServers(kind, c.Reason, p.servers)
 	}
-	return nil
+	_, err = c.Impl.MCPConfig(p.servers)
+	return err
 }
 
 // writePluginSkills installs the plugin skills where the harness reads the

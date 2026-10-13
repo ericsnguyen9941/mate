@@ -82,6 +82,10 @@ read tool duy nhất dưới đúng cờ launch Mate, ghi tool call/result làm 
 sau đó kiểm HTTP OAuth với Linear tại pane thật. Giữ policy built-in hiện có;
 chỉ chỉnh đường cho MCP nếu probe chứng minh cần, bằng cơ chế harness hỗ trợ.
 
+Tiếp nối 2026-10-13: adapter Codex và pi được triển khai theo
+[plan MCP](codex-pi-mcp-2026-10-13.md); kết quả đo mới ở
+[evidence](../evidence/codex-pi-mcp-2026-10-13.md). Phần dưới ghi baseline pilot.
+
 ### Codex
 
 Launcher chưa nhận `mcp_servers`. Help local **codex-cli 0.162.1** hỗ trợ dotted

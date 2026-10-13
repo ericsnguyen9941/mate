@@ -111,3 +111,14 @@ func TestMCPFixtureInitializeDefaultsProtocol(t *testing.T) {
 		t.Errorf("protocolVersion = %v, want %s", v, defaultProtocol)
 	}
 }
+
+func TestMCPFixtureToolErrorIsNotSuccess(t *testing.T) {
+	resp, ok := handle([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_probe","arguments":{"id":"error"}}}`))
+	if !ok {
+		t.Fatal("no reply")
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok || result["isError"] != true {
+		t.Fatalf("not a tool error: %+v", resp)
+	}
+}

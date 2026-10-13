@@ -13,7 +13,15 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"strconv"
+	"sync"
+	"time"
 )
 
 const (
@@ -22,6 +30,17 @@ const (
 )
 
 func main() {
+	httpAddr := flag.String("http", "", "serve streamable HTTP on this address instead of stdio")
+	pidFile := flag.String("pid-file", "", "write fixture PID for shutdown assertions")
+	oauth := flag.Bool("oauth", false, "require mock OAuth on HTTP; lab only")
+	addressFile := flag.String("address-file", "", "write the actual HTTP URL here")
+	flag.Parse()
+	if *pidFile != "" {
+		if err := os.WriteFile(*pidFile, []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+			panic(err)
+		}
+	}
+
 	var logFile *os.File
 	if path := os.Getenv("MCP_FIXTURE_LOG"); path != "" {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
@@ -31,6 +50,88 @@ func main() {
 		}
 		defer f.Close()
 		logFile = f
+	}
+	if *httpAddr != "" {
+		listener, err := net.Listen("tcp", *httpAddr)
+		if err != nil {
+			panic(err)
+		}
+		if *addressFile != "" {
+			if err := os.WriteFile(*addressFile, []byte("http://"+listener.Addr().String()+"/mcp"), 0600); err != nil {
+				panic(err)
+			}
+		}
+		base := "http://" + listener.Addr().String()
+		var mu sync.Mutex
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if *oauth {
+				write := func(v any) { w.Header().Set("Content-Type", "application/json"); _ = json.NewEncoder(w).Encode(v) }
+				switch r.URL.Path {
+				case "/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-protected-resource":
+					write(map[string]any{"resource": base + "/mcp", "authorization_servers": []string{base}, "scopes_supported": []string{"read"}, "bearer_methods_supported": []string{"header"}})
+					return
+				case "/.well-known/oauth-authorization-server":
+					write(map[string]any{"issuer": base, "authorization_endpoint": base + "/authorize", "token_endpoint": base + "/token", "registration_endpoint": base + "/register", "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"none"}})
+					return
+				case "/register":
+					var d map[string]any
+					_ = json.NewDecoder(r.Body).Decode(&d)
+					d["client_id"] = "mate-fixture-client"
+					d["client_id_issued_at"] = time.Now().Unix()
+					write(d)
+					return
+				case "/authorize":
+					redirect, err := url.Parse(r.URL.Query().Get("redirect_uri"))
+					if err != nil || redirect.Scheme != "http" || (redirect.Hostname() != "localhost" && redirect.Hostname() != "127.0.0.1") {
+						http.Error(w, "invalid lab callback", 400)
+						return
+					}
+					q := redirect.Query()
+					q.Set("code", "fixture-code")
+					q.Set("state", r.URL.Query().Get("state"))
+					redirect.RawQuery = q.Encode()
+					http.Redirect(w, r, redirect.String(), 302)
+					return
+				case "/token":
+					write(map[string]any{"access_token": "mate-fixture-token", "refresh_token": "mate-fixture-refresh", "token_type": "Bearer", "expires_in": 3600, "scope": "read"})
+					return
+				}
+				if r.Header.Get("Authorization") != "Bearer mate-fixture-token" {
+					w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+base+`/.well-known/oauth-protected-resource/mcp", scope="read"`)
+					w.WriteHeader(401)
+					return
+				}
+			}
+			if r.Method == "DELETE" {
+				w.WriteHeader(204)
+				return
+			}
+			if r.Method != "POST" {
+				w.WriteHeader(405)
+				return
+			}
+			b, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
+			if err != nil {
+				http.Error(w, "read", 400)
+				return
+			}
+			if logFile != nil {
+				mu.Lock()
+				_, _ = logFile.Write(append(b, '\n'))
+				mu.Unlock()
+			}
+			resp, ok := handle(b)
+			if !ok {
+				w.WriteHeader(202)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
+		if err := http.Serve(listener, handler); err != nil {
+			panic(err)
+		}
+		return
 	}
 	out := bufio.NewWriter(os.Stdout)
 	if err := serve(bufio.NewReader(os.Stdin), out, logFile); err != nil {
@@ -143,6 +244,9 @@ func handle(line []byte) (response, bool) {
 		}
 		if p.Arguments.ID == nil {
 			return errorReply(req.ID, -32602, "missing required argument: id"), true
+		}
+		if *p.Arguments.ID == "error" {
+			return okReply(req.ID, map[string]any{"isError": true, "content": []any{map[string]any{"type": "text", "text": "probe:error:failed"}}}), true
 		}
 		return okReply(req.ID, map[string]any{
 			"content": []any{map[string]any{"type": "text", "text": "probe:" + *p.Arguments.ID + ":ok"}},

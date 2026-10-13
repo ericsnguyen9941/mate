@@ -25,6 +25,8 @@ type DoctorOptions struct {
 	// MCPConfig is nil when a Mate on kind can be given MCP servers, and
 	// otherwise says why not.
 	MCPConfig func(kind string) error
+	// ValidateMCP checks the resolved server against the adapter offline.
+	ValidateMCP func(kind, name string, server MCP) error
 	// KeyOwner names what outside plugins.yaml already owns a console key
 	// on project rows, or "" when the key is free.
 	KeyOwner func(key string) string
@@ -192,7 +194,11 @@ func doctorInstance(in Instance, projects []string, cfg Config, opts DoctorOptio
 			case opts.MCPConfig == nil:
 				add(subject, "harness "+kind, nil, source+"; support not checked")
 			default:
-				add(subject, "harness "+kind, opts.MCPConfig(kind), source)
+				err := opts.MCPConfig(kind)
+				if err == nil && opts.ValidateMCP != nil {
+					err = opts.ValidateMCP(kind, in.ID, *m.MCP)
+				}
+				add(subject, "harness "+kind, err, source)
 			}
 		}
 	}

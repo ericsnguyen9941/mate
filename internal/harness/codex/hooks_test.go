@@ -230,3 +230,19 @@ func TestCommandMatch(t *testing.T) {
 		}
 	}
 }
+
+func TestCodexV162UnnamedHookReview(t *testing.T) {
+	event, ok := ParseCodexHookEvent(startupFixture(t, "codex-0.162.1-hooks-sessionstart-own.txt"))
+	if !ok || event.Event != "SessionStart" || event.Selected() != 0 || !event.Hooks[0].NeedsReview {
+		t.Fatalf("parse = %+v %v", event, ok)
+	}
+	own := harness.OwnHook{Event: "SessionStart", Source: "/private/tmp/mcp-lab/.mate/projects/shop/mate/.codex/hooks.json", Command: "'/private/tmp/mcp-lab/bin/mate' hook mate-session --harness codex"}
+	if !ownHookMatches(own, event.Detail) {
+		t.Fatalf("own hook did not match %+v", event.Detail)
+	}
+	foreign := own
+	foreign.Source = "/private/tmp/foreign/hooks.json"
+	if ownHookMatches(foreign, event.Detail) {
+		t.Fatal("foreign hook matched")
+	}
+}

@@ -74,3 +74,36 @@ without that flag replaces its legacy bindings with one workspace configuration.
 `doctor --project` selects a harness to check; it does not set installation scope.
 OAuth remains owned by each harness. Workspace configuration does not promise
 a single shared login across agents or harnesses.
+
+## Codex and pi
+
+Codex 0.162.1 and pi 1.0.4 are the measured versions for the additional
+adapters ([implementation evidence](evidence/codex-pi-mcp-2026-10-13.md)).
+Both accept HTTP and stdio plugins on a Mate, fresh and resumed. pi now runs
+Mate through a generated hook extension and explicitly loads Mate/plugin skills.
+Crews receive no workspace plugins. Restart Mate after changing plugins.
+
+Codex receives a whole `mcp_servers` table through `-c`; a Mate uses only the
+workspace's resolved servers, including an empty table after removal. The
+operator's config.toml is never edited, and a Crew without plugin servers
+keeps its existing launch behavior. Codex's native OAuth manager owns login.
+For an HTTP instance, invoke login with the same URL/table and CODEX_HOME:
+
+```sh
+codex -c 'mcp_servers={"linear-work"={url="https://mcp.linear.app/mcp"}}' mcp login linear-work
+```
+
+Use your package's actual URL and instance name. The same override with
+`mcp get <instance>` inspects configuration; it does not prove auth or a tool read.
+
+pi receives servers through its native `registerMcpServer` API and loads
+`builtin:mcp` explicitly. Use `/mcp` in the Mate pane to sign in to an HTTP
+server. pi owns its OAuth cache in the selected pi agent home. Existing global
+MCP servers may also load; a global name/namespace colliding with a workspace
+instance is refused before launch. Rename the global entry or plugin instance
+instead of silently connecting the workspace name to another server.
+
+Offline doctor/preflight validate resolved config and harness compatibility;
+they do not contact the server. Live fixture proofs and external Linear OAuth
+pilot results are reported separately in the evidence; do not infer a Linear
+login from a successful fixture read.

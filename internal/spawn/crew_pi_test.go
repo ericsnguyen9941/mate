@@ -2,6 +2,7 @@ package spawn_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -70,15 +71,17 @@ func TestSpawnCrewOnPi(t *testing.T) {
 	}
 }
 
-// A Mate on pi is refused before anything is created, naming Hooks.
-func TestStartMateOnPiIsRefused(t *testing.T) {
+func TestStartMateOnPiInstallsItsExtension(t *testing.T) {
 	w := newWorkspace(t, "shop")
 	rt := runtime.NewFake()
-	_, err := spawn.StartMate(context.Background(), w, fakeDeps(t, rt), spawn.StartRequest{Project: "shop", Harness: pi.KindPi})
-	if err == nil || !strings.Contains(err.Error(), "Hooks") {
-		t.Fatalf("StartMate on pi = %v, want a refusal naming Hooks", err)
+	res, err := spawn.StartMate(context.Background(), w, fakeDeps(t, rt), spawn.StartRequest{Project: "shop", Harness: pi.KindPi})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(rt.StartLaunches) != 0 {
-		t.Fatal("a refused Mate was launched")
+	if len(rt.StartLaunches) != 1 {
+		t.Fatal("Mate not launched")
+	}
+	if _, err := os.Stat(filepath.Join(res.MateDir, ".pi", "mate-extension.mjs")); err != nil {
+		t.Fatal(err)
 	}
 }

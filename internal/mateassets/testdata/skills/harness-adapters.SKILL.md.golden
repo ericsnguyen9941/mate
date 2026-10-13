@@ -95,7 +95,11 @@ pi never asks permission before running a tool, so a pi Crew does not stop on an
 pi lowers or raises the thinking level to what the model supports without saying so: a Crew asked for `--effort medium` on `deepseek/deepseek-flash` thinks at `high`.
 The level it really used is the last word of the footer's second line, and the dashboard shows it for the Crew as its runtime effort once the first turn is recorded.
 
-A Mate cannot run on pi: pi has no hook mate can install yet, and a Mate's memory and inbox rest on hooks.
+A Mate requires pi 1.0.4 or later. Mate explicitly loads its own extension with `-e` for prompt/answer receipts and recall, and its `.pi/skills` with `--skill`; automatic extension and skill discovery remains disabled.
+
+When a Mate has MCP plugins, it loads pi's native `builtin:mcp` and registers each server with direct tool exposure. pi handles connections, OAuth (`/mcp`), tool results and shutdown. MCP server names replace `-` with `_` in tool names; a global pi MCP entry sharing that namespace blocks launch, because global config would override the registered plugin.
+
+Plugin changes apply at the next start. Crews receive no workspace plugin servers or Mate hooks.
 
 ## grok
 

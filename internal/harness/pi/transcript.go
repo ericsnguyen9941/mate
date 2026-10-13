@@ -256,6 +256,9 @@ func modelName(provider, id string) string {
 // commandClass maps pi's built-in tools; anything else, an extension's
 // tool among them, is other.
 func commandClass(tool string) harness.CommandClass {
+	if strings.HasPrefix(tool, "mcp__") || tool == "list_mcp_resources" || tool == "list_mcp_resource_templates" || tool == "read_mcp_resource" {
+		return harness.CommandMCP
+	}
 	switch tool {
 	case "bash":
 		return harness.CommandShell
