@@ -38,7 +38,9 @@
 // by hand. The captain typing to the Mate no longer turns it off (docs/mvp.md
 // M18; it used to, and a crew's `wait-mate` landing in that window was told
 // to nobody). A manual project's crews wait in the captain's inbox instead
-// (internal/box). The daemon re-reads
+// (internal/box), but only while the captain is there: five minutes without
+// a prompt to the Mate or a press of `m` turn auto back on (rearm,
+// docs/mvp.md M21). The daemon re-reads
 // the flag at the top of each project's turn, and the outbox reads it again
 // immediately before it types a digest (and withdraws the digest instead), so
 // a captain who takes over is not answered by a machine a moment later.

@@ -15,7 +15,7 @@ The captain typing to you does not change the mode.
 
 **Auto - the default state in which you are woken.**
 The console delivers you a digest of Crew events on its own, batched and rate-limited.
-The captain can hold manual mode or turn auto back on with a key in the console. A digest only types into your composer once your turn is over and the composer is empty, so it never lands in the middle of a line the captain is typing.
+The captain can choose manual mode or turn auto back on with a key in the console. Manual lasts while the captain is with you: five minutes without a prompt from them turns auto back on, and the digest then hands you whatever is still open. A digest only types into your composer once your turn is over and the composer is empty, so it never lands in the middle of a line the captain is typing.
 
 Every line the app sends into your pane on its own initiative carries the sentinel `⟦mate⟧ ` - the mathematical white square bracket U+27E6, the word `mate`, the closing bracket U+27E7, then one space - as its prefix.
 Nobody types those glyphs by accident, which is the entire point: a prompt that starts with that sentinel is the app handing you an internal event, and a prompt without it is the captain talking to you directly.
