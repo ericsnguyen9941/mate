@@ -183,6 +183,47 @@ if(Date.now()-started>2000)throw Error('timeout not bounded');
 	}
 }
 
+// Recall reads files and git metadata, so it gets Codex's SessionStart bound;
+// a receipt blocks the composer, so it keeps the short one. Both run at once
+// against a binary slower than the receipt bound.
+func TestPiRecallOutlastsTheReceiptTimeout(t *testing.T) {
+	req := crewRequest(t)
+	req.Role = harness.RoleMate
+	req.Binary = filepath.Join(req.Cwd, "hook-test")
+	if err := os.WriteFile(req.Binary, []byte("#!/bin/sh\ncat >/dev/null\nsleep 6\n[ \"$2\" = mate-session ] && printf DIGEST\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	files, err := mateFiles(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if err := os.MkdirAll(filepath.Dir(f.Path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f.Path, f.Data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stubPiRuntime(t, req.Cwd)
+	script := `
+const {default:install}=await import(process.argv[1]);
+const events={};const warnings=[];
+install({registerMcpServer:()=>{},on:(n,f)=>{events[n]=f}});
+const ctx={cwd:process.cwd(),hasUI:true,ui:{notify:(m)=>warnings.push(m)},sessionManager:{getSessionId:()=>"s",getSessionFile:()=>"s.jsonl"}};
+const started=Date.now();
+const receipt=events.input({text:'hello',source:'interactive'},ctx).then(()=>Date.now()-started);
+const [recall,receiptMs]=await Promise.all([events.before_agent_start({},ctx),receipt]);
+if(recall?.message?.content!=='DIGEST')throw Error('recall cut short: '+JSON.stringify(recall)+' '+warnings);
+if(receiptMs>5500||!warnings.some((w)=>w.includes('timed out')))throw Error('receipt not bounded: '+receiptMs+'ms '+warnings);
+`
+	cmd := exec.Command("node", "--input-type=module", "-e", script, extensionPath(req.Cwd))
+	cmd.Dir = req.Cwd
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("hook timeouts: %v %s", err, out)
+	}
+}
+
 func TestPiMateFilesProtectOwnershipAndLaunch(t *testing.T) {
 	req := crewRequest(t)
 	req.Role = harness.RoleMate
