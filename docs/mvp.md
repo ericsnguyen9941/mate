@@ -160,9 +160,9 @@ Chốt 2026-09-18 sau khi test tay M2. Bảy trạng thái, ba người đặt, 
 | `working` | Crew | `crews/<id>.status` | Đang làm; dòng mô tả pha. |
 | `needs-decision` | Crew | `.status` | Crew hỏi và dừng turn; cần Mate hoặc người dùng trả lời. Vào inbox. |
 | `wait-mate` | Crew | `.status` | Crew đã làm hết phần mình (xong, hoặc không xong được và nói vì sao) và giao lại cho Mate. Không vào inbox. |
-| `blocked` | Observer | `incidents.log`, không đụng `.status` | Crew không tự nói được nữa: pane treo, agent biến mất khỏi Herdr, kẹt dialog. Chỉ `stale` và `runtime_lost` tạo ra nó; `budget` (M5) chỉ vào inbox, không đổi trạng thái (quyết định 2026-09-20). Vào inbox. Gỡ khi observer thấy crew chạy lại. |
+| `blocked` | Observer | `incidents.log`, không đụng `.status` | Crew không tự nói được nữa: pane treo, agent biến mất khỏi Herdr, kẹt dialog. Chỉ `stale` và `runtime_lost` tạo ra nó; `budget` (M5) chỉ vào inbox, không đổi trạng thái (quyết định 2026-09-20). Vào inbox. Gỡ khi observer thấy crew chạy lại, hoặc khi crew đã đóng (2026-10-13). |
 | `finished` | Mate hoặc người dùng, qua `crew stop` | `.meta` `state=finished` | Trạng thái cuối. Scout: người dùng nhận report và bảo đóng. Ship: branch đã merge. |
-| `failed` | Mate hoặc người dùng, qua `crew stop --discard`; app, khi spawn thất bại | `.meta` `state=failed` | Trạng thái cuối. Việc bị bỏ, hoặc crew chưa bao giờ lên. |
+| `failed` | Mate hoặc người dùng, qua `crew stop --discard` khi lệnh này thật sự bỏ việc chưa landed (`teardown=discarded`); app, khi spawn thất bại | `.meta` `state=failed` | Trạng thái cuối. Việc bị bỏ, hoặc crew chưa bao giờ lên. `--discard` mà không có gì để bỏ (`teardown=clean`) là một lần stop thường và ghi `finished` (2026-10-13). |
 
 Quy tắc:
 

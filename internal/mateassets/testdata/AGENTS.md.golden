@@ -165,9 +165,9 @@ Seven states, each with exactly one owner:
 | `working` | the Crew | Making progress; the line names the phase. Leave it. |
 | `needs-decision` | the Crew | It asked and stopped its turn. In the captain's inbox. Answer it with `mate send`. |
 | `wait-mate` | the Crew | It did all it could and handed the task back to you. Not in the inbox. Review it (section 9). |
-| `blocked` | the app's watcher | It cannot report for itself: frozen pane, agent gone, stuck dialog. In the inbox; clears when the watcher sees it run again. Peek it, then section 12. |
+| `blocked` | the app's watcher | It cannot report for itself: frozen pane, agent gone, stuck dialog. In the inbox; clears when the watcher sees it run again or the Crew is closed. Peek it, then section 12. |
 | `finished` | you or the captain, via `crew stop` | Final: the task is done. |
-| `failed` | you or the captain, via `crew stop --discard`; the app, on a failed spawn | Final: the work was abandoned, or the Crew never started. |
+| `failed` | you or the captain, via `crew stop --discard` when it throws unlanded work away; the app, on a failed spawn | Final: the work was abandoned, or the Crew never started. |
 
 The Crew may write only the three in the middle, never `blocked`, `finished`, `failed` or `done`.
 A missing key, a missing permission, two plausible directions are all `needs-decision:`, because the Crew can still ask.

@@ -653,6 +653,36 @@ func TestStopCrewTearsDownCleanlyWhenLanded(t *testing.T) {
 	}
 }
 
+// A --discard that finds nothing to throw away - a reviewer that posted its
+// comment and left a clean worktree - is an ordinary stop: the task ended
+// and nothing was lost, so it is `finished`, not `failed` (hellovietnam
+// ds-c-rev, 2026-10-13).
+func TestStopCrewDiscardWithNothingToDiscardFinishes(t *testing.T) {
+	w := crewWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	if _, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k3", BriefText: brieftest.Ship("work"),
+	}); err != nil {
+		t.Fatalf("SpawnCrew: %v", err)
+	}
+
+	stopped, err := spawn.StopCrew(context.Background(), w, deps, "shop", "k3", true)
+	if err != nil {
+		t.Fatalf("StopCrew --discard: %v", err)
+	}
+	if stopped.Teardown != spawn.TeardownClean || stopped.State != spawn.CrewStateFinished {
+		t.Fatalf("stop = teardown %q state %q, want clean and finished", stopped.Teardown, stopped.State)
+	}
+	meta, err := w.ReadCrewMeta("shop", "k3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta[spawn.MetaState] != spawn.CrewStateFinished || meta[spawn.MetaTeardown] != spawn.TeardownClean {
+		t.Fatalf("meta = %v, want state=finished teardown=clean", meta)
+	}
+}
+
 // commitInWorktree makes one real commit on the crew's branch, so the
 // branch is strictly ahead of the project's default branch.
 func commitInWorktree(t *testing.T, worktree, file, contents string) {

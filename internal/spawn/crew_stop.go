@@ -63,8 +63,8 @@ var ErrUnlandedWork = errors.New("crew has unlanded work")
 // Only once the teardown is allowed does the agent get stopped, the tab
 // closed, the worktree removed and the branch deleted. The meta is written
 // last, in one write: stopped_at=, teardown=, and the state that ends the
-// task - `finished` for a clean stop, `failed` for a --discard, because
-// discarding is deciding the work will not land.
+// task - `failed` when a --discard threw unlanded work away, because that is
+// deciding the work will not land, and `finished` otherwise.
 //
 // Like StopMate, the proof the agent is gone is Herdr's own answer: absent
 // from `agent get` and from the session inventory. A tab Herdr already does
@@ -275,19 +275,15 @@ func StopCrew(ctx context.Context, w *store.Workspace, deps Deps, project, crew 
 
 	// 5. The one meta write: the task is over, and which way.
 	//
-	// The two words answer two different questions. `teardown=` is what
-	// happened to the worktree and branch, so it says `discarded` only when
-	// something was actually thrown away. `state=` is the caller's verdict
-	// on the task, and mvp.md section 4b assigns it by the flag: a stop is
-	// `finished`, a `--discard` is `failed`. Reaching for --discard is
-	// saying the work will not land, and that is true whether or not the
-	// branch happened to be clean when it was said.
+	// `teardown=` is what happened to the worktree and branch, and `state=`
+	// follows it: a stop that threw unlanded work away is `failed`, and
+	// every other stop is `finished`. A --discard that found nothing to
+	// throw away is an ordinary stop - a reviewer whose comment is already
+	// on the pull request and whose worktree is clean finished its task
+	// (mvp.md section 4b, 2026-10-13).
 	teardown, state := TeardownClean, CrewStateFinished
 	if unlanded {
-		teardown = TeardownDiscarded
-	}
-	if discard {
-		state = CrewStateFailed
+		teardown, state = TeardownDiscarded, CrewStateFailed
 	}
 	out.Teardown, out.State = teardown, state
 	return out, writeCrewTeardownMeta(w, project, crew, stoppedMeta, deps.now(), teardown, state)
