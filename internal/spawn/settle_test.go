@@ -3,6 +3,7 @@ package spawn_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -710,5 +711,73 @@ func TestStartMateRereadsTheHighlightBeforeTheConfirmKey(t *testing.T) {
 	}
 	if observer.calls != 2 {
 		t.Fatalf("observer read %d screens, want the dialog and the re-read after the select press", observer.calls)
+	}
+}
+
+// countsJevAsks is the chain over the fixture with a Jev that is never sure:
+// it counts every screen the stub left unknown, each one a request to Jev.
+type countsJevAsks struct{ asks int }
+
+func (c *countsJevAsks) Observe(ctx context.Context, p harness.ScreenProfile, pane string) (scr.Observation, error) {
+	return fixture.New().Observe(ctx, p, pane)
+}
+
+func (c *countsJevAsks) ObserveState(ctx context.Context, p harness.ScreenProfile, pane string) (scr.StateReading, error) {
+	r, err := fixture.New().(scr.StateObserver).ObserveState(ctx, p, pane)
+	if err == nil && r.State == scr.PaneUnknown {
+		c.asks++
+	}
+	return r, err
+}
+
+func injectionScreen(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "jeveval", "testdata", "screens", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// A typed line in the composer is a draft the stub reads itself: the start
+// stops on it with nothing pressed and Jev is never asked.
+func TestStartMateStopsOnADraftTheStubReads(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	observer := &countsJevAsks{}
+	deps.Observer = observer
+	rt.NextStartupScreen = injectionScreen(t, "claude_injection_draft_says_empty.txt")
+
+	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop"})
+	if err == nil || !strings.Contains(err.Error(), "startup stopped on draft (fixture") || len(rt.SentKeys) != 0 {
+		t.Fatalf("err = %v, keys %v; want the draft refusal from the fixture and nothing pressed", err, rt.SentKeys)
+	}
+	if observer.asks != 0 {
+		t.Fatalf("Jev was asked %d times about a draft the stub reads", observer.asks)
+	}
+}
+
+// A turn in flight is busy, not ready: the settle reads the pane again, and
+// starts once the composer is idle.
+func TestStartMateWaitsOutABusyPane(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	fake := runtime.NewFake()
+	deps := fakeDeps(t, fake)
+	observer := &countsJevAsks{}
+	deps.Observer = observer
+	busy := injectionScreen(t, "codex_injection_busy_output_says_empty.txt")
+	fake.NextStartupScreen = busy
+	// Herdr reports a busy harness as working, never idle.
+	fake.WaitErrOnce = runtime.NewHerdrError(runtime.HerdrTimeout, "timed out waiting for agent status")
+	late := &codexDrawsTheDialogLate{Fake: fake, after: 2, dialog: screen(t, "codex-0.156.1-ready.txt")}
+	deps.Runtime = late
+	deps.StartupPromptTimeout = 5 * time.Second
+
+	if _, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex}); err != nil {
+		t.Fatalf("StartMate: %v", err)
+	}
+	if late.reads < 3 || observer.asks != 0 {
+		t.Fatalf("reads %d, Jev asks %d; want the busy pane read again and Jev never asked", late.reads, observer.asks)
 	}
 }
