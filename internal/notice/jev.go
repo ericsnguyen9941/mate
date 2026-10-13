@@ -63,7 +63,7 @@ func (c *Client) Classify(ctx context.Context, screen string) (Result, error) {
 	if strings.TrimSpace(c.key) == "" {
 		return Result{}, errors.New("Jev API key is missing")
 	}
-	screen = Prepare(strings.ReplaceAll(screen, c.key, "[redacted]"))
+	screen = Prepare(c.Redact(screen))
 	if screen == "" {
 		return Result{}, errors.New("no terminal text to classify")
 	}
@@ -134,11 +134,21 @@ func (c *Client) Ask(ctx context.Context, screen string, build func(screen strin
 	if strings.TrimSpace(c.key) == "" {
 		return nil, errors.New("Jev API key is missing")
 	}
-	body, err := build(strings.ReplaceAll(screen, c.key, "[redacted]"))
+	body, err := build(c.Redact(screen))
 	if err != nil {
 		return nil, err
 	}
 	return c.post(ctx, body)
+}
+
+// Redact is screen with the client's own key replaced by "[redacted]", the
+// one redaction Classify and Ask make before a screen is prepared. A
+// client with no key changes nothing.
+func (c *Client) Redact(screen string) string {
+	if strings.TrimSpace(c.key) == "" {
+		return screen
+	}
+	return strings.ReplaceAll(screen, c.key, "[redacted]")
 }
 
 // WithTransport is the same client sending through rt: the endpoint,

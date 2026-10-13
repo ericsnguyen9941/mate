@@ -19,7 +19,7 @@ type screenRecord struct {
 	Jev                      screen.PaneState
 	Confidence               float64
 	At                       time.Time
-	Text                     string // jev.Prepare(pane, "")
+	Text                     string // the prepared text Jev was sent (sentText)
 }
 
 // recordScreen keeps the text of a screen Jev was asked about for the

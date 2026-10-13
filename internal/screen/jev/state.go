@@ -64,6 +64,11 @@ func ParseState(data []byte) (Answer, error) {
 	return resp.Answers[AxisState], nil
 }
 
+// Prepared is the text ObserveState sends Jev for pane: the client's key
+// redacted (notice.Client.Redact, as Ask does), then Prepare. The chain
+// keeps exactly this for the captain.
+func (o *Observer) Prepared(pane string) string { return Prepare(o.client.Redact(pane), "") }
+
 // ObserveState implements screen.StateObserver: one request, the caller's
 // deadline capped at notice.Timeout, nothing retried. A screen it Skips is
 // unknown at confidence 0 with no request.

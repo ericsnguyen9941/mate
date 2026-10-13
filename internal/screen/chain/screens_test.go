@@ -2,6 +2,9 @@ package chain_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,8 +13,10 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/notice"
 	"github.com/nguyenngocanh94/mate/internal/screen"
 	"github.com/nguyenngocanh94/mate/internal/screen/chain"
+	"github.com/nguyenngocanh94/mate/internal/screen/jev"
 )
 
 func TestChainKeepsTheScreenJevWasAskedAbout(t *testing.T) {
@@ -87,4 +92,56 @@ func TestChainScreensSurviveConcurrentSettles(t *testing.T) {
 	if err != nil || !strings.Contains(string(b), "# seen: 8\n") {
 		t.Fatalf("record %v:\n%s", err, b)
 	}
+}
+
+// The text kept for the captain is the text Jev was sent: the Jev client's
+// own key, should it be on screen, is redacted there exactly as in the
+// request, and never written to disk.
+func TestChainKeepsTheScreenRedactedAsSent(t *testing.T) {
+	dir := t.TempDir()
+	const key = "jev-test-key-1234567890"
+	var sent string
+	client := notice.New(key).WithTransport(roundTrip(func(r *http.Request) (*http.Response, error) {
+		var body struct {
+			State string `json:"state"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		sent = body.State
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(stateAnswer(t, "dialog_other", 0.9)))}, nil
+	}))
+	fix := &stateStub{reading: screen.StateReading{State: screen.PaneUnknown, Startup: harness.StartupScreenUnrecognized, Source: "fixture"}}
+	ch := chain.New(jev.New(client), fix, 0.85, chain.WithScreens(dir))
+	pane := "export JEV_API_KEY=" + key + "\n› 1. Pick a model\n  2. Keep current\n"
+	if _, err := ch.(screen.StateObserver).ObserveState(context.Background(), codexScreen, pane); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "codex", "*.txt"))
+	if len(files) != 1 {
+		t.Fatalf("files = %v", files)
+	}
+	b, _ := os.ReadFile(files[0])
+	_, text, _ := strings.Cut(string(b), "# jev: dialog_other 0.90\n")
+	if strings.Contains(string(b), key) || !strings.Contains(text, "[redacted]") || text != sent {
+		t.Fatalf("kept\n%s\nwant exactly what was sent\n%s", b, sent)
+	}
+}
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func stateAnswer(t *testing.T, choice string, conf float64) string {
+	t.Helper()
+	probs := map[string]float64{}
+	for _, s := range screen.PaneStates {
+		probs[string(s)] = (1 - conf) / float64(len(screen.PaneStates)-1)
+	}
+	probs[choice] = conf
+	b, err := json.Marshal(map[string]any{"model": notice.Model, "answers": map[string]any{
+		string(jev.AxisState): map[string]any{"type": "choice", "choice": choice, "confidence": conf, "probabilities": probs}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

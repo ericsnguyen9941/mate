@@ -70,9 +70,23 @@ func (c *Chain) ObserveState(ctx context.Context, profile harness.ScreenProfile,
 	}
 	if c.screensDir != "" && perr == nil {
 		_ = recordScreen(c.screensDir, screenRecord{Kind: key.kind, Hash: hash, Caller: screen.CallerOf(ctx),
-			Stub: string(fix.Startup), Jev: answer.State, Confidence: answer.Confidence, At: start, Text: jev.Prepare(pane, "")})
+			Stub: string(fix.Startup), Jev: answer.State, Confidence: answer.Confidence, At: start, Text: sentText(c.primary, pane)})
 	}
 	return out, nil
+}
+
+// preparer is a primary that says what text it sent for a pane (the Jev
+// observer, with its client's key redacted).
+type preparer interface{ Prepared(pane string) string }
+
+// sentText is the text the primary sent Jev for pane, so the screen kept
+// for the captain is the screen sent: the primary's own when it says,
+// otherwise jev.Prepare with no key.
+func sentText(primary screen.Observer, pane string) string {
+	if p, ok := primary.(preparer); ok {
+		return p.Prepared(pane)
+	}
+	return jev.Prepare(pane, "")
 }
 
 // decideState is Jev's reading when it is sure, else the fixture's
