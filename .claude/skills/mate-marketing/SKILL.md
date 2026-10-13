@@ -14,7 +14,7 @@ Hai động cơ, mỗi động cơ có một lõi riêng:
 
 Mọi thứ đều có hai bản: tiếng Việt cho dev Việt và tiếng Anh cho dev quốc tế. Bản thứ hai được **viết lại** cho người đọc của nó, không dịch từ bản kia.
 
-Captain không lộ mặt. Gương mặt thay thế là giọng văn, quan điểm, nhận diện hình ảnh (✱ coral, theme terminal của mate) và một giọng đọc TTS nhất quán trên mọi video.
+Captain không lộ mặt. Gương mặt thay thế là giọng văn, quan điểm, và nhận diện hình ảnh (✱ coral, theme terminal của mate). Video có giọng đọc TTS (`vieneu-say`), chọn theo ngữ cảnh từng video.
 
 ## Giọng của mate
 
@@ -41,7 +41,7 @@ Campaign nằm ở `sites/campaigns/<YYYY-MM-DD>-<slug>/`. Thư mục `sites/` b
 1. **Nạp bối cảnh.**
    - Đọc số liệu thuật toán ở `docs/research/social-algorithms-2026-10-09.md` (Threads, Instagram, Facebook) và `docs/research/tiktok-algorithm-2026-10-09.md`. Đây là nguồn duy nhất cho mọi nhận định về nền tảng; điều gì không có ở đó thì ghi là suy luận.
    - Đọc các campaign trước trong `sites/campaigns/`, phần log kết quả, để không lặp chất liệu đã dùng.
-   - Hỏi captain những gì `CAMPAIGN.md` chưa ghi: khoảng thời gian, nhịp đăng, một hay hai tài khoản Threads, một hay hai tài khoản TikTok, và tool TTS của captain đã tích hợp chưa.
+   - Hỏi captain những gì `CAMPAIGN.md` chưa ghi: khoảng thời gian, nhịp đăng, một hay hai tài khoản Threads, và một hay hai tài khoản TikTok.
    - Xong khi `CAMPAIGN.md` có mục tiêu, khoảng thời gian, nhịp đăng của từng ngôn ngữ và các quyết định trên.
 2. **Đào chất liệu** theo [references/material.md](references/material.md) và ghi vào `material.md`.
    - Xong khi số mục đủ cho cả lịch cộng thêm khoảng một phần ba dự phòng.

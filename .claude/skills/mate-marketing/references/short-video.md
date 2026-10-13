@@ -18,13 +18,29 @@ Một video chỉ một bài học. Có hai bài học thì làm hai video.
 
 - Khung 9:16, 1080×1920. Chữ và chi tiết quan trọng nằm trong safe zone, tránh vùng nút bấm của app.
 - Độ dài 30–90 giây. Meta vẫn ưu tiên short form. TikTok đẩy video trên 1 phút nhưng không công bố độ dài tối ưu, nên mỗi campaign thử cả dưới và trên 1 phút rồi so thời gian xem.
-- **Luôn có voiceover và nhạc nền.** Reel tắt tiếng bị hạ hạng, và TikTok Creator Academy nêu đích danh dạng "hình full khung + voiceover". Giọng đọc là giọng TTS do tool riêng của captain tạo ra.
-  - Tool đó chưa được tích hợp. Trong lúc chờ, mỗi video có một `SCRIPT.md` cho từng ngôn ngữ: lời đọc chia theo cảnh, có thời lượng ước tính.
-  - Không tạo giọng bằng TTS của HyperFrames hay `/media-use`. Chừa sẵn track voiceover trong composition, timing khớp `SCRIPT.md`, để thay file audio vào sau.
-  - Viết lời đọc để nghe, không để đọc: câu ngắn, mỗi câu một ý, con số nói theo cách người ta nói ("sáu mươi sáu triệu token"). Chữ trên màn hình là phần nhấn, không chép nguyên lời đọc.
-  - Nếu giọng TTS là clone giọng một người thật, kể cả giọng captain, thì gắn nhãn AI trên TikTok. Giọng TTS chung chung thì không cần.
+- **Luôn có voiceover và nhạc nền.** Reel tắt tiếng bị hạ hạng, và TikTok Creator Academy nêu đích danh dạng "hình full khung + voiceover". Giọng đọc làm theo mục "Voiceover bằng vieneu-say" bên dưới.
 - Phụ đề hoặc chữ trên màn hình phải to và đọc được khi tắt tiếng. Reel chỉ toàn chữ bị đánh giá thấp, và TikTok xếp "slide video" vào nhóm chất lượng thấp. Vì vậy mỗi cảnh cần một chuyển động có chủ đích: sơ đồ đang dựng, terminal đang chạy, con số đang đếm.
 - **Mỗi nền tảng một file render riêng** từ cùng project HyperFrames. Không tải video từ TikTok lên Reels: watermark của app khác bị hạ hạng, và tính nguyên bản là điều kiện để được gợi ý.
+
+## Voiceover bằng vieneu-say
+
+Giọng đọc tạo bằng `vieneu-say` (VieNeu-TTS v3 Turbo), chạy local trên máy captain. Không dùng TTS của HyperFrames hay `/media-use`.
+
+- **Chọn giọng theo ngữ cảnh video.** Mỗi video, agent tự chọn một giọng VN và một giọng EN trong `vieneu-say --list-voices` cho hợp nội dung (giọng khô cho bài thú tội, giọng nhanh cho bài nhiều số…). Ghi giọng đã chọn và lý do một dòng vào `BRIEF.md`. Trong một video chỉ dùng một giọng. Nếu chưa biết giọng nghe ra sao, tạo mẫu cùng một câu bằng vài giọng, so tốc độ đọc với cửa sổ thời gian của cảnh, rồi mới chọn. EN: giọng `Adam` đã được whisper chép lại khớp từng chữ (13/10).
+- **Viết lời trong `SCRIPT.md` để model đọc đúng:**
+  - Viết số, ký hiệu và chữ viết tắt thành chữ ("ba nghìn hai trăm tám mươi sáu", "hai mươi ba nghìn").
+  - Ngắt nhịp chỉ bằng dấu câu: dấu phẩy nghỉ khoảng 0,4 giây, hết câu khoảng 0,6 giây. Dấu "..." bị đổi thành dấu phẩy, và không có cú pháp nghỉ dài.
+  - Chỉ có ba thẻ hợp lệ: `[cười]`, `[thở dài]`, `[hắng giọng]` (EN: `[chuckle]`, `[sigh]`, `[clear throat]`). Mọi thẻ ngoặc vuông khác bị đọc thành chữ, nên xoá hết trước khi gọi. Giọng điệu đi theo giọng được chọn, không chỉnh được bằng thẻ.
+- **Mỗi cảnh một file:** ghi lời của cảnh ra file tạm, rồi `cat scene.txt | vieneu-say -o assets/vo/<cảnh>.wav --voice "<giọng>"`. Luôn truyền text qua stdin, không đặt vào argument.
+  - Đầu ra là WAV 48 kHz mono.
+  - Lần gọi đầu mất khoảng 8 giây để server khởi động; sau đó tốc độ khoảng 2 lần thời gian thực. Đặt timeout Bash dài.
+  - Exit 1 là lỗi server hoặc sai tên giọng; đọc stderr và `~/.cache/vieneu/say-server.log`.
+- **Khớp thời lượng:** đo từng file bằng `ffprobe`.
+  - Cảnh nào lời dài hơn cửa sổ của nó thì nới cảnh. Không tăng tốc giọng.
+  - Ghép thành `assets/voiceover.wav` theo mốc bắt đầu của từng cảnh, dùng `ffmpeg` với `adelay` + `amix`.
+  - Lấy mốc phụ đề thật bằng `npx hyperframes transcribe assets/voiceover.wav`.
+- **Nhãn AI trên TikTok:** giọng có sẵn của model không phải clone giọng captain, nên theo research không bắt buộc nhãn AIGC. Không dùng giọng mang tên một người nổi tiếng thật (ví dụ "Phạm Tuyên"): nếu đó là giọng nhái người thật thì phải gắn nhãn.
+- Chỉ phát thử bằng `afplay` khi captain muốn nghe.
 
 ## Dựng bằng HyperFrames
 
