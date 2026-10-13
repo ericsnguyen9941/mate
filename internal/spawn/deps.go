@@ -82,9 +82,12 @@ const (
 	// DefaultReadinessTimeout is how long Herdr may take to report the agent
 	// idle, done or blocked.
 	DefaultReadinessTimeout = 90 * time.Second
-	// DefaultStartTimeout is `agent start --timeout`. Herdr 0.8.2 accepts
+	// DefaultStartTimeout is `agent start --timeout`. A harness held by a
+	// startup dialog never becomes interactive; the Herdr adapter adopts it
+	// after this timeout and the settle answers the dialog
+	// (docs/plans/pane-state-jev-2026-10-13.md section 5). Herdr accepts
 	// > 3000 and <= 300000 ms.
-	DefaultStartTimeout = 60 * time.Second
+	DefaultStartTimeout = 10 * time.Second
 )
 
 // Deps are the collaborators a start or stop needs. The zero value is not

@@ -1011,6 +1011,12 @@ func (h *Herdr) StartAgent(ctx context.Context, spec AgentStartSpec) (AgentHandl
 				return handle, nil
 			}
 		}
+		if herdrCodeOf(err) == HerdrTimeout {
+			if h.adoptTimedOutStart(ctx, handle) == nil {
+				return handle, nil
+			}
+			return AgentHandle{}, err
+		}
 		if herdrCodeOf(err) != HerdrAgentPaneBusy {
 			return AgentHandle{}, err
 		}
@@ -1025,6 +1031,37 @@ func (h *Herdr) StartAgent(ctx context.Context, spec AgentStartSpec) (AgentHandl
 		last = NewHerdrError(HerdrAgentPaneBusy, "pane is not an available shell")
 	}
 	return AgentHandle{}, h.wrapPaneBusyExhausted(ctx, session.Name, last, handle.Name, spec.Tab().PaneID, paneBusyAttempts, paneBusyRetry)
+}
+
+// adoptTimedOutStart names the agent a timed-out `agent start` left in the
+// pane. A harness held by a startup dialog never becomes interactive, so
+// Herdr 0.9.3 times out with the agent detected but unnamed (measured
+// 2026-10-13, codex-cli 0.162.1's hook review). Only one agent of the
+// launched kind in this pane, unnamed or already ours, is adopted; anything
+// else leaves the start failed.
+func (h *Herdr) adoptTimedOutStart(ctx context.Context, handle AgentHandle) error {
+	agents, err := h.ListAgents(ctx, handle.Session)
+	if err != nil {
+		return err
+	}
+	var found []ObservedAgent
+	for _, a := range agents {
+		if a.Handle.Tab.PaneID == handle.Tab.PaneID {
+			found = append(found, a)
+		}
+	}
+	if len(found) != 1 || found[0].Handle.Kind != handle.Kind {
+		return fmt.Errorf("pane %s holds %d agents, none ours to adopt", handle.Tab.PaneID, len(found))
+	}
+	switch found[0].Handle.Name {
+	case handle.Name:
+		return nil
+	case "":
+		_, err := h.run(ctx, handle.Session.Name, []string{"agent", "rename", handle.Tab.PaneID, handle.Name})
+		return err
+	default:
+		return fmt.Errorf("pane %s holds agent %s", handle.Tab.PaneID, found[0].Handle.Name)
+	}
 }
 
 // wrapPaneBusyExhausted turns Herdr's raw agent_pane_busy refusal (its own

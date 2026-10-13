@@ -1,0 +1,21 @@
+{
+  "id": "cli:agent:list",
+  "result": {
+    "agents": [
+      {
+        "agent": "claude",
+        "agent_status": "unknown",
+        "cwd": "/tmp/lab/proj",
+        "focused": false,
+        "foreground_cwd": "/tmp/lab/proj",
+        "name": "someone-else",
+        "pane_id": "w1:p2",
+        "revision": 0,
+        "tab_id": "w1:t2",
+        "terminal_id": "term_65db2fa97b0c452",
+        "workspace_id": "w1"
+      }
+    ],
+    "type": "agent_list"
+  }
+}

@@ -1138,6 +1138,60 @@ func TestHerdrStartArgvPutsSessionBeforeDashDash(t *testing.T) {
 	}
 }
 
+// A harness held by a startup dialog never becomes interactive, so `agent
+// start` times out with the agent detected but unnamed (Herdr 0.9.3,
+// 2026-10-13). The start names it and hands it to the settle.
+func TestHerdrStartTimeoutAdoptsTheUnnamedAgentInThePane(t *testing.T) {
+	t.Parallel()
+	var renamed []string
+	rt, launch, session, tab := bootHerdr(t, func(_ context.Context, spec process.Spec) (process.Result, error) {
+		switch {
+		case argvHas(spec.Args, "agent", "start"):
+			return process.Result{ExitCode: 1, Stderr: readRuntimeTestdata(t, "error-start-timeout.json")}, nil
+		case argvHas(spec.Args, "agent", "list"):
+			return process.Result{Stdout: readRuntimeTestdata(t, "agent-list-unnamed-in-pane.json")}, nil
+		case argvHas(spec.Args, "agent", "rename"):
+			renamed = append(renamed, spec.Args...)
+			return process.Result{Stdout: readRuntimeTestdata(t, "agent-rename.json")}, nil
+		}
+		t.Fatalf("unexpected argv %#v", spec.Args)
+		return process.Result{}, nil
+	})
+	res := reserveOn(t, rt.Names, session, "mate_001")
+	h, err := rt.StartAgent(context.Background(), mustStartSpec(t, tab, res, launch))
+	if err != nil {
+		t.Fatalf("a timed-out start with our agent in the pane is a live agent: %v", err)
+	}
+	if h.Name != res.Name() || h.Tab.PaneID != tab.PaneID {
+		t.Fatalf("handle = %+v", h)
+	}
+	if !argvHas(renamed, "agent", "rename") || !argvHas(renamed, tab.PaneID, res.Name()) {
+		t.Fatalf("rename argv = %#v, want agent rename %s %s", renamed, tab.PaneID, res.Name())
+	}
+}
+
+func TestHerdrStartTimeoutFailsWithoutOurAgentInThePane(t *testing.T) {
+	for _, list := range []string{"agent-list-empty.json", "agent-list-named-in-pane.json", "agent-list-unnamed-other-kind.json"} {
+		t.Run(list, func(t *testing.T) {
+			rt, launch, session, tab := bootHerdr(t, func(_ context.Context, spec process.Spec) (process.Result, error) {
+				switch {
+				case argvHas(spec.Args, "agent", "start"):
+					return process.Result{ExitCode: 1, Stderr: readRuntimeTestdata(t, "error-start-timeout.json")}, nil
+				case argvHas(spec.Args, "agent", "list"):
+					return process.Result{Stdout: readRuntimeTestdata(t, list)}, nil
+				}
+				t.Fatalf("unexpected argv %#v (nothing may be renamed)", spec.Args)
+				return process.Result{}, nil
+			})
+			res := reserveOn(t, rt.Names, session, "mate_001")
+			_, err := rt.StartAgent(context.Background(), mustStartSpec(t, tab, res, launch))
+			if !runtime.IsTimeout(err) {
+				t.Fatalf("err = %v, want the start's own timeout", err)
+			}
+		})
+	}
+}
+
 func TestHerdrStartNotReadyReturnsLiveHandle(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

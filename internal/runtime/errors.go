@@ -94,6 +94,21 @@ func IsAgentNotFound(err error) bool {
 	return code == HerdrAgentNotFound
 }
 
+// IsTimeout reports whether err is Herdr's timeout: a start or a wait whose
+// condition did not hold in time. The startup settle reads a wait timeout
+// as "not ready yet", never as a failed start.
+func IsTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	var coded *observability.Error
+	if !errors.As(err, &coded) {
+		return false
+	}
+	code, _ := coded.Details["herdr_code"].(string)
+	return code == HerdrTimeout
+}
+
 // IsServerNotRunning reports whether err is Herdr saying the named session's
 // server is down (server_not_running). It is positive proof the session is
 // not up - unlike an executable that would not run or a transport fault,

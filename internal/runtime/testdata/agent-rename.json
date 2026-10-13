@@ -1,0 +1,14 @@
+{
+  "id": "cli:agent:rename",
+  "result": {
+    "agent": {
+      "agent": "claude",
+      "agent_status": "unknown",
+      "cwd": "/tmp/lab/proj",
+      "name": "m-mate_001",
+      "pane_id": "w1:p2",
+      "tab_id": "w1:t2",
+      "workspace_id": "w1"
+    }
+  }
+}

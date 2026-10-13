@@ -267,3 +267,12 @@ func TestZeroAgentStartCommandEmitsNoArgv(t *testing.T) {
 		t.Fatalf("zero command emitted argv %#v", argv)
 	}
 }
+
+func TestIsTimeout(t *testing.T) {
+	if !IsTimeout(NewHerdrError(HerdrTimeout, "timed out waiting for agent status")) {
+		t.Fatal("a Herdr timeout is a timeout")
+	}
+	if IsTimeout(NewHerdrError(HerdrAgentNotFound, "gone")) || IsTimeout(nil) {
+		t.Fatal("only a Herdr timeout is a timeout")
+	}
+}
