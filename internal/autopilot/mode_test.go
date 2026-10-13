@@ -1,17 +1,22 @@
 package autopilot_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/autopilot"
 	"github.com/nguyenngocanh94/mate/internal/box"
 	"github.com/nguyenngocanh94/mate/internal/hook"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// The mode is only what the captain chose (docs/mvp.md M18). A prompt to the
-// Mate does not turn auto off, so a crew that reports while the captain is
-// talking is still told to the Mate.
+// A prompt to the Mate does not turn auto off (docs/mvp.md M18), so a crew
+// that reports while the captain is talking is still told to the Mate.
+// Manual is the captain's `m` key, and it lasts while the captain is with
+// the Mate: five minutes without a prompt to it or a press of `m` turn auto
+// back on (docs/mvp.md M21).
 
 // captainPrompts runs the Mate's UserPromptSubmit hook on a plain prompt, the
 // way the harness does when the captain types to the Mate.
@@ -57,7 +62,7 @@ func TestManualWaitMateReachesTheCaptainsInbox(t *testing.T) {
 	f.captainPrompts("how is it going")
 	f.clock.Advance(24 * time.Second)
 	f.status("fix-cart-total", "wait-mate: branch ready")
-	f.clock.Advance(5 * time.Minute)
+	f.clock.Advance(4 * time.Minute)
 	f.mustTick()
 
 	if typed := f.typed(); len(typed) != 0 {
@@ -69,21 +74,92 @@ func TestManualWaitMateReachesTheCaptainsInbox(t *testing.T) {
 	}
 }
 
-// The captain choosing manual with the console's `m` key is a choice no
-// elapsed time overrides, and choosing auto releases it.
-func TestManualChosenWithTheKeyIsHeld(t *testing.T) {
-	f := newFixture(t)
-	f.status("fix-cart-total", "needs-decision: pick A or B")
+// holdManual is the captain pressing `m` to manual now, by the fixture's
+// clock: the hold's mtime is when they chose it.
+func (f *fixture) holdManual() {
+	f.t.Helper()
 	if err := f.ws.SetMode(project, false); err != nil {
-		t.Fatal(err)
+		f.t.Fatal(err)
+	}
+	now := f.clock.Now()
+	if err := os.Chtimes(f.ws.ManualHold(project), now, now); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// asked is the captain typing to the Mate at a given moment, the line the
+// Mate's UserPromptSubmit hook appends.
+func (f *fixture) asked(at time.Time) {
+	f.t.Helper()
+	if err := f.ws.AppendSent(project, store.SentEntry{Time: at, Source: store.SourceUser, Target: store.TargetMate, Text: "how is it going"}); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+func hasSent(entries []store.SentEntry, text string) bool {
+	for _, e := range entries {
+		if e.Text == text {
+			return true
+		}
+	}
+	return false
+}
+
+// TestManualComesBackToAutoAfterFiveQuietMinutes replays 2026-10-13: the
+// captain pressed `m` at 11:51 and left, three crews asked for a decision at
+// 20:40, and nobody answered them until the captain came back at 21:25.
+func TestManualComesBackToAutoAfterFiveQuietMinutes(t *testing.T) {
+	f := newFixture(t)
+	f.holdManual()
+	f.status("fix-cart-total", "needs-decision: pick A or B")
+
+	f.clock.Advance(autopilot.DefaultQuietAfter - time.Second)
+	f.mustTick()
+	if f.ws.Auto(project) || !f.ws.Held(project) || len(f.typed()) != 0 {
+		t.Fatalf("auto = %v, held = %v, typed %#v under five minutes after the captain chose manual", f.ws.Auto(project), f.ws.Held(project), f.typed())
 	}
 
-	f.clock.Advance(time.Hour)
+	f.clock.Advance(time.Second)
+	f.mustTick()
+	if !f.ws.Auto(project) || f.ws.Held(project) {
+		t.Fatalf("auto = %v, held = %v five minutes after the captain left", f.ws.Auto(project), f.ws.Held(project))
+	}
+	typed := f.typed()
+	if len(typed) != 1 || !strings.Contains(typed[0], "fix-cart-total needs-decision") {
+		t.Fatalf("typed %#v, want the digest the crew's question is in", typed)
+	}
+	if !hasSent(f.sent(), autopilot.RearmText(autopilot.DefaultQuietAfter)) {
+		t.Fatalf("sent.log = %+v, want the switch back to auto recorded", f.sent())
+	}
+}
+
+// The captain typing to the Mate is the captain being there: it restarts
+// the five minutes, whether or not the Mate has answered yet.
+func TestACaptainPromptRestartsTheQuietMinutes(t *testing.T) {
+	f := newFixture(t)
+	f.holdManual()
+	f.status("fix-cart-total", "needs-decision: pick A or B")
+
+	f.clock.Advance(4 * time.Minute)
+	f.asked(f.clock.Now())
+	f.mustTick()
+	f.clock.Advance(4 * time.Minute)
 	f.mustTick()
 	if f.ws.Auto(project) || len(f.typed()) != 0 {
-		t.Fatalf("auto = %v, typed %#v under the captain's manual hold", f.ws.Auto(project), f.typed())
+		t.Fatalf("auto = %v, typed %#v four minutes after the captain typed", f.ws.Auto(project), f.typed())
 	}
 
+	f.clock.Advance(time.Minute)
+	f.mustTick()
+	if !f.ws.Auto(project) || len(f.typed()) != 1 {
+		t.Fatalf("auto = %v, typed %#v five minutes after the captain typed", f.ws.Auto(project), f.typed())
+	}
+}
+
+// Choosing auto with the key releases the hold at once.
+func TestChoosingAutoReleasesTheHold(t *testing.T) {
+	f := newFixture(t)
+	f.holdManual()
 	if err := f.ws.SetMode(project, true); err != nil {
 		t.Fatal(err)
 	}

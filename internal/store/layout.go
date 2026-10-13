@@ -136,7 +136,9 @@ func (w *Workspace) AutoFlag(project string) string {
 
 // ManualHold is `projects/<project>/mate/.manual`; its presence means the
 // captain chose manual mode with the console's `m` key, so context refresh
-// does not run on its own while the captain holds the Mate.
+// does not run on its own while the captain holds the Mate. Its mtime is when
+// they chose it: the auto daemon releases a hold the captain has left alone
+// for QuietAfter (docs/mvp.md M21).
 func (w *Workspace) ManualHold(project string) string {
 	return filepath.Join(w.MateDir(project), manualHoldName)
 }

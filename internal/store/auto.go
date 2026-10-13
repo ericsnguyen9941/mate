@@ -11,9 +11,9 @@ import (
 )
 
 // QuietAfter is how long the captain has to leave a Mate that has answered
-// them alone before a context refresh may run (cmd/mate/context_refresh.go).
-// Auto mode no longer waits on it: a captain prompt does not turn auto off
-// (docs/mvp.md M18).
+// them alone before a context refresh may run (cmd/mate/context_refresh.go),
+// and how long a manual hold lasts without a prompt to the Mate or a press of
+// `m` before the auto daemon turns auto back on (docs/mvp.md M21).
 const QuietAfter = 5 * time.Minute
 
 // The auto daemon's digest cursor (docs/mvp.md section 5, task 19): how far

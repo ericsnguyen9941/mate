@@ -953,6 +953,7 @@ Thiết kế: mode theo captain.
 Captain gõ cho Mate thì manual (hook `mate-prompt` xoá `.auto` như trước), tin của crew nằm trong box.
 Mate đã trả lời (dòng Stop trong `sent.log` sau prompt cuối của captain) và captain không gõ gì thêm `store.QuietAfter` (5 phút) thì daemon bật lại `.auto`, ghi `auto mode on: …` vào `sent.log`, và digest đánh thức Mate với những gì còn mở.
 Phím `m` chọn manual thì giữ (`mate/.manual`), daemon không tự bật lại; chọn auto thì bỏ giữ.
+M18 bỏ rearm; M21 đưa nó lại cho manual giữ bằng `m`: captain vắng 5 phút thì auto bật lại.
 Mate Codex không có hook Stop nên không bao giờ tự bật lại; phím `m` vẫn bật được.
 Daemon xét mỗi `DefaultInterval` (90s), nên auto có thể về muộn tới 90s sau mốc 5 phút.
 
@@ -1150,6 +1151,19 @@ Kế hoạch: `docs/plans/workspace-layout-and-tools-2026-10-08.md` (mục 7 là
 | 88 | PR 5: Beads thành profile ở `internal/tool/beads`; xoá `internal/beads`, `store/beads.go`, `.beads.lock`; `mate tool`; recall qua registry; skill sinh từ registry. | Ratchet bằng 0; diff của `cmd/mate` chỉ là nối dây; `mate beads` cũ vẫn chạy như alias. Code xong 2026-10-08: `internal/tool/beads` (Data, Command, Viewer, Recall, Skill, đều verified trên bd 1.3.1 + bv 0.25.2), `store.LockTool` (`.mate/projects/<p>/locks/<tool>.lock`), `mate tool`, recall khối `== Tool: <Title> ==` deadline 3s, console bỏ cột tasks cố định (`t` đi qua `Snapshot.Tools`), registry từ chối role `stage`, skill `task-management` sinh từ registry (`spawn.Deps.Tools`, `mateassets.ToolSkillsFrom`). Ratchet 0. Unit dùng fake Runner hoặc `bd` giả trên PATH. Đã smoke thủ công với `bd 1.3.1` và `bv 0.25.2`; chưa có `TestLive*` và chưa thử tab console `t` trong host thật. |
 | 89 | PR 6: dọn: bỏ alias `mate beads` và `mate tasks`; bỏ nhánh đọc `layout: 1`. | Không còn đường code cho layout cũ. Code xong 2026-10-08: `mate beads`, `mate tasks`, `mate task-triage` bỏ (cờ của mate đứng trước `--`: `mate tool <name> <p> --init`, `mate tool beads <p> --list|--json|--triage`); `store.Open` từ chối layout cũ, chỉ `store.OpenForMigrate` của `mate migrate` còn đọc nó; console bỏ notice layout cũ; các nhánh `LayoutOld()` ở `AddRepo`, `AddProject`, `SpawnCrew`, `project repo add`, `mate tool` và `t` bỏ. |
 | 90 | Tiêu chí mục 10 của plan: công cụ thứ ba chỉ là một package cộng một dòng catalog. | Đạt cho phím console: console chuyển mọi phím mà `Snapshot.Tools` gắn và console không giữ (`tool.ConsoleKeys`, registry từ chối với `tool.ErrReservedKey`), dòng gợi ý và bảng phím lấy từ binding. Chưa đạt cho chế độ CLI: ánh xạ `mate tool beads <p> --list|--json|--triage` sang argv `bd`/`bv` còn ở `cmd/mate/tasks.go`; ratchet thấy các literal đó (`"beads"`, `--no-pager`, `--robot-triage`, `tasks.yaml`) và chỉ cho phép qua allowlist ghi rõ là kiến thức Beads còn trong lõi. |
+
+### M21. Manual hết khi captain vắng
+
+Captain chốt 2026-10-13. Thực tế ở `hellovietnam`: captain bấm `m` lúc 11:51 rồi đi; 20:39-20:41 ba crew `ds-components-a/b/c` ghi `needs-decision`, và không digest nào tới Mate cho tới khi captain quay lại bấm `[assign]` lúc 21:25 (`mate.db`: `mode.changed` auto→manual 04:51:47Z, `question.asked` 13:39-13:41Z, `digest.sent` cuối cùng 02:46Z). M18 đã bỏ `rearm`, nên manual chọn bằng `m` giữ mãi.
+
+- Manual là captain đang ngồi với Mate. Project có `.manual` mà captain không gõ cho Mate (dòng `user→mate` trong `sent.log`) và không bấm `m` (mtime của `.manual`) trong `store.QuietAfter` (5 phút) thì daemon gọi `SetMode(auto)`, ghi `auto mode on: …` vào `sent.log`, và digest cùng tick với những gì còn mở theo con trỏ.
+- Không đòi Mate đã trả lời: outbox chỉ gõ vào composer trống, nên lượt captain đang chờ không bị chen. Mate Codex cũng được bật lại.
+- Project không có `.auto` lẫn `.manual` (chưa bật auto bao giờ, hoặc xoá cờ bằng tay) thì để nguyên.
+- Daemon xét mỗi `DefaultInterval` (90s), nên auto có thể về muộn tới 90s sau mốc 5 phút.
+
+| # | Task | Xong khi |
+| --- | --- | --- |
+| 91 | `autopilot.rearm` cho manual giữ bằng `m`; chữ của phím `m` và skill `event-handling` nói manual hết sau 5 phút vắng. | Unit tái hiện 2026-10-13: giữ manual, crew `needs-decision`, 4:59 không gõ gì, 5:00 auto bật, digest tới Mate, `sent.log` có dòng bật lại; captain gõ lúc 4:00 thì tính lại từ đó; không cờ nào thì không bật. `make check` xanh. |
 
 ### Token review: task nào tốn, vì sao, sửa harness của project ở đâu
 
