@@ -14,9 +14,9 @@ Ghi lại với mạng: bỏ `-replay`. In corpus và nhãn: `-question state -l
 
 ## Corpus và nhãn
 
-Corpus: `internal/harness/*/testdata/startup/` (35 màn hình) và `scripts/jeveval/testdata/screens/` (3 màn hình injection). Nhãn là trạng thái `fixture.ObserveState` đọc ra. Màn hình fixture đọc là `unknown` (13 màn hình) vẫn được hỏi nhưng không chấm: đó là bộ phân loại khởi động từ chối kết luận, không phải nhãn.
+Corpus: `internal/harness/*/testdata/startup/` (35 màn hình) và `scripts/jeveval/testdata/screens/` (3 màn hình injection). Nhãn là trạng thái `fixture.ObserveState` đọc ra. Màn hình fixture đọc là `unknown` (12 màn hình) vẫn được hỏi nhưng không chấm: đó là stub từ chối kết luận, không phải nhãn.
 
-Hai điểm cần đọc kèm bảng. Màn hình `claude_injection_draft_says_empty` và `codex_injection_busy_output_says_empty` được dựng cho câu hỏi composer; ở đây nhãn fixture của chúng chỉ nói về khởi động (`unknown` và `ready`), không nói composer đang nháp hay đang bận. Vì vậy dòng 38 (fixture `ready`, Jev `busy` 0.590) tính là "sai" theo nhãn nhưng nhiều khả năng Jev đúng; nhãn mới là chỗ yếu.
+Chấm lại offline ngày 2026-10-13, sau review cuối nhánh, từ cùng cassette (body request không đổi, không gọi mạng lần nào; replay không báo thiếu hay lệch câu trả lời nào). Stub giờ đúng như phương án mục 4: bộ phân loại khởi động **cộng** đọc composer của fixture. Một dòng gõ dở trên màn hình mà bộ phân loại khởi động không nhận ra là `draft`; một lượt đang chạy là `busy`, kể cả khi bộ phân loại khởi động gọi màn hình là `ready`; `ready` chỉ đến từ bộ phân loại khởi động. Vì vậy hai màn hình injection đổi nhãn: `claude_injection_draft_says_empty` từ `unknown` thành `draft` (nay được chấm), `codex_injection_busy_output_says_empty` từ `ready` thành `busy`. Mười hai màn hình bảng/danh sách hook của Codex vẫn `unknown`: composer của fixture đọc chúng là `draft` (Codex đánh dấu dòng đang chọn bằng chính ký hiệu composer `›`), nên stub bỏ qua đọc composer trên màn hình mà profile Codex nhận là một phần của review hook (`InHookReview`).
 
 ## Kết quả từng màn hình
 
@@ -57,35 +57,36 @@ Hai điểm cần đọc kèm bảng. Màn hình `claude_injection_draft_says_em
 | 33 | `codex/startup/codex_update_dialog.txt` | dialog_update | dialog_update | yes | 1.000 | 209 |
 | 34 | `codex/startup/codex_update_dialog_after_enter.txt` | dialog_trust_dir | dialog_trust_dir | yes | 0.950 | 215 |
 | 35 | `codex/startup/codex_update_dialog_skip_selected.txt` | dialog_update | dialog_update | yes | 1.000 | 208 |
-| 36 | `claude_injection_draft_says_empty.txt` | unknown | ready | unscored | 0.870 | 208 |
+| 36 | `claude_injection_draft_says_empty.txt` | draft | ready | no | 0.870 | 208 |
 | 37 | `claude_injection_empty_after_trust.txt` | ready | ready | yes | 0.910 | 218 |
-| 38 | `codex_injection_busy_output_says_empty.txt` | ready | busy | no | 0.590 | 219 |
+| 38 | `codex_injection_busy_output_says_empty.txt` | busy | busy | yes | 0.590 | 219 |
 
 ## Độ chính xác
 
-- Trên màn hình được chấm: **23/25 (92,0%)**; 13 màn hình không chấm.
-- Hai màn hình sai: dòng 1 `claude-2.1.270-ready.txt` (Jev `auth_required`, 0.780) và dòng 38 (xem trên, Jev `busy`, 0.590). Cả hai dưới 0.85.
-- Câu trả lời sai ở độ tin cậy từ 0.85 trở lên: 0 trong 25 màn hình được chấm. Nhưng có 1 màn hình không chấm, `claude_injection_draft_says_empty` (chữ đã gõ trong composer, tức là một bản nháp), mà Jev trả `ready` ở 0.870, trên ngưỡng và rất có thể sai.
-- Câu trả lời được chấm ở độ tin cậy từ 0.85 trở lên: 19, cả 19 khớp. Sáu câu được chấm dưới 0.85 (hai sai, bốn đúng), nên ở ngưỡng 0.85 sáu màn hình đó rơi về fixture.
-- Nhãn `ready` là chỗ Jev yếu nhất: 10 màn hình, độ tin cậy 0.470, 0.640, 0.770, 0.780 (sai), 0.800, 0.870, 0.910, 0.910, 0.980 và 0.590 (sai). Chỉ bốn trong mười đạt 0.85. Mọi dialog đều 0.95 đến 1.000 (riêng `codex_update_dialog_after_enter` 0.950).
+- Trên màn hình được chấm: **24/26 (92,3%)**; 12 màn hình không chấm.
+- Hai màn hình sai: dòng 1 `claude-2.1.270-ready.txt` (Jev `auth_required`, 0.780, dưới 0.85) và dòng 36 `claude_injection_draft_says_empty` (nhãn `draft`, Jev `ready`, 0.870, **trên** 0.85). Dòng 38 nay khớp (`busy`, Jev `busy` 0.590, dưới ngưỡng).
+- Câu trả lời sai ở độ tin cậy từ 0.85 trở lên: 1 trong 26 màn hình được chấm, chính là bản nháp ở dòng 36.
+- Câu trả lời được chấm ở độ tin cậy từ 0.85 trở lên: 20, trong đó 19 khớp. Sáu câu được chấm dưới 0.85 (một sai, năm đúng), nên ở ngưỡng 0.85 sáu màn hình đó rơi về `unknown`.
+- Nhãn `ready` là chỗ Jev yếu nhất: 9 màn hình, độ tin cậy 0.470, 0.640, 0.770, 0.780 (sai), 0.800, 0.870, 0.910, 0.910, 0.980. Chỉ bốn trong chín đạt 0.85. Mọi dialog đều 0.95 đến 1.000 (riêng `codex_update_dialog_after_enter` 0.950).
 - Latency 38 request: p50 212 ms, p95 262 ms, tối đa 384 ms.
 
 ## Câu trả lời của Jev trên màn hình không chấm
 
-Mười hai màn hình hook của Codex (`hooks-sessionstart-*`, `hooks-table-*`) mà bộ phân loại khởi động từ chối: Jev đều trả `dialog_hooks_review`, độ tin cậy 1.000 (chín màn hình), 0.990, 0.920, 0.840 (`two-all-trusted`). Một màn hình injection `claude_injection_draft_says_empty`: Jev `ready` 0.870, trong khi đây là pane có chữ trong composer; nếu nhãn thật là `draft` thì đây là một câu sai ở trên ngưỡng, và mô hình nhãn hiện tại không chứng minh được hay bác bỏ điều đó.
+Mười hai màn hình hook của Codex (`hooks-sessionstart-*`, `hooks-table-*`) mà stub từ chối: Jev đều trả `dialog_hooks_review`, độ tin cậy 1.000 (chín màn hình), 0.990, 0.920, 0.840 (`two-all-trusted`). Không còn màn hình injection nào không chấm.
 
-Các màn hình hook ở trạng thái "đã tin cậy" (`two-all-trusted`, `table-trusted`) mà Jev vẫn gọi là `dialog_hooks_review` có thể là Jev đúng hoặc sai tuỳ vào việc dialog còn mở hay không; fixture không có nhãn, nên không kết luận.
+Các màn hình hook ở trạng thái "đã tin cậy" (`two-all-trusted`, `table-trusted`) mà Jev vẫn gọi là `dialog_hooks_review` có thể là Jev đúng hoặc sai tuỳ vào việc dialog còn mở hay không; fixture không có nhãn, nên không kết luận. Settle không dựa vào câu này: sau khi mate đã trust hook của mình, một `dialog_hooks_review` mà profile của harness không tự nhận ra (như bảng `table-trusted` còn trên màn hình ngay sau phím esc cuối, Jev 0.920) được coi là màn hình chưa đọc xong và đọc lại tới hết hạn, không bị từ chối.
 
 ## Có đủ tin cậy cho settle ở ngưỡng 0.85 không
 
 Chưa kết luận là có. Điều con số nói:
 
-- Ở ngưỡng 0.85, trên 25 màn hình có nhãn không có câu sai nào lọt qua, và 19 câu được nhận đều đúng. Đó là tín hiệu tốt, nhưng 19 mẫu không đủ để nói tỉ lệ sai dưới ngưỡng thấp hơn một vài phần trăm.
-- Điểm mù: 60% số màn hình `ready` (6/10) bị giữ lại dưới 0.85, và một màn hình `ready` thật bị gọi là `auth_required` ở 0.780. Settle dùng Jev sẽ hay rơi về fixture đúng ở trạng thái thường gặp nhất; nó an toàn (không nhận câu sai) nhưng không tiết kiệm.
-- Phạm vi: corpus gần như chỉ có Claude và Codex ở khởi động; các trạng thái `busy`, `draft`, `dialog_tool_permission`, `auth_required`, `quota_exhausted`, `exited` không có màn hình nào được chấm. Câu hỏi này chưa được đo ở chính những trạng thái đó.
-- Hạn chế nhãn: một lượt, một ngày, một model; nhãn fixture không phủ composer, nên sai lệch ở `draft`/`busy` chưa kiểm tra được (xem dòng injection).
+- Ở ngưỡng 0.85, trên 26 màn hình có nhãn có một câu sai lọt qua (bản nháp đọc là `ready`, 0.870), và 19 trong 20 câu được nhận là đúng. 20 mẫu không đủ để nói tỉ lệ sai trên ngưỡng thấp hơn một vài phần trăm.
+- Câu sai đó không còn tới settle: stub nay tự đọc `claude_injection_draft_says_empty` là `draft`, nên settle dừng ở đó, không bấm phím nào và không hỏi Jev (có test). Nó vẫn là bằng chứng Jev có thể gọi một bản nháp là `ready` trên ngưỡng ở màn hình mà stub không đọc được composer.
+- Điểm mù: 5/9 màn hình `ready` bị giữ lại dưới 0.85, và một màn hình `ready` thật bị gọi là `auth_required` ở 0.780. Mọi màn hình `ready` trong corpus đều do stub đọc, nên settle không hỏi Jev về chúng.
+- Phạm vi: corpus gần như chỉ có Claude và Codex ở khởi động; `draft` và `busy` mỗi trạng thái chỉ có một màn hình được chấm (dựng cho câu hỏi composer, không phải chụp lúc khởi động); `dialog_tool_permission`, `auth_required`, `quota_exhausted`, `exited` không có màn hình nào được chấm. Câu hỏi này chưa được đo ở chính những trạng thái đó.
+- Hạn chế: một lượt, một ngày, một model.
 
-Kết luận: độ tin cậy của Jev ở ngưỡng 0.85 cho settle chưa được chứng minh. Lý do cụ thể nhất là chính một lần trượt đã thấy: một bản nháp (`claude_injection_draft_says_empty`) bị đọc là `ready` ở 0.870, trên ngưỡng, và đó đúng loại sai nguy hiểm nhất (settle sẽ coi pane là sẵn sàng khi có chữ đang nằm trong composer). Thêm vào đó: Jev yếu ở `ready` (6/10 dưới 0.85, một màn bị đọc là `auth_required`), corpus không có màn nào được chấm cho `draft`, `busy`, `dialog_tool_permission`, `auth_required`, `quota_exhausted`, `exited`, và đây chỉ là một lượt chạy. Trên 25 màn hình được chấm không có câu sai nào ở từ 0.85 trở lên, nhưng con số đó không bù được các điểm trên.
+Kết luận: độ tin cậy của Jev ở ngưỡng 0.85 cho settle chưa được chứng minh. Trên 26 màn hình được chấm có đúng một câu sai từ 0.85 trở lên, và đó là loại sai nguy hiểm nhất (một bản nháp đọc là `ready`, 0.870); stub nay chặn đúng màn hình đó trước khi Jev được hỏi, nhưng một bản nháp mà stub không đọc được composer vẫn có thể bị Jev gọi là `ready`. Thêm vào đó: Jev yếu ở `ready` (5/9 dưới 0.85, một màn bị đọc là `auth_required`), corpus chỉ có một màn được chấm cho `draft` và một cho `busy`, không có màn nào cho `dialog_tool_permission`, `auth_required`, `quota_exhausted`, `exited`, và đây chỉ là một lượt chạy.
 
 ## Bằng chứng chạy thật (Task 8)
 

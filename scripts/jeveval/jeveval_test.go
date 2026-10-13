@@ -172,8 +172,11 @@ func TestStateListLabelsFromFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	for file, state := range map[string]string{
-		"codex-0.162.1-hooks-review.txt":     "dialog_hooks_review",
-		"codex-0.162.1-loading-composer.txt": "ready",
+		"codex-0.162.1-hooks-review.txt":             "dialog_hooks_review",
+		"codex-0.162.1-loading-composer.txt":         "ready",
+		"codex-0.156.1-hooks-table-trusted.txt":      "unknown",
+		"claude_injection_draft_says_empty.txt":      "draft",
+		"codex_injection_busy_output_says_empty.txt": "busy",
 	} {
 		found := false
 		for _, line := range strings.Split(out.String(), "\n") {
@@ -193,7 +196,11 @@ func TestCommittedStateCassetteReplays(t *testing.T) {
 	if err := runState(&out, filepath.Join("testdata", "cassette-state"), true, false); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{jev.StatePromptHash(), "### Summary", "Match on the scored screens"} {
+	for _, want := range []string{jev.StatePromptHash(), "### Summary",
+		"- Match on the scored screens: 24/26 (92.3%); 12 screens unscored.",
+		"- Scored answers at or above 0.85: 20, of which 19 match.",
+		"- Failed requests or invalid answers: 0.",
+		"- `claude_injection_draft_says_empty.txt`: fixture draft, Jev ready (0.870)"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("report lacks %q:\n%s", want, out.String())
 		}
