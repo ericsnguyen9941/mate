@@ -1170,25 +1170,83 @@ func TestHerdrStartTimeoutAdoptsTheUnnamedAgentInThePane(t *testing.T) {
 	}
 }
 
+// A pane holding an agent that is not ours fails the start at once; a pane
+// Herdr lists no agent in is polled for the whole adoption window first.
+// Either way the error is the start's own timeout, naming why nothing was
+// adopted.
 func TestHerdrStartTimeoutFailsWithoutOurAgentInThePane(t *testing.T) {
-	for _, list := range []string{"agent-list-empty.json", "agent-list-named-in-pane.json", "agent-list-unnamed-other-kind.json"} {
+	for list, want := range map[string]struct {
+		lists  int
+		reason string
+	}{
+		"agent-list-empty.json":              {51, "lists no agent in the pane yet after 50s"},
+		"agent-list-named-in-pane.json":      {1, "holds agent"},
+		"agent-list-unnamed-other-kind.json": {1, "none ours to adopt"},
+	} {
 		t.Run(list, func(t *testing.T) {
+			lists := 0
 			rt, launch, session, tab := bootHerdr(t, func(_ context.Context, spec process.Spec) (process.Result, error) {
 				switch {
 				case argvHas(spec.Args, "agent", "start"):
 					return process.Result{ExitCode: 1, Stderr: readRuntimeTestdata(t, "error-start-timeout.json")}, nil
 				case argvHas(spec.Args, "agent", "list"):
+					lists++
 					return process.Result{Stdout: readRuntimeTestdata(t, list)}, nil
 				}
 				t.Fatalf("unexpected argv %#v (nothing may be renamed)", spec.Args)
 				return process.Result{}, nil
 			})
+			var slept time.Duration
+			rt.AdoptSleep = func(_ context.Context, d time.Duration) error { slept += d; return nil }
 			res := reserveOn(t, rt.Names, session, "mate_001")
 			_, err := rt.StartAgent(context.Background(), mustStartSpec(t, tab, res, launch))
 			if !runtime.IsTimeout(err) {
 				t.Fatalf("err = %v, want the start's own timeout", err)
 			}
+			if !strings.Contains(err.Error(), "could not adopt an agent in the pane") || !strings.Contains(err.Error(), want.reason) {
+				t.Fatalf("err = %v, want it to name why nothing was adopted (%q)", err, want.reason)
+			}
+			if lists != want.lists || slept != time.Duration(want.lists-1)*time.Second {
+				t.Fatalf("listed %d times, slept %s; want %d lists a second apart", lists, slept, want.lists)
+			}
 		})
+	}
+}
+
+// A harness slower than the start timeout is not listed yet when the start
+// times out: the adoption polls until Herdr lists it, then names it.
+func TestHerdrStartTimeoutAdoptsAnAgentListedLate(t *testing.T) {
+	lists := 0
+	var renamed []string
+	rt, launch, session, tab := bootHerdr(t, func(_ context.Context, spec process.Spec) (process.Result, error) {
+		switch {
+		case argvHas(spec.Args, "agent", "start"):
+			return process.Result{ExitCode: 1, Stderr: readRuntimeTestdata(t, "error-start-timeout.json")}, nil
+		case argvHas(spec.Args, "agent", "list"):
+			lists++
+			if lists < 3 {
+				return process.Result{Stdout: readRuntimeTestdata(t, "agent-list-empty.json")}, nil
+			}
+			return process.Result{Stdout: readRuntimeTestdata(t, "agent-list-unnamed-in-pane.json")}, nil
+		case argvHas(spec.Args, "agent", "rename"):
+			renamed = append(renamed, spec.Args...)
+			return process.Result{Stdout: readRuntimeTestdata(t, "agent-rename.json")}, nil
+		}
+		t.Fatalf("unexpected argv %#v", spec.Args)
+		return process.Result{}, nil
+	})
+	var slept []time.Duration
+	rt.AdoptSleep = func(_ context.Context, d time.Duration) error { slept = append(slept, d); return nil }
+	res := reserveOn(t, rt.Names, session, "mate_001")
+	h, err := rt.StartAgent(context.Background(), mustStartSpec(t, tab, res, launch))
+	if err != nil {
+		t.Fatalf("an agent Herdr lists on the third read is adopted: %v", err)
+	}
+	if h.Name != res.Name() || lists != 3 || len(slept) != 2 || slept[0] != time.Second {
+		t.Fatalf("handle %+v, %d lists, sleeps %v; want adopted on the third list, a second apart", h, lists, slept)
+	}
+	if !argvHas(renamed, "agent", "rename") || !argvHas(renamed, tab.PaneID, res.Name()) {
+		t.Fatalf("rename argv = %#v", renamed)
 	}
 }
 

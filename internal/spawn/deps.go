@@ -85,8 +85,10 @@ const (
 	// DefaultStartTimeout is `agent start --timeout`. A harness held by a
 	// startup dialog never becomes interactive; the Herdr adapter adopts it
 	// after this timeout and the settle answers the dialog
-	// (docs/plans/pane-state-jev-2026-10-13.md section 5). Herdr accepts
-	// > 3000 and <= 300000 ms.
+	// (docs/plans/pane-state-jev-2026-10-13.md section 5). An agent Herdr
+	// has not listed yet by then is polled for up to 50 s more
+	// (runtime.Herdr's adoption window), so a slow harness keeps the 60 s
+	// a start had before. Herdr accepts > 3000 and <= 300000 ms.
 	DefaultStartTimeout = 10 * time.Second
 )
 
