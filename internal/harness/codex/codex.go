@@ -292,6 +292,9 @@ func (c Codex) Prepare(_ context.Context, req harness.PrepareRequest) (harness.P
 	if err := req.Check(KindCodex); err != nil {
 		return harness.Prepared{}, err
 	}
+	if req.Role == harness.RoleCrew && len(req.MCPServers) > 0 {
+		return harness.Prepared{}, observability.NewError(observability.CodeUsage, "codex plugin servers are only supplied to a Mate")
+	}
 	if err := harness.ValidateMCPServers(req.MCPServers); err != nil {
 		return harness.Prepared{}, err
 	}
@@ -319,6 +322,9 @@ func (c Codex) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchS
 	}
 	if spec.Launch != nil {
 		return harness.LaunchSpec{}, observability.NewError(observability.CodeUsage, fmt.Sprintf("codex adapter got launch data %T that its Prepare did not make", spec.Launch))
+	}
+	if spec.Role == harness.RoleCrew && len(spec.MCPServers) > 0 {
+		return harness.LaunchSpec{}, observability.NewError(observability.CodeUsage, "codex plugin servers are only supplied to a Mate")
 	}
 	if err := harness.ValidateMCPServers(spec.MCPServers); err != nil {
 		return harness.LaunchSpec{}, err

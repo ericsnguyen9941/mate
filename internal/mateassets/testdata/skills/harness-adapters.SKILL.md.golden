@@ -97,7 +97,7 @@ The level it really used is the last word of the footer's second line, and the d
 
 A Mate requires pi 1.0.4 or later. Mate explicitly loads its own extension with `-e` for prompt/answer receipts and recall, and its `.pi/skills` with `--skill`; automatic extension and skill discovery remains disabled.
 
-When a Mate has MCP plugins, it loads pi's native `builtin:mcp` and registers each server with direct tool exposure. pi handles connections, OAuth (`/mcp`), tool results and shutdown. MCP server names replace `-` with `_` in tool names; a global pi MCP entry sharing that namespace blocks launch, because global config would override the registered plugin.
+A Mate initializes pi's native `createMcpExtension` with a workspace-only config loader and registers each plugin server with direct tool exposure. pi handles connections, OAuth (`/mcp`), tool results and shutdown. MCP server names replace `-` with `_` in tool names; global/project MCP files are ignored, so global servers cannot add tools or override workspace instances.
 
 Plugin changes apply at the next start. Crews receive no workspace plugin servers or Mate hooks.
 

@@ -8,10 +8,13 @@ Ngày: 2026-10-13. Trạng thái: triển khai trong draft PR; chờ Linear pilo
   thay vì dotted overrides. Parser giữ nguyên argv/cwd; live stdio, HTTP và
   mock OAuth gọi read tool trên fresh/resume cùng session. Không sửa config home.
 - P1/P3: pi 1.0.4 đã có native MCP/OAuth và `registerMcpServer`; không cần
-  MCP SDK bridge hay tải dependency khi launch. Load `builtin:mcp` và extension
-  Mate bằng `-e`; từ chối global name/namespace collision trước launch.
+  MCP SDK bridge hay tải dependency khi launch. Load extension Mate bằng `-e`;
+  extension gọi native `createMcpExtension` với loader chỉ workspace,
+  bỏ qua global/project MCP giống Claude/Codex mà giữ native OAuth cache.
 - P2: extension hooks và explicit skills đã triển khai. Live đo recall,
-  sentinel echo và một prompt/answer receipt trên fresh/resume; event compact
+  sentinel echo và một prompt/answer receipt trên fresh/resume. pi chưa ghi
+  session trống trước message đầu; stop lúc này restart fresh với thông báo,
+  theo native lifecycle. Event compact
   mới có replay offline. Inbox, stow và compact live còn cần nghiệm thu.
 - S1/S2: fixture stdio/HTTP/mock OAuth/tool error và wiring preflight/doctor/
   transcript đã triển khai. Ca unavailable/timeout/cancellation chưa có live proof.

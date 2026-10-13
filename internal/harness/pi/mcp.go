@@ -3,8 +3,6 @@ package pi
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -47,42 +45,5 @@ func MCPConfig(servers []harness.MCPServer) ([]byte, error) {
 		}
 		entries[s.Name] = e
 	}
-	if err := checkGlobalMCP(servers); err != nil {
-		return nil, err
-	}
 	return json.MarshalIndent(map[string]any{"mcpServers": entries}, "", "  ")
-}
-
-// Global entries take precedence over registered servers in pi. Refuse a
-// collision instead of launching a workspace instance with a different URL.
-func checkGlobalMCP(servers []harness.MCPServer) error {
-	if len(servers) == 0 {
-		return nil
-	}
-	root, err := sessionsRoot("")
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(filepath.Dir(root), "mcp.json")
-	b, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var doc struct {
-		Servers map[string]json.RawMessage `json:"mcpServers"`
-	}
-	if err = json.Unmarshal(b, &doc); err != nil {
-		return fmt.Errorf("pi global MCP config %s: %w", path, err)
-	}
-	for _, s := range servers {
-		for n := range doc.Servers {
-			if strings.ReplaceAll(n, "-", "_") == strings.ReplaceAll(s.Name, "-", "_") {
-				return observability.NewError(observability.CodeUsage, fmt.Sprintf("pi MCP server %q conflicts with global entry %q in %s; rename the workspace instance or global entry", s.Name, n, path))
-			}
-		}
-	}
-	return nil
 }

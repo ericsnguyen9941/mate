@@ -85,7 +85,10 @@ Crews receive no workspace plugins. Restart Mate after changing plugins.
 
 Codex receives a whole `mcp_servers` table through `-c`; a Mate uses only the
 workspace's resolved servers, including an empty table after removal. The
-operator's config.toml is never edited, and a Crew without plugin servers
+operator's config.toml is never edited. **Behavior change:** every Codex Mate,
+even a workspace with no plugins, now excludes the operator's global MCP
+servers. Move required servers into workspace plugins to expose them to Mate.
+This matches Claude's strict MCP isolation. A Crew without plugin servers
 keeps its existing launch behavior. Codex's native OAuth manager owns login.
 For an HTTP instance, invoke login with the same URL/table and CODEX_HOME:
 
@@ -96,14 +99,23 @@ codex -c 'mcp_servers={"linear-work"={url="https://mcp.linear.app/mcp"}}' mcp lo
 Use your package's actual URL and instance name. The same override with
 `mcp get <instance>` inspects configuration; it does not prove auth or a tool read.
 
-pi receives servers through its native `registerMcpServer` API and loads
-`builtin:mcp` explicitly. Use `/mcp` in the Mate pane to sign in to an HTTP
-server. pi owns its OAuth cache in the selected pi agent home. Existing global
-MCP servers may also load; a global name/namespace colliding with a workspace
-instance is refused before launch. Rename the global entry or plugin instance
-instead of silently connecting the workspace name to another server.
+pi receives servers through its native `registerMcpServer` API and initializes
+`createMcpExtension` from the installed pi runtime with an empty file-config
+loader. Only workspace servers are registered; global/project `mcp.json` is
+ignored whether or not the workspace has plugins. Use `/mcp` in the Mate pane
+to sign in to an HTTP server. pi owns its OAuth cache in the selected pi agent home. The adapter does
+not edit global MCP configuration or switch the operator's auth home. A global
+server sharing a workspace name cannot replace the registered instance.
 
 Offline doctor/preflight validate resolved config and harness compatibility;
 they do not contact the server. Live fixture proofs and external Linear OAuth
 pilot results are reported separately in the evidence; do not infer a Linear
 login from a successful fixture read.
+
+pi recall enters model context at `before_agent_start`, before the first model
+turn rather than when the composer opens. The launch records its UUID, but pi
+intentionally creates no session file before a user or assistant message.
+Stopping before the first prompt therefore starts fresh on the next launch,
+with an explicit missing-session note. A recorded conversation resumes normally.
+Transcript metadata is populated by the first recall hook. Hook subprocesses wait at most five seconds and surface
+stderr diagnostics even when Mate intentionally returns exit status zero.

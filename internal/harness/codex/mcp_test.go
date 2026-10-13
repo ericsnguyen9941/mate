@@ -102,3 +102,14 @@ func TestMCPConfigInvalidAndEmpty(t *testing.T) {
 		t.Fatal("modified operator config")
 	}
 }
+
+func TestCodexCrewRefusesPluginServers(t *testing.T) {
+	req := harnesstest.PrepareFixture(t, harness.RoleCrew)
+	req.MCPServers = []harness.MCPServer{{Name: "remote", Type: "http", URL: "https://example.com/mcp"}}
+	if _, err := (Codex{}).Prepare(context.Background(), req); err == nil {
+		t.Fatal("Crew Prepare accepted plugin servers")
+	}
+	if _, err := (Codex{}).Build(context.Background(), harness.AgentSpec{Role: harness.RoleCrew, MCPServers: req.MCPServers}); err == nil {
+		t.Fatal("Crew Build accepted plugin servers")
+	}
+}

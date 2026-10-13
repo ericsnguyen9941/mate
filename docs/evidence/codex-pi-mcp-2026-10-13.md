@@ -28,11 +28,13 @@ The root table replaces global MCP entries and stale fields without rewriting
 parser retains command, argv and package cwd. A Crew without servers keeps its
 existing launch behavior.
 
-pi receives `-e <mate-extension.mjs> --skill <Mate skills> -e builtin:mcp`
+After PR review, pi receives `-e <mate-extension.mjs> --skill <Mate skills>`
 alongside `--no-extensions --no-skills --no-approve --offline`. The extension
-uses native `registerMcpServer` with `exposure: "direct"`, including native cwd.
-Native pi owns OAuth and child lifecycle; no third-party bridge is downloaded.
-Global pi servers can also load; conflicting names/namespaces are refused.
+uses native `registerMcpServer` with `exposure: "direct"`, including native cwd,
+and calls the installed runtime's exported `createMcpExtension` with a loader
+returning no file-defined servers. Global/project MCP config is ignored, with
+or without workspace plugins. Native pi still owns OAuth and child lifecycle;
+no third-party bridge is downloaded and the auth home is not rewritten.
 The measured pi API is 1.0.4. Earlier pi versions are unsupported; the extension
 checks for the native registration API, rather than claiming all versions work.
 
@@ -82,9 +84,9 @@ same root override; file credential storage is selected in the lab only. pi
 uses native `pi mcp login` with a temporary lab global config, removed before
 registered-server launch. Both must reuse their native caches on fresh/resume.
 
-## Run results
+## Original implementation run results
 
-Final live suite: **PASS**, 283.37 seconds, all six subtests; the final source
+Before review changes, the live suite: **PASS**, 283.37 seconds, all six subtests; the final source
 includes tool-error and PID cleanup assertions. Session ids below were observed
 unchanged across fresh/resume:
 
@@ -112,16 +114,76 @@ were run red before removing these refusals. They now pass, alongside:
 
 - Codex TOML roundtrip, quoted/dotted names, preserved argv/cwd, empty table,
   identical fresh/resume config, and unchanged operator config.
-- pi native schema, invalid names and normalized/global collisions, generated
+- pi native schema, invalid names and normalized namespace collisions, generated
   file ownership/tampering, launch intent, and hook event replay.
 - Spawn materialization for Claude/Codex/pi, Crew isolation, stale skill cleanup,
-  and pi collision preflight before stopping a running Mate.
+  and pi preflight independent of global config.
 - Codex 0.162.1 hook review capture (`Unnamed hook · new`) with own/foreign
   command matching; accepting only the exact Mate hook remains mandatory.
 
 `make check` includes formatting, vet and the complete offline suite. Its
 expected live skips are printed separately and provide no live evidence.
 The explicit live fixture run is the evidence for the six combinations above.
+
+## PR review follow-up
+
+- Restore draft state: review found the PR had been marked ready after creation.
+- Match MCP isolation across harnesses: pi now uses native `createMcpExtension`
+  with an empty file-config loader and only registers workspace servers. The
+  renderer is pure; Prepare/Build/CheckContext/doctor no longer read global MCP.
+  No special collision preflight remains, since global entries cannot load.
+- Both Codex and pi refuse MCP servers supplied to a Crew with a usage error.
+- Surface hook stderr even on exit 0, preserving any useful recall stdout and
+  giving a recall fallback if diagnostics have no stdout. Hook wait is capped
+  at five seconds; Node replay checks stderr visibility and a hung-child timeout.
+- Repoint launch config through a same-directory temporary file plus rename;
+  check all JSON decode errors explicitly. Regression checks ownership, retained
+  fields and absence of temporary files.
+- Keep recall at `before_agent_start`. Live probing before the first prompt
+  showed that pi intentionally does not create a session file until a user or
+  assistant message (`SessionManager._hasConversation`). Custom entries do not
+  force persistence. A positive empty-session resume assertion failed, so the
+  regression now checks the correct fresh restart with the explicit
+  missing-session note. No empty-session content is lost. The Go launch records
+  the UUID immediately; transcript metadata arrives with the first recall hook.
+- pi 1.0.4 source dispatches interactive `/compact` before `session.prompt`, and
+  extension commands such as `/mcp` before emitting `input`. Slash skills and
+  prompt templates do emit `input`, since they are actual model prompts. Do not
+  blanket-filter every slash input or drop valid skill prompt receipts.
+
+The follow-up live test adds exact-name/global-server marker traps to all three
+pi transports and tests stop/start with a resume request before a first prompt, plus management
+slash commands creating no prompt/answer receipts.
+
+Follow-up results: the full six-transport fixture suite passed in 274.20 seconds.
+After removing the ineffective custom-entry persistence attempt, the final pi
+suite passed all three transports in 124.81 seconds. The final
+`TestLivePiMateBeforeFirstPrompt` passed in 24.20 seconds: `/session`, `/mcp`,
+`/compact` made no user/app/Mate receipt, global subprocess markers stayed absent
+without workspace plugins, and the missing-session fresh-start note was explicit.
+
+| Harness | Transport | Follow-up fresh/resume session | Result |
+| --- | --- | --- | --- |
+| Codex | stdio | `01a13356-79e0-7091-adbb-4ada7f647feb` | PASS |
+| Codex | HTTP | `01a13357-3a4a-7020-84d7-f822a6e1cddb` | PASS |
+| Codex | mock OAuth | `01a13358-0277-7b90-9b0e-b83be57d94be` | PASS |
+| pi | stdio | `dc5d0d45-6b62-44f7-96a5-3287c8587be4` | PASS |
+| pi | HTTP | `8c9c4842-e6d8-419e-a73c-68ffc01dd439` | PASS |
+| pi | mock OAuth | `7b8ee010-9b90-4d6b-926e-82b77c52d6fc` | PASS |
+
+Reproduce the additional proofs with:
+
+```sh
+env MATE_LIVE=1 MATE_HERDR_LIVE_SESSION=fm-lab-mcp-20261013 TMPDIR=/private/tmp \
+  go test ./internal/spawn -run '^TestLivePluginMCPStartResume$/^pi$' -v -timeout 15m
+env MATE_LIVE=1 MATE_HERDR_LIVE_SESSION=fm-lab-mcp-20261013 TMPDIR=/private/tmp \
+  go test ./internal/spawn -run '^TestLivePiMateBeforeFirstPrompt$' -v -timeout 5m
+```
+
+Final follow-up `make check`: PASS (77 expected live skips, reported separately).
+Final `make build`: PASS; worktree binary reports
+`mate 226bfff-dirty (226bfff, 2026-10-13T03:46:43Z)` before the follow-up commit.
+Only the owned Herdr lab is stopped/deleted after testing.
 
 ## Pending acceptance
 

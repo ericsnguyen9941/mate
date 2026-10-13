@@ -51,7 +51,28 @@ func (piHooks) Repoint(binary, cwd string, exists func(string) bool) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	return true, os.WriteFile(path, append(b, '\n'), 0600)
+	if err := replaceLaunchConfig(path, append(b, '\n')); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// replaceLaunchConfig keeps the previous config intact until the whole new
+// document is written. The temporary file stays beside it for atomic rename.
+func replaceLaunchConfig(path string, data []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".mate-launch-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 func mateFiles(req harness.PrepareRequest) ([]harness.LaunchFile, error) {
 	if req.Binary == "" || !filepath.IsAbs(req.Binary) {
@@ -81,7 +102,9 @@ func mateFiles(req harness.PrepareRequest) ([]harness.LaunchFile, error) {
 		return nil, err
 	}
 	var doc map[string]any
-	_ = json.Unmarshal(b, &doc)
+	if err := json.Unmarshal(b, &doc); err != nil {
+		return nil, fmt.Errorf("pi Mate rendered MCP config: %w", err)
+	}
 	doc["mateOwned"] = 1
 	doc["binary"] = req.Binary
 	doc["resume"] = req.ResumeSessionID != ""
@@ -118,12 +141,24 @@ func checkMateFiles(cwd string, servers []harness.MCPServer, resume bool) error 
 		return err
 	}
 	var want map[string]json.RawMessage
-	_ = json.Unmarshal(expected, &want)
+	if err := json.Unmarshal(expected, &want); err != nil {
+		return fmt.Errorf("pi Mate rendered MCP config: %w", err)
+	}
 	var actualMap, expectedMap any
-	_ = json.Unmarshal(doc.Servers, &actualMap)
-	_ = json.Unmarshal(want["mcpServers"], &expectedMap)
-	actual, _ := json.Marshal(actualMap)
-	target, _ := json.Marshal(expectedMap)
+	if err := json.Unmarshal(doc.Servers, &actualMap); err != nil {
+		return fmt.Errorf("pi Mate launch mcpServers: %w", err)
+	}
+	if err := json.Unmarshal(want["mcpServers"], &expectedMap); err != nil {
+		return fmt.Errorf("pi Mate expected mcpServers: %w", err)
+	}
+	actual, err := json.Marshal(actualMap)
+	if err != nil {
+		return err
+	}
+	target, err := json.Marshal(expectedMap)
+	if err != nil {
+		return err
+	}
 	if doc.Owned != 1 || !filepath.IsAbs(doc.Binary) || doc.Resume != resume || !bytes.Equal(actual, target) {
 		return fmt.Errorf("pi Mate launch config does not match this launch")
 	}

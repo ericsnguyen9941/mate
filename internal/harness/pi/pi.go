@@ -191,6 +191,9 @@ func (p Pi) Prepare(_ context.Context, req harness.PrepareRequest) (harness.Prep
 	if err := req.Check(KindPi); err != nil {
 		return harness.Prepared{}, err
 	}
+	if req.Role == harness.RoleCrew && len(req.MCPServers) > 0 {
+		return harness.Prepared{}, observability.NewError(observability.CodeUsage, "pi plugin servers are only supplied to a Mate")
+	}
 	if _, err := MCPConfig(req.MCPServers); err != nil {
 		return harness.Prepared{}, err
 	}
@@ -260,11 +263,8 @@ func (p Pi) Build(_ context.Context, spec harness.AgentSpec) (harness.LaunchSpec
 	}
 	if spec.Role == harness.RoleMate {
 		args = append(args, "-e", extensionPath(cwd), "--skill", filepath.Join(cwd, p.Info().SkillsDir))
-		if len(spec.MCPServers) > 0 {
-			args = append(args, "-e", "builtin:mcp")
-		}
 	} else if len(spec.MCPServers) > 0 {
-		return harness.LaunchSpec{}, fmt.Errorf("pi plugin servers are only supplied to a Mate")
+		return harness.LaunchSpec{}, observability.NewError(observability.CodeUsage, "pi plugin servers are only supplied to a Mate")
 	}
 	if sessionID != "" {
 		if _, err := uuid.Parse(sessionID); err != nil {

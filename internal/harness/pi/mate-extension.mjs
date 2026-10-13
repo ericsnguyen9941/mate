@@ -1,12 +1,13 @@
 // Mate-owned pi 1.0.4 extension. No dependencies outside Node and pi's API.
 import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { createMcpExtension } from "@earendil-works/pi-coding-agent";
 
 const config = JSON.parse(
   readFileSync(new URL("./mate-launch.json", import.meta.url), "utf8"),
 );
 
-export function runHook(binary, args, payload, cwd) {
+export function runHook(binary, args, payload, cwd, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, ["hook", ...args], {
       cwd,
@@ -19,7 +20,7 @@ export function runHook(binary, args, payload, cwd) {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error("Mate hook timed out"));
-    }, 30000);
+    }, timeoutMs);
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
       if (Buffer.byteLength(stdout, "utf8") > 65536) {
@@ -36,7 +37,7 @@ export function runHook(binary, args, payload, cwd) {
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code === 0) resolve(stdout);
+      if (code === 0) resolve({ stdout, stderr });
       else reject(new Error(`Mate hook exited ${code}: ${stderr}`));
     });
     child.stdin.on("error", () => {});
@@ -51,6 +52,9 @@ export default function mateExtension(pi) {
   for (const [name, server] of Object.entries(config.mcpServers)) {
     pi.registerMcpServer(name, server);
   }
+  // Use pi's native runtime and OAuth cache, but load only registered workspace
+  // servers. Do not read global/project mcp.json or enable a second builtin:mcp.
+  createMcpExtension({ loadConfig: () => ({ servers: [], errors: [] }) })(pi);
   const warn = (ctx, err) => {
     const message = `Mate hook failed: ${err.message}`;
     if (ctx.hasUI) ctx.ui.notify(message, "error");
@@ -58,7 +62,14 @@ export default function mateExtension(pi) {
   };
   const call = async (ctx, args, payload) => {
     try {
-      return await runHook(config.binary, args, payload, ctx.cwd);
+      const result = await runHook(config.binary, args, payload, ctx.cwd);
+      // Mate hooks intentionally exit 0 on handler errors; stderr is evidence
+      // of failure even when stdout contains a useful recall fallback.
+      if (result.stderr.trim()) {
+        warn(ctx, new Error(result.stderr.trim()));
+        if (!result.stdout) return "Mate hook failed. Run mate recall before acting.";
+      }
+      return result.stdout;
     } catch (err) {
       warn(ctx, err);
       return "Mate hook failed. Run mate recall before acting.";

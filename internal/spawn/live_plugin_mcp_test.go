@@ -80,6 +80,21 @@ func TestLivePluginMCPStartResume(t *testing.T) {
 						loginMCPFixture(t, kind, strings.TrimSpace(url))
 					}
 				}
+				globalMarker := filepath.Join(lab.w.Root(), "global-mcp-leaked")
+				if kind == pi.KindPi {
+					// Both an exact collision and a foreign server must stay out.
+					// Either global subprocess writes a marker if native config leaks.
+					config, err := json.Marshal(map[string]any{"mcpServers": map[string]any{
+						"probe-inst":  map[string]any{"command": "/usr/bin/touch", "args": []string{globalMarker}},
+						"global-leak": map[string]any{"command": "/usr/bin/touch", "args": []string{globalMarker}},
+					}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(os.Getenv(pi.AgentDirEnv), "mcp.json"), config, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
 				if err := os.WriteFile(filepath.Join(pkg, "mate-plugin.yaml"), []byte(manifest), 0644); err != nil {
 					t.Fatal(err)
 				}
@@ -134,6 +149,9 @@ func TestLivePluginMCPStartResume(t *testing.T) {
 						t.Fatal("no session recorded")
 					}
 					if kind == pi.KindPi {
+						if _, err := os.Stat(globalMarker); !os.IsNotExist(err) {
+							t.Fatal("pi loaded a global MCP server")
+						}
 						waitSentAnswer(t, lab.w, id)
 						text, _ := os.ReadFile(meta[spawn.MetaTranscript])
 						if !strings.Contains(string(text), "MCP-RECALL-CANARY") {
@@ -175,6 +193,67 @@ func TestLivePluginMCPStartResume(t *testing.T) {
 			})
 		}
 	}
+}
+
+// pi intentionally leaves no session file until a conversation starts. A stop
+// before the first prompt must therefore restart fresh with a clear note, and
+// management commands must not manufacture prompt/answer receipts.
+func TestLivePiMateBeforeFirstPrompt(t *testing.T) {
+	lab := newLiveLab(t)
+	piLabAuth(t)
+	globalMarker := filepath.Join(lab.w.Root(), "global-mcp-leaked")
+	global, err := json.Marshal(map[string]any{"mcpServers": map[string]any{
+		"global-leak": map[string]any{"command": "/usr/bin/touch", "args": []string{globalMarker}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(os.Getenv(pi.AgentDirEnv), "mcp.json"), global, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	request := spawn.StartRequest{Project: "shop", Harness: pi.KindPi, Resume: true}
+	first, err := spawn.StartMate(ctx, lab.w, lab.deps, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.SessionID == "" {
+		t.Fatal("startup has no prepared session id")
+	}
+	// /session is a builtin UI command. /mcp is a native extension command.
+	for _, command := range []string{"/session", "/mcp", "/compact"} {
+		if err := lab.rt.PromptAgent(ctx, lab.handle(first), command); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Second)
+	}
+	if _, err := spawn.StopMate(ctx, lab.w, lab.deps, "shop"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := spawn.StartMate(ctx, lab.w, lab.deps, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.SessionID == first.SessionID || second.Resumed || !strings.Contains(second.ResumeNote, "no session file") {
+		t.Fatalf("empty session restart not explained: first=%s second=%s resumed=%v note=%q", first.SessionID, second.SessionID, second.Resumed, second.ResumeNote)
+	}
+	if _, err := spawn.StopMate(ctx, lab.w, lab.deps, "shop"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(globalMarker); !os.IsNotExist(err) {
+		t.Fatal("pi loaded global MCP in a workspace without plugins")
+	}
+	rows, _, err := lab.w.ReadSent("shop", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.Source == store.SourceUser || row.Source == store.SourceApp || row.Source == store.SourceMate {
+			t.Fatalf("slash command created a prompt/answer receipt: %v", row)
+		}
+	}
+	t.Logf("pi stop before first prompt restarts fresh with explicit missing-session note; management slash commands made no receipts and global MCP stayed excluded")
 }
 
 func waitFileContaining(t *testing.T, path, needle string, timeout time.Duration) string {

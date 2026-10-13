@@ -494,7 +494,7 @@ func regInfoSkillsDir(t *testing.T, r harness.Registry, k harness.Kind) string {
 	return p.Info().SkillsDir
 }
 
-func TestPreflightPiGlobalCollisionBeforeStop(t *testing.T) {
+func TestPreflightPiIgnoresGlobalMCP(t *testing.T) {
 	w := newWorkspace(t, "shop")
 	writePluginPackages(t, w.Root())
 	writePluginsYAML(t, w, pluginsYAML(true))
@@ -505,7 +505,7 @@ func TestPreflightPiGlobalCollisionBeforeStop(t *testing.T) {
 	}
 	rt := runtime.NewFake()
 	deps := fakeDeps(t, rt)
-	if err := spawn.PreflightMatePlugins(w, deps, "shop", pi.KindPi); err == nil || !strings.Contains(err.Error(), "conflicts") {
+	if err := spawn.PreflightMatePlugins(w, deps, "shop", pi.KindPi); err != nil {
 		t.Fatalf("preflight = %v", err)
 	}
 	if len(rt.StartLaunches) != 0 || len(rt.ExitPrompts) != 0 {
