@@ -134,7 +134,10 @@ func PromptHash() string {
 // Parse validates a response the way notice.Client does, per question:
 // pinned model, a choice inside the criteria, a probability for every
 // label summing to one within rounding, the choice the most probable.
-func Parse(data []byte) (Response, error) {
+func Parse(data []byte) (Response, error) { return parseAnswers(data, questions) }
+
+// parseAnswers validates data against the questions qs.
+func parseAnswers(data []byte, qs map[string]question) (Response, error) {
 	var raw struct {
 		Model   string `json:"model"`
 		Answers map[string]struct {
@@ -155,7 +158,7 @@ func Parse(data []byte) (Response, error) {
 		return Response{}, fmt.Errorf("response model %q, want %s", raw.Model, notice.Model)
 	}
 	out := Response{Answers: map[Axis]Answer{}, InputTokens: raw.Usage.Input, OutputTokens: raw.Usage.Output}
-	for name, q := range questions {
+	for name, q := range qs {
 		a, ok := raw.Answers[name]
 		if !ok || a.Type != "choice" || a.Confidence == nil || !probability(*a.Confidence) {
 			return Response{}, fmt.Errorf("%s: missing or malformed answer", name)
