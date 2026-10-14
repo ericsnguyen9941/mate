@@ -305,6 +305,11 @@ const noTimeline = "no timeline database has been read for this row yet"
 // ends a task (ProjectNode.Crews). A Crew whose meta could not be read is
 // kept, as a row whose fields say they could not be read, because an
 // unreadable record is not evidence of a closed one.
+//
+// A crew the box already found closed is counted without reading its meta
+// again: box.Load read it in this same refresh and resolved it through the
+// same first rule of crewstate.Declare, and a closed crew stays closed. A
+// workspace keeps every crew it ever closed, so they are most of its crews.
 func loadCrews(ws *store.Workspace, project string, repos Field[[]RepoValue], view box.View, viewOK bool, live Liveness, w *warnings) ([]CrewNode, int) {
 	ids, err := crewIDs(ws.CrewsDir(project))
 	if err != nil {
@@ -318,6 +323,10 @@ func loadCrews(ws *store.Workspace, project string, repos Field[[]RepoValue], vi
 	out := make([]CrewNode, 0, len(ids))
 	closed := 0
 	for _, id := range ids {
+		if viewOK && view.Closed[id] {
+			closed++
+			continue
+		}
 		c := loadCrew(ws, project, id, repos, view, viewOK, live, w)
 		if c.Closed {
 			closed++
@@ -428,9 +437,14 @@ func loadCrew(ws *store.Workspace, project, id string, repos Field[[]RepoValue],
 		}, note)
 	}
 
+	// A terminal meta outranks the other two inputs (mvp.md section 4b), so
+	// a closed crew's status is not read: it could not change the answer.
+	if c.Status = CrewStateOf(meta, false, ""); c.Status.Closed() {
+		c.Closed = true
+		return c
+	}
 	openIncident := viewOK && len(box.BlockingIncidents(view, id)) > 0
-	c.Status = CrewStateOf(meta, openIncident, lastStatusVerb(ws, project, id, w, row))
-	c.Closed = c.Status.Closed()
+	c.Status = CrewStateOf(meta, openIncident, lastStatusVerb(ws, project, id, view, viewOK, w, row))
 	return c
 }
 
@@ -438,17 +452,27 @@ func loadCrew(ws *store.Workspace, project, id string, repos Field[[]RepoValue],
 // line, "" when it has written none. It is one of the three inputs
 // CrewStateOf resolves a state from; box owns the parsing, including the
 // legacy verbs a status file written before 2026-09-18 may still carry.
-func lastStatusVerb(ws *store.Workspace, project, id string, w *warnings, row RowRef) string {
-	entries, _, err := ws.ReadStatus(project, id, 0)
-	if err != nil {
-		note(w, UnknownField[CrewStatus](readFailureReason(err)), "status", row)
-		return ""
+//
+// The box view Load already read holds every status line, so the verb comes
+// from there. Only when the box could not be read - one unreadable status
+// file fails it for the whole project - is the crew's own file read, so
+// every other crew still shows its state and the unreadable one says why.
+func lastStatusVerb(ws *store.Workspace, project, id string, view box.View, viewOK bool, w *warnings, row RowRef) string {
+	verb := box.StateUnknown
+	if viewOK {
+		verb = box.LastCrewVerb(view, id)
+	} else {
+		entries, _, err := ws.ReadStatus(project, id, 0)
+		if err != nil {
+			note(w, UnknownField[CrewStatus](readFailureReason(err)), "status", row)
+			return ""
+		}
+		lines := make([]string, 0, len(entries))
+		for _, e := range entries {
+			lines = append(lines, e.Line)
+		}
+		verb = box.LastVerb(lines)
 	}
-	lines := make([]string, 0, len(entries))
-	for _, e := range entries {
-		lines = append(lines, e.Line)
-	}
-	verb := box.LastVerb(lines)
 	if verb == box.StateUnknown {
 		return ""
 	}

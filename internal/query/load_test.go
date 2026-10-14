@@ -563,3 +563,111 @@ func TestLoadCarriesCommandBindings(t *testing.T) {
 		t.Fatalf("Load with no tools: Commands = %+v, %v; want none", snap.Commands, err)
 	}
 }
+
+// unreadable makes path unreadable for the rest of the test, so a test can
+// tell whether Load opened it.
+func unreadable(t *testing.T, path string) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode-000 file, so this cannot tell whether Load opened it")
+	}
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+}
+
+// TestLoadDoesNotReadAClosedCrewsStatus: a terminal meta outranks every
+// other input to a crew's state (mvp.md section 4b), so a closed crew's
+// `.status` cannot change what Load reports and is not read for its state.
+// A workspace keeps every crew it ever closed; reading each of their status
+// files on every console refresh was most of what a refresh cost.
+func TestLoadDoesNotReadAClosedCrewsStatus(t *testing.T) {
+	ws := newWorkspace(t, "shop")
+	if err := ws.WriteCrewMeta("shop", "k9", map[string]string{"task": "scout", "state": "finished"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.AppendStatus("shop", "k9", "working: mid-turn when it was closed"); err != nil {
+		t.Fatal(err)
+	}
+	unreadable(t, ws.CrewStatus("shop", "k9"))
+	if err := ws.WriteCrewMeta("shop", "k1", map[string]string{"task": "ship", "state": "spawned"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.AppendStatus("shop", "k1", "wait-mate: ready in branch mate/k1"); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := Load(context.Background(), ws, testHarnesses, nil)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	for _, w := range snap.Warnings {
+		if w.Row.ID == "k9" {
+			t.Errorf("warning %+v: a closed crew's status was read", w)
+		}
+	}
+	p := snap.Projects[0]
+	if p.ClosedCrews != 1 {
+		t.Errorf("ClosedCrews = %d, want 1", p.ClosedCrews)
+	}
+	if len(p.Crews) != 1 || p.Crews[0].CrewID != "k1" || p.Crews[0].Status != CrewWaitMate {
+		t.Fatalf("crews = %+v, want only k1 at wait-mate", p.Crews)
+	}
+}
+
+// TestLoadReadsTheLastVerbTheSameWhetherOrNotTheBoxLoads: a crew's last
+// verb comes out of the box view Load already read, and out of the crew's
+// own status file when the box could not be read. Both must give the state
+// the status file says, under the same parse rules.
+func TestLoadReadsTheLastVerbTheSameWhetherOrNotTheBoxLoads(t *testing.T) {
+	cases := []struct {
+		lines []string
+		want  CrewStatus
+	}{
+		{[]string{"wait-mate: ready in branch mate/k1"}, CrewWaitMate},
+		{[]string{"working: a", "oops"}, CrewWorking},
+		{[]string{"working: a", "needs-decision: A or B?", "   "}, CrewNeedsDecision},
+		{[]string{"needs-decision: a", "working: b", "blocked: legacy"}, CrewNeedsDecision},
+		{[]string{"working: a", "done: legacy"}, CrewWaitMate},
+		{[]string{"working: a", "failed: legacy"}, CrewWaitMate},
+		{[]string{"working: a", "pr-open: https://example.test/pr/1"}, CrewWaitMate},
+		{[]string{"hello there"}, CrewSpawned},
+		{nil, CrewSpawned},
+	}
+	for _, boxReadable := range []bool{true, false} {
+		for i, tc := range cases {
+			ws := newWorkspace(t, "shop")
+			if err := ws.WriteCrewMeta("shop", "k1", map[string]string{"task": "ship", "state": "spawned"}); err != nil {
+				t.Fatal(err)
+			}
+			for _, l := range tc.lines {
+				if err := ws.AppendStatus("shop", "k1", l); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !boxReadable {
+				// One unreadable status file fails box.Load for the whole
+				// project; Load then reads each open crew's file itself.
+				if err := ws.WriteCrewMeta("shop", "k9", map[string]string{"state": "finished"}); err != nil {
+					t.Fatal(err)
+				}
+				if err := ws.AppendStatus("shop", "k9", "working: x"); err != nil {
+					t.Fatal(err)
+				}
+				unreadable(t, ws.CrewStatus("shop", "k9"))
+			}
+			snap, err := Load(context.Background(), ws, testHarnesses, nil)
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			p := snap.Projects[0]
+			if (p.Box.State == Known) != boxReadable {
+				t.Fatalf("box = %+v, want Known=%v", p.Box, boxReadable)
+			}
+			if len(p.Crews) != 1 || p.Crews[0].Status != tc.want {
+				t.Errorf("box readable %v, case %d %q: crews = %+v, want k1 %q", boxReadable, i, tc.lines, p.Crews, tc.want)
+			}
+		}
+	}
+}
