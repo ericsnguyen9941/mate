@@ -26,3 +26,8 @@ Kết luận: skill project vẫn nạp; skill trong `~/.claude/skills` và skil
 plugin người dùng không còn; skill đi kèm Claude Code vẫn còn. `--autocompact
 160000` được CLI nhận. Chưa đo: một crew thật compact ở ngưỡng 160000 (cần chạy
 một task dài; đo bằng `mate usage <project>` sau 10 task).
+
+File settings riêng của crew (`--settings crews/<id>/settings.json`) vẫn nạp khi có
+`--setting-sources project`: một file chỉ chứa `{"env":{"MATE_PROBE_FLAG":"from-flag-settings"}}`
+truyền bằng `--settings`, cùng `--setting-sources project --dangerously-skip-permissions`,
+và `echo $MATE_PROBE_FLAG` trong phiên in `from-flag-settings`.
