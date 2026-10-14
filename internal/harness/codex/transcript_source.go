@@ -48,37 +48,15 @@ func (s codexTranscripts) Locate(req harness.TranscriptLocateRequest) (harness.T
 	}
 	if req.RuntimeSession != nil {
 		if ref := req.RuntimeSession(); ref != "" {
-			if path, ok := codexRolloutNamed(root, ref); ok {
+			if path, ok := CodexRolloutPath(root, ref); ok {
 				return harness.TranscriptLocation{Path: path, SessionID: ref, Rule: codexRuleHerdrSession}, ""
 			}
 		}
 	}
-	if path, ok := codexRolloutNamed(root, req.SessionID); ok {
+	if path, ok := CodexRolloutPath(root, req.SessionID); ok {
 		return harness.TranscriptLocation{Path: path, Rule: codexRuleHerdrSession}, ""
 	}
 	return codexAdopt(root, req)
-}
-
-// codexRolloutNamed finds the rollout whose file name carries a session
-// id. Codex names a rollout `rollout-<timestamp>-<session-id>.jsonl`, so the
-// id is in the name and no file has to be opened to find the right one.
-func codexRolloutNamed(root, sessionID string) (string, bool) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return "", false
-	}
-	var found string
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || found != "" {
-			return nil //nolint:nilerr // an unreadable branch is not an answer
-		}
-		name := d.Name()
-		if strings.HasSuffix(name, ".jsonl") && strings.Contains(name, sessionID) {
-			found = path
-		}
-		return nil
-	})
-	return found, found != ""
 }
 
 // codexAdopt is AdoptCodexRollout over every rollout whose header parses,

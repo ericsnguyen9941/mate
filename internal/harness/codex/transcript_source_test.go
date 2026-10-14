@@ -172,3 +172,27 @@ func TestCodexLocateOrder(t *testing.T) {
 		t.Fatalf("with nothing to go on: reason %q, want %q", reason, codexAdoptPending)
 	}
 }
+
+// A session id finds only a file Codex named for it,
+// `rollout-<time>-<id>.jsonl`; any other file carrying the id is not a
+// rollout, and Locate falls through to adoption.
+func TestCodexLocateByIDMatchesOnlyARolloutName(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	day := filepath.Join(root, "2026", "10", "14")
+	if err := os.MkdirAll(day, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const id = "01a0bbbb-0000-7000-8000-000000000006"
+	if err := os.WriteFile(filepath.Join(day, "notes-"+id+".jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := codexTranscripts{}
+	if loc, reason := src.Locate(harness.TranscriptLocateRequest{Root: root, SessionID: id, Cwd: t.TempDir()}); reason != codexAdoptPending {
+		t.Fatalf("by the meta's id: %+v %q, want %q", loc, reason, codexAdoptPending)
+	}
+	runtime := func() string { return id }
+	if loc, reason := src.Locate(harness.TranscriptLocateRequest{Root: root, RuntimeSession: runtime, Cwd: t.TempDir()}); reason != codexAdoptPending {
+		t.Fatalf("by the runtime's id: %+v %q, want %q", loc, reason, codexAdoptPending)
+	}
+}
