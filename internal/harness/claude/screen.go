@@ -53,6 +53,41 @@ func (claudeScreen) ComposerRows(lines []string) ([]string, bool) { return claud
 // Busy implements ScreenProfile.
 func (claudeScreen) Busy(lines []string) (string, bool) { return claudeBusy(lines) }
 
+// Background implements harness.BackgroundScreens.
+func (claudeScreen) Background(lines []string) (string, bool) { return claudeBackground(lines) }
+
+// claudeBackgroundCount is Claude's count of work a finished turn left
+// running, as its footer draws it. Measured 2026-10-13 (Claude Code with
+// Opus 5.5, Herdr 0.9.3), a crew idle while a shell and a Monitor it had
+// started kept running:
+//
+//	⏵⏵ bypass permissions on · 1 shell, 1 monitor · ← for agents
+var claudeBackgroundCount = regexp.MustCompile(`\d+ (?:shells?|monitors?)(?:, \d+ (?:shells?|monitors?))*`)
+
+// claudeBackground reads the count from the footer under the composer's
+// closing rule, and nowhere else: the turn's own summary line above the
+// composer says the same ("· 1 shell, 1 monitor still running") but scrolls
+// away, and anything above the composer may be the agent quoting a pane.
+func claudeBackground(raw []string) (string, bool) {
+	lines := splitAtClaudeRules(raw)
+	closing := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isComposerRule(lines[i]) {
+			closing = i
+			break
+		}
+	}
+	if closing < 0 {
+		return "", false
+	}
+	for _, line := range lines[closing+1:] {
+		if count := claudeBackgroundCount.FindString(line); count != "" {
+			return count, true
+		}
+	}
+	return "", false
+}
+
 const (
 	// claudeComposerGlyph is the glyph Claude draws at its composer. It is
 	// also its highlight glyph, which is why the composer is located by the

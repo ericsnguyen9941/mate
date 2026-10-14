@@ -85,8 +85,9 @@ func TestStateOfCrewGathersTheInputs(t *testing.T) {
 	})
 
 	t.Run("a closed crew reports its terminal state and a no-agent health", func(t *testing.T) {
-		// stopFakeCrew passes --discard, which is the caller deciding the
-		// work will not land: `failed`, not `finished` (mvp.md section 4b).
+		// stopFakeCrew passes --discard, but this crew has nothing unlanded
+		// to throw away, so the stop is an ordinary one: `finished` (mvp.md
+		// section 4b, 2026-10-13).
 		if _, err := stopFakeCrew(t, w, deps, "shop", "k3"); err != nil {
 			t.Fatalf("StopCrew: %v", err)
 		}
@@ -94,8 +95,8 @@ func TestStateOfCrewGathersTheInputs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("stateOfCrew: %v", err)
 		}
-		if got.State != crewstate.StateFailed {
-			t.Fatalf("state = %q, want failed", got.State)
+		if got.State != crewstate.StateFinished {
+			t.Fatalf("state = %q, want finished", got.State)
 		}
 		if got.Health.Kind != crewstate.HealthNoAgent {
 			t.Fatalf("health = %+v, want no-agent", got.Health)

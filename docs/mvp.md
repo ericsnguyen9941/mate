@@ -160,9 +160,9 @@ Chốt 2026-09-18 sau khi test tay M2. Bảy trạng thái, ba người đặt, 
 | `working` | Crew | `crews/<id>.status` | Đang làm; dòng mô tả pha. |
 | `needs-decision` | Crew | `.status` | Crew hỏi và dừng turn; cần Mate hoặc người dùng trả lời. Vào inbox. |
 | `wait-mate` | Crew | `.status` | Crew đã làm hết phần mình (xong, hoặc không xong được và nói vì sao) và giao lại cho Mate. Không vào inbox. |
-| `blocked` | Observer | `incidents.log`, không đụng `.status` | Crew không tự nói được nữa: pane treo, agent biến mất khỏi Herdr, kẹt dialog. Chỉ `stale` và `runtime_lost` tạo ra nó; `budget` (M5) chỉ vào inbox, không đổi trạng thái (quyết định 2026-09-20). Vào inbox. Gỡ khi observer thấy crew chạy lại. |
+| `blocked` | Observer | `incidents.log`, không đụng `.status` | Crew không tự nói được nữa: pane treo, agent biến mất khỏi Herdr, kẹt dialog. Chỉ `stale` và `runtime_lost` tạo ra nó; `budget` (M5) chỉ vào inbox, không đổi trạng thái (quyết định 2026-09-20). Vào inbox. Gỡ khi observer thấy crew chạy lại, hoặc khi crew đã đóng (2026-10-13). |
 | `finished` | Mate hoặc người dùng, qua `crew stop` | `.meta` `state=finished` | Trạng thái cuối. Scout: người dùng nhận report và bảo đóng. Ship: branch đã merge. |
-| `failed` | Mate hoặc người dùng, qua `crew stop --discard`; app, khi spawn thất bại | `.meta` `state=failed` | Trạng thái cuối. Việc bị bỏ, hoặc crew chưa bao giờ lên. |
+| `failed` | Mate hoặc người dùng, qua `crew stop --discard` khi lệnh này thật sự bỏ việc chưa landed (`teardown=discarded`); app, khi spawn thất bại | `.meta` `state=failed` | Trạng thái cuối. Việc bị bỏ, hoặc crew chưa bao giờ lên. `--discard` mà không có gì để bỏ (`teardown=clean`) là một lần stop thường và ghi `finished` (2026-10-13). |
 
 Quy tắc:
 
@@ -175,7 +175,7 @@ Quy tắc:
 - Spawn thất bại (dialog không nhận ra, agent không lên, trust không qua) ghi `state=failed` và lý do vào `.meta` ngay tại chỗ, không để lại thư mục mồ côi ở `spawned`.
 
 `incidents.log` là file append-only, tab-separated, mỗi dòng `RFC3339 \t crew \t kind \t open|resolved \t text`.
-Kind: `stale` (status và pane không đổi quá ngưỡng mà composer không bận), `runtime_lost` (Herdr không còn agent), `wedged` (gửi vào pane không kiểm chứng được quá lâu), `budget` (sau MVP).
+Kind: `stale` (status và pane không đổi quá ngưỡng mà composer không bận, và trạng thái pane không phải `busy` hay `busy_background`: hết lượt nhưng còn shell/monitor chạy nền, sửa 2026-10-13), `runtime_lost` (Herdr không còn agent), `wedged` (gửi vào pane không kiểm chứng được quá lâu), `budget` (sau MVP).
 Một incident đang mở khi dòng cuối của cặp (crew, kind) là `open`.
 Chỉ observer ghi file này; `box.Load` đọc nó và gộp vào view cùng `.status` và `sent.log`.
 Observer sống trong tiến trình console: đóng console thì không ai canh crew và không có `blocked` mới; chấp nhận cho MVP.
@@ -305,6 +305,7 @@ Tri thức về code đi vào AGENTS.md của repo qua PR của crew.
 - Observer không bao giờ kết luận từ một lần đọc hỏng.
   Herdr không trả lời, pane không đọc được, `.meta` chưa có agent: cả ba đều là "không nhìn được", không phải bằng chứng crew có vấn đề, nên không mở incident và không ghi health (đúng tinh thần quyết định 8).
   Chỉ câu trả lời dứt khoát `agent_not_found` của Herdr mới mở `runtime_lost`.
+  Agent biến mất vì `crew stop` không phải `runtime_lost` (sửa 2026-10-13): `crew stop` giữ flock `crews/<id>.stop.lock` từ trước khi dừng agent tới khi ghi xong meta, và observer gặp `agent_not_found` thì hỏi lock đó, rồi đọc lại meta, trước khi mở incident. Trước bản sửa, mọi lần stop ở hellovietnam đều để lại một `runtime_lost` mở (11 cái, mỗi cái cách `stopped_at` dưới một giây). Incident còn mở của crew đã đóng được observer ghi `resolved` (`crew <id> is closed`).
   Giá phải trả: mỗi crew mỗi vòng tốn ba lệnh `herdr` (lookup session, inspect, read), nên poll 5s với nhiều crew là chỗ cần đo lại khi số crew tăng.
 - AGENTS.md của Mate đã vượt trần mặc định `project_doc_max_bytes` của Codex (32768) khi thêm bảng bảy trạng thái (đo 2026-09-18 ở task 18b): `mate start --harness codex` chết với `required context exceeds delivery limit`, vì `spawn` từ chối thay vì để Codex cắt đuôi im lặng. Sửa: launch Codex truyền `-c project_doc_max_bytes=131072` (khoá có trong tài liệu, 0.154.0 nhận dưới `--strict-config`, khoá lạ thì bị từ chối ngay), và bộ đo của `harness` dùng cùng hằng số `CodexDefaultMaxBytes`, nên cờ và bộ đo không thể lệch nhau. `internal/mateassets` có test ngân sách cách trần 8 KiB, hỏng ngay tại nơi sửa template. Manual còn ghi 26 lần đường dẫn workspace, nên workspace sâu vẫn ăn thêm vài trăm byte.
 - Nested-session env (đo 2026-09-17, Claude Code 2.1.274): một Claude Code đang chạy export `CLAUDECODE=1`, `CLAUDE_CODE_SESSION_ID`, và các biến `CLAUDE_CODE_*` khác cho process con. Nếu Herdr server được khởi động từ shell đó thì mọi pane kế thừa chúng, và Claude trong pane coi mình là session con: hook `Stop` vẫn bắn nhưng transcript không bao giờ được ghi. Runtime gỡ `harness.NestedSessionEnv` khỏi env của server lúc spawn và khỏi pane ngay trước `agent start`. Bài học chung: không tin env kế thừa qua Herdr server, mọi biến harness cần đúng phải được set hoặc unset ở pane.

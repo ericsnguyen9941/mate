@@ -12,9 +12,13 @@ import (
 type PaneState string
 
 const (
-	PaneLoading        PaneState = "loading"
-	PaneReady          PaneState = "ready"
-	PaneBusy           PaneState = "busy"
+	PaneLoading PaneState = "loading"
+	PaneReady   PaneState = "ready"
+	PaneBusy    PaneState = "busy"
+	// PaneBackground is a pane between turns whose harness still runs work
+	// a turn started (a shell, a monitor) and will wake when it ends. Its
+	// composer takes a typed line; the stale rule must not call it quiet.
+	PaneBackground     PaneState = "busy_background"
 	PaneDraft          PaneState = "draft"
 	PaneTrustDir       PaneState = "dialog_trust_dir"
 	PaneUpdate         PaneState = "dialog_update"
@@ -29,7 +33,7 @@ const (
 )
 
 // PaneStates lists every state in the order of the spec's table.
-var PaneStates = []PaneState{PaneLoading, PaneReady, PaneBusy, PaneDraft, PaneTrustDir, PaneUpdate,
+var PaneStates = []PaneState{PaneLoading, PaneReady, PaneBusy, PaneBackground, PaneDraft, PaneTrustDir, PaneUpdate,
 	PaneHooksReview, PaneBypass, PaneToolPermission, PaneOther, PaneAuthRequired, PaneQuotaExhausted,
 	PaneExited, PaneUnknown}
 

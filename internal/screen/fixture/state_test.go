@@ -123,3 +123,27 @@ func TestFixtureStateLeavesTheCodexHookScreensUnknown(t *testing.T) {
 		}
 	}
 }
+
+// Claude idle between turns while a shell and a monitor it started keep
+// running (crew ds-components-c, hellovietnam, 2026-10-13): the turn is over
+// and the composer holds only a faint suggestion, so a line can be typed
+// into it, but the crew is waiting on its own background work. The stub
+// names that busy_background; the composer read stays empty, so send still
+// types into it.
+func TestFixtureStateNamesClaudeBackgroundWork(t *testing.T) {
+	pane := captureFile(t, "claude_idle_background.ansi")
+	profile := claude.Claude{}.Screen()
+	o := fixture.New().(screen.StateObserver)
+	r, err := o.ObserveState(context.Background(), profile, pane)
+	if err != nil || r.State != screen.PaneBackground || r.Confidence != 1 || r.Source != fixture.Source {
+		t.Fatalf("state = %+v %v, want busy_background from the fixture at 1", r, err)
+	}
+	if cls := fixture.ClassifyComposer(profile, pane); cls.State != screen.ComposerEmpty {
+		t.Fatalf("composer = %s (%q), want empty: the turn is over and a line can be typed", cls.State, cls.Evidence)
+	}
+
+	r, err = o.ObserveState(context.Background(), profile, capture(t, "claude_empty"))
+	if err != nil || r.State == screen.PaneBackground {
+		t.Fatalf("idle Claude with nothing running = %+v %v, want not busy_background", r, err)
+	}
+}

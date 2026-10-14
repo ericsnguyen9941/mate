@@ -25,8 +25,14 @@
 //     crew's last status verb is not one of the waiting verbs. A crew that
 //     asked a question (`needs-decision`), handed back (`wait-mate`) or
 //     reported it was done is waiting for a human, not stuck, and silence
-//     is the correct behaviour for it.
-//   - `runtime_lost`: Herdr answered that it does not have that agent.
+//     is the correct behaviour for it. Nor is a pane whose state, asked
+//     once of the still snapshot, is busy or busy_background: between
+//     turns, waiting on a shell or monitor it left running.
+//   - `runtime_lost`: Herdr answered that it does not have that agent, and
+//     no `crew stop` of it is in flight or has closed it.
+//
+// An incident still open on a crew that has since closed is resolved: the
+// crew is not watched any more, so nothing else would clear it.
 //
 // Both resolve when the condition clears - the pane changed, the composer
 // went busy again, the crew wrote a status line, the agent came back - and a

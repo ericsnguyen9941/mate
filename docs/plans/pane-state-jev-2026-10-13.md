@@ -38,6 +38,13 @@ Quyết định 1 lật ruling 2026-10-08 "trên trục composer Jev chỉ đư�
 cho riêng vòng khởi động: ở đây trạng thái của Jev được dùng để hành động khi
 stub chịu thua.
 
+Mở rộng cùng ngày, captain duyệt sau sự cố crew `ds-components-c` của
+hellovietnam (bị gọi `stale` trong lúc chờ ba lần chạy UI test nền): `watch`
+hỏi câu `pane_state` một lần cho mỗi snapshot đứng yên, ngay trước khi mở
+`stale`. Thứ tự vẫn là stub trước, Jev khi stub chịu thua; `busy` hoặc
+`busy_background` thì không mở. Composer của `watch` vẫn chỉ theo fixture
+(Jev chỉ phủ quyết trên trục đó), và `send`, `stow` giữ nguyên.
+
 ## 3. Danh sách trạng thái và hành động
 
 | Trạng thái | Nhận ra khi | Hành động khi khởi động |
@@ -45,6 +52,7 @@ stub chịu thua.
 | `loading` | harness đang vẽ, splash, chưa có composer | chờ, đọc lại |
 | `ready` | composer trống, không dialog, không đang chạy | xong nếu Herdr cũng báo idle/done (mục 5) |
 | `busy` | đang trong một lượt (spinner, dòng working) | chờ, đọc lại |
+| `busy_background` | hết lượt, composer trống, nhưng footer đếm việc lượt trước để chạy nền (shell, monitor) | chờ, đọc lại; observer không mở `stale` (thêm 2026-10-13) |
 | `draft` | composer có chữ chưa gửi | dừng, báo captain |
 | `dialog_trust_dir` | hỏi có tin thư mục không | bảng phím `StartupAnswer` của harness |
 | `dialog_update` | mời cập nhật phiên bản | bảng phím `StartupAnswer` (bỏ qua) |

@@ -110,6 +110,35 @@ func (w *Watcher) ask(ctx context.Context, obs *observation, screens harness.Scr
 	}()
 }
 
+// stillWorking reports whether a quiet pane is in a state that is still
+// working - busy, or busy_background: between turns, waiting on a shell or
+// monitor it left running - so stale must not open on it. The state comes
+// from the configured observer when it can name one (the chain: stub first,
+// Jev only when the stub cannot), else from the fixture.
+//
+// It is asked once per snapshot: a pane the stale rule looks at holds still,
+// so its answer is kept against the snapshot's hash. The call is made in the
+// round, unlike the composer's: it is made only for a pane that has been
+// still past the stale threshold, the stub answers at once, and Jev - when
+// the stub cannot name the screen - answers within notice.Timeout, once per
+// still screen. An error is no answer; the round ends without a verdict.
+func (w *Watcher) stillWorking(ctx context.Context, obs *observation, screens harness.ScreenProfile, pane, hash string) (bool, error) {
+	if obs.stateOf != hash {
+		states, ok := w.deps.Observer.(screen.StateObserver)
+		if !ok {
+			states = fixture.New().(screen.StateObserver)
+		}
+		ctx, cancel := context.WithTimeout(screen.WithCaller(ctx, screen.CallerWatch), notice.Timeout)
+		defer cancel()
+		reading, err := states.ObserveState(ctx, screens, pane)
+		if err != nil {
+			return false, err
+		}
+		obs.stateOf, obs.state = hash, reading.State
+	}
+	return obs.state == screen.PaneBusy || obs.state == screen.PaneBackground, nil
+}
+
 // AwaitObserver blocks until every observer call in flight has answered,
 // so the next Poll uses what it said. Stop waits the same way. A caller
 // driving Poll itself (a test) calls it between rounds, never while Start

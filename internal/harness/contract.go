@@ -155,6 +155,16 @@ type HookReviewScreens interface {
 	InHookReview(screen string) bool
 }
 
+// BackgroundScreens is implemented by a ScreenProfile whose harness draws,
+// between turns, a count of work a turn started and left running - shells,
+// monitors - that will wake the agent again (Claude Code, measured
+// 2026-10-13). The composer under it is empty and takes a typed line; the
+// pane is still not idle in the sense the stale rule means.
+type BackgroundScreens interface {
+	// Background returns the drawn count proving such work is running.
+	Background(lines []string) (evidence string, ok bool)
+}
+
 // ReadSource is a `herdr agent read --source`.
 type ReadSource string
 

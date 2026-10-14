@@ -71,7 +71,7 @@ A closed crew, or one whose worktree is gone, is refused: spawn a new crew inste
 
 `crew stop` ends a task. It checks the branch **first**: unlanded in the default branch of the Crew's repo, or a dirty worktree, without `--discard`, and it refuses and changes nothing at all - the Crew still running, its pane still open.
 That is a refusal to destroy work, not an error to route around: get the branch merged, or ask the captain whether the work should be thrown away. Never reach for `--discard` to make the message go away.
-Otherwise it confirms the agent has exited, closes the pane, removes the worktree and branch, and records the final state - `finished` for an ordinary stop, `failed` for a `--discard`, because discarding is deciding the work will not land.
+Otherwise it confirms the agent has exited, closes the pane, removes the worktree and branch, and records the final state - `failed` when `--discard` threw unlanded work away, because that is deciding the work will not land, and `finished` otherwise, a `--discard` that found nothing to throw away included.
 `crews/<id>/` - the brief, a ship's hand-back, a scout's report - is kept forever either way.
 When you run it, a second line follows the outcome, `record: update backlog.md Done; if this task taught you anything durable, route it (skill stow)`: move the task to `## Done`, and file anything it taught you before the next task makes you forget it.
 

@@ -239,6 +239,10 @@ type observation struct {
 	// asking is the observer call in flight for this crew, nil when none
 	// (observe.go).
 	asking *asking
+	// stateOf is the hash of the snapshot state was named for, empty before
+	// the stale rule has asked (observe.go's stillWorking).
+	stateOf string
+	state   screen.PaneState
 }
 
 // New builds an observer over a workspace. It does not poll until Start or
@@ -379,6 +383,64 @@ func (w *Watcher) pollProject(ctx context.Context, project string, now time.Time
 			errs = append(errs, fmt.Errorf("watch: observe crew %s of %s: %w", crew, project, err))
 		}
 	}
+	if err := w.resolveClosed(project, crews, now, open); err != nil {
+		errs = append(errs, fmt.Errorf("watch: resolve incidents of closed crews of %s: %w", project, err))
+	}
+	return errors.Join(errs...)
+}
+
+// stopped reports whether an agent Herdr no longer has went away because
+// the crew was stopped: a `crew stop` holds the crew's stop lock from before
+// it stops the agent until its meta closes the task, and a stop that
+// finished after this round listed the crew has already closed the meta.
+// Either way the agent left on purpose, and that is not `runtime_lost`.
+//
+// The lock is asked first: a stop releases it only after writing the meta,
+// so a free lock and an open meta read in that order cannot straddle one.
+func (w *Watcher) stopped(ref CrewRef) (bool, error) {
+	stopping, err := w.ws.CrewStopping(ref.Project, ref.Crew)
+	if err != nil || stopping {
+		return stopping, err
+	}
+	meta, err := w.ws.ReadCrewMeta(ref.Project, ref.Crew)
+	if err != nil {
+		return false, err
+	}
+	return crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed(), nil
+}
+
+// resolveClosed resolves the incidents still open on crews of the project
+// that have since closed. A closed crew is not watched, so nothing else would
+// ever clear them. A crew whose meta cannot be read is left alone: an
+// unreadable record says nothing about whether the task is over.
+func (w *Watcher) resolveClosed(project string, watched []string, now time.Time, open map[incidentKey]bool) error {
+	isWatched := make(map[string]bool, len(watched))
+	for _, crew := range watched {
+		isWatched[crew] = true
+	}
+	var keys []incidentKey
+	for key, isOpen := range open {
+		if isOpen && !isWatched[key.ref.Crew] {
+			keys = append(keys, key)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].ref.Crew != keys[j].ref.Crew {
+			return keys[i].ref.Crew < keys[j].ref.Crew
+		}
+		return keys[i].kind < keys[j].kind
+	})
+	var errs []error
+	for _, key := range keys {
+		meta, err := w.ws.ReadCrewMeta(project, key.ref.Crew)
+		if err != nil || len(meta) == 0 || !crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed() {
+			continue
+		}
+		if err := w.resolveIncident(key.ref, key.kind, now, open,
+			fmt.Sprintf("crew %s is closed", key.ref.Crew)); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	return errors.Join(errs...)
 }
 
@@ -418,6 +480,9 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 		if !runtime.IsAgentNotFound(err) {
 			// Herdr could not answer. "Mate could not look" is not "the
 			// agent is gone" (mvp.md decision 8).
+			return err
+		}
+		if stopped, err := w.stopped(ref); err != nil || stopped {
 			return err
 		}
 		if err := w.openIncident(ref, box.IncidentRuntimeLost, now, open,
@@ -470,9 +535,12 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 	}
 	quiet := now.Sub(obs.changedAt)
 
-	// The stale incident is decided on the fixture's own reading
-	// (Deterministic): Jev calling a still pane busy neither keeps it from
-	// opening nor resolves it. The column shows the observer's composer.
+	// The stale incident is decided on the fixture's own composer reading
+	// (Deterministic): Jev's composer veto neither keeps it from opening nor
+	// resolves it. Before it opens, the pane's state is asked once per still
+	// snapshot (stillWorking), stub first and Jev only when the stub cannot
+	// name it: a pane between turns that waits on work it left running is
+	// not stale (2026-10-13). The column shows the observer's composer.
 	deterministic := read.deterministic
 	switch {
 	case open[incidentKey{ref, box.IncidentStale}]:
@@ -482,6 +550,13 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 			}
 		}
 	case quiet >= w.deps.staleAfter() && deterministic != send.StateBusy && !waiting(obs.verb):
+		working, err := w.stillWorking(ctx, obs, screens, screen, hash)
+		if err != nil {
+			return err
+		}
+		if working {
+			break
+		}
 		text := fmt.Sprintf("no status line and no pane change for %s; composer %s",
 			quiet.Round(time.Second), send.ComposerLabel(deterministic))
 		if obs.verb != "" {
