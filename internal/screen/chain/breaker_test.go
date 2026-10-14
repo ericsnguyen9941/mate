@@ -33,7 +33,8 @@ func TestChainOpensTheCircuitAfterThreeFailures(t *testing.T) {
 	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
 	var lines []string
 	jev := &stub{err: errors.New("Jev unavailable (HTTP 503)")}
-	fix := screen.Observation{Composer: screen.ComposerEmpty, Dialog: screen.DialogNone, Highlight: -1, Confidence: 1, Source: "fixture"}
+	fix := fixtureUnread
+	fix.Reason = ""
 	c := chain.New(jev, &stub{obs: fix}, 0.85, chain.WithClock(func() time.Time { return now }),
 		chain.WithLog(func(line string) error { lines = append(lines, line); return nil }))
 	screens := 0
@@ -87,8 +88,8 @@ func TestChainOpensTheCircuitAfterThreeFailures(t *testing.T) {
 
 	now = now.Add(time.Second)
 	jev.err, jev.obs = nil, jevSays(screen.ComposerBusy, screen.DialogNone, 0.97)
-	if obs := observe(); obs.Source != "jev" || obs.Composer != screen.ComposerBusy {
-		t.Fatalf("a retry that succeeded: %+v, want Jev's reading", obs)
+	if obs := observe(); obs.Source != "jev" || obs.Composer != screen.ComposerUnknown {
+		t.Fatalf("a retry that succeeded: %+v, want Jev's reading over the fixture's unknown composer", obs)
 	}
 	if got := breakerLines(lines); len(got) != 2 || got[1] != chain.BreakerClosed {
 		t.Fatalf("log says %q, want open then closed", got)
@@ -107,7 +108,7 @@ func TestChainOpensTheCircuitAfterThreeFailures(t *testing.T) {
 // cancelled is not Jev's failure.
 func TestChainCountsOnlyFailuresInARow(t *testing.T) {
 	jev := &stub{}
-	c := chain.New(jev, &stub{obs: fixtureDraft}, 0.85)
+	c := chain.New(jev, &stub{obs: fixtureUnread}, 0.85)
 	n := 0
 	observe := func(ctx context.Context, err error) screen.Observation {
 		t.Helper()
@@ -137,7 +138,7 @@ func TestChainCountsOnlyFailuresInARow(t *testing.T) {
 // for a profile wrapped to read another source.
 func TestChainNamesTheHarnessByItsKind(t *testing.T) {
 	var lines []string
-	c := chain.New(&stub{obs: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.9)}, &stub{obs: fixtureDraft}, 0.85,
+	c := chain.New(&stub{obs: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.9)}, &stub{obs: fixtureUnread}, 0.85,
 		chain.WithLog(func(line string) error { lines = append(lines, line); return nil }))
 	if _, err := c.Observe(context.Background(), harnesstest.ScreenReadingVisible(codexScreen), "screen"); err != nil {
 		t.Fatal(err)

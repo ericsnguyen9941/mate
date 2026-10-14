@@ -12,6 +12,8 @@ Chốt 2026-10-08: Jev quyết định trạng thái của agent để đưa ra 
 
 Điều kiện đã thống nhất trong cùng buổi: Jev trả *quan sát*, không trả *hành động*; cam kết hành động không đảo ngược vẫn kiểm chứng không phụ thuộc Jev; fixture classifier ở lại làm fallback; eval trên corpus có sẵn trước khi bật.
 
+Sửa 2026-10-14 (captain): Jev chỉ là chốt chặn cuối khi harness đổi màn hình. Chain hỏi `fixture` trước và chỉ hỏi Jev về màn hình `fixture` không đọc được (`Confidence < 1`); đường send không hỏi Jev bao giờ. Luật phủ quyết composer ở mục 4.2 và 4.5 vì vậy không còn chỗ áp dụng: composer luôn là của `fixture`. Lý do và số đo ở [MVP](../mvp.md) mục thử nghiệm Jev.
+
 ## 2. Vấn đề
 
 Lõi gửi và quan sát của mate (`internal/send`, `internal/watch`, settle trong `internal/spawn`) đọc pane qua `ScreenProfile` của từng harness, là một bộ nhận diện theo cấu trúc và literal đã đo. Spec mục 7 ghi ít nhất năm lần harness tự cập nhật làm vỡ: Claude Code 2.1.282 (màn hình chào), codex-cli 0.155 (dialog update), 0.156.1 (trust vẽ lại), 0.157.1 (footer thứ hai), và Mate trích pane crew làm `claudeBusy` đọc nhầm. Mỗi lần: mọi crew chết ở cùng chỗ cho tới khi có người đo, thêm fixture, sửa profile.

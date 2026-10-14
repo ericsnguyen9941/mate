@@ -164,6 +164,38 @@ func TestStartMateRefusesAnUnrecognisedScreen(t *testing.T) {
 	}
 }
 
+// Codex's model announcement ("Meet GPT-6 Sol", 2026-10-14) is named by the
+// stub, so the start fails at once with what to do and no Jev request; mate
+// never picks a model for the captain.
+func TestStartMateRefusesTheCodexModelPromptAtOnce(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	deps.StartupPromptTimeout = time.Hour
+	rt.NextStartupScreen = screen(t, "codex-0.162.1-model-prompt.txt")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex})
+		done <- err
+	}()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the start waited on the model prompt instead of refusing at once")
+	}
+	if err == nil {
+		t.Fatal("the model prompt must fail the start")
+	}
+	if !strings.Contains(err.Error(), "asks which model to use") || !strings.Contains(err.Error(), "2. Use existing model") {
+		t.Fatalf("error = %v, want it to name the model prompt and the option that keeps the model", err)
+	}
+	if len(rt.SentKeys) != 0 {
+		t.Fatalf("keys %v were pressed into the model prompt", rt.SentKeys)
+	}
+}
+
 // Claude's one-time Bypass Permissions acceptance is named so the start fails
 // at once with what to do, not after the whole budget as an unrecognised
 // screen; and mate never answers it for the captain.

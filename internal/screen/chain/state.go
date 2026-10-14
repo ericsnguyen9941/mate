@@ -22,8 +22,9 @@ type cachedState struct {
 // observer names one there is no request to Jev and no log line. Only a
 // pane the fixture calls PaneUnknown is put to Jev; its answer stands at or
 // above the threshold, else (or on an error) the fixture's PaneUnknown is
-// returned with why. The answer is cached per harness and screen for TTL,
-// logged, and, with WithScreens, the screen kept for the captain.
+// returned with why. The answer is cached per harness and screen for TTL and
+// logged, and, with WithScreens, the screen is kept for the captain whether
+// Jev answered or not.
 func (c *Chain) ObserveState(ctx context.Context, profile harness.ScreenProfile, pane string) (screen.StateReading, error) {
 	fb, ok := c.fallback.(screen.StateObserver)
 	if !ok {
@@ -40,11 +41,13 @@ func (c *Chain) ObserveState(ctx context.Context, profile harness.ScreenProfile,
 	if s, ok := c.primary.(skipper); ok && s.Skips(pane) {
 		return withStateReason(fix, "jev: no terminal text to observe; not asked"), nil
 	}
+	key := cacheKey{kind: kindOf(profile), hash: sha256.Sum256([]byte(pane))}
+	stub := string(fix.Startup)
 	ask, trial := c.admit()
 	if !ask {
+		c.keep(ctx, key, pane, stub, keptCircuitOpen)
 		return withStateReason(fix, circuitOpen), nil
 	}
-	key := cacheKey{kind: kindOf(profile), hash: sha256.Sum256([]byte(pane))}
 	if !trial {
 		if hit, ok := c.lookupState(key); ok {
 			out, _ := decideState(fix, hit.reading, hit.err, c.threshold)
@@ -59,19 +62,19 @@ func (c *Chain) ObserveState(ctx context.Context, profile harness.ScreenProfile,
 		c.storeState(key, cachedState{reading: answer, err: perr, at: c.now()})
 	}
 	out, fallback := decideState(fix, answer, perr, c.threshold)
-	hash := fmt.Sprintf("%x", key.hash[:6])
 	if c.appendLine != nil {
-		_ = c.appendLine(LogLine{Time: start, Kind: key.kind, Hash: hash, Latency: latency, Source: out.Source,
+		_ = c.appendLine(LogLine{Time: start, Kind: key.kind, Hash: fmt.Sprintf("%x", key.hash[:6]), Latency: latency, Source: out.Source,
 			Confidence: answer.Confidence, Caller: screen.CallerOf(ctx), Used: used(fallback), Fallback: fallback,
 			State: answer.State}.String())
 		if event != "" {
 			_ = c.appendLine(BreakerLine(c.now(), event))
 		}
 	}
-	if c.screensDir != "" && perr == nil {
-		_ = recordScreen(c.screensDir, screenRecord{Kind: key.kind, Hash: hash, Caller: screen.CallerOf(ctx),
-			Stub: string(fix.Startup), Jev: answer.State, Confidence: answer.Confidence, At: start, Text: sentText(c.primary, pane)})
+	kept := keptFailed
+	if perr == nil {
+		kept = fmt.Sprintf("%s %.2f", answer.State, answer.Confidence)
 	}
+	c.keep(ctx, key, pane, stub, kept)
 	return out, nil
 }
 

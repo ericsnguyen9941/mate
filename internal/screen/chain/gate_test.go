@@ -10,7 +10,6 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/harness/catalog"
 	"github.com/nguyenngocanh94/mate/internal/notice"
-	"github.com/nguyenngocanh94/mate/internal/screen"
 	"github.com/nguyenngocanh94/mate/internal/screen/chain"
 	"github.com/nguyenngocanh94/mate/internal/screen/fixture"
 	"github.com/nguyenngocanh94/mate/internal/screen/jev"
@@ -37,21 +36,14 @@ func harnessOf(reg harness.Registry, file string) (harness.Kind, bool) {
 	return "", false
 }
 
-var startupDialogs = map[harness.StartupScreen]bool{
-	harness.StartupScreenTrustDialog:  true,
-	harness.StartupScreenUpdateDialog: true,
-	harness.StartupScreenHooksReview:  true,
-	harness.StartupScreenBypassDialog: true,
-}
-
-// A regression pin on the 2026-10-08 corpus (threshold 0.85, Jev may veto
-// the composer and never enable it, a dialog the fixture recognises is the
-// fixture's, below the threshold the fixture): every harness screen,
-// answered by Jev from its cassette, goes through the chain. The chain
-// calls a composer empty only where the fixture does (Deterministic), so
-// "dangerous" - empty where the fixture reads a draft or a turn in flight -
-// is zero by construction, as is "no dialog" where the fixture recognises
-// one; the counts pin how often each rule applies. The notice fixtures
+// A regression pin on the 2026-10-08 corpus (threshold 0.85, Jev asked
+// only about a screen the fixture cannot read, never for its composer):
+// every harness screen, answered by Jev from its cassette when asked, goes
+// through the chain. A screen the fixture reads is the fixture's reading
+// whole, with no request and no log line; on the rest the composer stays
+// the fixture's, so "dangerous" - a composer called empty that the fixture
+// does not read empty - is zero by construction. The counts pin how often
+// Jev is still asked and how often its answer is used. The notice fixtures
 // have no harness and so no screen profile; the chain is never asked about
 // a screen without one.
 func TestChainGateOnTheCorpus(t *testing.T) {
@@ -67,7 +59,7 @@ func TestChainGateOnTheCorpus(t *testing.T) {
 	ctx := context.Background()
 	counts := map[string]int{}
 	var dangerous []string
-	chained, noHarness, jevMissedDialog, vetoed := 0, 0, 0, 0
+	chained, noHarness := 0, 0
 	for _, s := range screens {
 		kind, ok := harnessOf(reg, s.File)
 		if !ok {
@@ -83,13 +75,21 @@ func TestChainGateOnTheCorpus(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		before := len(lines)
 		obs, err := observer.Observe(ctx, profile, s.Text)
 		if err != nil {
 			t.Fatalf("%s: %v", s.File, err)
 		}
 		chained++
-		if len(lines) != chained {
-			t.Fatalf("%s: %d log lines after %d screens", s.File, len(lines), chained)
+		if det.Confidence == 1 {
+			counts["fixture read it"]++
+			if len(lines) != before || obs != det {
+				t.Errorf("%s: the fixture read it, yet the chain returned %+v and logged %d lines", s.File, obs, len(lines)-before)
+			}
+			continue
+		}
+		if len(lines) != before+1 {
+			t.Fatalf("%s: %d log lines for a screen the fixture cannot read", s.File, len(lines)-before)
 		}
 		logged, err := chain.ParseLogLine(lines[len(lines)-1])
 		if err != nil {
@@ -100,34 +100,19 @@ func TestChainGateOnTheCorpus(t *testing.T) {
 			counts["jev"]++
 		default:
 			counts["fixture ("+logged.Fallback+")"]++
-			if logged.Fallback == chain.FallbackDialog && logged.Dialog == screen.DialogNone {
-				jevMissedDialog++
-			}
-		}
-		if obs.Composer == screen.ComposerEmpty && (det.Composer == screen.ComposerDraft || det.Composer == screen.ComposerBusy) {
-			dangerous = append(dangerous, fmt.Sprintf("%s: composer empty, fixture %s (%s)", s.File, det.Composer, obs.Reason))
-		}
-		if obs.Composer == screen.ComposerEmpty && obs.Deterministic != screen.ComposerEmpty {
-			dangerous = append(dangerous, fmt.Sprintf("%s: composer empty, deterministic %s (%s)", s.File, obs.Deterministic, obs.Reason))
 		}
 		if obs.Composer != det.Composer {
-			vetoed++
+			dangerous = append(dangerous, fmt.Sprintf("%s: composer %s, fixture %s (%s)", s.File, obs.Composer, det.Composer, obs.Reason))
 		}
-		if obs.Dialog == screen.DialogNone && startupDialogs[det.Startup] {
-			dangerous = append(dangerous, fmt.Sprintf("%s: dialog none, fixture %s (%s)", s.File, det.Startup, obs.Reason))
-		}
-		if obs.Draft != det.Draft || obs.Highlight != det.Highlight || obs.Startup != det.Startup || obs.Evidence != det.Evidence ||
-			obs.Deterministic != det.Composer {
+		if obs.Draft != det.Draft || obs.Startup != det.Startup || obs.Evidence != det.Evidence || obs.Deterministic != det.Composer {
 			t.Errorf("%s: %+v does not carry the fixture's %+v", s.File, obs, det)
 		}
 	}
 	t.Logf("chain(jev cassette, fixture, 0.85) on %d harness screens (%d notice fixtures have no harness):", chained, noHarness)
+	t.Logf("  %-28s %3d", "fixture read it, jev not asked", counts["fixture read it"])
 	t.Logf("  %-28s %3d", "jev", counts["jev"])
 	t.Logf("  %-28s %3d", "fixture ("+chain.FallbackThreshold+")", counts["fixture ("+chain.FallbackThreshold+")"])
-	t.Logf("  %-28s %3d", "fixture ("+chain.FallbackDialog+")", counts["fixture ("+chain.FallbackDialog+")"])
-	t.Logf("  %-28s %3d", "  of which jev said none", jevMissedDialog)
 	t.Logf("  %-28s %3d", "fixture ("+chain.FallbackError+")", counts["fixture ("+chain.FallbackError+")"])
-	t.Logf("  %-28s %3d", "jev vetoed an empty composer", vetoed)
 	t.Logf("  %-28s %3d", "dangerous", len(dangerous))
 	if chained != 78 || noHarness != 12 {
 		t.Fatalf("%d harness screens and %d without a harness, want the corpus's 78 and 12", chained, noHarness)
@@ -137,6 +122,9 @@ func TestChainGateOnTheCorpus(t *testing.T) {
 	// without measuring Jev at all.
 	if n := counts["fixture ("+chain.FallbackError+")"]; n != 0 {
 		t.Fatalf("%d requests failed: the gate measured the fixture, not the chain", n)
+	}
+	if counts["fixture read it"] != 76 || counts["jev"]+counts["fixture ("+chain.FallbackThreshold+")"] != 2 {
+		t.Errorf("counts %v, want Jev asked about the corpus's 2 screens the fixture cannot read and no other", counts)
 	}
 	for _, d := range dangerous {
 		t.Errorf("dangerous: %s", d)

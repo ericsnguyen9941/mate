@@ -199,6 +199,14 @@ const (
 	codexUpdateNow      = "1. Update now"
 	codexUpdateSkip     = "2. Skip"
 	codexUpdateSkipNext = "3. Skip until next version"
+	// codex-cli 0.162.1 announced a new model over the composer on a real
+	// Mate start (2026-10-14, testdata/startup/README.md): a "Meet <model>"
+	// title, a paragraph, two options and its own footer. The title names
+	// the model, so only its first word is matched.
+	codexModelQuestion = "Meet "
+	codexModelTry      = "1. Try new model"
+	codexModelKeep     = "2. Use existing model"
+	codexModelFooter   = "enter/esc confirm · ⌃c quit"
 )
 
 // codexStartup is codex-cli's measured startup screens.
@@ -262,6 +270,23 @@ func codexStartup() harness.StartupProfile {
 				// and `down` moves it one option at a time.
 				SelectKeys:  []string{"down", "down"},
 				TargetLabel: codexUpdateSkipNext,
+			},
+			{
+				Screen:   harness.StartupScreenModelPrompt,
+				Question: codexModelQuestion,
+				Options: []harness.DialogOption{
+					{Label: codexModelTry},
+					{Label: codexModelKeep},
+				},
+				// Never answered: the settle refuses it and names the
+				// option that keeps the model mate launched with.
+				Target: 1,
+				Footer: codexModelFooter,
+				Marker: codexHighlightMarker,
+				// The paragraph wraps to two lines at the measured width;
+				// a narrower pane wraps it to more.
+				QuestionWindow: 6,
+				TargetLabel:    codexModelKeep,
 			},
 		}, hooksReviewDialogs()...),
 		Composer: func(lines []string) bool {

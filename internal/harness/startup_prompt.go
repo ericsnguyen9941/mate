@@ -44,6 +44,11 @@ const (
 	// refuse at once with what to do; mate never answers it (the open captain
 	// call gomate-claude-bypass-mode-screen).
 	StartupScreenBypassDialog StartupScreen = "bypass_dialog"
+	// StartupScreenModelPrompt is a harness announcing a new model and
+	// asking whether to switch to it, such as codex-cli's "Meet GPT-6 Sol"
+	// (2026-10-14). Like the bypass dialog it is recognised only so the
+	// settle can refuse at once with what to do; mate never picks a model.
+	StartupScreenModelPrompt StartupScreen = "model_prompt"
 )
 
 // StartupDialogAnswer is the key sequence that answers one measured startup

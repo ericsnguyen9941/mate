@@ -37,6 +37,7 @@ func TestFixtureStateFromTheMeasuredStartup(t *testing.T) {
 		{"claude", "claude-2.1.270-trust-dialog.txt", screen.PaneTrustDir},
 		{"claude", "claude-2.1.270-ready.txt", screen.PaneReady},
 		{"claude", "claude-2.1.285-bypass-dialog.txt", screen.PaneBypass},
+		{"codex", "codex-0.162.1-model-prompt.txt", screen.PaneOther},
 	}
 	for _, c := range cases {
 		profile := codex.Codex{}.Screen()
