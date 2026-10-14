@@ -244,6 +244,25 @@ func LatestStatus(v View, crew string) (Status, bool) {
 	return Status{}, false
 }
 
+// LastCrewVerb is LastVerb over the status lines v holds for crew. A crew's
+// status lines share one time (their file's mtime) and one file, so the
+// merge keeps them in file order and the answer is the one LastVerb gives
+// over the file itself. On a View from Load that is the whole file; on one
+// from LoadSince it is only what was new.
+func LastCrewVerb(v View, crew string) State {
+	entries := v.ByCrew[crew]
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if e.Kind != KindStatus || strings.TrimSpace(e.Text) == "" {
+			continue
+		}
+		if st := ParseStatus(e.Text); st.State != StateUnknown {
+			return st.State
+		}
+	}
+	return StateUnknown
+}
+
 // Summarize builds a header digest of a View.
 func Summarize(v View) Summary {
 	var s Summary
