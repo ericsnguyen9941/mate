@@ -6,12 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"time"
 )
+
+// WaitDelay is how long Run waits for a process's output pipes once the
+// process itself is gone - killed at the context's deadline, or exited. A
+// grandchild that inherited stdout would otherwise keep Run waiting after a
+// caller's deadline for as long as that grandchild lives, which makes the
+// deadline a suggestion.
+const WaitDelay = time.Second
 
 // ExecRunner runs processes with os/exec. A non-zero exit is a result, not
 // an error: callers read ExitCode. Failing to start the process (missing
 // binary, bad directory) is an error. A cancelled or expired context returns
-// ctx.Err(), per the Runner contract.
+// ctx.Err(), per the Runner contract. A process that exits 0 and leaves a
+// background child holding its output has answered: Run returns what it
+// wrote within WaitDelay.
 type ExecRunner struct{}
 
 // Run implements Runner.
@@ -33,7 +43,13 @@ func (ExecRunner) Run(ctx context.Context, spec Spec) (Result, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = WaitDelay
 	err := cmd.Run()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// The process exited 0; only a child it left behind still held
+		// the pipe.
+		err = nil
+	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return Result{}, ctxErr
 	}
