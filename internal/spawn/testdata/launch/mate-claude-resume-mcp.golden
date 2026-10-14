@@ -161,8 +161,8 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=200ec4fc8ccd83817602a913d28665524b12aa77cdd5ea51367218e3591d8d3e
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/brief-writing/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-dispatch/SKILL.md mode=-rw-r--r-- bytes=11351 ---
-(rendered asset) sha256=b0a4936e0fb35bfdcbe929f06a06242aed4f9c444cff3763e9b1d59c74886abf
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-dispatch/SKILL.md mode=-rw-r--r-- bytes=12542 ---
+(rendered asset) sha256=6cf38624948b8a0b8556746ca8ecaf4579c052f07ab4d331f324c5ef7155e517
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-dispatch/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-spawn/SKILL.md mode=-rw-r--r-- bytes=3340 ---
@@ -185,8 +185,8 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=ef7ac37385c88a277769add6cadbf7812ec115c37f89cf254514c312f53adaa5
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/harness-adapters/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md mode=-rw-r--r-- bytes=31132 ---
-(rendered asset) sha256=1b811175750600b5191375a1fa042c60ab172ee49cd61f9fd3a982f93f6d3b99
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md mode=-rw-r--r-- bytes=31252 ---
+(rendered asset) sha256=2d7c5d3aae6fb3678ae37b01404aa16f6d66fdff792c45346b3af1c8500436e7
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-local-tools-notes/SKILL.md mode=-rw-r--r-- bytes=67 ---
@@ -201,8 +201,8 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=3cea3f39fb1a98d01f24ab2e112f8f71703559d35ddfb0b8c0dfe2346f9903d8
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/project-memory/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md mode=-rw-r--r-- bytes=9679 ---
-(rendered asset) sha256=dc9d737657283f51acfc190ec371b889a1a23d93717c728dc6f7842719403a0b
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md mode=-rw-r--r-- bytes=9841 ---
+(rendered asset) sha256=b3ef7ec5255b0dd5124a63eb2dc8182361674bb6cbfac90cd616540ae98f6550
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/stow/SKILL.md mode=-rw-r--r-- bytes=15580 ---

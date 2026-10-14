@@ -75,6 +75,16 @@ func cmdReview(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
+	// The table is read before anything is written, so a malformed one
+	// leaves no review record behind.
+	profile, note, err := applyReviewDispatch(w, spawn.SpawnCrewRequest{Harness: h, Model: m, Effort: e})
+	if err != nil {
+		return err
+	}
+	h, m, e = profile.Harness, profile.Model, profile.Effort
+	if note != "" {
+		fmt.Fprintf(stderr, "note: %s\n", note)
+	}
 	path, err := reviewRecordPath(w, project, *id)
 	if err != nil {
 		return err

@@ -8,10 +8,15 @@
 //	     "use": {"harness": "claude", "model": "haiku", "effort": "low"},
 //	     "why": "<optional rationale>"}
 //	  ],
-//	  "default": {"harness": "codex", "model": "gpt-5.5", "effort": "medium"}
+//	  "default": {"harness": "codex", "model": "gpt-5.5", "effort": "medium"},
+//	  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"}
 //	}
 //
-// `use` and `default` take one profile or an array of alternatives. The
+// `review` is mate's addition to firstmate's schema: the profile `mate
+// review` launches a reviewer with when the Mate names no model or effort,
+// so a review is not sized like the change it reviews (CON-68).
+//
+// `use`, `default` and `review` take one profile or an array of alternatives. The
 // rules are natural language: the Mate matches a task to a rule with its
 // own judgment and passes concrete --harness, --model and --effort to
 // `mate crew spawn`. Nothing here matches a rule. This package only checks
@@ -72,6 +77,9 @@ type Table struct {
 	BuiltIn bool
 	Rules   []Rule
 	Default []Profile
+	// Review is the reviewer profile of `mate review`; empty when the
+	// table names none.
+	Review []Profile
 }
 
 // Path is the table's path in a workspace whose `.mate/` directory is dir.
@@ -111,6 +119,7 @@ type rawRule struct {
 type rawTable struct {
 	Rules   []rawRule       `json:"rules"`
 	Default json.RawMessage `json:"default"`
+	Review  json.RawMessage `json:"review"`
 }
 
 func parse(raw []byte, harnesses harness.Registry) (Table, error) {
@@ -139,6 +148,13 @@ func parse(raw []byte, harnesses harness.Registry) (Table, error) {
 			return Table{}, err
 		}
 		t.Default = def
+	}
+	if len(rt.Review) > 0 && string(rt.Review) != "null" {
+		review, err := profiles(rt.Review, "review", harnesses)
+		if err != nil {
+			return Table{}, err
+		}
+		t.Review = review
 	}
 	if len(t.Rules) == 0 && len(t.Default) == 0 {
 		return Table{}, errors.New("no rules and no default")

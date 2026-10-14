@@ -179,6 +179,47 @@ func writeDispatchTable(out io.Writer, t dispatch.Table) {
 			fmt.Fprintf(out, "  or  %s\n", p.Flags())
 		}
 	}
+	if len(t.Review) > 0 {
+		fmt.Fprintf(out, "\nreview (what `mate review` uses when you pass no --model or --effort): %s\n", t.Review[0].Flags())
+		for _, p := range t.Review[1:] {
+			fmt.Fprintf(out, "  or  %s\n", p.Flags())
+		}
+	}
+}
+
+// applyReviewDispatch is `mate review`'s gate on the table, as
+// applyDispatch is a spawn's: a malformed table stops it. A review that
+// named a model or an effort keeps its profile as given. One that named
+// neither gets the table's review profile, on the harness it named or else
+// the workspace's default, and note says so; a table with no review
+// profile for that harness leaves the request as it was.
+func applyReviewDispatch(w *store.Workspace, req spawn.SpawnCrewRequest) (spawn.SpawnCrewRequest, string, error) {
+	t, err := dispatch.Resolve(w.StateDir(), harnesses)
+	if errors.Is(err, dispatch.ErrInvalid) {
+		return req, "", &usageError{err}
+	}
+	if err != nil {
+		return req, "", err
+	}
+	if req.Model != "" || req.Effort != "" {
+		return req, "", nil
+	}
+	kind, named := string(req.Harness), req.Harness != ""
+	if !named {
+		if kind = w.Defaults().CrewHarness; kind == "" {
+			k, err := harnesses.Default(harness.RoleCrew)
+			if err != nil {
+				return req, "", err
+			}
+			kind = string(k)
+		}
+	}
+	p, ok := t.ReviewFor(kind, named)
+	if !ok {
+		return req, "", nil
+	}
+	req.Harness, req.Model, req.Effort = p.Harness, p.Model, p.Effort
+	return req, fmt.Sprintf("no --model or --effort; used the %s review profile: %s", tableName(t), p.Flags()), nil
 }
 
 func writeProfiles(out io.Writer, ps []dispatch.Profile) {

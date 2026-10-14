@@ -159,6 +159,9 @@ func TestCrewDispatchPrintsTheTableAsFlags(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, got)
 		}
 	}
+	if strings.Contains(got, "review") {
+		t.Errorf("a table with no review profile printed one:\n%s", got)
+	}
 }
 
 // Without a file of its own the workspace shows the built-in table, says
@@ -176,6 +179,8 @@ func TestCrewDispatchWithoutATableShowsTheBuiltIn(t *testing.T) {
 		"use --harness claude --model sonnet --effort medium",
 		"or  --harness codex --model gpt-6-luna --effort medium",
 		"default: --harness codex --model gpt-6-luna --effort high",
+		"rule 6: A review of another Crew's branch whose own task was a large change",
+		"review (what `mate review` uses when you pass no --model or --effort): --harness claude --model sonnet --effort medium",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
@@ -284,5 +289,39 @@ func TestQuotaWarningNamesAUsedUpHarness(t *testing.T) {
 	}
 	if w := quotaWarning(claude.KindClaude); w != "" {
 		t.Fatalf("an unmeasured harness was warned about: %q", w)
+	}
+}
+
+// A review that names no model or effort takes the table's review profile,
+// not the default a ship gets: on the workspace's default harness, or on
+// the harness the Mate named (CON-68). One that names either keeps it; a
+// table without a review profile leaves the request alone.
+func TestAReviewWithoutAProfileTakesTheReviewProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name, table string
+		req, want   spawn.SpawnCrewRequest
+		noted       bool
+	}{
+		{"default harness", "", spawn.SpawnCrewRequest{},
+			spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium}, true},
+		{"named harness", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude},
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium}, true},
+		{"explicit large-change reviewer", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium},
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium}, false},
+		{"no review profile", sampleTable, spawn.SpawnCrewRequest{},
+			spawn.SpawnCrewRequest{}, false},
+	} {
+		got, note, err := applyReviewDispatch(dispatchWorkspace(t, tc.table), tc.req)
+		if err != nil || got != tc.want {
+			t.Fatalf("%s: got %+v err %v, want %+v", tc.name, got, err, tc.want)
+		}
+		if (note != "") != tc.noted || (tc.noted && !strings.Contains(note, "review profile")) {
+			t.Fatalf("%s: note %q", tc.name, note)
+		}
+	}
+	_, _, err := applyReviewDispatch(dispatchWorkspace(t, `{"rules": [{"when": "x", "use": {"harness": "codex", "effort": "max"}}]}`), spawn.SpawnCrewRequest{Model: "opus"})
+	var ue *usageError
+	if !errors.Is(err, dispatch.ErrInvalid) || !errors.As(err, &ue) {
+		t.Fatalf("malformed table: err = %v, want the table's own refusal, exit 2", err)
 	}
 }
