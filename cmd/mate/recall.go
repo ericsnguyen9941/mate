@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +26,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// cmdRecall implements `mate recall <project> [--live] [--max-bytes N]`
+// cmdRecall implements `mate recall <project> [--live] [--part N[,N...]] [--max-bytes N]`
 // (docs/mvp.md M8 task 37, B1): the one ordered digest a Mate reads at a
 // session start, in the order of docs/research/firstmate-memory-2026-09-24.md
 // §12.5 - live state first, memory last - so a digest cut short loses the
@@ -38,10 +39,11 @@ func cmdRecall(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("recall", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate recall <project> [--live] [--max-bytes <n>] [--workspace <dir>]")
+		fmt.Fprintln(stderr, "usage: mate recall <project> [--live] [--part <n>[,<n>...]] [--max-bytes <n>] [--workspace <dir>]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	liveFlag := fs.Bool("live", false, "print only part 1, the live state")
+	partFlag := fs.String("part", "", "print only these parts, by number, e.g. 4 or 3,5")
 	maxFlag := fs.Int("max-bytes", 0, "cut the digest from the bottom to at most this many bytes; part 1 always survives whole (0: no limit)")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
@@ -53,12 +55,20 @@ func cmdRecall(args []string, stdout, stderr io.Writer) error {
 	if *maxFlag < 0 {
 		return newUsageError("mate recall: --max-bytes must not be negative")
 	}
+	parts, err := parseRecallParts(*partFlag)
+	if err != nil {
+		return err
+	}
+	if len(parts) > 0 && *liveFlag {
+		return newUsageError("mate recall: --live is --part 1; pass one of them")
+	}
 	w, err := resolveWorkspace(*workspaceFlag)
 	if err != nil {
 		return err
 	}
 	text, err := recall(context.Background(), w, gitx.New(), fs.Arg(0), time.Now(), recallOptions{
 		LiveOnly: *liveFlag,
+		Parts:    parts,
 		MaxBytes: *maxFlag,
 		Binary:   selfBinary(),
 	})
@@ -83,6 +93,11 @@ type recallOptions struct {
 	// LiveOnly prints only part 1: a resumed conversation still holds the
 	// files, but the crews may have moved while the Mate was stopped.
 	LiveOnly bool
+	// Parts, when set, are the only parts printed, by number: a Mate that
+	// needs one file again, or the parts a cut digest left out, reads those
+	// rather than the whole digest a second time (CON-68: a whole recall
+	// was 31KB on hellovietnam).
+	Parts []int
 	// MaxBytes, when positive, cuts the digest from the bottom. Part 1 is
 	// always printed whole, whatever it costs.
 	MaxBytes int
@@ -124,7 +139,9 @@ func recall(ctx context.Context, w *store.Workspace, git gitx.Git, project strin
 		fmt.Fprintf(&head, " · %s", opts.Occasion)
 	}
 	head.WriteString("\n")
-	if opts.LiveOnly {
+	if len(opts.Parts) > 0 {
+		fmt.Fprintf(&head, "Contract: only the part(s) you asked for (%s); the rest of your digest stands as you read it.\n", joinInts(opts.Parts))
+	} else if opts.LiveOnly {
 		head.WriteString("Contract: live state only. Your conversation was resumed and still holds the files you read before; this is what the crews, the inbox and your outbox are now. Act on it, and reconcile backlog.md against it.\n")
 	} else {
 		head.WriteString("Contract: read this once; it is your state, in the order you act on it; act on it. Do not re-read these files this session unless a part says ABSENT, looks corrupt, or was cut.\n")
@@ -157,7 +174,46 @@ func recall(ctx context.Context, w *store.Workspace, git gitx.Git, project strin
 			parts = append(parts, hints)
 		}
 	}
+	if len(opts.Parts) > 0 {
+		var kept []recallPart
+		for _, p := range parts {
+			if slices.Contains(opts.Parts, p.n) {
+				kept = append(kept, p)
+			}
+		}
+		if len(kept) == 0 {
+			return "", newUsageErrorf("mate recall: this digest has no part %s", joinInts(opts.Parts))
+		}
+		parts = kept
+	}
 	return assembleRecall(head.String(), parts, project, opts), nil
+}
+
+// parseRecallParts reads --part: comma-separated part numbers, each at
+// least 1.
+func parseRecallParts(raw string) ([]int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var out []int
+	for _, f := range strings.Split(raw, ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(f))
+		if err != nil || n < 1 {
+			return nil, newUsageErrorf("mate recall: --part wants part numbers like 4 or 3,5, got %q", raw)
+		}
+		if !slices.Contains(out, n) {
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+func joinInts(ns []int) string {
+	parts := make([]string, len(ns))
+	for i, n := range ns {
+		parts[i] = strconv.Itoa(n)
+	}
+	return strings.Join(parts, ",")
 }
 
 // assembleRecall joins the parts, cutting from the bottom to fit
@@ -180,6 +236,7 @@ func assembleRecall(head string, parts []recallPart, project string, opts recall
 	const reserve = 420
 	budget := opts.MaxBytes - reserve
 	var missing []string
+	var missingParts []int
 	for i, p := range parts[1:] {
 		block := partHeading(p.n, p.title) + p.body
 		if out.Len()+len(block) <= budget {
@@ -206,8 +263,10 @@ func assembleRecall(head string, parts []recallPart, project string, opts recall
 		} else {
 			missing = append(missing, fmt.Sprintf("part %d (%s)", p.n, p.title))
 		}
+		missingParts = append(missingParts, p.n)
 		for _, q := range parts[i+2:] {
 			missing = append(missing, fmt.Sprintf("part %d (%s)", q.n, q.title))
+			missingParts = append(missingParts, q.n)
 		}
 		break
 	}
@@ -218,8 +277,8 @@ func assembleRecall(head string, parts []recallPart, project string, opts recall
 	if bin == "" {
 		bin = "mate"
 	}
-	fmt.Fprintf(&out, "\nrecall cut to fit %d bytes; not shown: %s. Run `%s recall %s` once before acting on anything those parts cover.\n",
-		opts.MaxBytes, strings.Join(missing, ", "), bin, project)
+	fmt.Fprintf(&out, "\nrecall cut to fit %d bytes; not shown: %s. Run `%s recall %s --part %s` once before acting on anything those parts cover.\n",
+		opts.MaxBytes, strings.Join(missing, ", "), bin, project, joinInts(missingParts))
 	return out.String()
 }
 

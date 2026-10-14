@@ -317,7 +317,7 @@ A `warning:` line on stderr names `/ws/.mate/projects/shop/PROJECT.md` lines anc
 ### Recall
 
 ```text
-mate recall <project> [--live] [--max-bytes <n>] [--workspace <dir>]
+mate recall <project> [--live] [--part <n>[,<n>...]] [--max-bytes <n>] [--workspace <dir>]
 ```
 
 `recall` is your session-start digest (section 3), and it only reads.
@@ -334,7 +334,19 @@ It opens with `# mate recall <project>` and one contract line, then prints numbe
 
 Each file is framed by `----- begin <name> (<path>) -----` and `----- end <name> -----`; a missing file prints `ABSENT` and an empty one `(empty)`, which mean different things.
 `--live` prints part 1 only; the SessionStart hook uses it after a resume.
-`--max-bytes <n>` cuts from the bottom, whole lines at a time, and part 1 always survives whole; the last line then names what was not shown and tells you to run `recall` yourself.
+`--part <n>[,<n>...]` prints only those parts, whole: the way to read one file of the digest again, or the parts a cut digest left out, without the rest a second time.
+`--max-bytes <n>` cuts from the bottom, whole lines at a time, and part 1 always survives whole; the last line then names what was not shown and the `recall --part` that prints it.
+
+### Wake
+
+```text
+mate wake <project> [--workspace <dir>]
+```
+
+`wake` is the one read when an app event wakes you (`event-handling`, "Acting on a digest").
+It prints three parts: 1, every open item in the order you act on it - `blocked`, `needs-decision` with the question in full, `wait-mate` with its branch's commit count and diff summary, its hand-back or report path with that file's `## For the next crew` section, and the reviews recorded for it (a review's own hand-back is its verdict); 2, the status lines written since your last `wake`; 3, every open Crew with its state, profile and last note.
+Part 1 lists an item until it is dealt with, however many wakes showed it; part 2 moves on with every run.
+It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a `blocked` Crew.
 
 
 ### Bounded coordination commands

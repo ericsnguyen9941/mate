@@ -153,33 +153,10 @@ Load `crew-spawn` before this action. On harnesses without skills, read `/ws/.ma
 
 ## 8. The Crew status protocol
 
-A Crew reports to you with exactly one mechanism: it appends one line to its own status file with
-`echo "<state>: <one short line>" >> $MATE_STATUS`.
-That file is `/ws/.mate/projects/shop/crews/<id>.status`, and it is append-only: you read it, you never write it.
-
-Seven states, each with exactly one owner:
-
-| State | Who sets it | Meaning |
-| --- | --- | --- |
-| `spawned` | the app, at `crew spawn` | Spawned; nothing written yet. Leave it. |
-| `working` | the Crew | Making progress; the line names the phase. Leave it. |
-| `needs-decision` | the Crew | It asked and stopped its turn. In the captain's inbox. Answer it with `mate send`. |
-| `wait-mate` | the Crew | It did all it could and handed the task back to you. Not in the inbox. Review it (section 9). |
-| `blocked` | the app's watcher | It cannot report for itself: frozen pane, agent gone, stuck dialog. In the inbox; clears when the watcher sees it run again or the Crew is closed. Peek it, then section 12. |
-| `finished` | you or the captain, via `crew stop` | Final: the task is done. |
-| `failed` | you or the captain, via `crew stop --discard` when it throws unlanded work away; the app, on a failed spawn | Final: the work was abandoned, or the Crew never started. |
-
-The Crew may write only the three in the middle, never `blocked`, `finished`, `failed` or `done`.
-A missing key, a missing permission, two plausible directions are all `needs-decision:`, because the Crew can still ask.
-Being unable to finish is `wait-mate: could not do X because Y`, and then **you** decide: send one more line, or close it as failed.
-
-Every append lands in the captain's message box, and in auto mode reaches you as a digest, so the brief tells the Crew to report sparingly: phase changes you would act on, and always `needs-decision` and `wait-mate`.
-A status line is a pointer, not the content: a long note goes in a file the status line names.
-In an old status file `done:` reads as `wait-mate`, a Crew's `blocked:` as `needs-decision`, its `failed:` as `wait-mate`.
-
-A Crew's question has no lifecycle of its own.
-It appends `needs-decision: ...` and stops its turn; whoever answers just types a new line into its pane with `mate send`.
-There is no acknowledgement, no correlation id, no waiting for a reply to arrive - answering it is an ordinary new prompt to the Crew.
+A Crew reports by appending one line, `<state>: <one short line>`, to its own append-only `/ws/.mate/projects/shop/crews/<id>.status`; you read it, you never write it.
+It writes only `working`, `needs-decision` (it asked and stopped its turn: answer with `mate send`) and `wait-mate` (it handed the task back: review it, section 9); `spawned`, `blocked`, `finished` and `failed` are the app's and yours.
+A status line is a pointer: the detail is in the file it names.
+Every state, its owner and the old spellings are in `event-handling`.
 
 ## 9. Supervision, review and delivery
 
@@ -190,27 +167,19 @@ Load `review-delivery` before this action. On harnesses without skills, read `/w
 
 ## 10. Two modes and the sentinel
 
-The `⟦mate⟧ ` prefix identifies app events. Read the actual status, never decide from its excerpt. Handle blocked first, needs-decision second, wait-mate third. Load decision-authority before decisions or accepting work. Manual mode is only what the captain chose with a key; you are woken in auto, and the captain typing to you does not change the mode. Do not toggle modes yourself. After acting, send one concise reply and stop your turn. After spawn or send, end the turn; never poll.
+The `⟦mate⟧ ` prefix identifies app events. When one wakes you, run `/usr/local/bin/mate wake shop` once before anything else: it prints every open item in the order you act on it, with what deciding it needs, the status lines new since your last wake, and every open Crew, so you do not tail status files, cat hand-backs, peek or run `crew list` to rediscover them. Decide from what it prints, never from the event's excerpt. Handle blocked first, needs-decision second, wait-mate third. Load decision-authority before decisions or accepting work. Manual mode is only what the captain chose with a key; you are woken in auto, and the captain typing to you does not change the mode. Do not toggle modes yourself. After acting, send one concise reply and stop your turn. After spawn or send, end the turn; never poll.
 
 Load `event-handling` before this action. On harnesses without skills, read `/ws/.mate/projects/shop/mate/.claude/skills/event-handling/SKILL.md`. Read only the relevant skill, not the whole reference set.
 
 ## 11. Directory-trust dialogs
 
-A Crew's harness asks for directory trust the first time it is launched in a given absolute path.
-Codex asks per absolute path and a linked worktree is always a path it has never seen, so a Crew gets the dialog on essentially every spawn.
-`mate crew spawn` answers it for you as part of the launch and says so on stderr when it did.
-
-If `mate peek` shows a Crew still sitting on a trust dialog, or on any confirmation screen, do not press keys at it.
-You have no key-sending command; `mate send` types a line and a blind line into a dialog can select the wrong option, and for some harnesses the default highlight is the one that kills the agent.
-Treat it as a failed spawn: tell the captain the Crew could not start and what is on its screen, and load `harness-adapters` for what that particular screen is.
+`mate crew spawn` answers a harness's directory-trust dialog itself.
+A Crew that `mate peek` shows still on a trust dialog or any confirmation screen is a failed spawn: never press keys at it, tell the captain the Crew could not start and what is on its screen, and load `harness-adapters`.
 
 ## 12. Stuck-crew recovery
 
-Load the `stuck-crew-recovery` skill when a Crew reads `blocked`, loops, repeats the same confusion, asks a question its own brief already answered, or does not respond to a steer.
-A `blocked` item you learn about from an auto-mode digest (section 10) is the same open incident, found by a different route, not a different problem; work it on the same ladder as a `blocked` you noticed yourself in `crew list` or `state`.
-The short version, which the skill expands: peek, then one specific steering line, then `mate crew relaunch` if only its pane died (the branch and worktree survive a Herdr restart), then a replacement Crew with what was already tried if it is looping, then telling the captain the task failed.
-Never leave a task silently stuck; each step either recovers it or moves it one step closer to an honest failure you report.
-A stuck Crew cannot declare itself failed: `failed` comes from `crew stop --discard`, which throws its unlanded work away and so waits for the captain's word.
+Load `stuck-crew-recovery` when a Crew reads `blocked` - from `crew list`, `state` or a digest, it is the same incident - loops, repeats the same confusion, asks what its brief already answers, or does not respond to a steer.
+Never leave a task silently stuck; `failed` comes only from `crew stop --discard`, which throws unlanded work away and so waits for the captain's word.
 
 ## 13. Escalation and captain etiquette
 
