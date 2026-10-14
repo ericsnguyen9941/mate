@@ -221,7 +221,9 @@ type BriefParams struct {
 	// instead of being forbidden to. A scout is unchanged by it.
 	PR bool
 	// MateBin, Project and Crew name the `mate pr watch` command a ship
-	// runs after it opens a pull request; used only when PR is set.
+	// runs after it opens a pull request; MateBin and Project are used only
+	// when PR is set. Crew also names the log files a Crew writes long
+	// command output to.
 	MateBin string
 	Project string
 	Crew    string

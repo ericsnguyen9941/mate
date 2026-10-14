@@ -46,7 +46,7 @@ If the top-level path is the primary checkout, STOP: do not edit or commit here,
 
 # Rules
 1. Push only your own branch `mate/k3`, to `origin`, and open a pull request for it against `main` with `gh pr create`. Never push any other branch, never force-push, and never merge the pull request.
-2. Stay inside this worktree; modify nothing outside it except the two files this brief names by absolute path: the status file and `/ws/.mate/projects/shop/crews/k3/handback.md`.
+2. Stay inside this worktree; modify nothing outside it except the two files this brief names by absolute path, the status file and `/ws/.mate/projects/shop/crews/k3/handback.md`, and the scratch logs `# Keeping your context small` puts under `/tmp`.
 3. Report status by appending one line:
    `echo "{state}: {one short line}" >> $MATE_STATUS`
    You have exactly three states, and no others: `working`, `needs-decision`, `wait-mate`.
@@ -62,6 +62,12 @@ If the top-level path is the primary checkout, STOP: do not edit or commit here,
    Do not settle it by taking whichever option looks most natural and mentioning it afterwards. Once you have shipped a guess it is indistinguishable from an instruction you were given, and the only moment anyone could have corrected it has passed.
 6. If you genuinely cannot finish the task, that is not a failure you declare: append `wait-mate: could not do X because Y` and stop. The Mate decides what happens next.
 7. If the captain adds to the task while you work, the app appends their words to `## Captain's words` in `/ws/.mate/projects/shop/crews/k3/brief.md` and sends you one line saying so; read that section again and carry on with it.
+
+# Keeping your context small
+Everything you read stays in your context and is paid for again on every later call.
+- A command that can print more than 50 lines - a build, a test suite, a log, a long `git log` - writes to a file (`<command> > /tmp/k3-<name>.log 2>&1`); then read only what you need with `tail`, `grep` or a line range.
+- Change an existing file with a targeted edit (an edit tool, `apply_patch`), never by writing the whole file again.
+- When you read another Crew's report or hand-back, read its `## For the next crew` section first, and open the rest only for what that section does not answer.
 
 # Project memory
 If this task produced durable project-intrinsic knowledge, record it in the repository's own committed `AGENTS.md` on this branch, creating the file if there is none (or in `CLAUDE.md`, if that is the file the repository already keeps it in).
@@ -79,9 +85,12 @@ Run every `verify:` under `## Acceptance` yourself, against the committed branch
 Where a `verify:` asks you to find the project's own check, find it, run it, and name the exact command you ran.
 Then write `/ws/.mate/projects/shop/crews/k3/handback.md`.
 It is outside this worktree on purpose, like the status file: the worktree is removed when the task is closed, and that file is kept.
-It has exactly these three parts:
+It has exactly these four parts, within 120 lines in all:
 
 ```markdown
+## For the next crew
+At most 10 lines: what a later Crew working in this area must know from this task - where things now are, what changed, the traps you hit - so it can stop reading here.
+
 | criterion | pass/fail | command | output |
 | --- | --- | --- | --- |
 | (one row per line of ## Acceptance, in order) | pass or fail | the exact command you ran | the few lines of its output that prove the result |
