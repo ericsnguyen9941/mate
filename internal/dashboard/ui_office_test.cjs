@@ -320,7 +320,8 @@ test("the filing cabinet lists finished tasks by drawer, with their final state"
   ]);
   const discarded = d.querySelectorAll(".tr").find(r => r.querySelector(".tn").text === "search-facets");
   assert.ok(!discarded.querySelector(".chip").classes.includes("t-bad"), "work thrown away on purpose is not an error");
-  assert.match(discarded.text, /discarded.*4d ago.*Sep 29.*133k/);
+  assert.match(discarded.querySelector(".chip").getAttribute("aria-label"), /^discarded/);
+  assert.match(discarded.text, /4d ago.*Sep 29.*133k/);
   assert.ok(roomOf(app.root, "shop").querySelector(".cab").classes.includes("open"), "its top drawer is pulled out");
 });
 
@@ -335,13 +336,23 @@ test("the cabinet says what a review concluded and tells a start that never came
   Object.assign(closed[3], { review: "pending", close_state: "failed", merged_at: "", failed_reason: "herdr refused the launch" });
   const app = await boot({ fixture: fx, hash: "#cabinet/shop" });
   const rows = Object.fromEntries(app.drawer().querySelectorAll(".tr").map(r => [r.querySelector(".tn").text, r]));
-  const word = crew => rows[crew].querySelector(".chip").text;
-  const tone = crew => rows[crew].querySelector(".chip").classes.find(c => c.startsWith("t-"));
+  // The column is too narrow for "changes requested", so a row shows the
+  // glyph and carries the word as its name and tooltip.
+  const chipOf = crew => rows[crew].querySelector(".chip");
+  const word = crew => chipOf(crew).getAttribute("aria-label").split(":")[0];
+  const tone = crew => chipOf(crew).classes.find(c => c.startsWith("t-"));
   assert.deepEqual([word("login-flow"), tone("login-flow")], ["approved", "t-ok"]);
   assert.deepEqual([word("search-facets"), tone("search-facets")], ["changes requested", "t-wait"]);
   assert.deepEqual([word("order-email"), tone("order-email")], ["no verdict", "t-gone"]);
   assert.deepEqual([word("healthcheck"), tone("healthcheck")], ["didn't start", "t-bad"]);
-  assert.equal(rows["healthcheck"].querySelector(".chip").parentNode.getAttribute("title"), "herdr refused the launch");
+  assert.equal(chipOf("healthcheck").getAttribute("title"), "didn't start: herdr refused the launch");
+  for (const crew of Object.keys(rows)) {
+    assert.ok(chipOf(crew).classes.includes("ico"), crew + "'s final state is a glyph");
+    assert.equal(chipOf(crew).text, "", crew + "'s final state has no text to overflow the column");
+  }
+  const glyphs = Object.keys(rows).map(crew => chipOf(crew).querySelector("path").getAttribute("d"));
+  assert.equal(new Set(glyphs).size, glyphs.length, "each final state has its own glyph");
+  assert.match(app.drawer().querySelector(".csum").text, /approved.*changes requested.*no verdict.*didn't start/, "the summary names them");
   assert.ok(!app.drawer().text.includes("failed"), "no row reads failed");
 });
 

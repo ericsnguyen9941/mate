@@ -626,5 +626,6 @@ A cabinet row's final state is in the reader's words, not the crew state machine
 A `failed` task with a `failed_reason` is `didn't start`, the one red final state, with the reason as its tooltip.
 Otherwise a reviewer shows its `review` however it was closed: `approved` (pass), `changes requested`, `review incomplete`, or `no verdict`.
 Then a task the timeline saw merged is `merged`, a `failed` task is `discarded`, because closing with `--discard` is a decision rather than a fault, and any other `close_state` is shown as it is, `finished` for most.
+A row shows its final state as a glyph only, one per state, with the word and why as its tooltip and accessible name, because the column is too narrow for `changes requested`; the summary above the table names each glyph with its count.
 
 The Office filing cabinet includes a `Harness / model / effort` column. Harness comes from the recorded actor, model prefers `last_model` (observed) and falls back to `model` (requested launch setting), and `effort` is the requested launch setting retained in crew meta. These optional fields are omitted when unavailable; the cabinet displays `?` rather than guessing defaults. Requested effort is not proof of runtime effort. The cabinet is wider on desktop and its table scrolls horizontally on narrow screens.

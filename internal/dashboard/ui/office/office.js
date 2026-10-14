@@ -47,6 +47,8 @@
     phone: "M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z",
     mail: "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6",
     merged: "M20 6L9 17l-5-5",
+    done: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM8 12.5l2.7 2.7L16 9.5",
+    edit: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
     failed: "M18 6L6 18M6 6l12 12",
     close: "M18 6L6 18M6 6l12 12",
     sun: "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",
@@ -570,7 +572,7 @@
   // A reviewer's conclusion, from the Verdict line its report ends with.
   var REVIEW_FINAL = {
     pass: { word: "approved", tone: "t-ok", icon: "merged", why: "the review passed" },
-    "changes-requested": { word: "changes requested", tone: "t-wait", icon: "review", why: "the review asked for changes" },
+    "changes-requested": { word: "changes requested", tone: "t-wait", icon: "edit", why: "the review asked for changes" },
     incomplete: { word: "review incomplete", tone: "t-gone", icon: "review", why: "the reviewer could not check everything" }
   };
 
@@ -584,12 +586,21 @@
     if (t.close_state === "failed" && t.failed_reason) return { word: "didn't start", tone: "t-bad", icon: "failed", why: t.failed_reason };
     if (t.review) {
       return REVIEW_FINAL[t.review] || { word: t.review === "pending" ? "no verdict" : String(t.review).replace(/-/g, " "),
-        tone: "t-gone", icon: "review", why: t.review === "pending" ? "the review closed without a Verdict" : "the review's own Verdict" };
+        tone: "t-gone", icon: "unknown", why: t.review === "pending" ? "the review closed without a Verdict" : "the review's own Verdict" };
     }
-    if (t.merged_at) return { word: "merged", tone: "t-ok", icon: "merged", why: "the work landed" };
+    if (t.merged_at) return { word: "merged", tone: "t-ok", icon: "merge", why: "the work landed" };
     if (t.close_state === "failed") return { word: "discarded", tone: "t-gone", icon: "gone", why: "closed without landing its work" };
-    if (t.close_state) return { word: String(t.close_state).replace(/_/g, " "), tone: "t-gone", icon: "merged" };
-    return { word: "closed", tone: "t-gone", icon: "merged" };
+    if (t.close_state) return { word: String(t.close_state).replace(/_/g, " "), tone: "t-gone", icon: "done" };
+    return { word: "closed", tone: "t-gone", icon: "done" };
+  }
+
+  // A cabinet row's final state is its glyph alone: the column is narrow
+  // and "changes requested" does not fit it. Every final state has its own
+  // glyph, the summary above the table names each one, and the word and why
+  // are the chip's tooltip and accessible name.
+  function finalChip(f) {
+    var label = f.word + (f.why ? ": " + f.why : "");
+    return el("span", { class: "chip ico " + f.tone, title: label, role: "img", "aria-label": label }, icon(f.icon));
   }
 
   function isAway(state) { return state === "walking_to_ceo" || state === "waiting_at_ceo"; }
@@ -1382,7 +1393,7 @@
               el("small", { text: t.effort ? "effort: " + t.effort : "effort ?",
                 title: "Requested effort; runtime effort may differ" })
             ]),
-            el("span", { title: f.why || null }, chip(f)),
+            el("span", { class: "fs" }, finalChip(f)),
             el("span", { class: "td", title: closedAt(t) }, [age(closedAt(t)) + " ago", el("small", { text: monthDay(closedAt(t)) })]),
             el("span", { class: "tt2", text: tok(t.tokens ? t.tokens.total : null) }),
             usageLink(name, t.crew, "tu")
