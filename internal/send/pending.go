@@ -30,10 +30,11 @@ func pendingMatches(profile harness.ScreenProfile, screen, payload string) bool 
 		if row == "" {
 			return false // an interior blank line is a payload edit
 		}
-		if !strings.HasPrefix(remaining, row) {
+		rest, ok := strings.CutPrefix(remaining, row)
+		if !ok {
 			return false
 		}
-		remaining = strings.TrimPrefix(remaining, row)
+		remaining = rest
 		// A word wrap may consume the separating space. Preserve all
 		// whitespace inside each row, unlike a whitespace-stripped compare.
 		remaining = strings.TrimPrefix(remaining, " ")
