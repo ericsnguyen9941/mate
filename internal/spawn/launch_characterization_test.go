@@ -496,6 +496,8 @@ type crewCase struct {
 	effort   harness.Effort
 	env      map[string]string
 	relaunch bool
+	// autocompact, when set, is the workspace's crew.autocompact.
+	autocompact int
 }
 
 func TestLaunchCharacterizationCrew(t *testing.T) {
@@ -504,6 +506,8 @@ func TestLaunchCharacterizationCrew(t *testing.T) {
 		{name: "crew-claude-model-effort", kind: claude.KindClaude, model: "sonnet", effort: harness.EffortMax},
 		{name: "crew-claude-config-dir", kind: claude.KindClaude, env: map[string]string{claude.ClaudeConfigDirEnv: "dir"}},
 		{name: "crew-claude-relaunch", kind: claude.KindClaude, model: "sonnet", effort: harness.EffortHigh, relaunch: true},
+		{name: "crew-claude-autocompact-set", kind: claude.KindClaude, autocompact: 200000, relaunch: true},
+		{name: "crew-claude-autocompact-off", kind: claude.KindClaude, autocompact: -1},
 		{name: "crew-codex-default", kind: codex.KindCodex},
 		{name: "crew-codex-model-effort", kind: codex.KindCodex, model: "gpt-5.5", effort: harness.EffortHigh},
 		{name: "crew-codex-effort-omitted", kind: codex.KindCodex, effort: harness.EffortMax},
@@ -519,6 +523,9 @@ func TestLaunchCharacterizationCrew(t *testing.T) {
 				env[k] = v
 			}
 			f := newLaunchFixture(t, true, env)
+			if tc.autocompact != 0 {
+				setCrewAutocompact(t, f.w, tc.autocompact)
+			}
 			f.pinHead(t)
 			f.before = f.collect(t)
 			ctx := context.Background()
@@ -558,4 +565,21 @@ func TestLaunchCharacterizationEnvSets(t *testing.T) {
 		b.WriteString(k + "\n")
 	}
 	checkLaunchGolden(t, "env-sets", b.String())
+}
+
+// setCrewAutocompact writes crew.autocompact into the workspace's
+// workspace.yaml and reloads it.
+func setCrewAutocompact(t *testing.T, w *store.Workspace, n int) {
+	t.Helper()
+	data, err := os.ReadFile(w.WorkspaceFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, fmt.Sprintf("crew:\n  autocompact: %d\n", n)...)
+	if err := os.WriteFile(w.WorkspaceFile(), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.LoadConfig(); err != nil {
+		t.Fatal(err)
+	}
 }

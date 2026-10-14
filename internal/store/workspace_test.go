@@ -212,3 +212,38 @@ func TestStoreFillsInNoHarnessDefault(t *testing.T) {
 		t.Fatalf("defaults = %+v, want none: the store names no harness", got)
 	}
 }
+
+// crew.autocompact in workspace.yaml is a Crew's compaction threshold:
+// absent is the default, a number is itself, and a negative one is none. A
+// workspace that names none writes no `crew:` block.
+func TestStoreCrewAutocompact(t *testing.T) {
+	w := newWorkspace(t)
+	if got := w.CrewAutocompact(); got != store.DefaultCrewAutocompact {
+		t.Fatalf("fresh workspace threshold = %d, want %d", got, store.DefaultCrewAutocompact)
+	}
+	data, err := os.ReadFile(w.WorkspaceFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "crew:") {
+		t.Fatalf("workspace.yaml names a crew block nobody wrote:\n%s", data)
+	}
+	for _, c := range []struct {
+		yaml string
+		want int
+	}{
+		{"crew:\n  autocompact: 200000\n", 200000},
+		{"crew:\n  autocompact: -1\n", 0},
+		{"crew:\n  autocompact: 0\n", store.DefaultCrewAutocompact},
+	} {
+		if err := os.WriteFile(w.WorkspaceFile(), append(append([]byte(nil), data...), c.yaml...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.LoadConfig(); err != nil {
+			t.Fatal(err)
+		}
+		if got := w.CrewAutocompact(); got != c.want {
+			t.Errorf("%q: threshold = %d, want %d", c.yaml, got, c.want)
+		}
+	}
+}

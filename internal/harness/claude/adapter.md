@@ -5,6 +5,7 @@
 | Directory trust | a trust confirmation whose default highlight is the refusing option |
 | Instructions | the brief is delivered as a launch-time system prompt, so nothing lands in the worktree |
 | Model and effort | `--model` takes an alias (`haiku`, `sonnet`, `opus`) or a full name; `--effort` takes low to max |
+| Crew settings | a Crew loads the worktree's own `.claude/` settings and skills, never the captain's user-level skills and plugins; it compacts at `crew.autocompact` of `.mate/workspace.yaml` (160000 tokens when unset, a negative number for never) |
 
 The trust dialog's default highlight is the choice that exits the agent.
 This is exactly why you have no key-sending command: a blind confirmation here kills the Crew rather than starting it.

@@ -166,15 +166,16 @@ func RelaunchCrew(ctx context.Context, w *store.Workspace, deps Deps, project, c
 		return RelaunchResult{}, err
 	}
 	plan := crewPlan{
-		project:  project,
-		crew:     crew,
-		kind:     kind,
-		profile:  profile,
-		model:    meta[MetaModel],
-		effort:   harness.Effort(strings.TrimSpace(meta[MetaEffort])),
-		branch:   meta[MetaBranch],
-		worktree: worktree,
-		repoCfg:  repoCfg,
+		project:     project,
+		crew:        crew,
+		kind:        kind,
+		profile:     profile,
+		model:       meta[MetaModel],
+		effort:      harness.Effort(strings.TrimSpace(meta[MetaEffort])),
+		branch:      meta[MetaBranch],
+		worktree:    worktree,
+		repoCfg:     repoCfg,
+		autocompact: w.CrewAutocompact(),
 	}
 
 	decision := crewResumeDecision(deps, plan, meta, opt)

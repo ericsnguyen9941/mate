@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -434,6 +435,17 @@ func (c Claude) Build(_ context.Context, spec harness.AgentSpec) (harness.Launch
 		}
 		if spec.Effort == "" {
 			spec.Effort = harness.EffortMedium
+		}
+	} else if spec.Role == harness.RoleCrew {
+		// A Crew keeps every tool and MCP server, but not the captain's
+		// user-level skills and plugins: on hellovietnam (CON-68) 92 global
+		// skills put ~8k tokens into every Crew call. The worktree's own
+		// project skills still load. It compacts at the workspace's threshold
+		// rather than never: Crews there never compacted, and four passed
+		// 300k tokens of context.
+		extra = append(extra, "--setting-sources", "project")
+		if spec.Autocompact > 0 {
+			extra = append(extra, "--autocompact", strconv.Itoa(spec.Autocompact))
 		}
 	}
 	effortOmitted := spec.Effort != "" && !c.Info().SupportsEffort(spec.Effort)

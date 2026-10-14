@@ -67,10 +67,28 @@ type WorkspaceConfig struct {
 	// It is what tells a console that the workspace was copied or moved: the
 	// path in the file is no longer the path it was opened at, and the
 	// absolute paths mate wrote into briefs are the old ones.
-	Root     string       `yaml:"root,omitempty"`
-	Defaults Defaults     `yaml:"defaults"`
+	Root     string   `yaml:"root,omitempty"`
+	Defaults Defaults `yaml:"defaults"`
+	// Crew is what every Crew of the workspace is launched with, whatever
+	// its project. Absent is the defaults below.
+	Crew     CrewLaunch   `yaml:"crew,omitempty"`
 	Projects []ProjectRef `yaml:"projects"`
 }
+
+// CrewLaunch is the `crew:` block of workspace.yaml.
+type CrewLaunch struct {
+	// Autocompact is the context size, in tokens, at which a Claude Crew
+	// compacts its conversation (`--autocompact`). 0 or absent is
+	// DefaultCrewAutocompact; a negative number launches without the flag,
+	// so the harness's own threshold applies.
+	Autocompact int `yaml:"autocompact,omitempty"`
+}
+
+// DefaultCrewAutocompact is a Crew's compaction threshold when workspace.yaml
+// names none. Measured on hellovietnam 2026-10-06..14 (CON-68): Claude Crews
+// averaged 162k tokens of context per call and never compacted, and the four
+// that passed 300k (the largest 434k) cost 138M tokens between them.
+const DefaultCrewAutocompact = 160000
 
 // Workspace is an opened workspace: a resolved root plus the parsed
 // workspace.yaml. It is the handle every other package holds.
@@ -254,6 +272,20 @@ func (w *Workspace) LayoutOld() bool { return w.Layout() < layoutProjectDirs }
 
 // Defaults are the workspace-wide harness defaults.
 func (w *Workspace) Defaults() Defaults { return w.cfg.Defaults }
+
+// CrewAutocompact is the compaction threshold a Crew launches with: the
+// `crew.autocompact` of workspace.yaml, DefaultCrewAutocompact when it says
+// none, and 0 (no flag) when it is negative.
+func (w *Workspace) CrewAutocompact() int {
+	switch n := w.cfg.Crew.Autocompact; {
+	case n < 0:
+		return 0
+	case n == 0:
+		return DefaultCrewAutocompact
+	default:
+		return n
+	}
+}
 
 // Projects are the registered projects, in the order workspace.yaml lists them.
 func (w *Workspace) Projects() []ProjectRef {
