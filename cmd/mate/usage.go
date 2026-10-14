@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/db"
+	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -89,13 +91,19 @@ type ledgerRow struct {
 	CacheRead  int64
 	CacheWrite int64
 	Context    sql.NullInt64
-	Out        int64
-	Total      int64
-	Cost       sql.NullFloat64
-	CtxPct     sql.NullFloat64
-	Asked      int64
-	WaitedMs   int64
-	Span       string
+	// CtxAvg and CtxMax are the mean and the largest context over the
+	// row's calls that recorded one; invalid when none did.
+	CtxAvg   sql.NullInt64
+	CtxMax   sql.NullInt64
+	Model    string
+	Harness  string
+	Out      int64
+	Total    int64
+	Cost     sql.NullFloat64
+	CtxPct   sql.NullFloat64
+	Asked    int64
+	WaitedMs int64
+	Span     string
 }
 
 // printLedger is the no-crew form: the Mate's row first (mvp.md M5 task
@@ -115,14 +123,21 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 		return err
 	}
 	stateByID := make(map[string]string, len(summaries))
+	harnessByID := make(map[string]string, len(summaries))
 	for _, s := range summaries {
 		stateByID[s.Crew] = s.State
+		harnessByID[s.Crew] = s.Harness
 	}
 
 	dbRows, err := handle.SQL().QueryContext(ctx, `
 		SELECT crew, turns, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens,
-		       cost, context_pct, context_tokens_last, question_count, waited_ms, spawned_at, closed_at
-		  FROM v_task_ledger WHERE project = ? ORDER BY spawned_at`, project)
+		       cost, context_pct, context_tokens_last, question_count, waited_ms, spawned_at, closed_at,
+		       COALESCE(last_model, ''),
+		       (SELECT CAST(ROUND(AVG(u.context_tokens_after)) AS INTEGER) FROM turn u
+		         WHERE u.actor_id = l.crew_actor_id AND u.context_tokens_after > 0),
+		       (SELECT MAX(u.context_tokens_after) FROM turn u
+		         WHERE u.actor_id = l.crew_actor_id AND u.context_tokens_after > 0)
+		  FROM v_task_ledger l WHERE project = ? ORDER BY spawned_at`, project)
 	if err != nil {
 		return err
 	}
@@ -131,14 +146,17 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 		var crew string
 		var turns, in, cacheRead, cacheWrite, out, asked, waited int64
 		var cost, ctxPct sql.NullFloat64
-		var ctxTokens sql.NullInt64
+		var ctxTokens, ctxAvg, ctxMax sql.NullInt64
 		var spawnedAt, closedAt sql.NullString
+		var model string
 		if err := dbRows.Scan(&crew, &turns, &in, &cacheRead, &cacheWrite, &out,
-			&cost, &ctxPct, &ctxTokens, &asked, &waited, &spawnedAt, &closedAt); err != nil {
+			&cost, &ctxPct, &ctxTokens, &asked, &waited, &spawnedAt, &closedAt,
+			&model, &ctxAvg, &ctxMax); err != nil {
 			return err
 		}
 		rows = append(rows, ledgerRow{
-			ID: crew, State: stateByID[crew], Turns: turns,
+			ID: crew, State: stateByID[crew], Harness: harnessByID[crew], Model: model, Turns: turns,
+			CtxAvg: ctxAvg, CtxMax: ctxMax,
 			In: in, Cached: cacheRead + cacheWrite, Out: out, Total: in + cacheRead + cacheWrite + out,
 			Cost: cost, CtxPct: ctxPct, Context: ctxTokens, CacheRead: cacheRead, CacheWrite: cacheWrite, Asked: asked, WaitedMs: waited,
 			Span: spanWord(spawnedAt, closedAt),
@@ -158,7 +176,97 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 	if len(shown) < len(rows) {
 		fmt.Fprintf(stdout, "showing the mate and the %d largest of %d task(s) by TOTAL; the total line counts all of them\n", top, len(rows)-1)
 	}
+	printByModel(stdout, rows[1:])
+	printCompactWarning(stdout, rows[1:], w.CrewAutocompact())
 	return nil
+}
+
+// printByModel is one line per model the project's tasks last ran on:
+// how many tasks, model calls per task and context per call, over every
+// task whatever --top shows. They are the numbers CON-68 measures a change
+// to the Crew launch against (hellovietnam 2026-10-14: Claude Crews 39
+// calls per task, 162k context per call).
+func printByModel(stdout io.Writer, tasks []ledgerRow) {
+	type group struct {
+		tasks, calls, ctxCalls, ctxSum int64
+	}
+	groups := map[string]*group{}
+	var order []string
+	for _, r := range tasks {
+		// A task that never made a call (a spawn that failed) has no model
+		// and would only dilute calls/task.
+		if r.Turns == 0 {
+			continue
+		}
+		key := dashIfEmpty(r.Model)
+		g := groups[key]
+		if g == nil {
+			g = &group{}
+			groups[key] = g
+			order = append(order, key)
+		}
+		g.tasks++
+		g.calls += r.Turns
+		if r.CtxAvg.Valid {
+			// CtxAvg is a mean over the calls that recorded a context, so
+			// the group's mean weighs each task by those calls.
+			g.ctxCalls += r.Turns
+			g.ctxSum += r.CtxAvg.Int64 * r.Turns
+		}
+	}
+	if len(order) == 0 {
+		return
+	}
+	sort.Strings(order)
+	fmt.Fprintln(stdout, "by model (each task's last model):")
+	for _, key := range order {
+		g := groups[key]
+		ctx := "?"
+		if g.ctxCalls > 0 {
+			ctx = query.HumanizeTokens(g.ctxSum / g.ctxCalls)
+		}
+		fmt.Fprintf(stdout, "  %s: %d task(s), %.1f calls/task, %s context/call\n",
+			key, g.tasks, float64(g.calls)/float64(g.tasks), ctx)
+	}
+}
+
+// takesAutocompact reports whether a Crew on harness kind is launched with
+// the workspace's crew autocompact threshold.
+func takesAutocompact(kind string) bool {
+	p, err := harnesses.Lookup(harness.Kind(kind))
+	return err == nil && p.Info().Autocompact
+}
+
+// printCompactWarning names the Crews whose context passed the
+// workspace's crew autocompact threshold: a Crew launched with the flag
+// compacts before it, so one above it either predates the flag or did not
+// compact. Only a harness whose Info says Autocompact takes the threshold
+// (today Claude Code); a threshold of 0 (off) warns about nothing.
+func printCompactWarning(stdout io.Writer, tasks []ledgerRow, threshold int) {
+	if threshold <= 0 {
+		return
+	}
+	var over []ledgerRow
+	for _, r := range tasks {
+		if takesAutocompact(r.Harness) && r.CtxMax.Valid && r.CtxMax.Int64 > int64(threshold) {
+			over = append(over, r)
+		}
+	}
+	if len(over) == 0 {
+		return
+	}
+	sort.SliceStable(over, func(i, j int) bool { return over[i].CtxMax.Int64 > over[j].CtxMax.Int64 })
+	const named = 5
+	var parts []string
+	for _, r := range over[:min(named, len(over))] {
+		parts = append(parts, r.ID+" "+query.HumanizeTokens(r.CtxMax.Int64))
+	}
+	more := ""
+	if len(over) > named {
+		more = fmt.Sprintf(" and %d more", len(over)-named)
+	}
+	fmt.Fprintf(stdout, "warning: %d crew(s) passed the %s crew autocompact threshold (crew.autocompact in .mate/workspace.yaml): %s%s\n",
+		len(over), query.HumanizeTokens(int64(threshold)), strings.Join(parts, ", "), more)
 }
 
 // mateLedgerRow computes the Mate's own row the same way `v_task_ledger`
@@ -193,6 +301,13 @@ func mateLedgerRow(ctx context.Context, handle *db.DB, project string) (ledgerRo
 		 WHERE u.actor_id = ?
 		   AND (p.input_per_m > 0 OR p.cache_read_per_m > 0 OR p.cache_write_per_m > 0 OR p.output_per_m > 0)`,
 		actorID).Scan(&row.Cost); err != nil {
+		return row, err
+	}
+
+	if err := handle.SQL().QueryRowContext(ctx, `
+		SELECT CAST(ROUND(AVG(context_tokens_after)) AS INTEGER), MAX(context_tokens_after)
+		  FROM turn WHERE actor_id = ? AND context_tokens_after > 0`, actorID).
+		Scan(&row.CtxAvg, &row.CtxMax); err != nil {
 		return row, err
 	}
 
@@ -231,16 +346,16 @@ func printLedgerTable(stdout io.Writer, rows []ledgerRow) {
 // so a cut table never understates what the project spent.
 func printLedgerRows(stdout io.Writer, shown, all []ledgerRow) {
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tSTATE\tTURNS\tIN\tCACHE-READ\tCACHE-WRITE\tOUT\tTOTAL\tCOST\tCTX\tCTX%\tASKED\tWAITED\tSPAWN→CLOSE")
+	fmt.Fprintln(tw, "ID\tSTATE\tTURNS\tIN\tCACHE-READ\tCACHE-WRITE\tOUT\tTOTAL\tCOST\tCTX\tCTX-AVG\tCTX%\tASKED\tWAITED\tSPAWN→CLOSE")
 
 	var totalTurns, totalIn, totalCached, totalOut, totalTotal, totalAsked, totalWaited int64
 	var totalCost float64
 	haveCost := false
 	for _, r := range shown {
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 			r.ID, dashIfEmpty(r.State), r.Turns,
 			query.HumanizeTokens(r.In), query.HumanizeTokens(r.CacheRead), query.HumanizeTokens(r.CacheWrite), query.HumanizeTokens(r.Out), query.HumanizeTokens(r.Total),
-			costWord(r.Cost), contextWord(r.Context), ctxWord(r.CtxPct), r.Asked, waitedWord(r.WaitedMs), r.Span)
+			costWord(r.Cost), contextWord(r.Context), contextWord(r.CtxAvg), ctxWord(r.CtxPct), r.Asked, waitedWord(r.WaitedMs), r.Span)
 	}
 	for _, r := range all {
 		totalTurns += r.Turns

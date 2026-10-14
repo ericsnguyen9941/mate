@@ -72,14 +72,31 @@ func (w *Workspace) SavePricing(cfg PricingConfig) error {
 	return w.writeFile(w.PricingFile(), data, 0o644)
 }
 
-// pricingFileSeed is the pricing.yaml a new workspace starts with: the model
-// ids mate has actually seen in a transcript, priced at zero. The captain
-// owns these numbers - mate does not know what anyone pays - so every
-// price is 0 (unpriced: the ledger shows `?` for cost, not free) until the
-// captain edits this file. Context windows are a technical fact rather than
-// a price and are seeded with the vendor's published size, so `ctx%` works
-// out of the box; correct them here if a model's real window differs.
-const pricingFileSeed = `# .mate/pricing.yaml
+// KnownModels are the models the built-in crew dispatch table
+// (internal/dispatch) and a Mate actually run, each with the context window
+// its vendor publishes and no price. A transcript records the full model
+// id, never the alias a launch passed (`opus` is recorded as
+// claude-opus-5-5), so these are the ids `mate usage` joins on. Codex
+// windows are codex's own models_cache.json `context_window` (2026-10-14).
+var KnownModels = []PricingModel{
+	{Model: "claude-opus-5-5", ContextWindow: 1000000},
+	{Model: "claude-sonnet-5-5", ContextWindow: 1000000},
+	{Model: "claude-fable-5-1", ContextWindow: 200000},
+	{Model: "gpt-6-luna", ContextWindow: 272000},
+	{Model: "gpt-5.6-terra", ContextWindow: 272000},
+	{Model: "gpt-6-sol", ContextWindow: 272000},
+}
+
+// pricingFileSeed is the pricing.yaml a new workspace starts with: every
+// KnownModels row, priced at zero. The captain owns these numbers - mate
+// does not know what anyone pays - so every price is 0 (unpriced: the
+// ledger shows `?` for cost, not free) until the captain edits this file.
+// Context windows are a technical fact rather than a price and are seeded
+// with the vendor's published size, so `ctx%` works out of the box; correct
+// them here if a model's real window differs.
+var pricingFileSeed = func() string {
+	var b strings.Builder
+	b.WriteString(`# .mate/pricing.yaml
 #
 # Token prices for mate usage/2/v_task_ledger, in $ per million tokens.
 # mate does not know what you pay for any model: every price below is 0
@@ -90,16 +107,15 @@ const pricingFileSeed = `# .mate/pricing.yaml
 # column; it is a technical fact, not a price, so a reasonable default is
 # filled in. Add a row for any other model you run crews or a Mate on.
 models:
-  - model: claude-fable-5-1
+`)
+	for _, m := range KnownModels {
+		fmt.Fprintf(&b, `  - model: %s
     input_per_m: 0
     cache_read_per_m: 0
     cache_write_per_m: 0
     output_per_m: 0
-    context_window: 200000
-  - model: gpt-5.6-terra
-    input_per_m: 0
-    cache_read_per_m: 0
-    cache_write_per_m: 0
-    output_per_m: 0
-    context_window: 400000
-`
+    context_window: %d
+`, m.Model, m.ContextWindow)
+	}
+	return b.String()
+}()

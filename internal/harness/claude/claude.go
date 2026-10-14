@@ -60,6 +60,7 @@ func (Claude) Info() harness.Info {
 		},
 		// claude 2.1.282 --help takes all five.
 		Efforts:      harness.Efforts,
+		Autocompact:  true,
 		AdapterNotes: adapterNotes,
 	}
 }

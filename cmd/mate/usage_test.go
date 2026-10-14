@@ -55,7 +55,7 @@ func TestUsagePrintsTheLedgerWithMateFirstAndATotalsFooter(t *testing.T) {
 		t.Fatalf("usage printed %d line(s):\n%s", len(lines), out)
 	}
 	header := lines[0]
-	for _, col := range []string{"ID", "STATE", "TURNS", "IN", "CACHE-READ", "CACHE-WRITE", "OUT", "TOTAL", "COST", "CTX%", "ASKED", "WAITED"} {
+	for _, col := range []string{"ID", "STATE", "TURNS", "IN", "CACHE-READ", "CACHE-WRITE", "OUT", "TOTAL", "COST", "CTX", "CTX-AVG", "CTX%", "ASKED", "WAITED"} {
 		if !strings.Contains(header, col) {
 			t.Fatalf("header %q is missing column %q", header, col)
 		}
@@ -72,7 +72,7 @@ func TestUsagePrintsTheLedgerWithMateFirstAndATotalsFooter(t *testing.T) {
 	if !strings.Contains(lines[1], "?") || !strings.Contains(lines[2], "?") {
 		t.Fatalf("an unpriced model must show cost as ?:\n%s", out)
 	}
-	footer := lines[len(lines)-1]
+	footer := lines[3]
 	if !strings.Contains(footer, "total:") || !strings.Contains(footer, "? cost") {
 		t.Fatalf("footer = %q, want a totals line with ? cost", footer)
 	}
@@ -160,5 +160,40 @@ func TestUsageAndConsoleKeepAbsoluteContextWithoutAModelWindow(t *testing.T) {
 	printLedgerTable(&out, []ledgerRow{row})
 	if !strings.Contains(out.String(), "CACHE-READ") || !strings.Contains(out.String(), "CACHE-WRITE") || !strings.Contains(out.String(), "CTX") {
 		t.Fatalf("usage must distinguish cache buckets and context:\n%s", out.String())
+	}
+}
+
+// Below the totals, one line per model gives calls per task and context
+// per call over every task, and a Claude Crew whose context passed the
+// workspace's crew autocompact threshold is named (CON-68). A Codex Crew
+// above it is not: the threshold is Claude's flag.
+func TestUsagePrintsCallsPerTaskAndWarnsAboveTheCompactThreshold(t *testing.T) {
+	w := usageWorkspace(t)
+	for crew, h := range map[string]string{"big": "claude", "wide": "codex"} {
+		if err := w.WriteCrewMeta("shop", crew, map[string]string{"harness": h, "task": crew, "state": "spawned"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handle, err := db.Open(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedActorTurnAndPricing(t, handle, timeline.CrewActorID("shop", "big"), "shop", "crew", "claude-opus-5-5", 1_000, 250_000, 0, 500, 1_000_000)
+	seedActorTurnAndPricing(t, handle, timeline.CrewActorID("shop", "wide"), "shop", "crew", "gpt-6-luna", 1_000, 200_000, 0, 500, 272_000)
+	handle.Close()
+
+	out := runCLI(t, "usage", "shop", "--workspace", w.Root())
+	for _, want := range []string{
+		"by model (each task's last model):",
+		"  claude-opus-5-5: 1 task(s), 1.0 calls/task, 251k context/call",
+		"  unpriced-model: 1 task(s), 1.0 calls/task, 96k context/call",
+		"warning: 1 crew(s) passed the 160k crew autocompact threshold (crew.autocompact in .mate/workspace.yaml): big 251k\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("usage output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "wide 201k") {
+		t.Errorf("a Codex Crew was warned about Claude's threshold:\n%s", out)
 	}
 }

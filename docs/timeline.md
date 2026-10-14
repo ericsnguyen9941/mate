@@ -648,7 +648,7 @@ A workspace whose event count makes that read expensive is the place to measure 
 
 ### `pricing.yaml`
 
-`store.Init` seeds `.mate/pricing.yaml` once, at `PricingModel` rows for every model id mate has actually seen in a transcript, every price at 0 and a comment that the captain owns the numbers.
+`store.Init` seeds `.mate/pricing.yaml` once, with a `PricingModel` row for every model of `store.KnownModels` (the full ids a transcript records for the built-in dispatch table's models and a Mate's), every price at 0 and a comment that the captain owns the numbers.
 `timeline.Ingester.ingestPricing` loads the file and upserts it into the `pricing` table on every pass, before any project's own pass, because `v_task_ledger` and `v_now` read `pricing` by model on every query and pricing has no project of its own to be ordered by.
 A missing or empty file is not an error - every model stays unpriced, which the views already render as a `NULL` cost rather than a free one - and `mate reindex` clears `pricing` along with everything else it rebuilds, so a model the captain removed from the file does not linger as a stale row.
 
@@ -658,6 +658,7 @@ Without that guard the seeded placeholder rows would make every crew's cost `$0.
 ### `context_window` and `context_pct`
 
 `pricing.context_window` is a technical fact, not a price, so the seed fills in a real value for each seeded model rather than leaving it at 0.
+A workspace seeded before a model was known has no row for it; `ingestPricing` then inserts that model's `store.KnownModels` window at price 0 (`ON CONFLICT DO NOTHING`, after the file's rows), so CTX% works there too and a row the file has always wins (CON-68: hellovietnam's file named neither `claude-opus-5-5` nor `claude-sonnet-5-5`).
 `v_task_ledger.context_pct` and `v_now.context_pct` are both `100.0 * <the actor's most recent turn's context_tokens_after> / <that turn's model's context_window>`, `NULL` when the model has no known window.
 `v_now`'s scene columns (`state`, `since`, `target_actor_id`, `detail`) are unchanged from schema v1 and read by task 26's projection; `context_pct` is added at the end of the column list so nothing that reads those columns by name has to change.
 

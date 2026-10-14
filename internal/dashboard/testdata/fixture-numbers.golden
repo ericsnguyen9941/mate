@@ -99,7 +99,7 @@
       "cost": null,
       "last_model": "gpt-5.6-terra",
       "context_tokens_last": 22420,
-      "context_pct": 5.605,
+      "context_pct": 8.242647058823529,
       "question_count": 1,
       "handback_count": 1,
       "waited_ms": 86721,
@@ -1225,7 +1225,7 @@
     "cost": null,
     "last_model": "gpt-5.6-terra",
     "context_tokens_last": 22420,
-    "context_pct": 5.605,
+    "context_pct": 8.242647058823529,
     "question_count": 1,
     "handback_count": 1,
     "waited_ms": 86721,
@@ -1250,7 +1250,7 @@
         "total": 19199
       },
       "context_tokens_after": 19026,
-      "context_pct": 4.7565,
+      "context_pct": 6.994852941176471,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1274,7 +1274,7 @@
         "total": 19373
       },
       "context_tokens_after": 19262,
-      "context_pct": 4.8155,
+      "context_pct": 7.081617647058824,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1298,7 +1298,7 @@
         "total": 20872
       },
       "context_tokens_after": 20684,
-      "context_pct": 5.171,
+      "context_pct": 7.604411764705882,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1322,7 +1322,7 @@
         "total": 21135
       },
       "context_tokens_after": 20981,
-      "context_pct": 5.24525,
+      "context_pct": 7.713602941176471,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1346,7 +1346,7 @@
         "total": 21200
       },
       "context_tokens_after": 21158,
-      "context_pct": 5.2895,
+      "context_pct": 7.778676470588235,
       "tool_count": 0,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1372,7 +1372,7 @@
         "total": 21463
       },
       "context_tokens_after": 21261,
-      "context_pct": 5.31525,
+      "context_pct": 7.816544117647059,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1398,7 +1398,7 @@
         "total": 21770
       },
       "context_tokens_after": 21562,
-      "context_pct": 5.3905,
+      "context_pct": 7.927205882352941,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1424,7 +1424,7 @@
         "total": 21904
       },
       "context_tokens_after": 21794,
-      "context_pct": 5.4485,
+      "context_pct": 8.0125,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1450,7 +1450,7 @@
         "total": 22183
       },
       "context_tokens_after": 22012,
-      "context_pct": 5.503,
+      "context_pct": 8.092647058823529,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1476,7 +1476,7 @@
         "total": 22397
       },
       "context_tokens_after": 22264,
-      "context_pct": 5.566,
+      "context_pct": 8.185294117647059,
       "tool_count": 1,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",
@@ -1502,7 +1502,7 @@
         "total": 22472
       },
       "context_tokens_after": 22420,
-      "context_pct": 5.605,
+      "context_pct": 8.242647058823529,
       "tool_count": 0,
       "ref": {
         "path": "{{TESTDATA}}/codex-0.154-rollout.jsonl",

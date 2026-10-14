@@ -31,8 +31,8 @@ func TestUsageTopKeepsTheMateAndTheLargestTasksAndTotalsEverything(t *testing.T)
 	seedSmallerCrews(t, w)
 	out := runCLI(t, "usage", "shop", "--top", "2", "--workspace", w.Root())
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if len(lines) != 6 {
-		t.Fatalf("want header, mate, two tasks, total and the cut notice; got %d line(s):\n%s", len(lines), out)
+	if len(lines) != 8 {
+		t.Fatalf("want header, mate, two tasks, total, the cut notice and the by-model lines; got %d line(s):\n%s", len(lines), out)
 	}
 	if !strings.HasPrefix(lines[1], "mate") || !strings.HasPrefix(lines[2], "k3") || !strings.HasPrefix(lines[3], "k2") {
 		t.Fatalf("want the mate, then k3 and k2 largest first:\n%s", out)
