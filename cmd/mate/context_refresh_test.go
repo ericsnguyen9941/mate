@@ -21,7 +21,11 @@ import (
 )
 
 func TestContextRefreshRequiresReceiptAndStartsFresh(t *testing.T) {
-	for _, scenario := range []string{"success", "no-receipt", "captain-returned", "changed-after-checkpoint", "no-stop"} {
+	// spoke-before and no-sent-log succeed: the captain-spoke check reads
+	// sent.log only from where it ended when the stow was asked for, which
+	// is zero when the file does not exist yet.
+	succeeds := map[string]bool{"success": true, "spoke-before": true, "no-sent-log": true}
+	for _, scenario := range []string{"success", "spoke-before", "no-sent-log", "no-receipt", "captain-returned", "changed-after-checkpoint", "no-stop"} {
 		t.Run(scenario, func(t *testing.T) {
 			w, deps := consoleFixture(t, "shop")
 			ctx := context.Background()
@@ -71,12 +75,22 @@ func TestContextRefreshRequiresReceiptAndStartsFresh(t *testing.T) {
 				}
 				return nil
 			}
+			switch scenario {
+			case "spoke-before":
+				if err := w.AppendSent("shop", store.SentEntry{Source: store.SourceUser, Target: store.TargetMate, Text: "an earlier request"}); err != nil {
+					t.Fatal(err)
+				}
+			case "no-sent-log":
+				if err := os.Remove(w.SentLog("shop")); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+			}
 			changed, err := contextRefresh(ctx, w, deps, "shop", false)
 			meta, readErr := w.ReadMateMeta("shop")
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			if scenario == "success" {
+			if succeeds[scenario] {
 				if err != nil || !changed {
 					t.Fatalf("refresh: %v %v", changed, err)
 				}

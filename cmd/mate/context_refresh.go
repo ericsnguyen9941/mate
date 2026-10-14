@@ -138,7 +138,10 @@ func contextRefresh(ctx context.Context, w *store.Workspace, deps spawn.Deps, pr
 	if err := preflight(); err != nil {
 		return false, err
 	}
-	_, offset, err := w.ReadSent(project, 0)
+	// Where sent.log ends now, so the check after the stow sees only what
+	// was said during it. Writers append whole lines under the lock, so the
+	// size is the offset a full read would end at.
+	offset, err := w.SentLogSize(project)
 	if err != nil {
 		return false, err
 	}

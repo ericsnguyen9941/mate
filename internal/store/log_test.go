@@ -189,6 +189,45 @@ func TestStoreAppendSentAndRead(t *testing.T) {
 	}
 }
 
+// TestSentLogSizeIsWhereReadSentEnds: every sent.log writer appends whole
+// lines under the lock, so the file's size is the offset a read from zero
+// resumes at - which lets a caller that needs only that offset stat the file
+// instead of reading it whole.
+func TestSentLogSizeIsWhereReadSentEnds(t *testing.T) {
+	w := newProjectWorkspace(t)
+	check := func(when string) {
+		t.Helper()
+		size, err := w.SentLogSize("shop")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, next, err := w.ReadSent("shop", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if size != next {
+			t.Fatalf("%s: SentLogSize = %d, ReadSent resumes at %d", when, size, next)
+		}
+	}
+	check("no sent.log")
+	if err := w.AppendSent("shop", store.SentEntry{Source: store.SourceUser, Target: store.TargetMate, Text: "first\nsecond"}); err != nil {
+		t.Fatal(err)
+	}
+	check("one line")
+	f, err := os.OpenFile(w.SentLog("shop"), os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("not a sent line\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if err := w.AppendSent("shop", store.SentEntry{Source: store.SourceApp, Target: store.CrewTarget("k3"), Text: "after a bad line"}); err != nil {
+		t.Fatal(err)
+	}
+	check("an unparseable line in the middle")
+}
+
 func TestStoreReadSentSkipsUnparseableLines(t *testing.T) {
 	w := newProjectWorkspace(t)
 	if err := w.AppendSent("shop", store.SentEntry{Source: store.SourceUser, Target: store.TargetMate, Text: "good"}); err != nil {
