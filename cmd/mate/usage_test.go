@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -195,5 +197,38 @@ func TestUsagePrintsCallsPerTaskAndWarnsAboveTheCompactThreshold(t *testing.T) {
 	}
 	if strings.Contains(out, "wide 201k") {
 		t.Errorf("a Codex Crew was warned about Claude's threshold:\n%s", out)
+	}
+}
+
+// Context per call is a mean over the calls that recorded a context: a task
+// whose other calls recorded none must not weigh its mean by them.
+func TestUsageContextPerCallCountsOnlyCallsThatRecordedOne(t *testing.T) {
+	w := usageWorkspace(t)
+	for _, crew := range []string{"lean", "full"} {
+		if err := w.WriteCrewMeta("shop", crew, map[string]string{"harness": "claude", "task": crew, "state": "spawned"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handle, err := db.Open(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedActorTurnAndPricing(t, handle, timeline.CrewActorID("shop", "lean"), "shop", "crew", "claude-sonnet-5-5", 0, 100_000, 0, 0, 1_000_000)
+	seedActorTurnAndPricing(t, handle, timeline.CrewActorID("shop", "full"), "shop", "crew", "claude-sonnet-5-5", 0, 300_000, 0, 0, 1_000_000)
+	now := db.FormatTime(time.Now())
+	for i := range 3 {
+		a := timeline.CrewActorID("shop", "lean")
+		if _, err := handle.SQL().Exec(
+			`INSERT INTO turn(id, actor_id, session_id, started_at, ended_at, model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, context_tokens_after)
+			 VALUES (?, ?, ?, ?, ?, 'claude-sonnet-5-5', 0, 0, 0, 10, 0)`,
+			fmt.Sprintf("%s#t%d", a, i), a, a+"#s", now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handle.Close()
+
+	out := runCLI(t, "usage", "shop", "--workspace", w.Root())
+	if want := "  claude-sonnet-5-5: 2 task(s), 2.5 calls/task, 200k context/call"; !strings.Contains(out, want) {
+		t.Errorf("usage output lacks %q:\n%s", want, out)
 	}
 }

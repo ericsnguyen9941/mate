@@ -63,7 +63,12 @@ func wakeFixture(t *testing.T) *store.Workspace {
 
 func runWake(t *testing.T, w *store.Workspace) string {
 	t.Helper()
-	text, err := wake(context.Background(), w, gitx.New(), "shop", time.Date(2026, 10, 14, 22, 0, 0, 0, time.UTC))
+	return runWakeAdvancing(t, w, true)
+}
+
+func runWakeAdvancing(t *testing.T, w *store.Workspace, advance bool) string {
+	t.Helper()
+	text, err := wake(context.Background(), w, gitx.New(), "shop", time.Date(2026, 10, 14, 22, 0, 0, 0, time.UTC), advance)
 	if err != nil {
 		t.Fatalf("wake: %v", err)
 	}
@@ -114,6 +119,19 @@ func TestWakeShowsOnlyNewStatusButKeepsOpenItems(t *testing.T) {
 	}
 	if !strings.Contains(text, "== 1. To act on (2) ==") {
 		t.Errorf("open items vanished after one wake:\n%s", text)
+	}
+}
+
+// A --peek shows the same wake and leaves part 2's lines for the Mate's
+// next one.
+func TestWakePeekLeavesTheCursor(t *testing.T) {
+	w := wakeFixture(t)
+	peeked := runWakeAdvancing(t, w, false)
+	if !strings.Contains(peeked, "== 2. New status since your last wake (4) ==") {
+		t.Fatalf("peek did not show the new lines:\n%s", peeked)
+	}
+	if text := runWake(t, w); text != peeked {
+		t.Errorf("the wake after a peek differs from it:\n%s\n--- peek ---\n%s", text, peeked)
 	}
 }
 

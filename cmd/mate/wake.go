@@ -19,7 +19,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// cmdWake implements `mate wake <project> [--workspace <dir>]` (CON-68): the
+// cmdWake implements `mate wake <project> [--peek] [--workspace <dir>]` (CON-68): the
 // one read a Mate makes when a digest or a `resolve:` line wakes it. On
 // hellovietnam (2026-10-06..14) a Mate woke 247 times and spent 6.9 model
 // calls per wake, most of them a chain of tail, cat, peek, crew list and
@@ -35,17 +35,19 @@ import (
 //
 // It reads the same view the digest is built from (internal/box), so a
 // wake never disagrees with the digest that caused it. Part 2's cursor is
-// its own (`mate/.wake-cursor`), moved by every run; part 1 has none, so an
-// item stays listed until it is dealt with, whatever was shown before. It
-// asks Herdr nothing: a pane's health is `mate state`'s, and `mate peek`
+// its own (`mate/.wake-cursor`), moved by every run but a --peek, so a
+// captain who looks at a wake does not take its lines from the Mate's next
+// one; part 1 has none, so an item stays listed until it is dealt with,
+// whatever was shown before. It asks Herdr nothing: a pane's health is `mate state`'s, and `mate peek`
 // is still how a Mate looks at a blocked Crew.
 func cmdWake(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("wake", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate wake <project> [--workspace <dir>]")
+		fmt.Fprintln(stderr, "usage: mate wake <project> [--peek] [--workspace <dir>]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
+	peek := fs.Bool("peek", false, "print the wake without moving the cursor of part 2")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
 	}
@@ -57,7 +59,7 @@ func cmdWake(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	text, err := wake(context.Background(), w, gitx.New(), fs.Arg(0), time.Now())
+	text, err := wake(context.Background(), w, gitx.New(), fs.Arg(0), time.Now(), !*peek)
 	if err != nil {
 		return err
 	}
@@ -78,7 +80,7 @@ const (
 	wakeNextCrewLines = 12
 )
 
-func wake(ctx context.Context, w *store.Workspace, git gitx.Git, project string, now time.Time) (string, error) {
+func wake(ctx context.Context, w *store.Workspace, git gitx.Git, project string, now time.Time, advance bool) (string, error) {
 	if err := requireProject(w, project); err != nil {
 		return "", err
 	}
@@ -144,8 +146,10 @@ func wake(ctx context.Context, w *store.Workspace, git gitx.Git, project string,
 		fmt.Fprintf(&out, "%s %s · %s · %s\n", c.Crew, c.State, profile, dashIfEmpty(clipRunes(c.Note, wakeNoteRunes)))
 	}
 
-	if err := w.WriteWakeCursor(project, next); err != nil {
-		return "", err
+	if advance {
+		if err := w.WriteWakeCursor(project, next); err != nil {
+			return "", err
+		}
 	}
 	return out.String(), nil
 }

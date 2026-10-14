@@ -44,6 +44,14 @@ const sampleTable = `{
   "default": {"harness": "codex", "effort": "medium"}
 }`
 
+// claudeReviewTable has a review profile on Claude only,
+// while the workspace's default harness is Codex.
+const claudeReviewTable = `{
+  "rules": [{"when": "anything", "use": {"harness": "codex", "effort": "medium"}}],
+  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"},
+  "default": {"harness": "codex", "effort": "medium"}
+}`
+
 func TestCrewSpawnParsesModelAndEffort(t *testing.T) {
 	for _, args := range [][]string{
 		{"crew", "spawn", "shop", "k3", "--brief", "b", "--effort", "hgih"},
@@ -310,6 +318,8 @@ func TestAReviewWithoutAProfileTakesTheReviewProfile(t *testing.T) {
 			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium}, false},
 		{"no review profile", sampleTable, spawn.SpawnCrewRequest{},
 			spawn.SpawnCrewRequest{}, false},
+		{"no review profile for the default harness", claudeReviewTable, spawn.SpawnCrewRequest{},
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium}, true},
 	} {
 		got, note, err := applyReviewDispatch(dispatchWorkspace(t, tc.table), tc.req)
 		if err != nil || got != tc.want {
@@ -317,6 +327,10 @@ func TestAReviewWithoutAProfileTakesTheReviewProfile(t *testing.T) {
 		}
 		if (note != "") != tc.noted || (tc.noted && !strings.Contains(note, "review profile")) {
 			t.Fatalf("%s: note %q", tc.name, note)
+		}
+		// A reviewer moved off the default harness says so.
+		if tc.table == claudeReviewTable && !strings.Contains(note, "no review profile for the default harness codex; used --harness claude") {
+			t.Fatalf("%s: note %q does not say the harness changed", tc.name, note)
 		}
 	}
 	_, _, err := applyReviewDispatch(dispatchWorkspace(t, `{"rules": [{"when": "x", "use": {"harness": "codex", "effort": "max"}}]}`), spawn.SpawnCrewRequest{Model: "opus"})

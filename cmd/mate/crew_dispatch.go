@@ -218,8 +218,12 @@ func applyReviewDispatch(w *store.Workspace, req spawn.SpawnCrewRequest) (spawn.
 	if !ok {
 		return req, "", nil
 	}
+	note := fmt.Sprintf("no --model or --effort; used the %s review profile: %s", tableName(t), p.Flags())
+	if string(p.Harness) != kind {
+		note = fmt.Sprintf("no --model or --effort, and the %s table has no review profile for the default harness %s; used %s", tableName(t), kind, p.Flags())
+	}
 	req.Harness, req.Model, req.Effort = p.Harness, p.Model, p.Effort
-	return req, fmt.Sprintf("no --model or --effort; used the %s review profile: %s", tableName(t), p.Flags()), nil
+	return req, note, nil
 }
 
 func writeProfiles(out io.Writer, ps []dispatch.Profile) {

@@ -351,12 +351,12 @@ Each file is framed by `----- begin <name> (<path>) -----` and `----- end <name>
 ### Wake
 
 ```text
-mate wake <project> [--workspace <dir>]
+mate wake <project> [--peek] [--workspace <dir>]
 ```
 
 `wake` is the one read when an app event wakes you (`event-handling`, "Acting on a digest").
 It prints three parts: 1, every open item in the order you act on it - `blocked`, `needs-decision` with the question in full, `wait-mate` with its branch's commit count and diff summary, its hand-back or report path with that file's `## For the next crew` section, and the reviews recorded for it (a review's own hand-back is its verdict); 2, the status lines written since your last `wake`; 3, every open Crew with its state, profile and last note.
-Part 1 lists an item until it is dealt with, however many wakes showed it; part 2 moves on with every run.
+Part 1 lists an item until it is dealt with, however many wakes showed it; part 2 moves on with every run but `--peek`, which prints the same wake and leaves its lines for your next one (the way to look without taking them).
 It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a `blocked` Crew.
 
 

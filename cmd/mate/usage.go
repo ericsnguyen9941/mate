@@ -93,8 +93,12 @@ type ledgerRow struct {
 	Context    sql.NullInt64
 	// CtxAvg and CtxMax are the mean and the largest context over the
 	// row's calls that recorded one; invalid when none did.
-	CtxAvg   sql.NullInt64
-	CtxMax   sql.NullInt64
+	CtxAvg sql.NullInt64
+	CtxMax sql.NullInt64
+	// CtxSum and CtxCalls are the sum of those contexts and how many calls
+	// recorded one, so a group of rows can weigh its mean by those calls.
+	CtxSum   int64
+	CtxCalls int64
 	Model    string
 	Harness  string
 	Out      int64
@@ -136,6 +140,10 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 		       (SELECT CAST(ROUND(AVG(u.context_tokens_after)) AS INTEGER) FROM turn u
 		         WHERE u.actor_id = l.crew_actor_id AND u.context_tokens_after > 0),
 		       (SELECT MAX(u.context_tokens_after) FROM turn u
+		         WHERE u.actor_id = l.crew_actor_id AND u.context_tokens_after > 0),
+		       (SELECT COALESCE(SUM(u.context_tokens_after), 0) FROM turn u
+		         WHERE u.actor_id = l.crew_actor_id AND u.context_tokens_after > 0),
+		       (SELECT COUNT(*) FROM turn u
 		         WHERE u.actor_id = l.crew_actor_id AND u.context_tokens_after > 0)
 		  FROM v_task_ledger l WHERE project = ? ORDER BY spawned_at`, project)
 	if err != nil {
@@ -144,19 +152,19 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 	defer dbRows.Close()
 	for dbRows.Next() {
 		var crew string
-		var turns, in, cacheRead, cacheWrite, out, asked, waited int64
+		var turns, in, cacheRead, cacheWrite, out, asked, waited, ctxSum, ctxCalls int64
 		var cost, ctxPct sql.NullFloat64
 		var ctxTokens, ctxAvg, ctxMax sql.NullInt64
 		var spawnedAt, closedAt sql.NullString
 		var model string
 		if err := dbRows.Scan(&crew, &turns, &in, &cacheRead, &cacheWrite, &out,
 			&cost, &ctxPct, &ctxTokens, &asked, &waited, &spawnedAt, &closedAt,
-			&model, &ctxAvg, &ctxMax); err != nil {
+			&model, &ctxAvg, &ctxMax, &ctxSum, &ctxCalls); err != nil {
 			return err
 		}
 		rows = append(rows, ledgerRow{
 			ID: crew, State: stateByID[crew], Harness: harnessByID[crew], Model: model, Turns: turns,
-			CtxAvg: ctxAvg, CtxMax: ctxMax,
+			CtxAvg: ctxAvg, CtxMax: ctxMax, CtxSum: ctxSum, CtxCalls: ctxCalls,
 			In: in, Cached: cacheRead + cacheWrite, Out: out, Total: in + cacheRead + cacheWrite + out,
 			Cost: cost, CtxPct: ctxPct, Context: ctxTokens, CacheRead: cacheRead, CacheWrite: cacheWrite, Asked: asked, WaitedMs: waited,
 			Span: spanWord(spawnedAt, closedAt),
@@ -207,12 +215,10 @@ func printByModel(stdout io.Writer, tasks []ledgerRow) {
 		}
 		g.tasks++
 		g.calls += r.Turns
-		if r.CtxAvg.Valid {
-			// CtxAvg is a mean over the calls that recorded a context, so
-			// the group's mean weighs each task by those calls.
-			g.ctxCalls += r.Turns
-			g.ctxSum += r.CtxAvg.Int64 * r.Turns
-		}
+		// The group's mean is over the calls that recorded a context, the
+		// same calls each task's CTX-AVG is over.
+		g.ctxCalls += r.CtxCalls
+		g.ctxSum += r.CtxSum
 	}
 	if len(order) == 0 {
 		return

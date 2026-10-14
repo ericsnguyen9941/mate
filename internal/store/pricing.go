@@ -78,10 +78,12 @@ func (w *Workspace) SavePricing(cfg PricingConfig) error {
 // id, never the alias a launch passed (`opus` is recorded as
 // claude-opus-5-5), so these are the ids `mate usage` joins on. Codex
 // windows are codex's own models_cache.json `context_window` (2026-10-14).
+// claude-haiku-4-5-20251001 is what a `haiku` Crew records.
 var KnownModels = []PricingModel{
 	{Model: "claude-opus-5-5", ContextWindow: 1000000},
 	{Model: "claude-sonnet-5-5", ContextWindow: 1000000},
 	{Model: "claude-fable-5-1", ContextWindow: 200000},
+	{Model: "claude-haiku-4-5-20251001", ContextWindow: 200000},
 	{Model: "gpt-6-luna", ContextWindow: 272000},
 	{Model: "gpt-5.6-terra", ContextWindow: 272000},
 	{Model: "gpt-6-sol", ContextWindow: 272000},
