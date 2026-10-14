@@ -60,7 +60,17 @@ type Deps struct {
 	// ThinkingGap is the shortest uncovered stretch inside a turn that
 	// becomes a `thinking` action. Zero means DefaultThinkingGap.
 	ThinkingGap time.Duration
+	// ProjectTimeout bounds one project's pass of Ingest. Zero means
+	// DefaultProjectTimeout.
+	ProjectTimeout time.Duration
 }
+
+// DefaultProjectTimeout bounds one project's pass of a poll's ingest. The
+// pass runs git per crew and asks Herdr for session refs, at the end of
+// every observer round: a git or a Herdr that never answers must cost the
+// round this long, not the round itself. Reindex is not bounded - it is one
+// transaction over every project, run by a person who can interrupt it.
+const DefaultProjectTimeout = 15 * time.Second
 
 // DefaultThinkingGap is the shortest silence inside a turn the ingest is
 // willing to leave unexplained. It is short because the question M5 asks is
@@ -80,6 +90,13 @@ func (d Deps) git() gitx.Git {
 		return d.Git
 	}
 	return gitx.New()
+}
+
+func (d Deps) projectTimeout() time.Duration {
+	if d.ProjectTimeout > 0 {
+		return d.ProjectTimeout
+	}
+	return DefaultProjectTimeout
 }
 
 func (d Deps) thinkingGap() time.Duration {
@@ -144,14 +161,33 @@ func (i *Ingester) ingestAll(ctx context.Context, shared *sql.Tx) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := i.ingestProject(ctx, ref.Name, shared); err != nil {
-			if shared != nil {
+		if shared != nil {
+			if err := i.ingestProject(ctx, ref.Name, shared); err != nil {
 				return fmt.Errorf("timeline: %s: %w", ref.Name, err)
 			}
+			continue
+		}
+		if err := i.ingestBounded(ctx, ref.Name); err != nil {
 			errs = append(errs, fmt.Errorf("timeline: %s: %w", ref.Name, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// ingestBounded is one project's pass of a poll, within ProjectTimeout. A
+// pass that runs out of it is rolled back whole like any failed pass, and
+// the next poll reads from the same cursors again.
+func (i *Ingester) ingestBounded(ctx context.Context, project string) error {
+	bound := i.deps.projectTimeout()
+	pctx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	err := i.ingestProject(pctx, project, nil)
+	if err != nil && pctx.Err() != nil && ctx.Err() == nil {
+		// What failed first is whichever call noticed the deadline -
+		// git, Herdr or the transaction - and is a consequence of it.
+		return fmt.Errorf("the pass ran out its %s bound: %w", bound, pctx.Err())
+	}
+	return err
 }
 
 // Reindex drops every derived table and rebuilds the whole timeline from the
