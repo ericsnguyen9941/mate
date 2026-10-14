@@ -54,8 +54,8 @@ func TestCodexRolloutCandidatesSinceSkipsOlderDays(t *testing.T) {
 	launch := time.Date(2026, 9, 24, 9, 0, 0, 0, time.Local)
 	old := launch.AddDate(0, 0, -5)
 	writeRollout(t, sessions, old, "01a0aaaa-0000-7000-8000-000000000001", "/w/mate", old)
-	// The day before the launch is still walked: a launch just after
-	// midnight can have its rollout filed under the previous local day.
+	// The day before the launch is still walked: a Codex whose clock zone
+	// is behind mate's files its rollout under the previous date.
 	eve := launch.AddDate(0, 0, -1)
 	writeRollout(t, sessions, eve, "01a0aaaa-0000-7000-8000-000000000002", "/w/mate", eve)
 	today := writeRollout(t, sessions, launch, "01a0aaaa-0000-7000-8000-000000000003", "/w/mate", launch.Add(time.Second))

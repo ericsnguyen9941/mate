@@ -1,9 +1,11 @@
 package codex
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -173,6 +175,83 @@ func TestCodexLocateOrder(t *testing.T) {
 	}
 }
 
+// canonicalTempDir is a fresh directory by the path Locate canonicalises
+// a cwd to, so a rollout's session_meta cwd can match it.
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// Adoption reads the whole first record, however large: Codex's
+// session_meta carries its base instructions and was already 18-23 KiB on
+// 2026-10-14, so a 64 KiB head is one prompt revision from losing it.
+func TestCodexLocateAdoptsARolloutWhoseSessionMetaIsOver64KiB(t *testing.T) {
+	t.Parallel()
+	root, cwd := t.TempDir(), canonicalTempDir(t)
+	launch := time.Date(2026, 10, 14, 9, 0, 0, 0, time.Local)
+	const id = "01a0bbbb-0000-7000-8000-000000000001"
+	path := writeRollout(t, root, launch, id, cwd, launch.Add(time.Second))
+	at := launch.Add(time.Second).UTC().Format(time.RFC3339Nano)
+	line := fmt.Sprintf(`{"timestamp":%q,"type":"session_meta","payload":{"session_id":%q,"id":%q,"timestamp":%q,"cwd":%q,"cli_version":"0.154.0","model_provider":"openai","base_instructions":{"text":%q}}}`+"\n",
+		at, id, id, at, cwd, strings.Repeat("x", 100*1024))
+	if err := os.WriteFile(path, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	loc, reason := codexTranscripts{}.Locate(harness.TranscriptLocateRequest{Root: root, Cwd: cwd, LaunchedAt: launch})
+	if reason != "" || loc.Path != path || loc.SessionID != id || loc.Rule != codexRuleAdopt {
+		t.Fatalf("Locate = %+v %q, want %s adopted", loc, reason, path)
+	}
+}
+
+// Adoption walks only the days a rollout of this launch can be filed
+// under: a rollout in an older day directory is never read, even one that
+// would otherwise make the match ambiguous.
+func TestCodexLocateAdoptsOnlyFromTheLaunchDays(t *testing.T) {
+	t.Parallel()
+	root, cwd := t.TempDir(), canonicalTempDir(t)
+	launch := time.Date(2026, 10, 14, 9, 0, 0, 0, time.Local)
+	writeRollout(t, root, launch.AddDate(0, 0, -3), "01a0bbbb-0000-7000-8000-000000000002", cwd, launch.Add(time.Minute))
+	want := writeRollout(t, root, launch, "01a0bbbb-0000-7000-8000-000000000003", cwd, launch.Add(time.Second))
+
+	loc, reason := codexTranscripts{}.Locate(harness.TranscriptLocateRequest{Root: root, Cwd: cwd, LaunchedAt: launch})
+	if reason != "" || loc.Path != want || loc.Rule != codexRuleAdopt {
+		t.Fatalf("Locate = %+v %q, want today's rollout %s", loc, reason, want)
+	}
+}
+
+// Codex files a rollout under the local date it was created, which is
+// never before the launch's local date. A launch just after local midnight
+// therefore finds its rollout under that day, and the one extra day walked
+// still covers a Codex whose clock zone is behind mate's and filed it under
+// the previous date; two days back is not walked.
+func TestCodexLocateAdoptsALaunchJustAfterLocalMidnight(t *testing.T) {
+	t.Parallel()
+	launch := time.Date(2026, 10, 14, 0, 0, 30, 0, time.Local)
+	for _, tc := range []struct {
+		name string
+		day  time.Time
+	}{
+		{"filed under the launch date", launch},
+		{"filed under the previous date", launch.AddDate(0, 0, -1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, cwd := t.TempDir(), canonicalTempDir(t)
+			writeRollout(t, root, launch.AddDate(0, 0, -2), "01a0bbbb-0000-7000-8000-000000000004", cwd, launch.Add(time.Minute))
+			want := writeRollout(t, root, tc.day, "01a0bbbb-0000-7000-8000-000000000005", cwd, launch.Add(time.Second))
+
+			loc, reason := codexTranscripts{}.Locate(harness.TranscriptLocateRequest{Root: root, Cwd: cwd, LaunchedAt: launch})
+			if reason != "" || loc.Path != want {
+				t.Fatalf("Locate = %+v %q, want %s", loc, reason, want)
+			}
+		})
+	}
+}
+
 // A session id finds only a file Codex named for it,
 // `rollout-<time>-<id>.jsonl`; any other file carrying the id is not a
 // rollout, and Locate falls through to adoption.
@@ -194,5 +273,28 @@ func TestCodexLocateByIDMatchesOnlyARolloutName(t *testing.T) {
 	runtime := func() string { return id }
 	if loc, reason := src.Locate(harness.TranscriptLocateRequest{Root: root, RuntimeSession: runtime, Cwd: t.TempDir()}); reason != codexAdoptPending {
 		t.Fatalf("by the runtime's id: %+v %q, want %q", loc, reason, codexAdoptPending)
+	}
+}
+
+// A sessions directory that does not exist yet has nothing to adopt.
+func TestCodexLocateWithNoSessionsDirectoryWaits(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join(t.TempDir(), "missing")
+	if loc, reason := (codexTranscripts{}).Locate(harness.TranscriptLocateRequest{Root: root, Cwd: t.TempDir(), LaunchedAt: time.Now()}); reason != codexAdoptPending {
+		t.Fatalf("Locate = %+v %q, want %q", loc, reason, codexAdoptPending)
+	}
+}
+
+// An agent whose launch time is unknown is adopted from every day, as
+// before the day bound.
+func TestCodexLocateWithNoLaunchTimeAdoptsFromAnyDay(t *testing.T) {
+	t.Parallel()
+	root, cwd := t.TempDir(), canonicalTempDir(t)
+	old := time.Date(2024, 1, 2, 9, 0, 0, 0, time.Local)
+	want := writeRollout(t, root, old, "01a0bbbb-0000-7000-8000-000000000007", cwd, old)
+
+	loc, reason := codexTranscripts{}.Locate(harness.TranscriptLocateRequest{Root: root, Cwd: cwd})
+	if reason != "" || loc.Path != want {
+		t.Fatalf("Locate = %+v %q, want %s", loc, reason, want)
 	}
 }
