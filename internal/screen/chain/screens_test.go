@@ -58,14 +58,20 @@ func TestChainKeepsNoScreenTheStubRead(t *testing.T) {
 	}
 }
 
-func TestChainKeepsNoScreenWhenJevFailed(t *testing.T) {
+// A screen the stub cannot read is wanted for a stub whether Jev answered or
+// not.
+func TestChainKeepsTheScreenWhenJevFailed(t *testing.T) {
 	dir := t.TempDir()
 	jev := &stateStub{err: context.DeadlineExceeded}
 	fix := &stateStub{reading: screen.StateReading{State: screen.PaneUnknown, Source: "fixture"}}
 	ch := chain.New(jev, fix, 0.85, chain.WithScreens(dir))
 	_, _ = ch.(screen.StateObserver).ObserveState(context.Background(), codexScreen, "x")
-	if files, _ := filepath.Glob(filepath.Join(dir, "*", "*")); len(files) != 0 {
-		t.Fatalf("failed request recorded: %v", files)
+	files, _ := filepath.Glob(filepath.Join(dir, "codex", "*.txt"))
+	if len(files) != 1 {
+		t.Fatalf("files = %v, want the unread screen kept", files)
+	}
+	if b, _ := os.ReadFile(files[0]); !strings.Contains(string(b), "# jev: failed\n") {
+		t.Fatalf("record:\n%s", b)
 	}
 }
 

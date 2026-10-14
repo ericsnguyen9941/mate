@@ -1,21 +1,17 @@
-// Package chain is the screen.Observer that asks Jev first and the fixture
-// observer when Jev is unsure (docs/plans/jev-observer-2026-10-08.md
-// sections 4.1, 4.3 and 4.5).
+// Package chain is the screen.Observer that reads every snapshot with the
+// fixture observer and asks Jev only about a snapshot the fixture cannot
+// read (docs/plans/jev-observer-2026-10-08.md, ruling of 2026-10-14).
 //
-// The fixture observer reads every snapshot, Jev every new one. The
-// fixture's reading is the only source of what Jev cannot answer (Draft,
-// Highlight, Startup, Evidence, Deterministic), so the checks that stand
-// between an Observation and a key press - send's string compare before
-// Enter, settle's highlight confirmation - are made on the fixture's
-// reading whatever Jev said.
+// Jev is the last resort for a screen a harness update drew and no stub
+// knows yet, not a second reader of screens the stubs already name. A
+// snapshot the fixture reads is its Observation whole, with no request.
+// Of one it cannot read, Jev may name the dialog and the notice; the
+// composer stays the fixture's unknown, so nothing is ever typed or
+// confirmed on Jev's word. A send never asks Jev at all: it types only into
+// a composer the fixture reads empty, which Jev's answer cannot change.
 //
-// On the composer Jev may veto, never enable: the composer is the
-// fixture's, except that Jev, sure of itself, may call a composer the
-// fixture reads as empty a draft or a turn in flight. Jev never turns a
-// composer the fixture reads as anything else into an empty one, so an
-// Observation's Composer is ComposerEmpty only when its Deterministic is.
-// Jev decides Dialog and Notice when it answers at or above the threshold
-// and the fixture has not recognised a startup dialog on the screen.
+// Every screen the fixture cannot read is kept for the captain to write a
+// stub from (WithScreens), whether Jev was asked or not.
 package chain
 
 import (
@@ -37,7 +33,6 @@ const TTL = 60 * time.Second
 const (
 	FallbackError     = "error"
 	FallbackThreshold = "below-threshold"
-	FallbackDialog    = "recognised-dialog"
 )
 
 // Option configures a Chain.
@@ -54,8 +49,9 @@ func WithLog(appendLine func(line string) error) Option {
 	return func(c *Chain) { c.appendLine = appendLine }
 }
 
-// WithScreens makes ObserveState keep the text of every screen Jev answered
-// about under dir (screens.go). A failure to write is dropped.
+// WithScreens makes the chain keep the text of every screen the fixture
+// could not read under dir (screens.go), at most once per harness and
+// screen within TTL. A failure to write is dropped.
 func WithScreens(dir string) Option { return func(c *Chain) { c.screensDir = dir } }
 
 // Chain is the chained observer.
@@ -69,6 +65,7 @@ type Chain struct {
 	mu      sync.Mutex
 	cache   map[cacheKey]cached
 	states  map[cacheKey]cachedState
+	kept    map[cacheKey]time.Time
 	breaker breaker
 }
 
@@ -87,31 +84,29 @@ type cached struct {
 // threshold is the confidence, in [0, 1], below which primary's answer is
 // not used.
 func New(primary, fallback screen.Observer, threshold float64, opts ...Option) screen.Observer {
-	c := &Chain{primary: primary, fallback: fallback, threshold: threshold, now: time.Now, cache: map[cacheKey]cached{}, states: map[cacheKey]cachedState{}}
+	c := &Chain{primary: primary, fallback: fallback, threshold: threshold, now: time.Now, cache: map[cacheKey]cached{}, states: map[cacheKey]cachedState{},
+		kept: map[cacheKey]time.Time{}}
 	for _, o := range opts {
 		o(c)
 	}
 	return c
 }
 
-// Observe reads one snapshot through both observers and keeps, in order:
+// Observe reads one snapshot, the fallback (the fixture) first:
 //
-//  1. Draft, Highlight, Startup, Evidence and Deterministic from the
-//     fallback, always.
-//  2. The fallback's Observation whole when the primary fails or answers
-//     below the threshold.
-//  3. The fallback's Observation whole when the fallback is sure of a
-//     startup dialog it recognises (Startup names one): whatever the
-//     primary says, the dialog, its highlight and the composer it hides
-//     are the fallback's, so nothing is typed into a dialog Jev missed.
-//  4. Otherwise the primary's Dialog, Notice and Confidence, and the
-//     fallback's Composer, except that a fallback ComposerEmpty becomes the
-//     primary's ComposerDraft or ComposerBusy when it says one (the veto:
-//     the more conservative reading wins). The primary never makes a
-//     composer empty, and never names one the fallback cannot read.
-//  5. With the primary's Dialog, Highlight -1 when it names a dialog and
-//     the fallback recognises no startup screen: settle refuses such a
-//     screen, naming Jev's dialog.
+//  1. A snapshot the fallback reads (Confidence 1: a composer, or a startup
+//     screen its profile measured) is the fallback's Observation whole. The
+//     primary (Jev) is not asked.
+//  2. A send never asks the primary. It types only into a composer the
+//     fallback reads empty, and the primary never makes one empty, so its
+//     answer cannot change what a send does.
+//  3. Otherwise the primary is asked. On an error or an answer below the
+//     threshold the fallback's Observation is returned whole. Else the
+//     fallback's, with the primary's Dialog, Notice, Confidence, Source and
+//     Reason, and Highlight -1 when the primary names a dialog: settle
+//     refuses such a screen, naming Jev's dialog. The composer stays the
+//     fallback's unknown, and Draft, Startup, Evidence and Deterministic
+//     are the fallback's, always.
 //
 // The primary is asked once per harness and screen hash within TTL; a
 // repeat is answered from memory. After BreakerFailures failures in a row
@@ -122,24 +117,27 @@ func New(primary, fallback screen.Observer, threshold float64, opts ...Option) s
 // skips (a skipper with no text to send) is not asked, not counted by the
 // breaker and not logged: the fallback's reading is returned whole. The
 // call is synchronous, so an answer always belongs to the snapshot that was
-// hashed:
-// a pane that changes while Jev is asked is a new snapshot on the caller's
-// next read, never this answer's. The answer can be up to Jev's deadline old
-// when it returns, so a caller that acts on it (send before typing, settle
-// before the confirm key) reads the pane again first.
+// hashed: a pane that changes while Jev is asked is a new snapshot on the
+// caller's next read, never this answer's.
 func (c *Chain) Observe(ctx context.Context, profile harness.ScreenProfile, pane string) (screen.Observation, error) {
 	fix, err := c.fallback.Observe(ctx, profile, pane)
-	if err != nil {
+	if err != nil || fix.Confidence == 1 {
 		return fix, err
 	}
+	key := cacheKey{kind: kindOf(profile), hash: sha256.Sum256([]byte(pane))}
+	stub := string(fix.Startup)
 	if s, ok := c.primary.(skipper); ok && s.Skips(pane) {
 		return withReason(fix, "jev: no terminal text to observe; not asked"), nil
 	}
+	if screen.CallerOf(ctx) == screen.CallerSend {
+		c.keep(ctx, key, pane, stub, keptNotAsked)
+		return withReason(fix, "jev: not asked for a send"), nil
+	}
 	ask, trial := c.admit()
 	if !ask {
+		c.keep(ctx, key, pane, stub, keptCircuitOpen)
 		return withReason(fix, circuitOpen), nil
 	}
-	key := cacheKey{kind: kindOf(profile), hash: sha256.Sum256([]byte(pane))}
 	if !trial {
 		if hit, ok := c.lookup(key); ok {
 			obs, _ := decide(fix, hit.obs, hit.err, c.threshold)
@@ -162,6 +160,11 @@ func (c *Chain) Observe(ctx context.Context, profile harness.ScreenProfile, pane
 			_ = c.appendLine(BreakerLine(c.now(), event))
 		}
 	}
+	answer := keptFailed
+	if perr == nil {
+		answer = fmt.Sprintf("composer=%s dialog=%s %.2f", primary.Composer, primary.Dialog, primary.Confidence)
+	}
+	c.keep(ctx, key, pane, stub, answer)
 	return obs, nil
 }
 
@@ -171,7 +174,7 @@ type skipper interface {
 	Skips(pane string) bool
 }
 
-// decide applies Observe's rules to one pair of readings. It names the
+// decide applies Observe's rule 3 to one pair of readings. It names the
 // fallback rule that applied, or "" when the primary's reading stands.
 func decide(fix, primary screen.Observation, perr error, threshold float64) (screen.Observation, string) {
 	switch {
@@ -179,26 +182,14 @@ func decide(fix, primary screen.Observation, perr error, threshold float64) (scr
 		return withReason(fix, "jev: "+perr.Error()), FallbackError
 	case primary.Confidence < threshold:
 		return withReason(fix, fmt.Sprintf("jev: confidence %.2f below %.2f (%s)", primary.Confidence, threshold, primary.Reason)), FallbackThreshold
-	case fix.Confidence == 1 && recognisedDialog(fix.Startup):
-		return withReason(fix, "fixture recognised "+string(fix.Startup)), FallbackDialog
 	}
 	out := fix
-	out.Composer = veto(fix.Composer, primary.Composer)
 	out.Dialog, out.Notice = primary.Dialog, primary.Notice
 	out.Confidence, out.Source, out.Reason = primary.Confidence, primary.Source, primary.Reason
-	if primary.Dialog != screen.DialogNone && (fix.Startup == "" || fix.Startup == harness.StartupScreenUnrecognized) {
+	if primary.Dialog != screen.DialogNone {
 		out.Highlight = -1
 	}
 	return out, ""
-}
-
-// veto is the composer the chain returns: the fixture's, unless the
-// fixture reads it empty and Jev says a draft or a turn in flight is there.
-func veto(fixture, jev screen.ComposerState) screen.ComposerState {
-	if fixture == screen.ComposerEmpty && (jev == screen.ComposerDraft || jev == screen.ComposerBusy) {
-		return jev
-	}
-	return fixture
 }
 
 // used is the log's word for whether the primary's answer is in the
@@ -208,12 +199,6 @@ func used(fallback string) string {
 		return UsedYes
 	}
 	return UsedNo
-}
-
-// recognisedDialog reports whether a startup classification names a
-// dialog: not the ready composer, not a screen the profile cannot name.
-func recognisedDialog(startup harness.StartupScreen) bool {
-	return startup != "" && startup != harness.StartupScreenReady && startup != harness.StartupScreenUnrecognized
 }
 
 // withReason is the fallback's Observation with why the primary's was not

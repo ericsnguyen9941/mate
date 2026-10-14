@@ -38,6 +38,11 @@ var (
 var fixtureDraft = screen.Observation{Composer: screen.ComposerDraft, Deterministic: screen.ComposerDraft, Draft: "half typed", Evidence: "❯ half typed",
 	Dialog: screen.DialogNone, Startup: harness.StartupScreenUnrecognized, Highlight: -1, Confidence: 1, Source: "fixture"}
 
+// fixtureUnread is a fixture reading of a screen no stub names: the only
+// kind the chain asks Jev about.
+var fixtureUnread = screen.Observation{Composer: screen.ComposerUnknown, Deterministic: screen.ComposerUnknown, Dialog: screen.DialogUnknown,
+	Startup: harness.StartupScreenUnrecognized, Highlight: -1, Confidence: 0, Source: "fixture", Reason: "nothing recognised"}
+
 func jevSays(composer screen.ComposerState, dialog screen.DialogKind, conf float64) screen.Observation {
 	return screen.Observation{Composer: composer, Dialog: dialog, Highlight: -1, Confidence: conf, Source: "jev",
 		Notice: "quota_warning", Reason: "composer and dialog answers"}
@@ -46,85 +51,68 @@ func jevSays(composer screen.ComposerState, dialog screen.DialogKind, conf float
 func TestChainRules(t *testing.T) {
 	fixtureTrust := screen.Observation{Composer: screen.ComposerUnknown, Deterministic: screen.ComposerUnknown, Evidence: "", Dialog: screen.DialogTrust,
 		Startup: harness.StartupScreenTrustDialog, Highlight: 1, Confidence: 1, Source: "fixture"}
-	fixtureUnrecognised := screen.Observation{Composer: screen.ComposerUnknown, Deterministic: screen.ComposerUnknown, Dialog: screen.DialogUnknown,
-		Startup: harness.StartupScreenUnrecognized, Highlight: -1, Confidence: 0, Source: "fixture", Reason: "nothing recognised"}
 	tests := []struct {
 		name       string
 		fixture    screen.Observation
 		jev        screen.Observation
 		jevErr     error
+		asked      bool
 		want       screen.Observation
 		wantReason string
 	}{
 		{
-			name: "jev fails: the fixture's reading whole", fixture: fixtureDraft, jevErr: errors.New("Jev unavailable (HTTP 503)"),
-			want: fixtureDraft, wantReason: "jev: Jev unavailable (HTTP 503)",
+			name: "the fixture reads a draft: its reading whole, jev not asked", fixture: fixtureDraft,
+			jev: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.99), want: fixtureDraft,
 		},
 		{
-			name: "jev below the threshold: the fixture's reading whole", fixture: fixtureUnrecognised,
-			jev: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.84), want: fixtureUnrecognised,
+			name: "the fixture reads an empty composer: jev not asked, so it cannot veto", fixture: screen.Observation{
+				Composer: screen.ComposerEmpty, Deterministic: screen.ComposerEmpty, Evidence: "›", Dialog: screen.DialogNone,
+				Startup: harness.StartupScreenReady, Highlight: -1, Confidence: 1, Source: "fixture"},
+			jev: jevSays(screen.ComposerBusy, screen.DialogNone, 0.99),
+			want: screen.Observation{Composer: screen.ComposerEmpty, Deterministic: screen.ComposerEmpty, Evidence: "›", Dialog: screen.DialogNone,
+				Startup: harness.StartupScreenReady, Highlight: -1, Confidence: 1, Source: "fixture"},
+		},
+		{
+			name: "the fixture recognises a dialog: its reading whole, jev not asked", fixture: fixtureTrust,
+			jev: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.99), want: fixtureTrust,
+		},
+		{
+			name: "jev fails: the fixture's reading whole", fixture: fixtureUnread, jevErr: errors.New("Jev unavailable (HTTP 503)"),
+			asked: true, want: fixtureUnread, wantReason: "jev: Jev unavailable (HTTP 503); nothing recognised",
+		},
+		{
+			name: "jev below the threshold: the fixture's reading whole", fixture: fixtureUnread,
+			jev: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.84), asked: true, want: fixtureUnread,
 			wantReason: "jev: confidence 0.84 below 0.85 (composer and dialog answers); nothing recognised",
 		},
 		{
-			name: "jev calls a draft empty: the composer stays the fixture's draft", fixture: fixtureDraft,
-			jev: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.99),
-			want: screen.Observation{Composer: screen.ComposerDraft, Deterministic: screen.ComposerDraft, Draft: "half typed",
-				Evidence: "❯ half typed", Dialog: screen.DialogNone, Notice: "quota_warning",
-				Startup: harness.StartupScreenUnrecognized, Highlight: -1, Confidence: 0.99, Source: "jev"},
-			wantReason: "composer and dialog answers",
-		},
-		{
-			name: "jev calls a screen the fixture cannot read empty: the composer stays unknown", fixture: fixtureUnrecognised,
-			jev: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.99),
+			name: "jev calls a screen the fixture cannot read empty: the composer stays unknown", fixture: fixtureUnread,
+			jev: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.99), asked: true,
 			want: screen.Observation{Composer: screen.ComposerUnknown, Deterministic: screen.ComposerUnknown, Dialog: screen.DialogNone,
 				Notice: "quota_warning", Startup: harness.StartupScreenUnrecognized, Highlight: -1, Confidence: 0.99, Source: "jev"},
 			wantReason: "composer and dialog answers",
 		},
 		{
-			name: "jev calls a draft busy: the composer stays the fixture's draft", fixture: fixtureDraft,
-			jev: jevSays(screen.ComposerBusy, screen.DialogNone, 0.99),
-			want: screen.Observation{Composer: screen.ComposerDraft, Deterministic: screen.ComposerDraft, Draft: "half typed",
-				Evidence: "❯ half typed", Dialog: screen.DialogNone, Notice: "quota_warning",
-				Startup: harness.StartupScreenUnrecognized, Highlight: -1, Confidence: 0.99, Source: "jev"},
-			wantReason: "composer and dialog answers",
-		},
-		{
-			name: "jev names a dialog the fixture does not recognise: no highlight", fixture: fixtureUnrecognised,
-			jev: jevSays(screen.ComposerUnknown, screen.DialogHooksReview, 0.95),
+			name: "jev names a dialog the fixture does not recognise: no highlight", fixture: fixtureUnread,
+			jev: jevSays(screen.ComposerUnknown, screen.DialogHooksReview, 0.95), asked: true,
 			want: screen.Observation{Composer: screen.ComposerUnknown, Deterministic: screen.ComposerUnknown, Dialog: screen.DialogHooksReview,
 				Notice: "quota_warning", Startup: harness.StartupScreenUnrecognized, Highlight: -1, Confidence: 0.95, Source: "jev"},
-			wantReason: "composer and dialog answers",
-		},
-		{
-			name: "a dialog the fixture recognises is the fixture's, even where jev agrees", fixture: fixtureTrust,
-			jev: jevSays(screen.ComposerUnknown, screen.DialogTrust, 0.9), want: fixtureTrust,
-			wantReason: "fixture recognised trust_dialog",
-		},
-		{
-			name: "jev's busy vetoes the fixture's empty; what it cannot answer is the fixture's", fixture: screen.Observation{
-				Composer: screen.ComposerEmpty, Deterministic: screen.ComposerEmpty, Evidence: "›", Dialog: screen.DialogNone,
-				Startup: harness.StartupScreenReady, Highlight: -1, Confidence: 1, Source: "fixture"},
-			jev: jevSays(screen.ComposerBusy, screen.DialogNone, 0.9),
-			want: screen.Observation{Composer: screen.ComposerBusy, Deterministic: screen.ComposerEmpty, Evidence: "›", Dialog: screen.DialogNone,
-				Notice: "quota_warning", Startup: harness.StartupScreenReady, Highlight: -1, Confidence: 0.9, Source: "jev"},
-			wantReason: "composer and dialog answers",
-		},
-		{
-			name: "jev's draft vetoes the fixture's empty; the draft text is the fixture's", fixture: screen.Observation{
-				Composer: screen.ComposerEmpty, Deterministic: screen.ComposerEmpty, Evidence: "❯", Dialog: screen.DialogNone,
-				Startup: harness.StartupScreenReady, Highlight: -1, Confidence: 1, Source: "fixture"},
-			jev: jevSays(screen.ComposerDraft, screen.DialogNone, 0.9),
-			want: screen.Observation{Composer: screen.ComposerDraft, Deterministic: screen.ComposerEmpty, Evidence: "❯", Dialog: screen.DialogNone,
-				Notice: "quota_warning", Startup: harness.StartupScreenReady, Highlight: -1, Confidence: 0.9, Source: "jev"},
 			wantReason: "composer and dialog answers",
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			c := chain.New(&stub{obs: tc.jev, err: tc.jevErr}, &stub{obs: tc.fixture}, 0.85)
+			jev := &stub{obs: tc.jev, err: tc.jevErr}
+			c := chain.New(jev, &stub{obs: tc.fixture}, 0.85)
 			got, err := c.Observe(context.Background(), claudeScreen, "screen")
 			if err != nil {
 				t.Fatal(err)
+			}
+			if asked := jev.calls == 1; asked != tc.asked {
+				t.Errorf("jev asked %d times, want asked=%v", jev.calls, tc.asked)
+			}
+			if tc.wantReason == "" {
+				tc.wantReason = tc.want.Reason
 			}
 			if got.Reason != tc.wantReason {
 				t.Errorf("reason %q, want %q", got.Reason, tc.wantReason)
@@ -137,6 +125,42 @@ func TestChainRules(t *testing.T) {
 	}
 }
 
+// A send never asks Jev, whatever the fixture reads: it types only into a
+// composer the fixture reads empty, and Jev cannot make one empty. A screen
+// the fixture cannot read is still kept for the captain, once a minute.
+func TestChainNeverAsksJevForASend(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
+	jev := &stub{obs: jevSays(screen.ComposerDraft, screen.DialogPermission, 0.99)}
+	var lines []string
+	c := chain.New(jev, &stub{obs: fixtureUnread}, 0.85, chain.WithClock(func() time.Time { return now }),
+		chain.WithScreens(dir), chain.WithLog(func(l string) error { lines = append(lines, l); return nil }))
+	ctx := screen.WithCaller(context.Background(), screen.CallerSend)
+	for range 3 {
+		got, err := c.Observe(ctx, claudeScreen, "❯ ok, từ nay xoá luôn\n  em để cho anh 2 news:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Composer != screen.ComposerUnknown || got.Source != "fixture" || !strings.HasPrefix(got.Reason, "jev: not asked for a send") {
+			t.Fatalf("got %+v, want the fixture's unknown, not asked", got)
+		}
+		now = now.Add(2 * time.Second)
+	}
+	if jev.calls != 0 || len(lines) != 0 {
+		t.Fatalf("%d requests and log %q for a send", jev.calls, lines)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "claude", "*.txt"))
+	if len(files) != 1 {
+		t.Fatalf("files = %v, want the unread screen kept", files)
+	}
+	b, _ := os.ReadFile(files[0])
+	for _, want := range []string{"# seen: 1\n", "# caller: send\n", "# stub: unrecognized\n", "# jev: not asked\n", "em để cho anh 2 news:"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("record lacks %q:\n%s", want, b)
+		}
+	}
+}
+
 // One screen of one harness is asked of Jev once a minute however often it
 // is observed; another screen, another harness or an older answer asks
 // again. Every request, and only a request, is logged.
@@ -144,7 +168,7 @@ func TestChainAsksJevOncePerScreenAMinute(t *testing.T) {
 	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
 	jev := &stub{obs: jevSays(screen.ComposerEmpty, screen.DialogNone, 0.9)}
 	var lines []string
-	c := chain.New(jev, &stub{obs: screen.Observation{Composer: screen.ComposerEmpty, Confidence: 1, Source: "fixture"}}, 0.85,
+	c := chain.New(jev, &stub{obs: fixtureUnread}, 0.85,
 		chain.WithClock(func() time.Time { return now }),
 		chain.WithLog(func(line string) error { lines = append(lines, line); return nil }))
 	observe := func(profile harness.ScreenProfile, pane string) screen.Observation {
@@ -186,7 +210,7 @@ func TestChainAsksJevOncePerScreenAMinute(t *testing.T) {
 // is not asked again every poll; a request the caller cancelled is not.
 func TestChainRemembersFailuresButNotCancellations(t *testing.T) {
 	jev := &stub{err: errors.New("offline")}
-	c := chain.New(jev, &stub{obs: fixtureDraft}, 0.85)
+	c := chain.New(jev, &stub{obs: fixtureUnread}, 0.85)
 	for range 2 {
 		if obs, err := c.Observe(context.Background(), claudeScreen, "a"); err != nil || obs.Source != "fixture" {
 			t.Fatalf("%+v, %v", obs, err)
@@ -216,10 +240,9 @@ func TestChainFailsWhenTheFixtureDoes(t *testing.T) {
 	}
 }
 
-// Rule 3b: on a Codex trust dialog the fixture recognises, a Jev sure there
-// is no dialog and an empty composer changes nothing. The dialog, its
-// highlight and the composer are the fixture's, so send refuses and settle
-// answers the dialog as measured.
+// On a Codex trust dialog the fixture recognises, Jev is not asked at all:
+// the dialog, its highlight and the composer are the fixture's, so send
+// refuses and settle answers the dialog as measured, at no request.
 func TestChainKeepsADialogTheFixtureRecognises(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(moduleRoot, "internal", "harness", "codex", "testdata", "startup", "codex-0.156.1-trust-dialog.txt"))
 	if err != nil {
@@ -237,11 +260,8 @@ func TestChainKeepsADialogTheFixtureRecognises(t *testing.T) {
 		got.Composer != screen.ComposerUnknown || got.Source != "fixture" {
 		t.Fatalf("got %+v, want the fixture's trust dialog with its highlight on option 0", got)
 	}
-	if !strings.HasPrefix(got.Reason, "fixture recognised trust_dialog") {
-		t.Fatalf("reason %q", got.Reason)
-	}
-	if len(lines) != 1 || !strings.HasSuffix(lines[0], " fallback="+chain.FallbackDialog) {
-		t.Fatalf("log %q", lines)
+	if jev.calls != 0 || len(lines) != 0 {
+		t.Fatalf("%d requests, log %q for a dialog the fixture recognises", jev.calls, lines)
 	}
 }
 
@@ -258,7 +278,7 @@ func (s *skipsBlank) Skips(pane string) bool { return strings.TrimSpace(pane) ==
 func TestChainSkipsAScreenThePrimarySkips(t *testing.T) {
 	jev := &skipsBlank{stub{err: errors.New("offline")}}
 	var lines []string
-	c := chain.New(jev, &stub{obs: fixtureDraft}, 0.85, chain.WithLog(func(l string) error { lines = append(lines, l); return nil }))
+	c := chain.New(jev, &stub{obs: fixtureUnread}, 0.85, chain.WithLog(func(l string) error { lines = append(lines, l); return nil }))
 	for i := range 5 {
 		obs, err := c.Observe(context.Background(), claudeScreen, strings.Repeat(" ", i+1))
 		if err != nil || obs.Source != "fixture" || !strings.HasPrefix(obs.Reason, "jev: no terminal text to observe; not asked") {

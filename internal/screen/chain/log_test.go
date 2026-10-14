@@ -23,12 +23,12 @@ func TestChainLogLine(t *testing.T) {
 	var lines []string
 	log := chain.WithLog(func(line string) error { lines = append(lines, line); return errors.New("disk full") })
 	jev := &stub{obs: jevSays(screen.ComposerBusy, screen.DialogNone, 0.62)}
-	c := chain.New(jev, &stub{obs: fixtureDraft}, 0.85, chain.WithClock(clock), log)
+	c := chain.New(jev, &stub{obs: fixtureUnread}, 0.85, chain.WithClock(clock), log)
 	if _, err := c.Observe(screen.WithCaller(context.Background(), screen.CallerWatch), claudeScreen, "screen"); err != nil {
 		t.Fatalf("a log that cannot be written failed the observation: %v", err)
 	}
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte("screen")))[:12]
-	want := "2026-10-08T02:00:00Z claude " + hash + " 237 fixture composer=busy dialog=none conf=0.62 fixture=draft caller=watch used=no fallback=below-threshold"
+	want := "2026-10-08T02:00:00Z claude " + hash + " 237 fixture composer=busy dialog=none conf=0.62 fixture=unknown caller=watch used=no fallback=below-threshold"
 	if len(lines) != 1 || lines[0] != want {
 		t.Fatalf("log %q\nwant %q", lines, want)
 	}
@@ -36,14 +36,14 @@ func TestChainLogLine(t *testing.T) {
 	if _, err := c.Observe(context.Background(), claudeScreen, "other"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(lines[1], " fixture composer=- dialog=- conf=0.00 fixture=draft caller=- used=no fallback=error") {
+	if !strings.HasSuffix(lines[1], " fixture composer=- dialog=- conf=0.00 fixture=unknown caller=- used=no fallback=error") {
 		t.Fatalf("failed request logged as %q", lines[1])
 	}
 	jev.obs, jev.err = jevSays(screen.ComposerBusy, screen.DialogNone, 0.9), nil
-	if _, err := c.Observe(screen.WithCaller(context.Background(), screen.CallerSend), claudeScreen, "third"); err != nil {
+	if _, err := c.Observe(screen.WithCaller(context.Background(), screen.CallerStow), claudeScreen, "third"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(lines[2], " jev composer=busy dialog=none conf=0.90 fixture=draft caller=send used=yes") {
+	if !strings.HasSuffix(lines[2], " jev composer=busy dialog=none conf=0.90 fixture=unknown caller=stow used=yes") {
 		t.Fatalf("a used answer logged as %q", lines[2])
 	}
 }

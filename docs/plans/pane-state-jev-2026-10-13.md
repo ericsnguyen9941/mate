@@ -138,7 +138,10 @@ tìm agent theo pane id (`ListAgents` đã có). Fake runtime mô phỏng đư�
 ## 6. Log màn hình để captain tự làm stub
 
 - `.mate/jev.log` giữ định dạng hiện có, thêm `state=<PaneState>` vào dòng.
-- Mỗi màn hình stub chịu thua mà Jev được hỏi, lưu nguyên văn vào
+- Mỗi màn hình stub chịu thua, lưu nguyên văn vào (sửa 2026-10-14: cả khi
+  Jev không được hỏi, lỗi, hay breaker đang mở, và cho cả đường composer;
+  mỗi màn hình tối đa một lần mỗi 60 giây; dòng `# jev:` khi đó là
+  `not asked`, `not asked, circuit open` hoặc `failed`)
   `.mate/screens/<harness>/<hash12>.txt`:
 
   ```text
