@@ -13,9 +13,9 @@
 //
 // The ingest is incremental and idempotent. Append-only logs are read from
 // `cursor`; a transcript is read by its harness's TranscriptSource, which
-// hands back the whole file's facts on every pass - re-read whole where a
-// trailing message group may still grow, appended to where records are
-// complete on their own (see internal/harness/transcript_source.go). Every
+// hands back the whole file's facts on every pass - tailed from the prior
+// batch while the file only grows, read whole otherwise (see
+// internal/harness/transcript_source.go). Every
 // fact carries a natural key, so re-reading a source can only produce the
 // row it already produced: `event.dedup` is unique, and every other table is
 // keyed by what produced it.

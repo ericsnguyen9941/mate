@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
@@ -12,8 +13,8 @@ import (
 )
 
 // claudeTranscripts is Claude Code's TranscriptSource: its session JSONL
-// under the config directory's projects/, read whole on every change,
-// with usage already per call.
+// under the config directory's projects/, tailed while it only grows, with
+// usage already per call.
 type claudeTranscripts struct {
 	// configDir is the profile's CLAUDE_CONFIG_DIR; empty resolves it as
 	// transcript discovery always has (EffectiveClaudeConfigDir).
@@ -46,25 +47,167 @@ func (s claudeTranscripts) Locate(req harness.TranscriptLocateRequest) (harness.
 	return harness.TranscriptLocation{Path: path, Rule: claudeRuleProjects}, ""
 }
 
-// Read implements TranscriptSource. A Claude transcript is re-read whole on
-// every change rather than tailed: ParseTranscript withholds the trailing
-// message group because a later write may still extend it, so a tail would
-// have to carry the parser's own state across reads and a resume that got
-// it wrong would charge one turn's tokens to another, permanently. A file
-// at rest is parsed final, which flushes that group.
+// Read implements TranscriptSource. A file that has only grown since a live
+// read of it is read from where that read stopped, with its parser state,
+// and the tail appended. That is the parser's own incremental contract:
+// ParseTranscript withholds the trailing message group, stops ConsumedBytes
+// at its first record and pairs NextState with that cursor, so a resume
+// re-reads the group whole and carries the open harness turn - a resume
+// that got either wrong would charge one turn's tokens to another,
+// permanently. Anything else reads the file whole: a prior that stopped at
+// a malformed line, one read at rest (which emitted a group a tail would
+// meet again), one this source did not produce, or a read at rest, which is
+// parsed final to flush that group.
 func (s claudeTranscripts) Read(req harness.TranscriptReadRequest) (harness.TranscriptBatch, error) {
+	if st, ok := req.Prior.HarnessState.(claudeReadState); ok && req.Grown && !req.AtRest && !st.final && req.Prior.Malformed == nil {
+		info, err := os.Stat(req.Path)
+		if err != nil {
+			return harness.TranscriptBatch{}, err
+		}
+		if base := req.Prior.ConsumedBytes; base <= info.Size() {
+			data, err := readFileFrom(req.Path, base, info.Size())
+			if err != nil {
+				return harness.TranscriptBatch{}, err
+			}
+			tail, consumed := claudeParseRange(req.Prior.NextState, data, false)
+			return appendClaudeBatch(req.Prior, st, tail, consumed, base), nil
+		}
+	}
 	data, err := os.ReadFile(req.Path)
 	if err != nil {
 		return harness.TranscriptBatch{}, err
 	}
-	var b harness.TranscriptBatch
-	if req.AtRest {
-		b = (Claude{}).ParseTranscriptFinal(harness.TranscriptParseState{}, data)
-	} else {
-		b = (Claude{}).ParseTranscript(harness.TranscriptParseState{}, data)
-	}
+	b, consumed := claudeParseRange(harness.TranscriptParseState{}, data, req.AtRest)
+	tidyClaude(&b)
 	normaliseClaude(&b)
+	b.HarnessState = claudeReadState{lines: consumed.lines, skipped: consumed.skipped, final: req.AtRest}
 	return b, nil
+}
+
+// claudeReadState is what a Claude read carries to the next read of the
+// same file, beside the batch: the parse's view of the bytes before its
+// cursor (claudeConsumed), and whether the read was final - a final read
+// emitted the group a live one withholds, so it cannot be carried on from.
+type claudeReadState struct {
+	lines   int
+	skipped map[string]int
+	final   bool
+}
+
+// appendClaudeBatch appends a tail parsed from base, the prior batch's
+// ConsumedBytes, to that batch. Every position the tail reports is relative
+// to base, so offsets are rebased by base and ordinals by the lines the
+// prior read consumed. The prior's facts all precede base and the tail's all
+// follow it, so the two are concatenated, never merged; what describes the
+// end of the file - the cursor, the withheld group, a malformed line, the
+// parser state - is the tail's. Usage turns are derived again over the whole
+// batch, because a result in the tail can end a call the prior priced.
+func appendClaudeBatch(prior harness.TranscriptBatch, st claudeReadState, tail harness.TranscriptBatch, consumed claudeConsumed, base int64) harness.TranscriptBatch {
+	lines := st.lines
+	for n := range tail.Records {
+		tail.Records[n].Offset += base
+		tail.Records[n].Ordinal += lines
+	}
+	for n := range tail.Turns {
+		tail.Turns[n].Offset += base
+		tail.Turns[n].Ordinal += lines
+	}
+	for n := range tail.ToolCalls {
+		tail.ToolCalls[n].Offset += base
+		tail.ToolCalls[n].Ordinal += lines
+	}
+	for n := range tail.ToolResults {
+		tail.ToolResults[n].Offset += base
+		tail.ToolResults[n].Ordinal += lines
+	}
+	for n := range tail.UsageFailures {
+		tail.UsageFailures[n].Offset += base
+		tail.UsageFailures[n].Ordinal += lines
+	}
+	if m := tail.Malformed; m != nil {
+		shifted := *m
+		shifted.Offset += base
+		if shifted.EndOffset != 0 {
+			shifted.EndOffset += base
+		}
+		shifted.Ordinal += lines
+		tail.Malformed = &shifted
+	}
+	if tail.OpenSourceRef != "" {
+		tail.OpenOffset += base
+	}
+	skipped := make(map[string]int, len(st.skipped)+len(tail.Skipped))
+	carried := make(map[string]int, len(st.skipped)+len(consumed.skipped))
+	for kind, count := range st.skipped {
+		skipped[kind] += count
+		carried[kind] += count
+	}
+	for kind, count := range tail.Skipped {
+		skipped[kind] += count
+	}
+	for kind, count := range consumed.skipped {
+		carried[kind] += count
+	}
+
+	b := harness.TranscriptBatch{
+		Source: TranscriptClaude,
+		// Concat copies: the prior batch may still be held, and appending
+		// into its spare capacity would write under it.
+		Records:       slices.Concat(prior.Records, tail.Records),
+		Turns:         slices.Concat(prior.Turns, tail.Turns),
+		ToolCalls:     slices.Concat(prior.ToolCalls, tail.ToolCalls),
+		ToolResults:   slices.Concat(prior.ToolResults, tail.ToolResults),
+		UsageFailures: slices.Concat(prior.UsageFailures, tail.UsageFailures),
+		ConsumedBytes: base + tail.ConsumedBytes,
+		TotalBytes:    base + tail.TotalBytes,
+		PendingBytes:  tail.PendingBytes,
+		OpenSourceRef: tail.OpenSourceRef,
+		OpenOffset:    tail.OpenOffset,
+		OpenRecords:   tail.OpenRecords,
+		Malformed:     tail.Malformed,
+		NextState:     tail.NextState,
+		Skipped:       skipped,
+		HarnessState:  claudeReadState{lines: lines + consumed.lines, skipped: carried},
+	}
+	b.UsageTurns = claudeUsageTurns(b)
+	// The prior's compactions are its records', all before base.
+	b.Compactions = slices.Concat(prior.Compactions, claudeCompactions(tail.Records))
+	return b
+}
+
+// tidyClaude makes an empty fact list nil, which is what a list that never
+// had a fact is: a parse that withheld every fact it found leaves an empty
+// one, and a tail read cannot tell the two apart.
+func tidyClaude(b *harness.TranscriptBatch) {
+	if len(b.Records) == 0 {
+		b.Records = nil
+	}
+	if len(b.Turns) == 0 {
+		b.Turns = nil
+	}
+	if len(b.ToolCalls) == 0 {
+		b.ToolCalls = nil
+	}
+	if len(b.ToolResults) == 0 {
+		b.ToolResults = nil
+	}
+}
+
+// readFileFrom reads a file from offset to size, the size a caller has just
+// measured. It returns what it could read when the file shrank under it;
+// only a read that found nothing at all is an error.
+func readFileFrom(path string, offset, size int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data := make([]byte, size-offset)
+	n, err := f.ReadAt(data, offset)
+	if err != nil && n == 0 && len(data) > 0 {
+		return nil, err
+	}
+	return data[:n], nil
 }
 
 // normaliseClaude makes one usage turn per assistant message group, which
@@ -77,12 +220,18 @@ func (s claudeTranscripts) Read(req harness.TranscriptReadRequest) (harness.Tran
 // cache buckets - because that is what was carried into the call and
 // therefore what the context held when it returned.
 func normaliseClaude(b *harness.TranscriptBatch) {
-	results := firstResults(*b)
+	b.UsageTurns, b.UnpricedCalls = claudeUsageTurns(*b), nil
+	b.Compactions = claudeCompactions(b.Records)
+}
+
+// claudeUsageTurns is the batch's usage turns, one per response.
+func claudeUsageTurns(b harness.TranscriptBatch) []harness.UsageTurn {
+	results := firstResults(b)
 	callsByTurn := map[string][]harness.TranscriptToolCall{}
 	for _, call := range b.ToolCalls {
 		callsByTurn[call.TurnSourceRef] = append(callsByTurn[call.TurnSourceRef], call)
 	}
-	b.UsageTurns, b.UnpricedCalls, b.Compactions = nil, nil, nil
+	var out []harness.UsageTurn
 	for _, t := range b.Turns {
 		calls := callsByTurn[t.SourceRef]
 		ended := t.OccurredAt
@@ -93,7 +242,7 @@ func normaliseClaude(b *harness.TranscriptBatch) {
 				ended = call.StartedAt
 			}
 		}
-		b.UsageTurns = append(b.UsageTurns, harness.UsageTurn{
+		out = append(out, harness.UsageTurn{
 			SourceRef: t.SourceRef, Offset: t.Offset,
 			StartedAt: t.OccurredAt, EndedAt: ended,
 			Outcome: t.StopReason, Model: t.Model, HarnessTurnRef: t.HarnessTurnRef,
@@ -101,10 +250,15 @@ func normaliseClaude(b *harness.TranscriptBatch) {
 			Sample: harness.UsageSample{At: t.OccurredAt, Usage: t.Usage},
 		})
 	}
+	return out
+}
 
-	// Claude marks a compaction on the summary record itself
-	// (`isCompactSummary`) or with a `compact_boundary` system record.
-	for _, rec := range b.Records {
+// claudeCompactions is the compactions the records mark. Claude marks one on
+// the summary record itself (`isCompactSummary`) or with a
+// `compact_boundary` system record.
+func claudeCompactions(records []harness.TranscriptRecord) []harness.TranscriptCompaction {
+	var out []harness.TranscriptCompaction
+	for _, rec := range records {
 		if !strings.Contains(rec.RawJSON, `"compact_boundary"`) && !strings.Contains(rec.RawJSON, `"isCompactSummary"`) {
 			continue
 		}
@@ -124,9 +278,10 @@ func normaliseClaude(b *harness.TranscriptBatch) {
 			trigger = "claude.compact_boundary"
 		}
 		if trigger != "" {
-			b.Compactions = append(b.Compactions, harness.TranscriptCompaction{Offset: rec.Offset, OccurredAt: rec.OccurredAt, Trigger: trigger})
+			out = append(out, harness.TranscriptCompaction{Offset: rec.Offset, OccurredAt: rec.OccurredAt, Trigger: trigger})
 		}
 	}
+	return out
 }
 
 // firstResults is each tool call's result, the first one the batch carries.
