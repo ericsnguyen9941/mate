@@ -70,6 +70,10 @@ func TestClassifyStartupScreenOnCapturedScreens(t *testing.T) {
 		{codex.KindCodex, "codex-0.156.1-hooks-table-review.txt", harness.StartupScreenUnrecognized},
 		{codex.KindCodex, "codex-0.156.1-hooks-sessionstart-own.txt", harness.StartupScreenUnrecognized},
 		{codex.KindCodex, "codex-0.156.1-hooks-closed-ready.txt", harness.StartupScreenReady},
+		// A model announcement codex-cli 0.162.1 drew on a real Mate start
+		// (2026-10-14): recognised so the settle can refuse it by name.
+		{codex.KindCodex, "codex-0.162.1-model-prompt.txt", harness.StartupScreenModelPrompt},
+		{claude.KindClaude, "codex-0.162.1-model-prompt.txt", harness.StartupScreenUnrecognized},
 		// A harness's dialog is not another harness's dialog: the wording is
 		// matched per profile, never as "anything with Yes/No on it".
 		{claude.KindClaude, "codex-0.154.0-trust-dialog.txt", harness.StartupScreenUnrecognized},

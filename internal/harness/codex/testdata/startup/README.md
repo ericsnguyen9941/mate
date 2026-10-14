@@ -139,3 +139,14 @@ Captured 2026-10-13 with `herdr agent read mate-matemarketing --source visible`
   ready, but 1-6 s later Codex replaces it with the hook review dialog.
 - `codex-0.162.1-hooks-review.txt` - that dialog, the same wording and footer
   as 0.156.1's.
+
+Kept by the observer chain on a real `mate mate start matemarketing --harness codex`
+(2026-10-14, codex-cli 0.162.1): the stub could not name it and Jev called it
+`dialog_other` at 1.00, three starts in a row. The text is what Jev was sent
+(`.mate/screens/codex/7a50115e7710.txt`, header removed), so the first line's
+indent was trimmed:
+
+- `codex-0.162.1-model-prompt.txt` - "Meet GPT-6 Sol", a paragraph, options
+  **1. Try new model** (highlighted) / **2. Use existing model**, footer
+  `enter/esc confirm · ⌃c quit`. Recognised as `model_prompt` so the settle refuses
+  it by name; mate never picks a model.

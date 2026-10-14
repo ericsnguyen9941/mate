@@ -58,7 +58,7 @@ func dialogOf(startup harness.StartupScreen, composer screen.ComposerState) scre
 		return screen.DialogUpdate
 	case harness.StartupScreenHooksReview:
 		return screen.DialogHooksReview
-	case harness.StartupScreenBypassDialog:
+	case harness.StartupScreenBypassDialog, harness.StartupScreenModelPrompt:
 		return screen.DialogOther
 	}
 	if composer != screen.ComposerUnknown {
@@ -96,6 +96,7 @@ var startupStates = map[harness.StartupScreen]screen.PaneState{
 	harness.StartupScreenUpdateDialog: screen.PaneUpdate,
 	harness.StartupScreenHooksReview:  screen.PaneHooksReview,
 	harness.StartupScreenBypassDialog: screen.PaneBypass,
+	harness.StartupScreenModelPrompt:  screen.PaneOther,
 }
 
 // StateOf is the pane state of a measured startup classification, and

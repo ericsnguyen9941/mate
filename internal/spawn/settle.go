@@ -256,7 +256,19 @@ func settleStartupPrompt(ctx context.Context, rt runtime.Adapter, handle runtime
 			}
 			// Fall through to the next poll, which must find the next
 			// dialog or the composer.
-		case scr.PaneDraft, scr.PaneToolPermission, scr.PaneOther, scr.PaneAuthRequired, scr.PaneQuotaExhausted, scr.PaneExited:
+		case scr.PaneOther:
+			if reading.Startup == harness.StartupScreenModelPrompt {
+				answer, err := screens.StartupAnswer(harness.StartupScreenModelPrompt)
+				if err != nil {
+					return settled, startupRefusal(handle, kind, screen,
+						fmt.Sprintf("%s shows %s (named by %s, %s), which %s has no measured answer for: %v; mate pressed nothing", kind, reading.State, reading.Source, reading.Reason, kind, err))
+				}
+				return settled, startupRefusal(handle, kind, screen,
+					fmt.Sprintf("%s asks which model to use; mate does not choose one for you and pressed nothing. Answer it once in %s yourself (%q keeps the model mate launches it with), then start again", kind, kind, answer.TargetLabel))
+			}
+			return settled, startupRefusal(handle, kind, screen,
+				fmt.Sprintf("%s startup stopped on %s (%s, %s); mate pressed nothing", kind, reading.State, reading.Source, reading.Reason))
+		case scr.PaneDraft, scr.PaneToolPermission, scr.PaneAuthRequired, scr.PaneQuotaExhausted, scr.PaneExited:
 			return settled, startupRefusal(handle, kind, screen,
 				fmt.Sprintf("%s startup stopped on %s (%s, %s); mate pressed nothing", kind, reading.State, reading.Source, reading.Reason))
 		default: // loading, busy, busy_background, unknown
