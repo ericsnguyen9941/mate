@@ -122,6 +122,7 @@ type Ingester struct {
 	d           *db.DB
 	deps        Deps
 	transcripts map[string]transcriptCache
+	settledGit  *gitFacts
 }
 
 // New builds an ingest over an opened workspace and a writable database.

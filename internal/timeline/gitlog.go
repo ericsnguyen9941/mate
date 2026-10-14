@@ -48,6 +48,7 @@ func (p *pass) ingestGit(ctx context.Context) error {
 		return nil //nolint:nilerr
 	}
 	git := p.ing.deps.git()
+	facts := p.ing.gitFacts()
 
 	for _, crew := range p.crews {
 		branch := strings.TrimSpace(crew.Meta[MetaBranch])
@@ -61,9 +62,20 @@ func (p *pass) ingestGit(ctx context.Context) error {
 			continue
 		}
 		repo, base := p.ing.ws.RepoDir(repoCfg.Path), repoCfg.DefaultBranch
-		exists, err := git.BranchExists(ctx, repo, branch)
-		if err != nil {
-			continue
+		// A closed crew stays closed (crewstate.Declare), so what git
+		// answered about its branch and its commits after it closed is not
+		// asked again; see gitFacts.
+		closed := crew.state().Closed()
+		branchKey := repoRef{repo: repo, ref: branch}
+		exists := false
+		if !closed || !facts.gone[branchKey] {
+			exists, err = git.BranchExists(ctx, repo, branch)
+			if err != nil {
+				continue
+			}
+			if closed && !exists {
+				facts.gone[branchKey] = true
+			}
 		}
 		if exists {
 			commits, err := commitsBetween(ctx, git, repo, base, branch)
@@ -76,18 +88,132 @@ func (p *pass) ingestGit(ctx context.Context) error {
 		// The commits the crew's own transcript shows it making, whether or
 		// not any poll ever caught the branch ahead. They are keyed by the
 		// full sha, so a commit both rules find is one event.
-		for _, sighting := range p.commitSightings[crew.ActorID] {
-			commit, ok := commitByRef(ctx, git, repo, sighting.sha)
-			if !ok {
-				continue
-			}
-			p.commitEvent(crew, commit, branch, repo)
+		if err := p.ingestSightings(ctx, git, facts, crew, repo, branch, closed); err != nil {
+			return err
 		}
 		if err := p.mergeEvent(ctx, git, crew, repo, base, branch, exists); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// ingestSightings records the commits a crew's transcript shows it making.
+// A sighting the timeline already has is not looked up again: the commit it
+// names is immutable and its event is on the table. Only a sighting nobody has
+// recorded costs a `git log -1`.
+func (p *pass) ingestSightings(ctx context.Context, git gitx.Git, facts *gitFacts,
+	crew crewRecord, repo, branch string, closed bool) error {
+
+	sightings := p.commitSightings[crew.ActorID]
+	if len(sightings) == 0 {
+		return nil
+	}
+	recorded, err := p.recordedCommits(ctx, crew.ActorID)
+	if err != nil {
+		return err
+	}
+	for _, sighting := range sightings {
+		if recorded.has(sighting.sha) {
+			continue
+		}
+		key := repoRef{repo: repo, ref: sighting.sha}
+		if closed && facts.missing[key] {
+			continue
+		}
+		commit, ok := commitByRef(ctx, git, repo, sighting.sha)
+		if !ok {
+			// Remembered only when git itself says the commit is not
+			// there; a git that could not run, or a pass that ran out of
+			// time, has said nothing.
+			if closed {
+				if found, err := git.RevisionExists(ctx, repo, sighting.sha); err == nil && !found {
+					facts.missing[key] = true
+				}
+			}
+			continue
+		}
+		p.commitEvent(crew, commit, branch, repo)
+	}
+	return nil
+}
+
+// recordedShas is the full shas of the commits the timeline has for one crew.
+type recordedShas []string
+
+// has reports whether ref - a full sha, or the short one `git commit` echoed -
+// names one of them.
+func (r recordedShas) has(ref string) bool {
+	if len(ref) < 7 {
+		return false
+	}
+	for _, sha := range r {
+		if strings.HasPrefix(sha, ref) {
+			return true
+		}
+	}
+	return false
+}
+
+// recordedCommits is every commit recorded for a crew: by an earlier pass,
+// or by this one a moment ago.
+func (p *pass) recordedCommits(ctx context.Context, crewActorID string) (recordedShas, error) {
+	var shas recordedShas
+	for _, e := range p.b.events {
+		if e.Kind != KindGitCommitted || e.ActorID != crewActorID {
+			continue
+		}
+		if sha, ok := e.Payload["sha"].(string); ok && sha != "" {
+			shas = append(shas, sha)
+		}
+	}
+	rows, err := p.tx.QueryContext(ctx,
+		`SELECT json_extract(payload, '$.sha') FROM event WHERE actor_id = ? AND kind = ?`,
+		crewActorID, KindGitCommitted)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sha sql.NullString
+		if err := rows.Scan(&sha); err != nil {
+			return nil, err
+		}
+		if sha.Valid && sha.String != "" {
+			shas = append(shas, sha.String)
+		}
+	}
+	return shas, rows.Err()
+}
+
+// gitFacts are answers git gave about closed crews that the ingest keeps for
+// the life of the Ingester instead of asking for again every five seconds.
+// Measured 2026-10-14 on a live workspace of 105 closed crews: asking cost
+// 2.2 s of git per pass, inside the write transaction, and recorded nothing.
+//
+// Only answers about git are kept, never what the timeline holds: what is
+// recorded is read from the table inside the pass's transaction, so a pass
+// that rolls back or a `mate reindex` that empties the table is never
+// mistaken for one that wrote.
+//
+// Both answers are negative, and both are about a crew that can no longer
+// work - a closed crew stays closed. The one thing given up: a branch
+// recreated under a closed crew's name while this process runs is not read.
+// Anything committed there is not the crew's work.
+type gitFacts struct {
+	// gone is the closed crews' branches git said are not there.
+	gone map[repoRef]bool
+	// missing is the closed crews' transcript commits git cannot resolve.
+	missing map[repoRef]bool
+}
+
+type repoRef struct{ repo, ref string }
+
+func (i *Ingester) gitFacts() *gitFacts {
+	if i.settledGit == nil {
+		i.settledGit = &gitFacts{gone: map[repoRef]bool{}, missing: map[repoRef]bool{}}
+	}
+	return i.settledGit
 }
 
 func (p *pass) commitEvent(crew crewRecord, commit Commit, branch, repo string) {
@@ -120,6 +246,12 @@ func (p *pass) mergeEvent(ctx context.Context, git gitx.Git, crew crewRecord,
 	repo, base, branch string, branchExists bool) error {
 
 	if crew.state() != crewstate.StateFinished {
+		return nil
+	}
+	// A merge already on the table is decided: the event is keyed by the
+	// crew alone and the task row keeps its pointer, so asking git again
+	// could only produce the same event.
+	if _, recorded := p.w.eventID(ctx, dedup(KindMergeDone, crew.ActorID)); recorded {
 		return nil
 	}
 	tip := ""
