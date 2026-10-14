@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/harness"
@@ -99,7 +98,7 @@ func reviewRecordPath(w *store.Workspace, project, reviewer string) (string, err
 	if err := store.ValidateCrewID(reviewer); err != nil {
 		return "", err
 	}
-	return w.Resolve(filepath.Join(filepath.Dir(w.CrewReport(project, reviewer)), "review.meta"))
+	return w.Resolve(w.CrewReviewMeta(project, reviewer))
 }
 
 func reviewFingerprint(ctx context.Context, w *store.Workspace, g gitx.Git, project, crew string) (map[string]string, error) {
@@ -223,7 +222,7 @@ func checkReview(ctx context.Context, w *store.Workspace, g gitx.Git, project, c
 	if err != nil {
 		return nil, "", err
 	}
-	if reviewVerdict(string(data)) != "pass" {
+	if store.ReviewVerdict(string(data)) != "pass" {
 		return nil, "", fmt.Errorf("review %s did not pass; read %s", reviewer, w.CrewReport(project, reviewer))
 	}
 	summary, err := reportSummary(string(data))
@@ -231,12 +230,4 @@ func checkReview(ctx context.Context, w *store.Workspace, g gitx.Git, project, c
 		return nil, "", err
 	}
 	return current, summary, nil
-}
-
-func reviewVerdict(text string) string {
-	_, tail, ok := strings.Cut("\n"+text, "\n## Verdict\n")
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(strings.SplitN(strings.TrimSpace(tail), "\n", 2)[0])
 }

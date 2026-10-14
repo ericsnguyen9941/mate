@@ -144,7 +144,7 @@ async function boot(body = fixture(), hash = "#/p/shop/t/test-build") {
   const doc = { activeElement: null };
   doc.root = new Node("body", doc);
   const ids = {};
-  for (const id of ["view", "crumbs", "live"]) { ids[id] = new Node("div", doc); doc.root.appendChild(ids[id]); }
+  for (const id of ["view", "crumbs", "to-office", "live"]) { ids[id] = new Node("div", doc); doc.root.appendChild(ids[id]); }
   const liveText = new Node("span", doc); liveText.className = "text"; ids.live.appendChild(liveText);
   doc.getElementById = id => ids[id];
   doc.createElement = tag => new Node(tag, doc);
@@ -165,7 +165,7 @@ async function boot(body = fixture(), hash = "#/p/shop/t/test-build") {
   for (const file of ["humanize.js", "app.js"]) vm.runInContext(fs.readFileSync(path.join(__dirname, "ui", file), "utf8"), context);
   const flush = () => new Promise(resolve => setImmediate(resolve));
   await flush();
-  return { doc, view: ids.view, window, requests, intervals, flush,
+  return { doc, view: ids.view, officeLink: ids["to-office"], window, requests, intervals, flush,
     async refresh(next = current, changed = false) {
       current = next;
       const reply = pendingEvents.shift();
@@ -699,6 +699,11 @@ test("a skill pin carries the skill's place in the skills list, on every stage t
   assert.deepEqual(keyed(card, "data-skills", "true").querySelectorAll("li").map(pinsOf), [["1"], ["2"]]);
   assert.deepEqual(keyed(card, "data-skill", "alpha").querySelectorAll(".sc-load").map(chip => chip.textContent), ["#1Read instructions", "#3Respond"]);
   assert.match(keyed(card, "data-skill", "beta").textContent, /read SKILL\.md · loaded in#2Mixed activity/);
+});
+
+test("the header links to Mate Office, opened on the crew this page shows", async () => {
+  const app = await boot();
+  assert.equal(app.officeLink.getAttribute("href"), "office/#crew/shop/test-build");
 });
 
 test("a /usage suffix opens the task tier and scrolls to the token card once, keeping the plain crumb", async () => {

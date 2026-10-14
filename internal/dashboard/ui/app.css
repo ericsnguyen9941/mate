@@ -197,6 +197,19 @@ nav.crumbs a:hover { border-bottom-color: var(--accent); }
 
 nav.crumbs .sep { color: var(--muted); }
 
+a.to-office {
+  flex: none;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-decoration: none;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+a.to-office:hover { color: var(--ink); border-color: var(--accent); }
+
 .live {
   display: inline-flex;
   align-items: center;

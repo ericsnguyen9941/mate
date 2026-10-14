@@ -68,7 +68,7 @@ func TestLiveIndependentReviewRejectsFalseHandback(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Logf("report:\n%s", data)
-				if reviewVerdict(string(data)) != "changes-requested" {
+				if store.ReviewVerdict(string(data)) != "changes-requested" {
 					t.Fatalf("bad implementation not rejected: %s", data)
 				}
 				summary, err := reportSummary(string(data))

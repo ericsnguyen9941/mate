@@ -567,11 +567,27 @@
     }, [el("b", { text: tok(projectTokens(name)) }), " tokens"]);
   }
 
-  // A cabinet row's final state: merged when the timeline saw the merge,
-  // otherwise the crew's own closing state (finished, failed).
+  // A reviewer's conclusion, from the Verdict line its report ends with.
+  var REVIEW_FINAL = {
+    pass: { word: "approved", tone: "t-ok", icon: "merged", why: "the review passed" },
+    "changes-requested": { word: "changes requested", tone: "t-wait", icon: "review", why: "the review asked for changes" },
+    incomplete: { word: "review incomplete", tone: "t-gone", icon: "review", why: "the reviewer could not check everything" }
+  };
+
+  // A cabinet row's final state, in the reader's words rather than the
+  // crew state machine's. A `failed` crew whose meta says why is a start
+  // that never came up, the one row that reads red. A reviewer says what it
+  // concluded, however it was closed. Otherwise: merged when the timeline
+  // saw the merge, and a `failed` crew is work closed with --discard - a
+  // decision, not a fault.
   function finalState(t) {
-    if (t.merged_at) return { word: "merged", tone: "t-ok", icon: "merged" };
-    if (t.close_state === "failed") return { word: "failed", tone: "t-bad", icon: "failed" };
+    if (t.close_state === "failed" && t.failed_reason) return { word: "didn't start", tone: "t-bad", icon: "failed", why: t.failed_reason };
+    if (t.review) {
+      return REVIEW_FINAL[t.review] || { word: t.review === "pending" ? "no verdict" : String(t.review).replace(/-/g, " "),
+        tone: "t-gone", icon: "review", why: t.review === "pending" ? "the review closed without a Verdict" : "the review's own Verdict" };
+    }
+    if (t.merged_at) return { word: "merged", tone: "t-ok", icon: "merged", why: "the work landed" };
+    if (t.close_state === "failed") return { word: "discarded", tone: "t-gone", icon: "gone", why: "closed without landing its work" };
     if (t.close_state) return { word: String(t.close_state).replace(/_/g, " "), tone: "t-gone", icon: "merged" };
     return { word: "closed", tone: "t-gone", icon: "merged" };
   }
@@ -1366,7 +1382,7 @@
               el("small", { text: t.effort ? "effort: " + t.effort : "effort ?",
                 title: "Requested effort; runtime effort may differ" })
             ]),
-            el("span", null, chip(f)),
+            el("span", { title: f.why || null }, chip(f)),
             el("span", { class: "td", title: closedAt(t) }, [age(closedAt(t)) + " ago", el("small", { text: monthDay(closedAt(t)) })]),
             el("span", { class: "tt2", text: tok(t.tokens ? t.tokens.total : null) }),
             usageLink(name, t.crew, "tu")
