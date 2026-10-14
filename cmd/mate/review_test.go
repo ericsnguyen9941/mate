@@ -75,7 +75,7 @@ func TestReviewRejectsChangedCommitOrAcceptanceContract(t *testing.T) {
 
 func TestReviewVerdictDoesNotInferApprovalFromProse(t *testing.T) {
 	for _, text := range []string{"tests pass", "## Verdict\npass with reservations", "## Verdict\nchanges-requested"} {
-		if reviewVerdict(text) == "pass" {
+		if store.ReviewVerdict(text) == "pass" {
 			t.Fatal(text)
 		}
 	}

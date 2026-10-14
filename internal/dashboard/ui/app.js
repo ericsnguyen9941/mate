@@ -322,6 +322,7 @@
   var view = document.getElementById("view");
   var crumbs = document.getElementById("crumbs");
   var livePill = document.getElementById("live");
+  var officeLink = document.getElementById("to-office");
 
   var route = { tier: "workspace", project: "", crew: "" };
   var data = null;             // the current page's body
@@ -364,7 +365,16 @@
 
   // ------------------------------------------------------------ the header
 
+  // officeHref opens Mate Office on what this page shows: a task's crew
+  // drawer, the Mate's drawer, or the whole floor (docs/dashboard.md 11).
+  function officeHref(r) {
+    if (r.tier === "task") return "office/#crew/" + encodeURIComponent(r.project) + "/" + encodeURIComponent(r.crew);
+    if (r.tier === "mate") return "office/#mate/" + encodeURIComponent(r.project);
+    return "office/";
+  }
+
   function renderCrumbs() {
+    if (officeLink) officeLink.setAttribute("href", officeHref(route));
     crumbs.textContent = "";
     crumbs.appendChild(el("a", { href: link("/"), text: "workspace" }));
     if (route.tier !== "workspace") {

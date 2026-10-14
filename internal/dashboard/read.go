@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/query"
+	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
 
@@ -231,9 +233,27 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 		out[i].Harness = facts.harness
 		if meta, err := s.ws.ReadCrewMeta(project, out[i].Crew); err == nil {
 			out[i].Model, out[i].Effort = meta["model"], meta["effort"]
+			out[i].FailedReason = meta["failed_reason"]
 		}
+		out[i].Review = s.reviewVerdict(project, out[i].Crew)
 	}
 	return out, nil
+}
+
+// reviewVerdict is Task.Review: "" unless the crew has review.meta, then
+// its report's Verdict, or "pending" while the report has none.
+func (s *Server) reviewVerdict(project, crew string) string {
+	if _, err := os.Stat(s.ws.CrewReviewMeta(project, crew)); err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(s.ws.CrewReport(project, crew))
+	if err != nil {
+		return "pending"
+	}
+	if v := store.ReviewVerdict(string(data)); v != "" {
+		return v
+	}
+	return "pending"
 }
 
 // task is one crew's ledger row, or a 404 naming the crew.

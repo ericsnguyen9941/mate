@@ -311,17 +311,38 @@ test("the filing cabinet lists finished tasks by drawer, with their final state"
   assert.equal(d.querySelector("h2").text, "Filing cabinet");
   assert.match(d.querySelector(".role").text, /shop · finished tasks/);
   assert.match(d.querySelector(".dstate").text, /4 finished.*oldest Sep 10/);
-  assert.match(d.querySelector(".csum").text, /3 merged.*1 failed.*708\.9k tokens/);
+  assert.match(d.querySelector(".csum").text, /3 merged.*1 discarded.*708\.9k tokens/);
   const groups = d.querySelectorAll(".cg").map(g => [g.querySelector(".cgh b").text, g.querySelectorAll(".tn").map(n => n.text)]);
   assert.deepEqual(groups, [
     ["Top drawer", ["login-flow", "search-facets"]],
     ["Middle drawer", ["order-email"]],
     ["Bottom drawer", ["healthcheck"]]
   ]);
-  const failed = d.querySelectorAll(".tr").find(r => r.querySelector(".tn").text === "search-facets");
-  assert.ok(failed.querySelector(".chip").classes.includes("t-bad"));
-  assert.match(failed.text, /failed.*4d ago.*Sep 29.*133k/);
+  const discarded = d.querySelectorAll(".tr").find(r => r.querySelector(".tn").text === "search-facets");
+  assert.ok(!discarded.querySelector(".chip").classes.includes("t-bad"), "work thrown away on purpose is not an error");
+  assert.match(discarded.text, /discarded.*4d ago.*Sep 29.*133k/);
   assert.ok(roomOf(app.root, "shop").querySelector(".cab").classes.includes("open"), "its top drawer is pulled out");
+});
+
+test("the cabinet says what a review concluded and tells a start that never came up from discarded work", async () => {
+  const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "testdata/office/busy.json"), "utf8"));
+  const closed = fx.projects.shop.tasks.filter(t => t.closed);
+  // A reviewer is closed like any crew, `failed` after --discard included;
+  // what it concluded is what the row says.
+  Object.assign(closed[0], { review: "pass", merged_at: "" });
+  Object.assign(closed[1], { review: "changes-requested" });
+  Object.assign(closed[2], { review: "pending", merged_at: "", close_state: "finished" });
+  Object.assign(closed[3], { review: "pending", close_state: "failed", merged_at: "", failed_reason: "herdr refused the launch" });
+  const app = await boot({ fixture: fx, hash: "#cabinet/shop" });
+  const rows = Object.fromEntries(app.drawer().querySelectorAll(".tr").map(r => [r.querySelector(".tn").text, r]));
+  const word = crew => rows[crew].querySelector(".chip").text;
+  const tone = crew => rows[crew].querySelector(".chip").classes.find(c => c.startsWith("t-"));
+  assert.deepEqual([word("login-flow"), tone("login-flow")], ["approved", "t-ok"]);
+  assert.deepEqual([word("search-facets"), tone("search-facets")], ["changes requested", "t-wait"]);
+  assert.deepEqual([word("order-email"), tone("order-email")], ["no verdict", "t-gone"]);
+  assert.deepEqual([word("healthcheck"), tone("healthcheck")], ["didn't start", "t-bad"]);
+  assert.equal(rows["healthcheck"].querySelector(".chip").parentNode.getAttribute("title"), "herdr refused the launch");
+  assert.ok(!app.drawer().text.includes("failed"), "no row reads failed");
 });
 
 test("the cabinet names the harness, observed model and requested effort, retaining unknowns", async () => {

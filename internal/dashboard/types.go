@@ -159,6 +159,17 @@ type Task struct {
 	// LastModel is the observed model; absent settings remain unknown.
 	Model  string `json:"model,omitempty"`
 	Effort string `json:"effort,omitempty"`
+	// Review is set only for a reviewer crew (`mate review`, which leaves
+	// review.meta beside the crew's report): the first line of the report's
+	// Verdict section - pass, changes-requested or incomplete - or
+	// "pending" while there is none. A reviewer is closed `finished` or
+	// `failed` like any crew; this is what it concluded.
+	Review string `json:"review,omitempty"`
+	// FailedReason is crew meta's failed_reason=, written when a spawn never
+	// came up. A crew closed with `crew stop --discard` is `failed` too and
+	// has none, which is how a page tells a broken start from work thrown
+	// away.
+	FailedReason string `json:"failed_reason,omitempty"`
 }
 
 // InboxItem is one thing still waiting on a decision, flattened from

@@ -121,6 +121,8 @@ The UI shows newest exchanges first and reveals older ones in batches of 20.
 `age_ms` is `closed_at - spawned_at` for a closed task and `now - spawned_at` for an open one.
 `harness` is the crew's `actor.harness`, the same source the Mate card reads, so a page can name the harness of a recording whose telemetry carries no version.
 `closed` is true when the task has a `close_state` or a `closed_at`.
+`review` is set only for a reviewer crew, one `mate review` started and so left `review.meta` beside its report: the first line of the report's `## Verdict` section (`pass`, `changes-requested`, `incomplete`), or `pending` while there is none. A reviewer is closed `finished` or `failed` like any crew; `review` is what it concluded.
+`failed_reason` is crew meta's `failed_reason=`, written when a spawn never came up; a crew closed with `crew stop --discard` is `failed` with none.
 
 `inbox` is `box.Inbox` flattened through `query.LoadBox`, oldest first, the same rows in the same order the console's rail draws.
 A failed box read leaves `inbox` empty and puts the reason in `inbox_error` rather than failing the page.
@@ -563,6 +565,7 @@ One loop, one request at a time: `GET /api/events?since=<the last_event_id the p
 On any `events` or `now` the page re-fetches only the endpoint the current tier reads and re-renders, keeping scroll position, the expanded turns and keyboard focus.
 Because the API is cached per `last_event_id` and the page always polls from the id its own bytes carry, a re-fetch after an event that changed nothing it shows costs the server a cache hit.
 
+The header links to Mate Office (section 11), opened on the crew drawer for a task page, the Mate drawer for a Mate page, and the whole floor otherwise.
 The header carries the state as words: `live · HH:MM:SS` after every answered poll, `stale · <reason>` when one fails, where the reason is the API's own `reason` or, for a transport failure, "the dashboard is not answering".
 A failed poll retries every 3 seconds rather than spinning.
 
@@ -618,5 +621,10 @@ The typefaces are the design's - Geist, Geist Mono and Bricolage Grotesque - as 
 All three are under the SIL Open Font License 1.1; the licences are embedded from `internal/dashboard/fontlicenses/` and served at `/office/fonts/licenses/<Family>-OFL.txt`, kept outside `ui/` because they name web addresses.
 
 `internal/dashboard/ui_office_test.go` proves the page, its assets, the fonts and their licences are served from the binary and tests `/api/now`; it runs `ui_office_test.cjs`, which drives `office.js` in node against `testdata/office/busy.json` (built by `gen.cjs` beside it) for the drawers, the Apps block, the stuck crew, unknowns and the phone sheet.
+
+A cabinet row's final state is in the reader's words, not the crew state machine's, which `crew list` and the console keep.
+A `failed` task with a `failed_reason` is `didn't start`, the one red final state, with the reason as its tooltip.
+Otherwise a reviewer shows its `review` however it was closed: `approved` (pass), `changes requested`, `review incomplete`, or `no verdict`.
+Then a task the timeline saw merged is `merged`, a `failed` task is `discarded`, because closing with `--discard` is a decision rather than a fault, and any other `close_state` is shown as it is, `finished` for most.
 
 The Office filing cabinet includes a `Harness / model / effort` column. Harness comes from the recorded actor, model prefers `last_model` (observed) and falls back to `model` (requested launch setting), and `effort` is the requested launch setting retained in crew meta. These optional fields are omitted when unavailable; the cabinet displays `?` rather than guessing defaults. Requested effort is not proof of runtime effort. The cabinet is wider on desktop and its table scrolls horizontally on narrow screens.

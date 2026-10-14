@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/db"
+	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
 
@@ -600,5 +602,55 @@ func TestTaskMissingLaunchSettingsRemainUnknown(t *testing.T) {
 	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
 	if got.Tasks[0].Model != "" || got.Tasks[0].Effort != "" {
 		t.Fatalf("invented launch settings: %+v", got.Tasks[0])
+	}
+}
+
+func TestTaskCarriesAReviewersVerdict(t *testing.T) {
+	// A response is cached per event id, so each case gets its own fixture.
+	for _, c := range []struct {
+		name           string
+		reviewer       bool
+		report, review string
+	}{
+		{name: "not a reviewer", review: ""},
+		{name: "no report yet", reviewer: true, review: "pending"},
+		{name: "report without a Verdict", reviewer: true, report: "## Summary\nStill reading.\n", review: "pending"},
+		{name: "Verdict", reviewer: true, report: "## Summary\nTwo gaps.\n\n## Verdict\nchanges-requested\nThe retry is untested.\n", review: "changes-requested"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			if c.reviewer {
+				if err := store.WriteMeta(f.ws.CrewReviewMeta(fixtureProject, fixtureCrew), map[string]string{"head": "abc"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.report != "" {
+				if err := os.WriteFile(f.ws.CrewReport(fixtureProject, fixtureCrew), []byte(c.report), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var got ProjectResponse
+			f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
+			if got.Tasks[0].Review != c.review {
+				t.Fatalf("review = %q, want %q", got.Tasks[0].Review, c.review)
+			}
+		})
+	}
+}
+
+func TestTaskSaysWhyASpawnFailed(t *testing.T) {
+	f := newFixture(t)
+	meta, err := f.ws.ReadCrewMeta(fixtureProject, fixtureCrew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta["state"], meta["failed_reason"] = "failed", "herdr refused the launch"
+	if err := f.ws.WriteCrewMeta(fixtureProject, fixtureCrew, meta); err != nil {
+		t.Fatal(err)
+	}
+	var got ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
+	if got.Tasks[0].FailedReason != "herdr refused the launch" {
+		t.Fatalf("failed_reason = %q", got.Tasks[0].FailedReason)
 	}
 }
