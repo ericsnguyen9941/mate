@@ -99,7 +99,11 @@ func TestMateSettingsTurnAutoMemoryOff(t *testing.T) {
 }
 
 func TestCrewSettingsTurnAutoMemoryOffAndWireNoHooks(t *testing.T) {
-	keys := settingsKeys(t, CrewClaudeSettings())
+	data, err := CrewClaudeSettings([]byte(`{"hooks":{"Stop":[]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := settingsKeys(t, data)
 	if got := string(keys[AutoMemoryKey]); got != "false" {
 		t.Fatalf("%s = %q, want false", AutoMemoryKey, got)
 	}

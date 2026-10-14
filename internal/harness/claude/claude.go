@@ -280,9 +280,19 @@ func (c Claude) Prepare(_ context.Context, req harness.PrepareRequest) (harness.
 	// file, and decision 9 wants session_id= recorded from the first day,
 	// so the crew gets a settings file of its own. It wires no hooks (the
 	// Mate's hooks are the Mate's) and turns auto-memory off.
+	// It also carries the captain's apiKeyHelper and env, which
+	// --setting-sources project would otherwise drop (CrewInheritedSettings).
 	launch.settingsPath = filepath.Join(req.StateDir, ClaudeSettingsFile)
+	user, userPath, err := captainSettings(c.ConfigDir)
+	if err != nil {
+		return harness.Prepared{}, err
+	}
+	settings, err := CrewClaudeSettings(user)
+	if err != nil {
+		return harness.Prepared{}, fmt.Errorf("%s: %w", userPath, err)
+	}
 	return harness.Prepared{
-		Files:       []harness.LaunchFile{{Path: launch.settingsPath, Data: CrewClaudeSettings()}},
+		Files:       []harness.LaunchFile{{Path: launch.settingsPath, Data: settings}},
 		SessionID:   sessionID,
 		ContextPath: req.ContextPath,
 		Launch:      launch,

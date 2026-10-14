@@ -498,6 +498,8 @@ type crewCase struct {
 	relaunch bool
 	// autocompact, when set, is the workspace's crew.autocompact.
 	autocompact int
+	// captainSettings, when set, is the settings.json of the config dir.
+	captainSettings string
 }
 
 func TestLaunchCharacterizationCrew(t *testing.T) {
@@ -505,6 +507,10 @@ func TestLaunchCharacterizationCrew(t *testing.T) {
 		{name: "crew-claude-default", kind: claude.KindClaude},
 		{name: "crew-claude-model-effort", kind: claude.KindClaude, model: "sonnet", effort: harness.EffortMax},
 		{name: "crew-claude-config-dir", kind: claude.KindClaude, env: map[string]string{claude.ClaudeConfigDirEnv: "dir"}},
+		// The captain's apiKeyHelper and env follow the Crew into its own
+		// settings, from CLAUDE_CONFIG_DIR; the captain's hooks do not.
+		{name: "crew-claude-captain-auth", kind: claude.KindClaude, env: map[string]string{claude.ClaudeConfigDirEnv: "dir"},
+			captainSettings: `{"apiKeyHelper":"/usr/local/bin/proxy-key","env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8317"},"hooks":{"Stop":[]}}`},
 		{name: "crew-claude-relaunch", kind: claude.KindClaude, model: "sonnet", effort: harness.EffortHigh, relaunch: true},
 		{name: "crew-claude-autocompact-set", kind: claude.KindClaude, autocompact: 200000, relaunch: true},
 		{name: "crew-claude-autocompact-off", kind: claude.KindClaude, autocompact: -1},
@@ -525,6 +531,11 @@ func TestLaunchCharacterizationCrew(t *testing.T) {
 			f := newLaunchFixture(t, true, env)
 			if tc.autocompact != 0 {
 				setCrewAutocompact(t, f.w, tc.autocompact)
+			}
+			if tc.captainSettings != "" {
+				if err := os.WriteFile(filepath.Join(env[claude.ClaudeConfigDirEnv], claude.ClaudeSettingsFile), []byte(tc.captainSettings), 0o644); err != nil {
+					t.Fatal(err)
+				}
 			}
 			f.pinHead(t)
 			f.before = f.collect(t)

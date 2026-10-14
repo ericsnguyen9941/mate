@@ -31,3 +31,31 @@ File settings riêng của crew (`--settings crews/<id>/settings.json`) vẫn n�
 `--setting-sources project`: một file chỉ chứa `{"env":{"MATE_PROBE_FLAG":"from-flag-settings"}}`
 truyền bằng `--settings`, cùng `--setting-sources project --dangerously-skip-permissions`,
 và `echo $MATE_PROBE_FLAG` trong phiên in `from-flag-settings`.
+
+## 2026-10-15: crew vẫn đi qua cliproxy sau khi chép `apiKeyHelper` và `env`
+
+Review PR #59 chỉ ra `--setting-sources project` bỏ `apiKeyHelper` và `env` của
+`~/.claude/settings.json`, nên crew rời cliproxy (127.0.0.1:8317) và đi thẳng
+api.anthropic.com bằng login keychain. Bản sửa: `CrewClaudeSettings` chép hai
+khoá đó từ settings.json của config dir vào `crews/<id>/settings.json`.
+
+Đo trên máy captain, Claude Code 2.1.292. File settings sinh bằng chính
+`claude.Claude{}.Prepare` (RoleCrew) của bản sửa đọc `~/.claude/settings.json` thật:
+khoá `apiKeyHelper`, `autoMemoryEnabled`, `env` (`ANTHROPIC_BASE_URL`,
+`ANTHROPIC_DEFAULT_{HAIKU,OPUS,SONNET}_MODEL`). Lệnh chạy giống argv crew, env đã
+bỏ `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `CLAUDECODE`:
+
+```
+claude -p "Reply with the single word ok." --dangerously-skip-permissions \
+  --settings <file> --setting-sources project --autocompact 160000 --model haiku
+```
+
+lsof theo pid mỗi 0,25 s trong lúc chạy:
+
+| `--settings` | kết nối tới 127.0.0.1:8317 | kết quả |
+|---|---|---|
+| file của bản sửa | có (`127.0.0.1:55107->127.0.0.1:8317`), kèm cảnh báo "claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set" | `ok` |
+| `{"autoMemoryEnabled": false}` (như trước bản sửa) | 0 lần | `ok` |
+
+Các kết nối :443 có ở cả hai lượt. Chưa đo: crew thật spawn dưới Herdr bằng
+binary mới. Lượt này phải làm trước khi cài binary.
