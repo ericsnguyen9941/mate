@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/telemetry"
 )
 
 // claudeTailFixture is a synthetic live transcript built to stress a tail
@@ -159,6 +160,66 @@ func TestClaudeReadOfAGrownTranscriptRereadsWhatItCannotCarryOn(t *testing.T) {
 	shortWant := readClaude(t, harness.TranscriptReadRequest{Path: path})
 	if got := readClaude(t, harness.TranscriptReadRequest{Path: path, Prior: longer, Grown: true}); !reflect.DeepEqual(got, shortWant) {
 		t.Errorf("a prior that consumed more than the file holds was carried on from\n got %s\nwant %s", describeBatch(got), describeBatch(shortWant))
+	}
+}
+
+// Telemetry emits each fact once: a second call from the cursor the first
+// returned carries only what lies at or past it - including the response of
+// the group the first batch withheld, which starts exactly at that cursor -
+// and the two calls together are the facts of one whole read.
+func TestClaudeTelemetryFromACursorEmitsOnlyNewFacts(t *testing.T) {
+	data := []byte(claudeTailFixture)
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	cut := bytes.Index(data, []byte(`{"type":"user","uuid":"u3"`)) + 10
+	if err := os.WriteFile(path, data[:cut], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := claudeTranscripts{}
+	prior := readClaude(t, harness.TranscriptReadRequest{Path: path})
+	if prior.OpenSourceRef != "msg_2" {
+		t.Fatalf("the cut left %q open, want msg_2", prior.OpenSourceRef)
+	}
+	first, err := src.Telemetry(harness.TelemetryRequest{Path: path, Size: int64(cut), Changed: true, Batch: prior})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Offset != prior.ConsumedBytes {
+		t.Fatalf("first cursor %d, want %d", first.Offset, prior.ConsumedBytes)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	grown := readClaude(t, harness.TranscriptReadRequest{Path: path, Prior: prior, Grown: true})
+	second, err := src.Telemetry(harness.TelemetryRequest{Path: path, Size: int64(len(data)), Offset: first.Offset, Changed: true, Batch: grown})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Offset != grown.ConsumedBytes {
+		t.Fatalf("second cursor %d, want %d", second.Offset, grown.ConsumedBytes)
+	}
+	for _, f := range second.Facts {
+		if f.SourceOffset < first.Offset {
+			t.Errorf("fact %s %s at %d was emitted again from cursor %d", f.Kind, f.ID, f.SourceOffset, first.Offset)
+		}
+	}
+	key := func(f telemetry.Fact) string { return fmt.Sprintf("%s/%s/%d", f.Kind, f.ID, f.SourceOffset) }
+	got := map[string]int{}
+	for _, f := range append(append([]telemetry.Fact(nil), first.Facts...), second.Facts...) {
+		got[key(f)]++
+	}
+	want := map[string]int{}
+	for _, f := range NormalizedTelemetry(grown) {
+		want[key(f)]++
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("facts across the two calls = %v, want one of each of %v", got, want)
+	}
+	if got["response/msg_2/"+fmt.Sprint(first.Offset)] != 1 {
+		t.Errorf("the withheld group's response at the first cursor was not emitted once: %v", got)
+	}
+	again, err := src.Telemetry(harness.TelemetryRequest{Path: path, Size: int64(len(data)), Offset: second.Offset, Changed: true, Batch: grown})
+	if err != nil || len(again.Facts) != 0 {
+		t.Errorf("a call at the batch's own cursor gave %d facts (%v)", len(again.Facts), err)
 	}
 }
 

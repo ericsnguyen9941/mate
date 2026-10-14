@@ -297,14 +297,16 @@ func firstResults(b harness.TranscriptBatch) map[string]harness.TranscriptToolRe
 
 // Telemetry implements TranscriptSource. Claude's transcript carries no
 // native execution, process or timing record, so its telemetry is the
-// normalised facts its ledger already verified, emitted again whenever the
-// ledger moved.
+// normalised facts its ledger already verified, from the telemetry cursor
+// on, whenever the ledger moved. The cursor is the batch's ConsumedBytes,
+// which stops at the first record of a withheld group, so that group's
+// facts - all at or after it - come with the next call.
 func (s claudeTranscripts) Telemetry(req harness.TelemetryRequest) (harness.TelemetryUpdate, error) {
 	up := harness.TelemetryUpdate{Offset: req.Offset, State: req.State, Gaps: []string{
 		"child_usage_unavailable", "native_execution_unavailable", "native_process_unavailable", "native_timing_unavailable",
 	}}
 	if req.Offset != req.Batch.ConsumedBytes || req.Changed {
-		up.Facts = NormalizedTelemetry(req.Batch)
+		up.Facts = normalizedTelemetrySince(req.Batch, req.Offset)
 		up.Offset = req.Batch.ConsumedBytes
 	}
 	return up, nil
@@ -314,8 +316,17 @@ func (s claudeTranscripts) Telemetry(req harness.TelemetryRequest) (harness.Tele
 // already verified by their transcript adapter. No native process/timing claims
 // are made for this fallback.
 func NormalizedTelemetry(tb harness.TranscriptBatch) []telemetry.Fact {
+	return normalizedTelemetrySince(tb, 0)
+}
+
+// normalizedTelemetrySince is the batch's facts whose source record lies at
+// or after since. A result's fact still names its call, wherever that is.
+func normalizedTelemetrySince(tb harness.TranscriptBatch, since int64) []telemetry.Fact {
 	var out []telemetry.Fact
 	for _, t := range tb.Turns {
+		if t.Offset < since {
+			continue
+		}
 		off := t.Offset
 		f := telemetry.Fact{Version: telemetry.Version, ID: t.SourceRef, Kind: "response", SourceRef: t.SourceRef, SourceOffset: off, OccurredAt: t.OccurredAt, MeasurementKind: "normalized", HarnessTurnRef: t.HarnessTurnRef, ResponseID: t.SourceRef, Model: t.Model, Text: t.Text, InputTokens: t.Usage.Input, CacheReadTokens: t.Usage.CacheRead, CacheWriteTokens: t.Usage.CacheWrite, OutputTokens: t.Usage.Output, ReasoningTokens: t.Usage.Reasoning, ContextTokens: t.Usage.ContextTokens(), LedgerRefOffset: &off}
 		out = append(out, f)
@@ -323,10 +334,16 @@ func NormalizedTelemetry(tb harness.TranscriptBatch) []telemetry.Fact {
 	calls := map[string]harness.TranscriptToolCall{}
 	for _, c := range tb.ToolCalls {
 		calls[c.SourceRef] = c
+		if c.Offset < since {
+			continue
+		}
 		at := c.StartedAt
 		out = append(out, telemetry.Fact{Version: telemetry.Version, ID: c.SourceRef, Kind: "tool_call", SourceRef: c.SourceRef, SourceOffset: c.Offset, OccurredAt: at, MeasurementKind: "normalized", ResponseID: c.TurnSourceRef, WrapperRef: c.SourceRef, Tool: c.ToolName, Command: c.InputJSON, StartedAt: &at})
 	}
 	for _, r := range tb.ToolResults {
+		if r.Offset < since {
+			continue
+		}
 		at := r.CompletedAt
 		c := calls[r.CallID]
 		f := telemetry.Fact{Version: telemetry.Version, ID: r.CallID, Kind: "tool_result", SourceRef: r.SourceRef, SourceOffset: r.Offset, OccurredAt: at, MeasurementKind: "normalized", ResponseID: c.TurnSourceRef, WrapperRef: r.CallID, Tool: c.ToolName, Command: c.InputJSON, CompletedAt: &at, Output: harness.OutputFact(r.OutputText, nil)}
@@ -336,7 +353,7 @@ func NormalizedTelemetry(tb harness.TranscriptBatch) []telemetry.Fact {
 		out = append(out, f)
 	}
 	for _, r := range tb.Records {
-		if r.Kind != harness.TranscriptKindUser {
+		if r.Kind != harness.TranscriptKindUser || r.Offset < since {
 			continue
 		}
 		var p struct {

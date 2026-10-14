@@ -2,12 +2,15 @@ package pi
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/telemetry"
 )
 
 const (
@@ -173,5 +176,76 @@ func TestPiLocatesTheSessionByID(t *testing.T) {
 	loc, reason := src.Locate(req)
 	if reason != "" || loc.Path != path {
 		t.Fatalf("Locate = %+v, %q; want %s", loc, reason, path)
+	}
+}
+
+// Telemetry emits each fact once: a second call from the cursor the first
+// returned carries only what lies at or past it, and the two together are
+// the facts of one whole read. The context facts come from the batch the
+// ledger already parsed, not from a second parse of the file.
+func TestPiTelemetryFromACursorEmitsOnlyNewFacts(t *testing.T) {
+	data, err := os.ReadFile(sessionPath(maxSession))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	// Cut where the first half ends on a line, so both halves carry facts.
+	cut := bytes.IndexByte(data[len(data)/2:], '\n') + len(data)/2 + 1
+	if err := os.WriteFile(path, data[:cut], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := piTranscripts{}
+	prior, err := src.Read(harness.TranscriptReadRequest{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := src.Telemetry(harness.TelemetryRequest{Path: path, Size: int64(cut), Changed: true, Batch: prior})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	whole, err := src.Read(harness.TranscriptReadRequest{Path: path, Prior: prior, Grown: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The file is gone: Telemetry has everything it needs in the batch.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	second, err := src.Telemetry(harness.TelemetryRequest{Path: path, Size: int64(len(data)), Offset: first.Offset, Changed: true, Batch: whole})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Offset != prior.ConsumedBytes || second.Offset != whole.ConsumedBytes {
+		t.Fatalf("cursors %d, %d; want %d, %d", first.Offset, second.Offset, prior.ConsumedBytes, whole.ConsumedBytes)
+	}
+	key := func(f telemetry.Fact) string { return fmt.Sprintf("%s/%s/%d", f.Kind, f.ID, f.SourceOffset) }
+	got := map[string]int{}
+	for _, f := range first.Facts {
+		got[key(f)]++
+	}
+	newFacts := 0
+	for _, f := range second.Facts {
+		if f.SourceOffset < first.Offset {
+			t.Errorf("fact %s %s at %d was emitted again from cursor %d", f.Kind, f.ID, f.SourceOffset, first.Offset)
+		}
+		got[key(f)]++
+		newFacts++
+	}
+	if len(first.Facts) == 0 || newFacts == 0 {
+		t.Fatalf("the cut left %d facts before it and %d after; the fixture is not exercised", len(first.Facts), newFacts)
+	}
+	all, err := src.Telemetry(harness.TelemetryRequest{Path: path, Size: int64(len(data)), Changed: true, Batch: whole})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{}
+	for _, f := range all.Facts {
+		want[key(f)]++
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("facts across the two calls = %v, want one of each of %v", got, want)
 	}
 }
