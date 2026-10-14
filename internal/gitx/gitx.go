@@ -18,9 +18,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/observability"
 )
+
+// waitDelay is how long Run waits for git's output pipes once git itself is
+// gone, killed at the deadline or exited (internal/process.WaitDelay's
+// reasoning).
+const waitDelay = time.Second
 
 // Command is one git invocation: the directory git runs in and the argv
 // after the program name. Dir is passed as `-C <dir>` rather than as the
@@ -73,7 +79,13 @@ func (r ExecRunner) Run(ctx context.Context, cmd Command) (Result, error) {
 	var stdout, stderr strings.Builder
 	c.Stdout = &stdout
 	c.Stderr = &stderr
+	// A grandchild holding stdout must not outlive the caller's deadline;
+	// git exiting 0 with one still attached has answered.
+	c.WaitDelay = waitDelay
 	err := c.Run()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil
+	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return Result{}, ctxErr
 	}

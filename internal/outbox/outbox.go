@@ -73,6 +73,14 @@ const (
 	DefaultWedgedAfter = 5 * time.Minute
 )
 
+// DefaultDeliverTimeout bounds one delivery. A delivery holds the outbox's
+// writers' lock from the handle lookup to the verified enter, so a Herdr
+// that never answers would otherwise hold every sender and enqueuer of the
+// project with it. A healthy delivery is well inside it: Jev's own deadline
+// (notice.Timeout, 8s) plus the reads, the settle and the enter retries of
+// send.Send.
+const DefaultDeliverTimeout = 20 * time.Second
+
 // Runtime is send.Runtime: read a pane, type, press keys, wait. It
 // structurally cannot start, stop or prompt anything.
 type Runtime interface {
@@ -112,6 +120,8 @@ type Deps struct {
 	// Observer reads the Mate's pane before a delivery is typed
 	// (send.Deps.Observer). Nil means the fixture observer.
 	Observer screen.Observer
+	// DeliverTimeout bounds one delivery; zero means DefaultDeliverTimeout.
+	DeliverTimeout time.Duration
 }
 
 func (d Deps) now() time.Time {
@@ -133,6 +143,13 @@ func (d Deps) sleep(ctx context.Context, dur time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func (d Deps) deliverTimeout() time.Duration {
+	if d.DeliverTimeout > 0 {
+		return d.DeliverTimeout
+	}
+	return DefaultDeliverTimeout
 }
 
 func (d Deps) observer() screen.Observer {
@@ -463,11 +480,24 @@ func (s *Sender) withdrawn(project string, item store.OutboxItem) bool {
 	return item.Source == store.OutboxSourceDigest && !s.ws.Auto(project)
 }
 
-// deliver resolves the Mate's pane and types the line into it, verified.
+// deliver resolves the Mate's pane and types the line into it, verified,
+// within DeliverTimeout. Running out of it is a refusal like any other: the
+// caller keeps the item queued, and the lock it holds is released.
 func (s *Sender) deliver(ctx context.Context, project string, item store.OutboxItem) (send.Report, error) {
 	if s.deps.Runtime == nil || s.deps.Handle == nil {
 		return send.Report{}, errors.New("outbox: no runtime is wired to deliver with")
 	}
+	bound := s.deps.deliverTimeout()
+	dctx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	report, err := s.deliverWithin(dctx, project, item)
+	if err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return report, fmt.Errorf("the delivery did not finish within %s: %w", bound, err)
+	}
+	return report, err
+}
+
+func (s *Sender) deliverWithin(ctx context.Context, project string, item store.OutboxItem) (send.Report, error) {
 	handle, kind, err := s.deps.Handle(ctx, project)
 	if err != nil {
 		return send.Report{}, err

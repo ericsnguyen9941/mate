@@ -33,6 +33,10 @@ const (
 	// DefaultStaleAfter is how long the pane and the status file must both
 	// be unchanged before `stale` opens.
 	DefaultStaleAfter = 3 * time.Minute
+	// DefaultHerdrTimeout bounds each Herdr question the observer asks: a
+	// crew's handle, its agent, its pane, and the session. It is the
+	// console's own bound on a Herdr question (cmd/mate livenessBound).
+	DefaultHerdrTimeout = 3 * time.Second
 )
 
 // Runtime is the slice of runtime.Adapter the observer needs. It is narrow
@@ -115,8 +119,9 @@ type Deps struct {
 	Runtime Runtime
 	Handle  HandleFunc
 	// Session checks the workspace session itself, once per poll. Nil means
-	// the observer stands no runtime notice (a build or test that predates
-	// it).
+	// the session is not asked, and the observer stands a runtime notice
+	// only for a crew's Herdr call that ran out HerdrTimeout (a build or
+	// test that predates it).
 	Session SessionFunc
 	Clock   Clock
 	Sleeper Sleeper
@@ -135,6 +140,9 @@ type Deps struct {
 	// StaleAfter is the quiet period that opens `stale`; zero means
 	// DefaultStaleAfter.
 	StaleAfter time.Duration
+	// HerdrTimeout bounds each Herdr call of a round; zero means
+	// DefaultHerdrTimeout.
+	HerdrTimeout time.Duration
 	// Observer reads each pane snapshot that differs from the last one it
 	// read; the health column is its Observation's composer, kept while the
 	// pane does not change. It is asked in the background, so a slow answer
@@ -178,6 +186,13 @@ func (d Deps) staleAfter() time.Duration {
 	return DefaultStaleAfter
 }
 
+func (d Deps) herdrTimeout() time.Duration {
+	if d.HerdrTimeout > 0 {
+		return d.HerdrTimeout
+	}
+	return DefaultHerdrTimeout
+}
+
 // Watcher observes the open crews of a workspace.
 //
 // One Watcher polls from one goroutine: Start owns it, and a caller driving
@@ -195,6 +210,9 @@ type Watcher struct {
 	// crews is the per-crew memory of the previous rounds. Only the polling
 	// goroutine touches it.
 	crews map[CrewRef]*observation
+	// unanswered are the crews of this round whose Herdr call ran out its
+	// bound. Only the polling goroutine touches it.
+	unanswered []CrewRef
 
 	mu     sync.Mutex
 	health map[CrewRef]Health
@@ -325,6 +343,7 @@ func (w *Watcher) Poll(ctx context.Context) error {
 	results := make(map[CrewRef]Health)
 	seen := make(map[CrewRef]bool)
 	listed := make(map[string]bool)
+	w.unanswered = nil
 	var errs []error
 
 	for _, ref := range w.ws.Projects() {
@@ -469,17 +488,30 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 		obs.changedAt = now
 	}
 
-	handle, screens, err := w.deps.Handle(ctx, ref.Project, ref.Crew)
+	// Every Herdr call is bounded on its own (Deps.HerdrTimeout): the
+	// crews are polled one after another, so one call that never returns
+	// would otherwise hold every crew after it, the runtime notice and the
+	// timeline.
+	hctx, cancel := context.WithTimeout(ctx, w.deps.herdrTimeout())
+	handle, screens, err := w.deps.Handle(hctx, ref.Project, ref.Crew)
+	cancel()
 	if err != nil {
+		if w.timedOut(ctx, ref, err) {
+			return err
+		}
 		// No handle to look at: the crew records no agent yet, or the Herdr
 		// session is not running. Neither says the crew is in trouble.
 		return nil
 	}
 
-	if _, err := w.deps.Runtime.InspectAgent(ctx, handle); err != nil {
+	hctx, cancel = context.WithTimeout(ctx, w.deps.herdrTimeout())
+	_, err = w.deps.Runtime.InspectAgent(hctx, handle)
+	cancel()
+	if err != nil {
 		if !runtime.IsAgentNotFound(err) {
 			// Herdr could not answer. "Mate could not look" is not "the
 			// agent is gone" (mvp.md decision 8).
+			w.timedOut(ctx, ref, err)
 			return err
 		}
 		if stopped, err := w.stopped(ref); err != nil || stopped {
@@ -502,10 +534,13 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 		return err
 	}
 
-	screen, err := w.deps.Runtime.ReadAgentStyled(ctx, handle, screens.ReadSource(), send.DefaultLines)
+	hctx, cancel = context.WithTimeout(ctx, w.deps.herdrTimeout())
+	screen, err := w.deps.Runtime.ReadAgentStyled(hctx, handle, screens.ReadSource(), send.DefaultLines)
+	cancel()
 	if err != nil {
 		// The agent is there and the pane is not readable: an unread screen
 		// is not a quiet one, so the round ends without a verdict.
+		w.timedOut(ctx, ref, err)
 		return err
 	}
 	hash := screenHash(screen)
@@ -578,6 +613,17 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 	return nil
 }
 
+// timedOut reports whether err is a Herdr call that ran out its own bound
+// rather than the round being cancelled, and records the crew as unanswered
+// this round when it is.
+func (w *Watcher) timedOut(round context.Context, ref CrewRef, err error) bool {
+	if !errors.Is(err, context.DeadlineExceeded) || round.Err() != nil {
+		return false
+	}
+	w.unanswered = append(w.unanswered, ref)
+	return true
+}
+
 // RuntimeNotice is the observer's standing word about a Herdr it could not
 // reach, and when it last failed to. Empty means the last round that asked
 // got an answer. It is safe to call from any goroutine.
@@ -596,23 +642,55 @@ func (w *Watcher) RuntimeNotice() (string, time.Time) {
 // (TestWatchConcludesNothingWhenHerdrCannotAnswer); this is the separate
 // signal a reader needs, because while it stands every file-read row on
 // screen is as fresh as its last read and no row can be re-read.
+//
+// A session that answered with crews whose own Herdr call ran out its bound
+// this round still stands a notice, naming them: those crews keep the
+// Health of their last answered round (commit), which on its own reads as
+// current as any other row.
 func (w *Watcher) noteRuntime(ctx context.Context, now time.Time) {
-	if w.deps.Session == nil || ctx.Err() != nil {
+	if ctx.Err() != nil {
 		return
 	}
-	err := w.deps.Session(ctx)
+	var err error
+	if w.deps.Session != nil {
+		sctx, cancel := context.WithTimeout(ctx, w.deps.herdrTimeout())
+		err = w.deps.Session(sctx)
+		cancel()
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if err == nil {
+	var notice string
+	switch {
+	case err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil:
+		notice = fmt.Sprintf("herdr did not answer within %s; health shown is from the last round it did",
+			w.deps.herdrTimeout())
+	case err != nil:
+		notice = noticeLine(err.Error())
+		var coded *observability.Error
+		if errors.As(err, &coded) && strings.TrimSpace(coded.Message) != "" {
+			notice = noticeLine(coded.Message)
+		}
+	case len(w.unanswered) > 0:
+		notice = unansweredNotice(w.unanswered, w.deps.herdrTimeout())
+	default:
 		w.runtimeNotice, w.runtimeNoticeAt = "", time.Time{}
 		return
 	}
-	notice := noticeLine(err.Error())
-	var coded *observability.Error
-	if errors.As(err, &coded) && strings.TrimSpace(coded.Message) != "" {
-		notice = noticeLine(coded.Message)
-	}
 	w.runtimeNotice, w.runtimeNoticeAt = notice, now
+}
+
+// unansweredNotice names the crews whose Herdr call ran out its bound.
+func unansweredNotice(refs []CrewRef, bound time.Duration) string {
+	names := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		names = append(names, fmt.Sprintf("%s of %s", ref.Crew, ref.Project))
+	}
+	if len(names) == 1 {
+		return fmt.Sprintf("herdr did not answer within %s for crew %s; its health is from its last answered round",
+			bound, names[0])
+	}
+	return fmt.Sprintf("herdr did not answer within %s for crews %s; their health is from their last answered round",
+		bound, strings.Join(names, ", "))
 }
 
 // noticeLine collapses whitespace so a multi-line error reads as one notice.

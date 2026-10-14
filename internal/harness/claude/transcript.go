@@ -81,7 +81,8 @@ import (
 // is withheld too. This fail-closed rule prevents a malformed record from
 // freezing an incomplete usage snapshot into history.
 func (Claude) ParseTranscript(state harness.TranscriptParseState, data []byte) harness.TranscriptBatch {
-	return claudeParseRange(state, data, false)
+	b, _ := claudeParseRange(state, data, false)
+	return b
 }
 
 // ParseTranscriptFinal parses a range the caller has established is at rest,
@@ -110,10 +111,22 @@ func (Claude) ParseTranscript(state harness.TranscriptParseState, data []byte) h
 // TestClaudeParseTranscriptFinalCannotProveAtRestFromBytes is the executable
 // statement of this precondition.
 func (Claude) ParseTranscriptFinal(state harness.TranscriptParseState, data []byte) harness.TranscriptBatch {
-	return claudeParseRange(state, data, true)
+	b, _ := claudeParseRange(state, data, true)
+	return b
 }
 
-func claudeParseRange(state harness.TranscriptParseState, data []byte, final bool) harness.TranscriptBatch {
+// claudeConsumed is what a parse saw before its ConsumedBytes that the batch
+// does not say on its own, and that a read resuming there needs to make its
+// tail indistinguishable from a whole read: how many lines lie before the
+// cursor (the base of the tail's ordinals) and which records before it were
+// skipped (Skipped counts every complete line, including the withheld ones
+// the tail will count again).
+type claudeConsumed struct {
+	lines   int
+	skipped map[string]int
+}
+
+func claudeParseRange(state harness.TranscriptParseState, data []byte, final bool) (harness.TranscriptBatch, claudeConsumed) {
 	p := &claudeParse{
 		turnRef: state.HarnessTurnRef,
 		seedRef: state.HarnessTurnRef,
@@ -200,6 +213,7 @@ func claudeParseRange(state harness.TranscriptParseState, data []byte, final boo
 			// ai-title, atis-latch, mode, permission-mode, last-prompt,
 			// queue-operation, pr-link, cost-state, agent-name, custom-title.
 			p.batch.Skipped[head.Type]++
+			p.skippedAt = append(p.skippedAt, skippedRecord{offset: lineOffset, kind: head.Type})
 		}
 		if p.batch.Malformed != nil {
 			stop = p.batch.Malformed.Offset
@@ -223,7 +237,13 @@ func claudeParseRange(state harness.TranscriptParseState, data []byte, final boo
 	}
 	p.batch.NextState = p.stateAt(p.batch.ConsumedBytes)
 	p.batch.PendingBytes = p.batch.TotalBytes - p.batch.ConsumedBytes
-	return p.batch
+	consumed := claudeConsumed{lines: bytes.Count(data[:p.batch.ConsumedBytes], []byte{'\n'}), skipped: map[string]int{}}
+	for _, s := range p.skippedAt {
+		if s.offset < p.batch.ConsumedBytes {
+			consumed.skipped[s.kind]++
+		}
+	}
+	return p.batch, consumed
 }
 
 type claudeParse struct {
@@ -243,6 +263,12 @@ type claudeParse struct {
 	turnRefAt                 []turnRefChange
 	lineEnd                   int64
 	malformedOutsideOpenGroup bool
+	skippedAt                 []skippedRecord
+}
+
+type skippedRecord struct {
+	offset int64
+	kind   string
 }
 
 type turnRefChange struct {

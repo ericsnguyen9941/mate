@@ -318,15 +318,24 @@ func (s piTranscripts) Locate(req harness.TranscriptLocateRequest) (harness.Tran
 }
 
 // Read implements TranscriptSource. A session is read whole: every message
-// in it is already complete, so a read at rest is no different.
+// in it is already complete, so a read at rest is no different. The model
+// and thinking-level changes ride with the batch, for Telemetry.
 func (s piTranscripts) Read(req harness.TranscriptReadRequest) (harness.TranscriptBatch, error) {
 	data, err := os.ReadFile(req.Path)
 	if err != nil {
 		return harness.TranscriptBatch{}, err
 	}
-	b := parseSession(data).batch
+	parsed := parseSession(data)
+	b := parsed.batch
+	b.HarnessState = piReadState{changes: parsed.changes}
 	normalise(&b)
 	return b, nil
+}
+
+// piReadState is what a pi read keeps beside its batch: the session's
+// runtime changes, which Telemetry reports and the batch has no place for.
+type piReadState struct {
+	changes []runtimeChange
 }
 
 // normalise makes one usage turn per assistant message, which is one model
@@ -368,8 +377,8 @@ func normalise(b *harness.TranscriptBatch) {
 // --thinking to what the model supports without saying so (measured:
 // deepseek-flash takes medium as high, xhigh as max), so the level a Crew
 // really thinks at is the one this reads back, and the dashboard reports it
-// as the runtime's effort. The facts are emitted again whenever the session
-// grew, as Claude's are.
+// as the runtime's effort. The facts are the batch's own, from the
+// telemetry cursor on, whenever the session grew, as Claude's are.
 func (s piTranscripts) Telemetry(req harness.TelemetryRequest) (harness.TelemetryUpdate, error) {
 	up := harness.TelemetryUpdate{Offset: req.Offset, State: req.State, Gaps: []string{
 		"native_execution_unavailable", "native_process_unavailable", "native_timing_unavailable",
@@ -377,27 +386,30 @@ func (s piTranscripts) Telemetry(req harness.TelemetryRequest) (harness.Telemetr
 	if req.Offset == req.Batch.ConsumedBytes && !req.Changed {
 		return up, nil
 	}
-	data, err := os.ReadFile(req.Path)
-	if err != nil {
-		return up, err
-	}
-	parsed := parseSession(data)
-	for _, c := range parsed.changes {
+	st, _ := req.Batch.HarnessState.(piReadState)
+	for _, c := range st.changes {
+		if c.offset < req.Offset {
+			continue
+		}
 		up.Facts = append(up.Facts, telemetry.Fact{
 			Version: telemetry.Version, ID: c.ref, Kind: "context", SourceRef: c.ref, SourceOffset: c.offset,
 			OccurredAt: c.occurredAt, MeasurementKind: "native", Phase: c.kind, Model: c.model, Effort: c.level,
 		})
 	}
-	up.Facts = append(up.Facts, ledgerFacts(req.Batch)...)
+	up.Facts = append(up.Facts, ledgerFacts(req.Batch, req.Offset)...)
 	up.Offset = req.Batch.ConsumedBytes
 	return up, nil
 }
 
 // ledgerFacts are the responses, tool calls, tool results and prompts the
-// batch already verified, as facts.
-func ledgerFacts(b harness.TranscriptBatch) []telemetry.Fact {
+// batch already verified, as facts, for the records at or after since. A
+// result's fact still names its call, wherever that is.
+func ledgerFacts(b harness.TranscriptBatch, since int64) []telemetry.Fact {
 	var out []telemetry.Fact
 	for _, t := range b.Turns {
+		if t.Offset < since {
+			continue
+		}
 		off := t.Offset
 		out = append(out, telemetry.Fact{
 			Version: telemetry.Version, ID: t.SourceRef, Kind: "response", SourceRef: t.SourceRef, SourceOffset: off,
@@ -410,6 +422,9 @@ func ledgerFacts(b harness.TranscriptBatch) []telemetry.Fact {
 	calls := map[string]harness.TranscriptToolCall{}
 	for _, c := range b.ToolCalls {
 		calls[c.SourceRef] = c
+		if c.Offset < since {
+			continue
+		}
 		at := c.StartedAt
 		out = append(out, telemetry.Fact{
 			Version: telemetry.Version, ID: c.SourceRef, Kind: "tool_call", SourceRef: c.SourceRef, SourceOffset: c.Offset,
@@ -418,6 +433,9 @@ func ledgerFacts(b harness.TranscriptBatch) []telemetry.Fact {
 		})
 	}
 	for _, r := range b.ToolResults {
+		if r.Offset < since {
+			continue
+		}
 		at := r.CompletedAt
 		c := calls[r.CallID]
 		f := telemetry.Fact{
@@ -431,7 +449,7 @@ func ledgerFacts(b harness.TranscriptBatch) []telemetry.Fact {
 		out = append(out, f)
 	}
 	for _, r := range b.Records {
-		if r.Kind != harness.TranscriptKindUser {
+		if r.Kind != harness.TranscriptKindUser || r.Offset < since {
 			continue
 		}
 		var e struct {

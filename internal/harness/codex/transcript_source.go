@@ -48,47 +48,31 @@ func (s codexTranscripts) Locate(req harness.TranscriptLocateRequest) (harness.T
 	}
 	if req.RuntimeSession != nil {
 		if ref := req.RuntimeSession(); ref != "" {
-			if path, ok := codexRolloutNamed(root, ref); ok {
+			if path, ok := CodexRolloutPath(root, ref); ok {
 				return harness.TranscriptLocation{Path: path, SessionID: ref, Rule: codexRuleHerdrSession}, ""
 			}
 		}
 	}
-	if path, ok := codexRolloutNamed(root, req.SessionID); ok {
+	if path, ok := CodexRolloutPath(root, req.SessionID); ok {
 		return harness.TranscriptLocation{Path: path, Rule: codexRuleHerdrSession}, ""
 	}
 	return codexAdopt(root, req)
 }
 
-// codexRolloutNamed finds the rollout whose file name carries a session
-// id. Codex names a rollout `rollout-<timestamp>-<session-id>.jsonl`, so the
-// id is in the name and no file has to be opened to find the right one.
-func codexRolloutNamed(root, sessionID string) (string, bool) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return "", false
-	}
-	var found string
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || found != "" {
-			return nil //nolint:nilerr // an unreadable branch is not an answer
-		}
-		name := d.Name()
-		if strings.HasSuffix(name, ".jsonl") && strings.Contains(name, sessionID) {
-			found = path
-		}
-		return nil
-	})
-	return found, found != ""
-}
-
-// codexAdopt is AdoptCodexRollout over every rollout whose header parses,
-// with the agent's canonical cwd and its recorded launch time. The rule is
-// the v1 one and is deliberately conservative: an ambiguous match is no
-// match, because two crews launched in the same worktree really are
+// codexAdopt is AdoptCodexRollout over the rollouts filed from the launch's
+// day on, with the agent's canonical cwd and its recorded launch time. The
+// rule is the v1 one and is deliberately conservative: an ambiguous match is
+// no match, because two crews launched in the same worktree really are
 // indistinguishable from the rollout alone.
+//
+// The candidates are read fresh on every call rather than cached - a crew
+// spawned during a console's run writes its rollout after the console
+// started - so the day bound is what keeps an agent that is never located
+// from reading every rollout on the machine each poll. An unknown launch
+// time bounds nothing.
 func codexAdopt(root string, req harness.TranscriptLocateRequest) (harness.TranscriptLocation, string) {
-	candidates := codexAdoptionCandidates(root)
-	if len(candidates) == 0 {
+	candidates, err := CodexRolloutCandidatesSince(root, req.LaunchedAt)
+	if err != nil || len(candidates) == 0 {
 		return harness.TranscriptLocation{}, codexAdoptPending
 	}
 	canonical := req.Cwd
@@ -100,31 +84,6 @@ func codexAdopt(root string, req harness.TranscriptLocateRequest) (harness.Trans
 		return harness.TranscriptLocation{}, codexAdoptPending
 	}
 	return harness.TranscriptLocation{Path: adoption.Candidate.Path, SessionID: adoption.Candidate.Meta.SessionID, Rule: codexRuleAdopt}, ""
-}
-
-// codexAdoptionCandidates is every rollout whose first record is a
-// session_meta this build understands. It is read fresh each time it is
-// needed rather than cached: a crew spawned during a console's run writes
-// its rollout after the console started.
-func codexAdoptionCandidates(root string) []CodexRolloutCandidate {
-	var out []CodexRolloutCandidate
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
-			return nil //nolint:nilerr // an unreadable branch is skipped, not fatal
-		}
-		head, err := readFileHead(path, 64*1024)
-		if err != nil {
-			return nil //nolint:nilerr
-		}
-		meta, err := ParseCodexSessionMeta(head)
-		if err != nil {
-			return nil //nolint:nilerr
-		}
-		out = append(out, CodexRolloutCandidate{Path: path, Meta: meta})
-		return nil
-	})
-	sort.Slice(out, func(a, b int) bool { return out[a].Path < out[b].Path })
-	return out
 }
 
 // Read implements TranscriptSource. A rollout record is complete on its

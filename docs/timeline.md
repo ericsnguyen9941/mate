@@ -416,10 +416,15 @@ An actor with no transition at all reads `NULL` in all four, which is the honest
 
 ## 8. Known costs
 
-A transcript is re-read whole on every pass rather than tailed from `cursor`.
-The reason is `harness.ParseTranscript`: it withholds the trailing message group because a later write may still extend it, so a tail would have to carry the parser's own state across passes, and a resume that carried it wrongly would charge one turn's tokens to another permanently.
-The cost is one JSON pass over each live transcript every five seconds, which is a few hundred kilobytes; `cursor` still records how far the parser trusted the file, so a withheld group is visible rather than silent.
-A session long enough for that to hurt is the place to measure again.
+A live transcript that only grew since the last pass is tailed: its harness parses from the prior batch's `ConsumedBytes` with the prior's parser state and appends the tail to the batch it already has.
+For Claude that is `ParseTranscript`'s own incremental contract - the trailing message group is withheld, `ConsumedBytes` stops at its first record and `NextState` is the state at that cursor - so the group is re-read whole on the next pass and the open harness turn carries over; a resume that carried either wrongly would charge one turn's tokens to another permanently.
+Anything else is read whole: a file whose first 4 KiB changed, one that shrank, a prior batch stopped by a malformed line, and a frozen snapshot read at rest.
+`cursor` still records how far the parser trusted the file, so a withheld group is visible rather than silent.
+
+The estimate this section used to give, "a few hundred kilobytes" per live transcript, was wrong by two orders of magnitude: Claude crews reach 12-25 MB, and a Mate session 37 MB.
+Re-read whole, a growing pass over a 25 MB Claude transcript took about 250 ms and one over 37 MB about 355 ms (2026-10-14, Apple Silicon, one growing pass every five seconds); tailed, they take about 45 ms and 60 ms, against about 20 ms for a pass over an unchanged file.
+What a growing pass still spends is the timeline's own walk over the whole batch - usage turns, actions and their targets are derived again for every call and only then filtered to what lies past the cursor - not parsing.
+Telemetry follows the same cursor: Claude's and pi's normalised facts are emitted only from the telemetry cursor on, so a pass no longer decodes every prompt of the session again, and pi's model and thinking-level facts come from the batch its read already parsed rather than from a second parse of the file.
 
 `mate reindex` empties the derived tables and refills them in one transaction, so a rebuild that fails halfway leaves the timeline it started with.
 An ordinary poll commits one transaction per project instead, for the opposite reason: a project whose `.meta` is half-written must not hold back the rest of the workspace.

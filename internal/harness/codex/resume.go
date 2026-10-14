@@ -48,10 +48,14 @@ func CodexRolloutPath(sessionsDir, sessionID string) (string, bool) {
 // CodexRolloutCandidatesSince lists the rollouts under sessionsDir whose day
 // directory (`YYYY/MM/DD`, Codex's local date) is not before since's local
 // date minus one day, each with its validated session_meta. The day bound is
-// what keeps this cheap on a machine with months of Codex history; the extra
-// day absorbs a launch just before midnight or a clock-zone mismatch. The
-// candidates go to AdoptCodexRollout, which applies the real rule (cwd and a
-// session_meta timestamp at or after launch).
+// what keeps this cheap on a machine with months of Codex history. Codex
+// files a rollout under the local date it created it (codex-cli 0.154.0:
+// `2026/10/08/rollout-2026-10-08T00-35-39-...` for a session_meta stamped
+// 2026-10-07T17:40Z at +07:00), and it creates it after the launch, so in
+// one clock zone the launch's own date is already enough; the extra day
+// absorbs a Codex whose zone is behind mate's. A zero since bounds nothing.
+// The candidates go to AdoptCodexRollout, which applies the real rule (cwd
+// and a session_meta timestamp at or after launch).
 func CodexRolloutCandidatesSince(sessionsDir string, since time.Time) ([]CodexRolloutCandidate, error) {
 	floor := since.Local().AddDate(0, 0, -1)
 	floorDay := time.Date(floor.Year(), floor.Month(), floor.Day(), 0, 0, 0, 0, time.Local)

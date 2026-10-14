@@ -246,6 +246,60 @@ func TestLastVerbSkipsLinesThatCarryNoVerb(t *testing.T) {
 	}
 }
 
+// TestLastCrewVerbAgreesWithLastVerbOverTheStatusFile: a View already holds
+// every status line of a crew, so the verb read out of it must be the one
+// LastVerb reads out of the file itself - whatever messages and other crews'
+// lines the merge interleaved with them.
+func TestLastCrewVerbAgreesWithLastVerbOverTheStatusFile(t *testing.T) {
+	cases := [][]string{
+		nil,
+		{"", "   "},
+		{"hello there"},
+		{"working: a", "needs-decision: b"},
+		{"working: a", "oops"},
+		{"working: a", "done: b"},
+		{"needs-decision: a", "blocked: legacy", "  "},
+		{"working: a", "pr-open: https://example.test/pr/1", "garbage"},
+		{"wait-mate: ready", "failed: legacy"},
+	}
+	for i, lines := range cases {
+		w := newFixtureWorkspace(t)
+		crew := "k3"
+		for j, l := range lines {
+			if err := w.AppendStatus("shop", crew, l); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.AppendSent("shop", store.SentEntry{
+				Time:   time.Date(2026, 9, 17, 10, j, 0, 0, time.UTC),
+				Source: store.SourceMate, Target: store.CrewTarget(crew), Text: "working: not a status line",
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := w.AppendStatus("shop", "k9", "needs-decision: another crew"); err != nil {
+			t.Fatal(err)
+		}
+		entries, _, err := w.ReadStatus("shop", crew, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw := make([]string, 0, len(entries))
+		for _, e := range entries {
+			raw = append(raw, e.Line)
+		}
+		v, err := box.Load(w, "shop")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if got, want := box.LastCrewVerb(v, crew), box.LastVerb(raw); got != want {
+			t.Errorf("case %d %q: LastCrewVerb = %q, LastVerb over the file = %q", i, lines, got, want)
+		}
+	}
+	if got := box.LastCrewVerb(box.View{}, "ghost"); got != box.StateUnknown {
+		t.Errorf("LastCrewVerb(ghost) = %q, want %q", got, box.StateUnknown)
+	}
+}
+
 // TestAttentionVerbSet: among the crew's own verbs only needs-decision is
 // attention (mvp.md section 4b). wait-mate is a report the STATE column
 // already carries, and the decision of 2026-09-18 keeps it out of the

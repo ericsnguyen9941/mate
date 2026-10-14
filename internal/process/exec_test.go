@@ -63,3 +63,37 @@ func TestExecRunnerReturnsContextError(t *testing.T) {
 		t.Fatalf("err = %v, want canceled", err)
 	}
 }
+
+// A grandchild that inherits stdout keeps the pipe open after the process
+// itself is killed. The deadline still has to end Run: a caller that bounded
+// a Herdr call must not wait for whatever that call left running.
+func TestExecRunnerReturnsAtTheDeadlineWhenAGrandchildHoldsStdout(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := ExecRunner{}.Run(ctx, Spec{Name: "sh", Args: []string{"-c", "sleep 5 & wait"}})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want deadline exceeded", err)
+	}
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("Run returned after %s, want it bounded by the deadline plus WaitDelay", took)
+	}
+}
+
+// A process that exits 0 and leaves a background child on its stdout has
+// answered: Run returns what it wrote instead of waiting for the child.
+func TestExecRunnerDoesNotWaitForABackgroundChildAfterASuccessfulExit(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+	res, err := ExecRunner{}.Run(context.Background(), Spec{Name: "sh", Args: []string{"-c", "echo out; sleep 5 &"}})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if res.ExitCode != 0 || strings.TrimSpace(string(res.Stdout)) != "out" {
+		t.Fatalf("result = %+v", res)
+	}
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("Run returned after %s, want it bounded by WaitDelay", took)
+	}
+}
