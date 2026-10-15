@@ -89,6 +89,10 @@ func (p *pass) ingestStatus(ctx context.Context) error {
 			status := box.ParseStatus(line.Line)
 			at, dated, clock := p.dateStatusLine(crew.ActorID, line.Line, mtime, previous)
 			previous = at
+			if p.statusTimes == nil {
+				p.statusTimes = map[string][]time.Time{}
+			}
+			p.statusTimes[crew.ActorID] = append(p.statusTimes[crew.ActorID], at)
 			statusDedup := dedup(KindStatusAppend, crew.ActorID, fmt.Sprint(line.Offset))
 			p.b.event(pendingEvent{
 				Dedup:   statusDedup,
@@ -101,6 +105,22 @@ func (p *pass) ingestStatus(ctx context.Context) error {
 				RefPath: path, RefOffset: line.Offset,
 				ClockPath: clock.path, ClockOffset: clock.offset,
 			})
+			// A hand-back waits too (CON-75): the crew stopped and the
+			// next line the Mate or the captain sends it ends the wait.
+			// It is a question row of its own kind, with the status event
+			// as what asked it and no question.asked of its own, so
+			// question_count still counts decisions only. The watcher's
+			// pr-merged and pr-closed lines are not the crew stopping.
+			if status.State == box.StateWaitMate && status.Verb != box.VerbPRMerged && status.Verb != box.VerbPRClosed {
+				p.b.question(&pendingQuestion{
+					ID:          questionRowID(crew.ActorID, line.Offset),
+					Kind:        QuestionHandback,
+					AskedDedup:  statusDedup,
+					CrewActorID: crew.ActorID,
+					Text:        status.Text,
+					AskedAt:     at,
+				})
+			}
 			if status.State != box.StateNeedsDecision {
 				continue
 			}
@@ -115,6 +135,7 @@ func (p *pass) ingestStatus(ctx context.Context) error {
 			})
 			p.b.question(&pendingQuestion{
 				ID:          questionRowID(crew.ActorID, line.Offset),
+				Kind:        QuestionDecision,
 				AskedDedup:  askedDedup,
 				CrewActorID: crew.ActorID,
 				Text:        status.Text,
@@ -280,7 +301,11 @@ func (p *pass) ingestSent(ctx context.Context) error {
 		if entry.Source != store.SourceMate && entry.Source != store.SourceUser {
 			continue
 		}
-		p.answer(open, crew, entry, fromActor, path)
+		if !p.answer(open, crew, entry, fromActor, path, eventDedup) {
+			if err := p.reanswer(ctx, crew, entry, fromActor, eventDedup); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -293,8 +318,12 @@ func (p *pass) ingestSent(ctx context.Context) error {
 // older than it.
 //
 // The oldest unanswered question is the one answered: a crew that asked twice
-// without being answered is answered in the order it asked.
-func (p *pass) answer(open map[string][]*pendingQuestion, crew string, entry store.SentEntry, fromActor, path string) {
+// without being answered is answered in the order it asked. A hand-back
+// (QuestionHandback) is answered the same way, but by the line itself: it
+// gets no question.answered event, so the story and the scene machine see
+// the Mate's instruction and nothing else. It reports whether a question
+// was answered.
+func (p *pass) answer(open map[string][]*pendingQuestion, crew string, entry store.SentEntry, fromActor, path, lineDedup string) bool {
 	questions := open[crew]
 	for _, q := range questions {
 		if q.AnsweredDedup != "" {
@@ -304,6 +333,14 @@ func (p *pass) answer(open map[string][]*pendingQuestion, crew string, entry sto
 			continue
 		}
 		crewActor := CrewActorID(p.project, crew)
+		if q.Kind == QuestionHandback {
+			q.AnsweredDedup, q.AnsweredBy, q.AnsweredAt = lineDedup, fromActor, entry.Time
+			if q.AskedDedup == "" {
+				p.b.question(q)
+			}
+			p.noteAnswer(crew, q)
+			return true
+		}
 		answeredDedup := dedup(KindQuestionAnsw, q.ID, fmt.Sprint(entry.Offset))
 		p.b.event(pendingEvent{
 			Dedup:   answeredDedup,
@@ -324,8 +361,84 @@ func (p *pass) answer(open map[string][]*pendingQuestion, crew string, entry sto
 			// this batch yet: only its answer is new.
 			p.b.question(q)
 		}
-		return
+		p.noteAnswer(crew, q)
+		return true
 	}
+	return false
+}
+
+func (p *pass) noteAnswer(crew string, q *pendingQuestion) {
+	if p.lastAnswered == nil {
+		p.lastAnswered = map[string]*pendingQuestion{}
+	}
+	p.lastAnswered[crew] = q
+}
+
+// reanswer is the holding-line rule (CON-75). On hellovietnam 2026-10-13
+// ui-evidence-harness asked for an R2 key, the Mate replied in seven
+// minutes "the captain has to create it; hold on", and the real answer
+// came 126 minutes later - recorded as a seven-minute wait. A line the
+// Mate or the captain sends a crew that has no open question, when the
+// crew has written no status line since its last answer, is that answer
+// arriving: the earlier line was a holding reply the crew could do nothing
+// with. The question's answer moves to this line and waited_ms grows with
+// it. A crew that wrote any status line in between acted on the first
+// reply, and nothing moves.
+func (p *pass) reanswer(ctx context.Context, crew string, entry store.SentEntry, fromActor, lineDedup string) error {
+	last, err := p.lastAnsweredQuestion(ctx, crew)
+	if err != nil || last == nil || !entry.Time.After(last.AnsweredAt) {
+		return err
+	}
+	spoke, err := p.crewSpokeBetween(ctx, last.CrewActorID, last.AnsweredAt, entry.Time)
+	if err != nil || spoke {
+		return err
+	}
+	q := &pendingQuestion{
+		ID: last.ID, Kind: last.Kind, CrewActorID: last.CrewActorID, Text: last.Text, AskedAt: last.AskedAt,
+		AnsweredDedup: lineDedup, AnsweredBy: fromActor, AnsweredAt: entry.Time, Reanswer: true,
+	}
+	p.b.question(q)
+	p.noteAnswer(crew, q)
+	return nil
+}
+
+// lastAnsweredQuestion is the crew's newest answered question: one this
+// pass answered, else the newest in the table.
+func (p *pass) lastAnsweredQuestion(ctx context.Context, crew string) (*pendingQuestion, error) {
+	if q := p.lastAnswered[crew]; q != nil {
+		return q, nil
+	}
+	var q pendingQuestion
+	var askedAt, answeredAt string
+	err := p.tx.QueryRowContext(ctx,
+		`SELECT id, kind, crew_actor_id, text, asked_at, answered_at FROM question
+		  WHERE crew_actor_id = ? AND answered_at IS NOT NULL
+		  ORDER BY answered_at DESC, asked_at DESC LIMIT 1`,
+		CrewActorID(p.project, crew)).Scan(&q.ID, &q.Kind, &q.CrewActorID, &q.Text, &askedAt, &answeredAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	q.AskedAt, q.AnsweredAt = db.ParseTime(askedAt), db.ParseTime(answeredAt)
+	q.AnsweredDedup = "recorded"
+	return &q, nil
+}
+
+// crewSpokeBetween reports whether the crew wrote a status line after
+// `after` and at or before `until`: in this pass, or in an earlier one.
+func (p *pass) crewSpokeBetween(ctx context.Context, actorID string, after, until time.Time) (bool, error) {
+	for _, at := range p.statusTimes[actorID] {
+		if at.After(after) && !at.After(until) {
+			return true, nil
+		}
+	}
+	var n int
+	err := p.tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM event WHERE actor_id = ? AND kind = ? AND at > ? AND at <= ?`,
+		actorID, KindStatusAppend, db.FormatTime(after), db.FormatTime(until)).Scan(&n)
+	return n > 0, err
 }
 
 // openQuestions is every unanswered question of the project, the ones this
@@ -333,7 +446,7 @@ func (p *pass) answer(open map[string][]*pendingQuestion, crew string, entry sto
 func (p *pass) openQuestions(ctx context.Context) (map[string][]*pendingQuestion, error) {
 	out := map[string][]*pendingQuestion{}
 	rows, err := p.tx.QueryContext(ctx,
-		`SELECT q.id, q.crew_actor_id, q.text, q.asked_at, a.name
+		`SELECT q.id, q.kind, q.crew_actor_id, q.text, q.asked_at, a.name
 		   FROM question q JOIN actor a ON a.id = q.crew_actor_id
 		  WHERE q.answered_event_id IS NULL AND a.project = ?`, p.project)
 	if err != nil {
@@ -341,12 +454,12 @@ func (p *pass) openQuestions(ctx context.Context) (map[string][]*pendingQuestion
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, crewActor, text, askedAt, crew string
-		if err := rows.Scan(&id, &crewActor, &text, &askedAt, &crew); err != nil {
+		var id, kind, crewActor, text, askedAt, crew string
+		if err := rows.Scan(&id, &kind, &crewActor, &text, &askedAt, &crew); err != nil {
 			return nil, err
 		}
 		q := &pendingQuestion{
-			ID: id, CrewActorID: crewActor, Text: text, AskedAt: db.ParseTime(askedAt),
+			ID: id, Kind: kind, CrewActorID: crewActor, Text: text, AskedAt: db.ParseTime(askedAt),
 			AskedDedup: "", // already recorded; upsertQuestion resolves it from the row
 		}
 		out[crew] = append(out[crew], q)

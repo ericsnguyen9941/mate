@@ -92,3 +92,12 @@ func AppActorID(project string) string { return ActorApp + ":" + project }
 
 // ObserverActorID is the watcher that writes `incidents.log`.
 func ObserverActorID(project string) string { return ActorObserver + ":" + project }
+
+// The kinds of a `question` row (schema v4, CON-75). A decision is a
+// `needs-decision` line; a hand-back is a `wait-mate` line. Both wait for
+// the next line the Mate or the captain sends the crew, and both count in
+// the task's waited_ms.
+const (
+	QuestionDecision = "decision"
+	QuestionHandback = "handback"
+)

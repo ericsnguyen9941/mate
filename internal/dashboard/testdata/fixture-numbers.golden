@@ -1547,6 +1547,7 @@
   "questions": [
     {
       "id": "crew:shop:buybtn#q#52",
+      "kind": "decision",
       "asked_event_id": 76,
       "asked_at": "2026-09-19T10:44:33.279000000Z",
       "text": "what is the checkout page URL for the Buy button?",
@@ -2813,6 +2814,34 @@
     ],
     "findings": [
       {
+        "id": "decision#crew:shop:buybtn#q#118",
+        "kind": "decision_wait",
+        "title": "Waiting after a hand-back",
+        "detail": "ready in branch mate/buybtn · 35.6 s observed waiting; this is not model or CPU time.",
+        "severity": "info",
+        "confidence": "recorded",
+        "ongoing": true,
+        "started_at": "2026-09-19T10:46:24.375000000Z",
+        "count": 1,
+        "tokens": null,
+        "segment_ids": [],
+        "call_ids": [],
+        "execution_ids": [],
+        "evidence": [
+          {
+            "id": "event#186",
+            "kind": "handback",
+            "label": "ready in branch mate/buybtn",
+            "at": "2026-09-19T10:46:24.375000000Z",
+            "source_ref": {
+              "offset": 0
+            }
+          }
+        ],
+        "review": "Review how quickly hand-backs are picked up: the Mate's wake, the review round and the captain's turnaround.",
+        "rule": "crew-observability-v1/decision"
+      },
+      {
         "id": "decision#crew:shop:buybtn#q#52",
         "kind": "decision_wait",
         "title": "Decision wait completed",
@@ -2843,6 +2872,7 @@
       }
     ],
     "top_finding_ids": [
+      "decision#crew:shop:buybtn#q#118",
       "decision#crew:shop:buybtn#q#52"
     ],
     "executions": [
@@ -3468,8 +3498,8 @@
       "prompt_elapsed_ms": 49140,
       "tool_elapsed_ms": 0,
       "invocation_ms": 0,
-      "decision_wait_ms": 86721,
-      "unallocated_ms": 46489
+      "decision_wait_ms": 122346,
+      "unallocated_ms": 43713
     },
     "recent_tokens": {
       "input": 23272,

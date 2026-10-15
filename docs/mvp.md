@@ -708,7 +708,7 @@ turn(id PK, actor_id FK, session_id FK, ordinal, started_at, ended_at, trigger_e
      context_tokens_after, tool_count, ref_path, ref_offset)
 action(id PK, turn_id FK, event_id FK, at, tool, target, summary, duration_ms, ok)  INDEX (target), (turn_id)
 message(event_id PK FK, from_actor_id, to_actor_id, channel /*pane|status|digest|assign|hook*/, text, marked)
-question(id PK, asked_event_id FK, crew_actor_id FK, text, answered_event_id NULL, answered_by_actor_id NULL, waited_ms NULL)
+question(id PK, asked_event_id FK, crew_actor_id FK, text, kind /*decision|handback, v4 CON-75*/, answered_event_id NULL, answered_by_actor_id NULL, waited_ms NULL)
 incident(id PK, actor_id FK, kind, opened_event_id FK, resolved_event_id NULL)
 usage_sample(id PK, session_id FK, at, cumulative, input, cache_read, cache_write, output, thinking, ref_path, ref_offset)
 transition(id PK, actor_id FK, from_state, to_state, at, event_id FK, target_actor_id NULL, detail)  INDEX (actor_id, at)

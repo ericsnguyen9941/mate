@@ -97,11 +97,16 @@ type pendingQuestion struct {
 	CrewActorID string
 	Text        string
 	AskedAt     time.Time
+	// Kind is QuestionDecision or QuestionHandback; "" reads as a decision.
+	Kind string
 	// The answer half is filled in the same pass when the answering line is
 	// already in `sent.log`, and by a later pass otherwise.
 	AnsweredDedup string
 	AnsweredBy    string
 	AnsweredAt    time.Time
+	// Reanswer moves an already recorded answer to a later line: the first
+	// one was a holding reply the crew never acted on (CON-75).
+	Reanswer bool
 }
 
 type pendingIncident struct {
@@ -550,6 +555,20 @@ func (w *writer) upsertQuestion(ctx context.Context, q pendingQuestion) error {
 		answered = id
 		waited = q.AnsweredAt.Sub(q.AskedAt).Milliseconds()
 	}
+	if q.Reanswer {
+		if answered == nil {
+			return nil
+		}
+		_, err := w.tx.ExecContext(ctx,
+			`UPDATE question SET answered_event_id = ?, answered_by_actor_id = ?, answered_at = ?, waited_ms = ?
+			  WHERE id = ?`,
+			answered, q.AnsweredBy, db.FormatTime(q.AnsweredAt), waited, q.ID)
+		return err
+	}
+	kind := q.Kind
+	if kind == "" {
+		kind = QuestionDecision
+	}
 	asked, ok := w.eventID(ctx, q.AskedDedup)
 	if !ok {
 		// An older question, already in the table, that this pass has just
@@ -564,14 +583,14 @@ func (w *writer) upsertQuestion(ctx context.Context, q pendingQuestion) error {
 		return err
 	}
 	_, err := w.tx.ExecContext(ctx,
-		`INSERT INTO question(id, asked_event_id, crew_actor_id, text, asked_at, answered_event_id, answered_by_actor_id, answered_at, waited_ms)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO question(id, asked_event_id, crew_actor_id, text, asked_at, kind, answered_event_id, answered_by_actor_id, answered_at, waited_ms)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   answered_event_id    = COALESCE(excluded.answered_event_id, question.answered_event_id),
 		   answered_by_actor_id = COALESCE(excluded.answered_by_actor_id, question.answered_by_actor_id),
 		   answered_at          = COALESCE(excluded.answered_at, question.answered_at),
 		   waited_ms            = COALESCE(excluded.waited_ms, question.waited_ms)`,
-		q.ID, asked, q.CrewActorID, q.Text, db.FormatTime(q.AskedAt),
+		q.ID, asked, q.CrewActorID, q.Text, db.FormatTime(q.AskedAt), kind,
 		answered, nullString(q.AnsweredBy), nullTime(q.AnsweredAt), waited)
 	return err
 }

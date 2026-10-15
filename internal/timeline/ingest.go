@@ -302,6 +302,13 @@ type pass struct {
 	// statusClock dates the status lines: a crew's own shell commands,
 	// keyed by actor, with the command text as written in the transcript.
 	statusClock map[string][]datedCommand
+	// statusTimes are the status lines this pass dated, keyed by actor, so
+	// a `sent.log` line read in the same pass can tell whether the crew
+	// spoke between two of the Mate's lines (reanswer).
+	statusTimes map[string][]time.Time
+	// lastAnswered is the newest answer this pass recorded per crew, for
+	// the same question.
+	lastAnswered map[string]*pendingQuestion
 	// commitSightings are the commits an actor's transcript shows it making,
 	// keyed by actor. They matter because a branch is short-lived: `mate
 	// merge` deletes it, and a crew that commits seconds before the merge can

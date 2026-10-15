@@ -1,6 +1,6 @@
 # Timeline
 
-Schema version: **3**.
+Schema version: **4**.
 
 This is the contract of `.mate/mate.db` and of `internal/timeline`.
 The database is derived: every row here is read out of `crews/<id>.status`, `sent.log`, `incidents.log`, the `.meta` files, the harness transcripts or git, and `mate reindex <workspace>` rebuilds all of it from those sources.
@@ -257,6 +257,10 @@ One per line of `crews/<id>.status`.
 A question is answered by a `sent.log` line addressed to `crew:<id>` at or after it, which is `internal/box`'s inbox rule.
 The comparison truncates the question's time to the second, because `sent.log` writes RFC3339 with no fractional part and an answer typed in the same second would otherwise read as older than the question.
 A crew that asked twice without being answered is answered in the order it asked.
+
+Schema v4 (CON-75) gives `question` a `kind`: `decision` for a `needs-decision` line, as above, and `handback` for a `wait-mate` line (the watcher's `pr-merged`/`pr-closed` excepted).
+A hand-back row is asked by its `status.appended` event and answered by the next `message.sent` into the crew's pane, with no `question.asked`/`question.answered` of its own, so `task.question_count` still counts decisions while `waited_ms` and the dashboard's `decision_wait` findings cover both - e0-components' 93 hours on hellovietnam were a hand-back nobody picked up.
+The holding-line rule: a line the Mate or the captain sends a crew that has no open question, when the crew has written no status line since its last answer, is that answer arriving - the earlier reply was "hold on" and the crew could do nothing with it - so the answer moves to the later line and `waited_ms` grows with it (`question.answered_event_id` then names a `message.sent`). A crew that wrote any status line in between acted on the first reply, and nothing moves.
 
 ### `message.sent`, `digest.sent`, `assign.clicked`
 

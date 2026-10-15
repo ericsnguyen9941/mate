@@ -275,7 +275,11 @@ type StatusLine struct {
 // WaitedMs is null while it is still waiting, which is not the same as
 // having waited zero.
 type Question struct {
-	ID              string `json:"id"`
+	ID string `json:"id"`
+	// Kind is "decision" (a needs-decision line) or "handback" (a wait-mate
+	// line the Mate or the captain then answered). The task page lists
+	// decisions; both feed the decision_wait findings and WAITED.
+	Kind            string `json:"kind"`
 	AskedEventID    int64  `json:"asked_event_id"`
 	AskedAt         string `json:"asked_at"`
 	Text            string `json:"text"`

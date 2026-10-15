@@ -431,7 +431,7 @@ func (s *Server) statusLines(ctx context.Context, actorID string) ([]StatusLine,
 // were ever trimmed.
 func (s *Server) questions(ctx context.Context, actorID string) ([]Question, error) {
 	rows, err := s.db.SQL().QueryContext(ctx, `
-		SELECT q.id, q.asked_event_id, q.asked_at, q.text, q.answered_event_id, q.answered_at,
+		SELECT q.id, q.kind, q.asked_event_id, q.asked_at, q.text, q.answered_event_id, q.answered_at,
 		       a.name, m.text, e.payload, q.waited_ms
 		  FROM question q
 		  LEFT JOIN actor a ON a.id = q.answered_by_actor_id
@@ -448,7 +448,7 @@ func (s *Server) questions(ctx context.Context, actorID string) ([]Question, err
 		var q Question
 		var answeredEvent, waited sql.NullInt64
 		var answeredAt, answeredBy, answer, payload sql.NullString
-		if err := rows.Scan(&q.ID, &q.AskedEventID, &q.AskedAt, &q.Text,
+		if err := rows.Scan(&q.ID, &q.Kind, &q.AskedEventID, &q.AskedAt, &q.Text,
 			&answeredEvent, &answeredAt, &answeredBy, &answer, &payload, &waited); err != nil {
 			return nil, err
 		}
