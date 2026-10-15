@@ -274,10 +274,10 @@ func (h *Host) start(msg message) error {
 }
 
 func (h *Host) wait(run *Run, item *Item) {
-	streamed := false
+	var st streamState
 	reply := run.Wait(func(ev harness.TurnEvent) {
 		h.mu.Lock()
-		changed := h.progressLocked(item, ev, &streamed)
+		changed := h.progressLocked(item, ev, &st)
 		var out Event
 		if changed {
 			out = h.eventLocked(item)
@@ -288,13 +288,9 @@ func (h *Host) wait(run *Run, item *Item) {
 		}
 	})
 	h.mu.Lock()
-	if text := strings.TrimSpace(reply.Text); text != "" || reply.Err == nil && !reply.Interrupted {
-		item.Reply = text
-	} else {
-		// No result: keep what streamed, so an interrupted turn shows
-		// how far it got.
-		item.Reply = strings.TrimSpace(item.Reply)
-	}
+	result := strings.TrimSpace(reply.Text)
+	silent := item.Source == SourceApp && Silent(result) && reply.Err == nil
+	item.Reply = finalReply(strings.TrimSpace(item.Reply), result, silent || reply.IsError)
 	if reply.DurationMS > 0 {
 		item.MS = reply.DurationMS
 	} else {
@@ -303,11 +299,11 @@ func (h *Host) wait(run *Run, item *Item) {
 	item.Tokens = reply.Tokens
 	h.mu.Unlock()
 	item.Interrupted = reply.Interrupted
-	item.Silent = item.Source == SourceApp && Silent(item.Reply) && reply.Err == nil
+	item.Silent = silent
 	if reply.Err != nil {
 		item.Error = reply.Err.Error()
-	} else if reply.IsError && item.Reply != "" {
-		item.Error = item.Reply
+	} else if reply.IsError && result != "" {
+		item.Error = result
 	}
 	item.Done = true
 	h.settleNews(item)
@@ -490,28 +486,64 @@ func (h *Host) Stop(wait time.Duration, force bool) (killed bool) {
 	return true
 }
 
+// finalReply is what a finished turn keeps as its reply (CON-79). The
+// result is only the turn's last message, so replacing what streamed with
+// it would lose the text written before the turn's tools. What streamed
+// is kept, with the result added when the stream missed it. The result
+// alone is kept when nothing streamed, and when it decides the turn by
+// itself (resultOnly: a silent digest, an error), so an app turn that
+// wrote something before its tools and then answered "—" stays silent. A
+// run with no result (interrupted, failed) keeps how far it got.
+func finalReply(streamed, result string, resultOnly bool) string {
+	switch {
+	case resultOnly && result != "", streamed == "":
+		return result
+	case result == "" || strings.HasSuffix(squash(streamed), squash(result)):
+		return streamed
+	}
+	return paragraph(streamed) + result
+}
+
+// squash is s with every run of white space made one space, so text is
+// compared without the paragraph breaks the stream added.
+func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// streamState is what progressLocked remembers between a turn's events.
+type streamState struct {
+	// streamed is set once the run streams text (Delta).
+	streamed bool
+	// para is set when a streamed message has ended, so the next
+	// streamed text starts a new paragraph instead of gluing onto it.
+	para bool
+}
+
 // progressLocked folds one run event into the running item and reports
 // whether it changed anything the REPL shows. A run that streams text
 // (Delta) is shown as it streams; one that does not shows each message's
-// text (Said) as it arrives.
-func (h *Host) progressLocked(item *Item, ev harness.TurnEvent, streamed *bool) bool {
+// text (Said) as it arrives. Each message is its own paragraph.
+func (h *Host) progressLocked(item *Item, ev harness.TurnEvent, st *streamState) bool {
 	changed := false
 	if ev.Delta != "" {
-		*streamed = true
+		if st.para {
+			item.Reply = paragraph(item.Reply)
+		}
+		st.streamed, st.para = true, false
 		item.Reply += ev.Delta
 		changed = true
-	} else if ev.Said != "" && !*streamed {
-		if item.Reply != "" {
-			item.Reply += "\n\n"
+	} else if ev.Said != "" {
+		if st.streamed {
+			// The message whose text streamed has ended.
+			st.para = true
+		} else {
+			item.Reply = paragraph(item.Reply) + ev.Said
+			changed = true
 		}
-		item.Reply += ev.Said
-		changed = true
 	}
 	if ev.Context > 0 {
 		item.Context = ev.Context
 	}
 	for _, c := range ev.Calls {
-		if *streamed && item.Reply != "" && !strings.HasSuffix(item.Reply, "\n\n") {
+		if st.streamed && item.Reply != "" && !strings.HasSuffix(item.Reply, "\n\n") {
 			// Text after a tool is a new paragraph.
 			item.Reply = strings.TrimRight(item.Reply, "\n") + "\n\n"
 		}
@@ -527,6 +559,15 @@ func (h *Host) progressLocked(item *Item, ev harness.TurnEvent, streamed *bool) 
 		}
 	}
 	return changed
+}
+
+// paragraph is reply ready for a new paragraph to follow: unchanged when
+// empty or already ending in a blank line.
+func paragraph(reply string) string {
+	if reply == "" || strings.HasSuffix(reply, "\n\n") {
+		return reply
+	}
+	return strings.TrimRight(reply, "\n") + "\n\n"
 }
 
 // eventLocked is an event carrying a copy of item (which may be nil), the

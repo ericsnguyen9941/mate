@@ -17,17 +17,28 @@ import (
 
 // fakeClaude answers like `claude -p --output-format stream-json`: it echoes
 // its argv and stdin into the result, sleeps while the prompt says "slow",
-// answers "—" to a prompt that says "quiet", and fails on "crash".
+// answers "—" to a prompt that says "quiet", and fails on "crash". A prompt
+// that says "chatty" writes text before its tool and two messages after
+// it, the last being the result; one that also says "stream" streams that
+// text (--include-partial-messages) before each whole message.
 const fakeClaude = `#!/bin/sh
 prompt=$(cat)
 echo "$*" >> "$(dirname "$0")/argv.log"
 echo "$prompt" >> "$(dirname "$0")/prompts.log"
 case "$prompt" in *crash*) echo "boom" >&2; exit 3;; esac
+say() {
+	case "$prompt" in *stream*)
+		printf '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"%s"}}}\n' "$1";;
+	esac
+	printf '{"type":"assistant","message":{"content":[{"type":"text","text":"%s"}]}}\n' "$1"
+}
 echo '{"type":"system","subtype":"init","session_id":"s1"}'
+case "$prompt" in *chatty*) say "Epic 1 has 3 tasks left.";; esac
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash"}]}}'
 echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1"}]}}'
 case "$prompt" in *slow*) sleep 2;; esac
 case "$prompt" in *quiet*) reply='—';; *) reply="re: $prompt";; esac
+case "$prompt" in *chatty*) say "Noted in the backlog."; say "$reply";; esac
 printf '{"type":"result","subtype":"success","result":"%s","session_id":"s1","is_error":false}\n' "$reply"
 `
 
@@ -58,19 +69,24 @@ func (streamTurns) ParseTurnEvent(line []byte) (harness.TurnEvent, bool) {
 		Type    string `json:"type"`
 		Result  string `json:"result"`
 		IsError bool   `json:"is_error"`
+		Event   struct {
+			Delta struct{ Text string } `json:"delta"`
+		} `json:"event"`
 		Message struct {
 			Content []struct {
-				Type, Name, ID string
-				ToolUseID      string `json:"tool_use_id"`
+				Type, Name, ID, Text string
+				ToolUseID            string `json:"tool_use_id"`
 			} `json:"content"`
 		} `json:"message"`
 	}
 	if json.Unmarshal(line, &l) != nil || l.Type == "" {
 		return harness.TurnEvent{}, false
 	}
-	var ev harness.TurnEvent
+	ev := harness.TurnEvent{Delta: l.Event.Delta.Text}
 	for _, c := range l.Message.Content {
 		switch c.Type {
+		case "text":
+			ev.Said = c.Text
 		case "tool_use":
 			ev.Calls = append(ev.Calls, harness.ToolCall{ID: c.ID, Name: c.Name})
 		case "tool_result":
@@ -421,5 +437,60 @@ func TestHostRecordsTools(t *testing.T) {
 	}
 	if got := History(HistoryPath(f.dir), 0); len(got) != 1 || len(got[0].Tools) != 1 {
 		t.Errorf("history = %+v", got)
+	}
+}
+
+// A turn that writes text, calls a tool, then writes more keeps all of it,
+// one paragraph per message, not only the result's last message (CON-79).
+func TestHostKeepsTheWholeReply(t *testing.T) {
+	for _, prompt := range []string{"chatty", "chatty stream"} {
+		t.Run(prompt, func(t *testing.T) {
+			f := newFixture(t)
+			f.host.Submit(prompt)
+			want := "Epic 1 has 3 tasks left.\n\nNoted in the backlog.\n\nre: " + prompt
+			if got := f.done(t, 1)[0].Reply; got != want {
+				t.Fatalf("reply = %q, want %q", got, want)
+			}
+			if got := History(HistoryPath(f.dir), 0); len(got) != 1 || got[0].Reply != want {
+				t.Errorf("history = %+v", got)
+			}
+		})
+	}
+}
+
+// An app turn that wrote something before its tools and then answered "—"
+// is still a silent digest.
+func TestHostAppTurnSilentAfterChatter(t *testing.T) {
+	for _, mode := range []string{"chatty", "chatty stream"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFixture(t)
+			if err := f.host.Deliver(Marker + "digest: 1 item(s) quiet " + mode); err != nil {
+				t.Fatal(err)
+			}
+			it := f.done(t, 1)[0]
+			if !it.Silent || it.Visible() || it.Reply != "—" {
+				t.Fatalf("item = %+v, want a silent digest", it)
+			}
+		})
+	}
+}
+
+func TestFinalReply(t *testing.T) {
+	for _, c := range []struct {
+		streamed, result string
+		resultOnly       bool
+		want             string
+	}{
+		{"", "only", false, "only"},
+		{"a\n\nb", "b", false, "a\n\nb"},
+		{"a\n\nb\nc", "b c", false, "a\n\nb\nc"},
+		{"a", "b", false, "a\n\nb"},      // the stream missed the last message
+		{"so far", "", false, "so far"},  // interrupted: how far it got
+		{"chatter\n\n—", "—", true, "—"}, // silent digest
+		{"partial", "API error", true, "API error"},
+	} {
+		if got := finalReply(c.streamed, c.result, c.resultOnly); got != c.want {
+			t.Errorf("finalReply(%q, %q, %v) = %q, want %q", c.streamed, c.result, c.resultOnly, got, c.want)
+		}
 	}
 }
