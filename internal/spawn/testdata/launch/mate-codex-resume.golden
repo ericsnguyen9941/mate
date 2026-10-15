@@ -240,10 +240,11 @@ CODEX_HOME={{CODEX_HOME}}
 ## Done
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/backlog.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=266 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=276 ---
 agent=mate-shop
 harness=codex
 launched_at=2026-09-17T10:00:00Z
+mode=pane
 pane=w2:p1
 resumed=true
 resumed_from=01a0d260-cd47-77d2-bee7-46d98aa0461a

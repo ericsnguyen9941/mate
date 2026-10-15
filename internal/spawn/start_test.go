@@ -78,6 +78,7 @@ func TestStartMateWritesManualAndMeta(t *testing.T) {
 		spawn.MetaLaunchedAt: "2026-09-17T10:00:00Z",
 		spawn.MetaModel:      "opus",
 		spawn.MetaEffort:     "medium",
+		spawn.MetaMode:       spawn.ModePane,
 	}
 	for k, v := range want {
 		if meta[k] != v {

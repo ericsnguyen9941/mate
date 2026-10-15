@@ -22,9 +22,12 @@ const HostStopWait = 2 * time.Minute
 
 // headlessMode decides a start's mode: the request's, else the mode the
 // last run of this Mate recorded, else project.yaml's `mate.headless`.
-func headlessMode(req StartRequest, prior map[string]string, cfg store.MateConfig) (bool, error) {
+func headlessMode(req StartRequest, prior map[string]string, cfg store.MateConfig, fallback string, canHeadless bool) (bool, error) {
 	switch req.Mode {
 	case ModeHeadless:
+		if !canHeadless {
+			return false, errNoHeadless
+		}
 		return true, nil
 	case ModePane:
 		return false, nil
@@ -32,11 +35,31 @@ func headlessMode(req StartRequest, prior map[string]string, cfg store.MateConfi
 	default:
 		return false, errUsage(fmt.Sprintf("unknown Mate mode %q (want %s or %s)", req.Mode, ModePane, ModeHeadless))
 	}
-	if m := prior[MetaMode]; m != "" {
-		return m == ModeHeadless, nil
+	switch cfg.Mode {
+	case ModePane, ModeHeadless, "":
+	default:
+		return false, errUsage(fmt.Sprintf("project.yaml mate.mode %q is not a Mate mode (want %s or %s)", cfg.Mode, ModePane, ModeHeadless))
 	}
-	return cfg.Headless, nil
+	// The mode of the last run, then project.yaml, then fallback
+	// (Deps.DefaultMode: headless in the binary since 2026-10-15). A
+	// harness without headless turns runs in the pane whatever the earlier
+	// choice was, since a captain who switched harness asked for nothing
+	// else.
+	mode := prior[MetaMode]
+	if mode == "" {
+		mode = cfg.Mode
+	}
+	if mode == "" && cfg.Headless {
+		mode = ModeHeadless
+	}
+	if mode == "" {
+		mode = fallback
+	}
+	return mode == ModeHeadless && canHeadless, nil
 }
+
+// errNoHeadless refuses `--mode headless` on a harness that cannot run one.
+var errNoHeadless = errUsage("this harness cannot run a headless Mate: it has no headless turns (harness.HeadlessTurns)")
 
 // startHostInTab starts the host in the tab, waits until it answers on its
 // socket and Herdr lists it under the Mate's name, and records mate.meta.

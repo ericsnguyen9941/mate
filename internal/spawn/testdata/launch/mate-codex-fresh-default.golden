@@ -236,10 +236,11 @@ CODEX_HOME={{CODEX_HOME}}
 ## Done
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/backlog.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=167 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=177 ---
 agent=mate-shop
 harness=codex
 launched_at=2026-09-17T10:00:00Z
+mode=pane
 pane=w1:p1
 session={{HERDR_SESSION}}
 session_id=

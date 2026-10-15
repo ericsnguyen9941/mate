@@ -159,12 +159,10 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 	}
 	decision := decideResume(priorMeta, kind, req)
 	decision = checkResume(profile, decision)
-	headless, err := headlessMode(req, priorMeta, cfg.Mate)
+	_, canHeadless := profile.(harness.HeadlessTurns)
+	headless, err := headlessMode(req, priorMeta, cfg.Mate, deps.DefaultMode, canHeadless)
 	if err != nil {
 		return StartResult{}, err
-	}
-	if _, ok := profile.(harness.HeadlessTurns); headless && !ok {
-		return StartResult{}, errUsage(fmt.Sprintf("the %s harness cannot run a headless Mate: it has no headless turns (harness.HeadlessTurns)", kind))
 	}
 
 	// 2. The Mate's directory: the manual, rendered again on every start,
@@ -403,6 +401,9 @@ func settleAndRecord(ctx context.Context, w *store.Workspace, deps Deps, project
 		MetaSession:   session.Name,
 		MetaSessionID: sessionID,
 		MetaStartedAt: startedAt.Format(time.RFC3339),
+		// Recorded so the next start without --mode keeps the pane rather
+		// than taking the headless default.
+		MetaMode: ModePane,
 		// See MetaLaunchedAt: a Codex Mate's rollout is adopted from it.
 		MetaLaunchedAt: launchedAt.Format(time.RFC3339),
 	}
