@@ -87,7 +87,7 @@ MATE_CALLER=crew
 
 == files the launch created or changed ==
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3.meta mode=-rw-r--r-- bytes=313 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3.meta mode=-rw-r--r-- bytes=325 ---
 agent=crew-k3
 branch=mate/k3
 delivery=local
@@ -99,6 +99,7 @@ pane=w1:p2
 repo=shop
 session={{HERDR_SESSION}}
 session_id=
+size=medium
 started_at=2026-09-17T10:00:00Z
 state=spawned
 tab=w1:t2
@@ -116,7 +117,7 @@ worktree=.worktrees/shop-k3
 (rendered asset) sha256=6b363b5171ad9c1ae55401fcb60b37f5325711bb7fe370f058cd698d316ba9be
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/brief.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json mode=-rw------- bytes=2357 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json mode=-rw------- bytes=2382 ---
 {
   "version": 1,
   "captured_at": "2026-09-17T10:00:00Z",
@@ -128,6 +129,7 @@ worktree=.worktrees/shop-k3
   "mate_version": "dev",
   "requested_effort": "max",
   "effort_omitted": true,
+  "task_size": "medium",
   "repo_commit": "{{HEAD}}",
   "repo_dirty": false,
   "documents": [
@@ -192,12 +194,12 @@ worktree=.worktrees/shop-k3
     {
       "path": "embedded:crew/brief.md.tmpl",
       "role": "crew_prompt_template",
-      "sha256": "be0ce390ea511c9d44b629a99250dfdd2981512bc47e1df3676ccb1c117f7975",
-      "bytes": 13457,
+      "sha256": "6de313e2a43bd44b8af15ffca15c433742448a373ab14c287ed1c7ededdd293f",
+      "bytes": 14981,
       "state": "configured"
     }
   ],
-  "fingerprint": "b4e7d91f3ae38778de0811d1990591c12a4f60b14486cdb36dfd4fb571264b04"
+  "fingerprint": "a6e2cbc2c1fe7335296aa92ac95a6b359a5f1f5d3b804ea902d5b8211e4fe9a4"
 }
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json ---
 

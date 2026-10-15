@@ -37,12 +37,12 @@ func cmdCrew(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 }
 
 // cmdCrewSpawn implements
-// `mate crew spawn <project> <id> --brief <file> [--repo <name>] [--scout] [--harness codex|claude] [--model <name>] [--effort <level>] [--budget <tokens>] [--task "<one line>"]`.
+// `mate crew spawn <project> <id> --brief <file> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--harness codex|claude] [--model <name>] [--effort <level>] [--budget <tokens>] [--task "<one line>"]`.
 func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("crew spawn", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, `usage: mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--workspace <dir>] [--harness `+harnessChoices(harness.RoleCrew, "|")+`] [--model <name>] [--effort low|medium|high|xhigh|max] [--budget <tokens>] [--task "<one line>"]`)
+		fmt.Fprintln(stderr, `usage: mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--workspace <dir>] [--harness `+harnessChoices(harness.RoleCrew, "|")+`] [--model <name>] [--effort low|medium|high|xhigh|max] [--budget <tokens>] [--task "<one line>"]`)
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	scoutFlag := fs.Bool("scout", false, "a scout: the brief has ## Deliverable and the crew writes a report instead of committing")
@@ -55,6 +55,7 @@ func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) erro
 	briefFlag := fs.String("brief", "", "file holding the task text, or - to read it from stdin")
 	repoFlag := fs.String("repo", "", "the project repo the crew works in (required when the project has several)")
 	deliverFlag := fs.String("deliver", "", "how a ship's work lands: local (fast-forward on the primary checkout, the default) or pr (push the branch and open a pull request; needs gh logged in and origin on GitHub)")
+	sizeFlag := fs.String("size", "", "how big the task is: small, medium (the default) or large; picks the hand-back shape and evidence level the brief asks of a ship")
 	taskFlag := fs.String("task", "", "one line recorded as task= (default: the brief's first line)")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
@@ -70,7 +71,7 @@ func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) erro
 	if *budgetFlag < 0 {
 		return newUsageError("mate crew spawn: --budget wants a positive number of tokens")
 	}
-	req := spawn.SpawnCrewRequest{Project: fs.Arg(0), Crew: fs.Arg(1), Task: *taskFlag, Scout: *scoutFlag, Repo: *repoFlag, Delivery: *deliverFlag, Budget: *budgetFlag}
+	req := spawn.SpawnCrewRequest{Project: fs.Arg(0), Crew: fs.Arg(1), Task: *taskFlag, Scout: *scoutFlag, Repo: *repoFlag, Delivery: *deliverFlag, Budget: *budgetFlag, Size: *sizeFlag}
 	if *briefFlag == "-" {
 		text, err := spawn.ReadBriefStdin(stdin)
 		if err != nil {

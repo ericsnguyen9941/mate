@@ -146,6 +146,7 @@ func TestSpawnCrewCreatesWorktreeBriefAndMeta(t *testing.T) {
 		spawn.MetaBranch:     "mate/k3",
 		spawn.MetaKind:       "ship",
 		spawn.MetaDelivery:   "local",
+		spawn.MetaSize:       "medium",
 		store.MetaRepo:       "shop",
 		spawn.MetaSessionID:  "",
 		spawn.MetaTranscript: "",
@@ -1008,6 +1009,55 @@ func TestSpawnCrewDeliversLocallyByDefault(t *testing.T) {
 	if !strings.Contains(string(brief), "Never push to any remote") {
 		t.Errorf("a local brief does not forbid pushing:\n%s", brief)
 	}
+}
+
+// `--size` (CON-72) picks the hand-back shape the brief asks for, and is
+// recorded in the meta, the result and the harness profile; an unknown size
+// is refused before anything exists.
+func TestSpawnCrewSizeShapesTheHandback(t *testing.T) {
+	for _, tc := range []struct {
+		size, wantMeta, wantBrief string
+	}{
+		{"", "medium", "within 120 lines in all"},
+		{"medium", "medium", "At most 10 lines: what a later Crew"},
+		{"small", "small", "within 30 lines in all"},
+		{"large", "large", "Required, and written in full, never `none`"},
+	} {
+		t.Run("size "+tc.wantMeta, func(t *testing.T) {
+			w := crewWorkspace(t, "shop")
+			res, err := spawn.SpawnCrew(context.Background(), w, fakeDeps(t, runtime.NewFake()), spawn.SpawnCrewRequest{
+				Project: "shop", Crew: "k3", BriefText: brieftest.Ship("work"), Size: tc.size,
+			})
+			if err != nil {
+				t.Fatalf("SpawnCrew: %v", err)
+			}
+			if string(res.Size) != tc.wantMeta {
+				t.Errorf("result size = %q, want %q", res.Size, tc.wantMeta)
+			}
+			if meta, _ := w.ReadCrewMeta("shop", "k3"); meta[spawn.MetaSize] != tc.wantMeta {
+				t.Errorf("meta size = %q, want %q", meta[spawn.MetaSize], tc.wantMeta)
+			}
+			if p, err := w.ReadCrewHarnessProfile("shop", "k3"); err != nil || p == nil || p.TaskSize != tc.wantMeta {
+				t.Errorf("harness profile task_size = %+v, %v; want %q", p, err, tc.wantMeta)
+			}
+			brief, _ := os.ReadFile(w.CrewBrief("shop", "k3"))
+			if !strings.Contains(string(brief), tc.wantBrief) {
+				t.Errorf("brief.md does not carry %q:\n%s", tc.wantBrief, brief)
+			}
+		})
+	}
+	t.Run("unknown size", func(t *testing.T) {
+		w := crewWorkspace(t, "shop")
+		_, err := spawn.SpawnCrew(context.Background(), w, fakeDeps(t, runtime.NewFake()), spawn.SpawnCrewRequest{
+			Project: "shop", Crew: "k3", BriefText: brieftest.Ship("work"), Size: "huge",
+		})
+		if err == nil || !strings.Contains(err.Error(), "--size wants small, medium or large") {
+			t.Fatalf("err = %v, want the size choices", err)
+		}
+		if meta, _ := w.ReadCrewMeta("shop", "k3"); len(meta) != 0 {
+			t.Fatalf("a refused spawn left a meta: %v", meta)
+		}
+	})
 }
 
 // `--deliver pr` is refused before anything exists when the repo cannot
