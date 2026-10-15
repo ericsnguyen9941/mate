@@ -1,6 +1,6 @@
 # Timeline
 
-Schema version: **4**.
+Schema version: **5**.
 
 This is the contract of `.mate/mate.db` and of `internal/timeline`.
 The database is derived: every row here is read out of `crews/<id>.status`, `sent.log`, `incidents.log`, the `.meta` files, the harness transcripts or git, and `mate reindex <workspace>` rebuilds all of it from those sources.
@@ -186,7 +186,7 @@ For Claude that is one assistant message group (one `message.id`), which is the 
 {"cache_read_tokens":57690,"cache_write_tokens":739,"context_tokens_after":58461,"harness_turn":"e6114c69-5e7a-4d34-b35d-ef6c74677ed2","input_tokens":32,"model":"claude-fable-5-1","outcome":"tool_use","output_tokens":911,"thinking_tokens":73,"tool_count":1}
 ```
 
-`turn.ended` carries the same payload plus `duration_ms`.
+`turn.ended` carries the same payload plus `duration_ms`. Schema v5 (CON-75) adds `effort` to the payload and to `turn`: the harness's telemetry state when it records one (Codex, pi), else the actor's launch profile (`effort=` in `.meta`, which is a Claude turn's only source); `model` takes the same fallback when the transcript names none.
 
 `context_tokens_after` is what the context held when the call returned.
 For Claude it is the message's `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`.

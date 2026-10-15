@@ -56,6 +56,7 @@ type pendingTurn struct {
 	EndedAt        time.Time
 	Outcome        string
 	Model          string
+	Effort         string
 	HarnessTurnRef string
 	Input          int64
 	CacheRead      int64
@@ -479,14 +480,15 @@ func (w *writer) insertEvent(ctx context.Context, e pendingEvent) error {
 
 func (w *writer) upsertTurn(ctx context.Context, t pendingTurn) error {
 	_, err := w.tx.ExecContext(ctx,
-		`INSERT INTO turn(id, actor_id, session_id, ordinal, started_at, ended_at, outcome, model, harness_turn_ref,
+		`INSERT INTO turn(id, actor_id, session_id, ordinal, started_at, ended_at, outcome, model, effort, harness_turn_ref,
 		                  input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,
 		                  context_tokens_after, tool_count, ref_path, ref_offset)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   ended_at             = COALESCE(excluded.ended_at, turn.ended_at),
 		   outcome              = excluded.outcome,
 		   model                = excluded.model,
+		   effort               = excluded.effort,
 		   input_tokens         = excluded.input_tokens,
 		   cache_read_tokens    = excluded.cache_read_tokens,
 		   cache_write_tokens   = excluded.cache_write_tokens,
@@ -495,7 +497,7 @@ func (w *writer) upsertTurn(ctx context.Context, t pendingTurn) error {
 		   context_tokens_after = excluded.context_tokens_after,
 		   tool_count           = excluded.tool_count`,
 		t.ID, t.ActorID, t.SessionID, t.Ordinal, nullTime(t.StartedAt), nullTime(t.EndedAt),
-		t.Outcome, t.Model, t.HarnessTurnRef,
+		t.Outcome, t.Model, t.Effort, t.HarnessTurnRef,
 		t.Input, t.CacheRead, t.CacheWrite, t.Output, t.Thinking,
 		t.ContextAfter, t.ToolCount, t.RefPath, t.RefOffset)
 	return err

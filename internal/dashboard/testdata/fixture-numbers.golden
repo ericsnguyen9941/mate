@@ -1241,6 +1241,7 @@
       "duration_ms": 7468,
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 4946,
         "cache_read": 14080,
@@ -1265,6 +1266,7 @@
       "duration_ms": 4236,
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 5182,
         "cache_read": 14080,
@@ -1289,6 +1291,7 @@
       "duration_ms": 5176,
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 2508,
         "cache_read": 18176,
@@ -1313,6 +1316,7 @@
       "duration_ms": 4624,
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 757,
         "cache_read": 20224,
@@ -1337,6 +1341,7 @@
       "duration_ms": 2576,
       "outcome": "end_turn",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 934,
         "cache_read": 20224,
@@ -1363,6 +1368,7 @@
       "trigger_kind": "question.answered",
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 1037,
         "cache_read": 20224,
@@ -1389,6 +1395,7 @@
       "trigger_kind": "question.answered",
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 1338,
         "cache_read": 20224,
@@ -1415,6 +1422,7 @@
       "trigger_kind": "question.answered",
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 3618,
         "cache_read": 18176,
@@ -1441,6 +1449,7 @@
       "trigger_kind": "question.answered",
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 764,
         "cache_read": 21248,
@@ -1467,6 +1476,7 @@
       "trigger_kind": "question.answered",
       "outcome": "tool_use",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 1016,
         "cache_read": 21248,
@@ -1493,6 +1503,7 @@
       "trigger_kind": "question.answered",
       "outcome": "end_turn",
       "model": "gpt-5.6-terra",
+      "effort": "high",
       "tokens": {
         "input": 1172,
         "cache_read": 21248,

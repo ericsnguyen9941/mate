@@ -704,7 +704,7 @@ event(id PK AUTOINCREMENT, project, at, actor_id FK, kind, subject_actor_id NULL
       task_actor_id NULL, cause_event_id NULL, payload JSON, ref_path, ref_offset)
   INDEX (project, at), (actor_id, at), (kind, at), (cause_event_id), (task_actor_id, at)
 turn(id PK, actor_id FK, session_id FK, ordinal, started_at, ended_at, trigger_event_id, outcome,
-     model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,
+     model, effort /*v5 CON-75*/, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,
      context_tokens_after, tool_count, ref_path, ref_offset)
 action(id PK, turn_id FK, event_id FK, at, tool, target, summary, duration_ms, ok)  INDEX (target), (turn_id)
 message(event_id PK FK, from_actor_id, to_actor_id, channel /*pane|status|digest|assign|hook*/, text, marked)

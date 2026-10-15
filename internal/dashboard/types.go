@@ -241,22 +241,25 @@ type MateActivity struct {
 
 // Turn is one model call.
 type Turn struct {
-	ID             string   `json:"id"`
-	SessionID      string   `json:"-"`
-	HarnessTurnRef string   `json:"-"`
-	Ordinal        int64    `json:"ordinal"`
-	StartedAt      string   `json:"started_at,omitempty"`
-	EndedAt        string   `json:"ended_at,omitempty"`
-	DurationMs     int64    `json:"duration_ms"`
-	TriggerEventID int64    `json:"trigger_event_id,omitempty"`
-	TriggerKind    string   `json:"trigger_kind,omitempty"`
-	Outcome        string   `json:"outcome,omitempty"`
-	Model          string   `json:"model,omitempty"`
-	Tokens         Tokens   `json:"tokens"`
-	ContextAfter   int64    `json:"context_tokens_after"`
-	ContextPct     *float64 `json:"context_pct"`
-	ToolCount      int64    `json:"tool_count"`
-	Ref            Ref      `json:"ref"`
+	ID             string `json:"id"`
+	SessionID      string `json:"-"`
+	HarnessTurnRef string `json:"-"`
+	Ordinal        int64  `json:"ordinal"`
+	StartedAt      string `json:"started_at,omitempty"`
+	EndedAt        string `json:"ended_at,omitempty"`
+	DurationMs     int64  `json:"duration_ms"`
+	TriggerEventID int64  `json:"trigger_event_id,omitempty"`
+	TriggerKind    string `json:"trigger_kind,omitempty"`
+	Outcome        string `json:"outcome,omitempty"`
+	Model          string `json:"model,omitempty"`
+	// Effort is the reasoning effort the turn ran at: the harness's own
+	// record when it keeps one, else the launch profile (CON-75).
+	Effort       string   `json:"effort,omitempty"`
+	Tokens       Tokens   `json:"tokens"`
+	ContextAfter int64    `json:"context_tokens_after"`
+	ContextPct   *float64 `json:"context_pct"`
+	ToolCount    int64    `json:"tool_count"`
+	Ref          Ref      `json:"ref"`
 }
 
 // StatusLine is one line the crew wrote to `crews/<id>.status`, as the

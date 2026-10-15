@@ -33,7 +33,8 @@ Read the columns for what each one measures:
 - `IN` and `CACHE-WRITE` are new material entering the context: file reads, command output, instructions.
 - `OUT` is what the model wrote, thinking included.
 - `CTX` is the last context size; `TURNS` is model calls, not prompts.
-- `ASKED` and `WAITED` are questions and the time they sat unanswered.
+- `ASKED` and `WAITED` are questions and the time they sat unanswered; `WAITED` also counts a hand-back's wait for the next instruction, and a reply that only said "hold on" does not end a wait.
+- `MODEL` and `EFFORT` are the last call's, else the launch profile. Compare a task only with tasks on the same model and effort, or name the difference.
 
 "Too many" is a comparison, never a number on its own.
 Compare a task with tasks of the same kind and similar size: a scout with scouts, a one-file fix with one-file fixes.

@@ -4,7 +4,7 @@ package db
 // same number docs/timeline.md prints at the top of its schema section; a
 // reader that finds a different one in `schema_version` is reading a file
 // this build does not understand.
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // migration is one ordered, all-or-nothing step. Each runs inside the same
 // transaction that records its version, so a half-applied schema cannot
@@ -22,6 +22,7 @@ var migrations = []migration{
 	{version: 2, stmts: schema2},
 	{version: 3, stmts: schema3},
 	{version: 4, stmts: schema4},
+	{version: 5, stmts: schema5},
 }
 
 // schema1 is the M5 schema of docs/mvp.md. Times are RFC3339 with nanosecond
@@ -451,4 +452,14 @@ var schema3 = []string{
 // door - e0-components' 93 on hellovietnam - and not only the questions.
 var schema4 = []string{
 	`ALTER TABLE question ADD COLUMN kind TEXT NOT NULL DEFAULT 'decision'`,
+}
+
+// schema5 is CON-75's model/effort column: every turn says which reasoning
+// effort it ran at, from the harness's own record when it keeps one
+// (Codex's and pi's telemetry state) and otherwise from the launch profile
+// in the actor's `.meta` (`effort=`), the same fallback `model` takes when
+// a transcript names none. Without it, Opus high and Sonnet medium on the
+// same kind of task could not be told apart in the ledger.
+var schema5 = []string{
+	`ALTER TABLE turn ADD COLUMN effort TEXT NOT NULL DEFAULT ''`,
 }

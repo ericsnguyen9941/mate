@@ -278,7 +278,7 @@ func (s *Server) turns(ctx context.Context, actorID string) ([]Turn, error) {
 	rows, err := s.db.SQL().QueryContext(ctx, `
 		SELECT u.id, u.session_id, u.harness_turn_ref, u.ordinal,
 		       u.started_at, u.ended_at, u.trigger_event_id, e.kind,
-		       u.outcome, u.model, u.input_tokens, u.cache_read_tokens, u.cache_write_tokens,
+		       u.outcome, u.model, u.effort, u.input_tokens, u.cache_read_tokens, u.cache_write_tokens,
 		       u.output_tokens, u.thinking_tokens, u.context_tokens_after, u.tool_count,
 		       u.ref_path, u.ref_offset,
 		       CASE WHEN p.context_window > 0
@@ -296,19 +296,19 @@ func (s *Server) turns(ctx context.Context, actorID string) ([]Turn, error) {
 	out := []Turn{}
 	for rows.Next() {
 		var t Turn
-		var startedAt, endedAt, triggerKind, outcome, model sql.NullString
+		var startedAt, endedAt, triggerKind, outcome, model, effort sql.NullString
 		var trigger sql.NullInt64
 		var pct sql.NullFloat64
 		if err := rows.Scan(&t.ID, &t.SessionID, &t.HarnessTurnRef, &t.Ordinal,
 			&startedAt, &endedAt, &trigger, &triggerKind,
-			&outcome, &model, &t.Tokens.Input, &t.Tokens.CacheRead, &t.Tokens.CacheWrite,
+			&outcome, &model, &effort, &t.Tokens.Input, &t.Tokens.CacheRead, &t.Tokens.CacheWrite,
 			&t.Tokens.Output, &t.Tokens.Thinking, &t.ContextAfter, &t.ToolCount,
 			&t.Ref.Path, &t.Ref.Offset, &pct); err != nil {
 			return nil, err
 		}
 		t.StartedAt, t.EndedAt = startedAt.String, endedAt.String
 		t.TriggerEventID, t.TriggerKind = trigger.Int64, triggerKind.String
-		t.Outcome, t.Model = outcome.String, model.String
+		t.Outcome, t.Model, t.Effort = outcome.String, model.String, effort.String
 		t.Tokens.Total = t.Tokens.Input + t.Tokens.CacheRead + t.Tokens.CacheWrite + t.Tokens.Output
 		t.DurationMs = spanMs(t.StartedAt, t.EndedAt)
 		t.ContextPct = nullFloat(pct)

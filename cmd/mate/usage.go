@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -99,7 +100,10 @@ type ledgerRow struct {
 	// recorded one, so a group of rows can weigh its mean by those calls.
 	CtxSum   int64
 	CtxCalls int64
+	// Model and Effort are the row's last call's, falling back to the
+	// launch profile in `.meta` when no call recorded them (CON-75).
 	Model    string
+	Effort   string
 	Harness  string
 	Out      int64
 	Total    int64
@@ -116,7 +120,7 @@ type ledgerRow struct {
 // largest first; the footer still counts every row, and a last line says
 // how many tasks were left out.
 func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout io.Writer, project string, top int) error {
-	mate, err := mateLedgerRow(ctx, handle, project)
+	mate, err := mateLedgerRow(ctx, handle, w, project)
 	if err != nil {
 		return err
 	}
@@ -128,15 +132,19 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 	}
 	stateByID := make(map[string]string, len(summaries))
 	harnessByID := make(map[string]string, len(summaries))
+	profileByID := make(map[string]spawn.CrewSummary, len(summaries))
 	for _, s := range summaries {
 		stateByID[s.Crew] = s.State
 		harnessByID[s.Crew] = s.Harness
+		profileByID[s.Crew] = s
 	}
 
 	dbRows, err := handle.SQL().QueryContext(ctx, `
 		SELECT crew, turns, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens,
 		       cost, context_pct, context_tokens_last, question_count, waited_ms, spawned_at, closed_at,
 		       COALESCE(last_model, ''),
+		       COALESCE((SELECT u.effort FROM turn u WHERE u.actor_id = l.crew_actor_id
+		                  ORDER BY u.started_at DESC, u.ordinal DESC LIMIT 1), ''),
 		       (SELECT CAST(ROUND(AVG(u.context_tokens_after)) AS INTEGER) FROM turn u
 		         WHERE u.actor_id = l.crew_actor_id AND u.context_tokens_after > 0),
 		       (SELECT MAX(u.context_tokens_after) FROM turn u
@@ -156,14 +164,20 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 		var cost, ctxPct sql.NullFloat64
 		var ctxTokens, ctxAvg, ctxMax sql.NullInt64
 		var spawnedAt, closedAt sql.NullString
-		var model string
+		var model, effort string
 		if err := dbRows.Scan(&crew, &turns, &in, &cacheRead, &cacheWrite, &out,
 			&cost, &ctxPct, &ctxTokens, &asked, &waited, &spawnedAt, &closedAt,
-			&model, &ctxAvg, &ctxMax, &ctxSum, &ctxCalls); err != nil {
+			&model, &effort, &ctxAvg, &ctxMax, &ctxSum, &ctxCalls); err != nil {
 			return err
 		}
+		if model == "" {
+			model = profileByID[crew].Model
+		}
+		if effort == "" {
+			effort = profileByID[crew].Effort
+		}
 		rows = append(rows, ledgerRow{
-			ID: crew, State: stateByID[crew], Harness: harnessByID[crew], Model: model, Turns: turns,
+			ID: crew, State: stateByID[crew], Harness: harnessByID[crew], Model: model, Effort: effort, Turns: turns,
 			CtxAvg: ctxAvg, CtxMax: ctxMax, CtxSum: ctxSum, CtxCalls: ctxCalls,
 			In: in, Cached: cacheRead + cacheWrite, Out: out, Total: in + cacheRead + cacheWrite + out,
 			Cost: cost, CtxPct: ctxPct, Context: ctxTokens, CacheRead: cacheRead, CacheWrite: cacheWrite, Asked: asked, WaitedMs: waited,
@@ -189,11 +203,12 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 	return nil
 }
 
-// printByModel is one line per model the project's tasks last ran on:
-// how many tasks, model calls per task and context per call, over every
-// task whatever --top shows. They are the numbers CON-68 measures a change
-// to the Crew launch against (hellovietnam 2026-10-14: Claude Crews 39
-// calls per task, 162k context per call).
+// printByModel is one line per model and effort the project's tasks last
+// ran on: how many tasks, model calls per task and context per call, over
+// every task whatever --top shows. They are the numbers CON-68 measures a
+// change to the Crew launch against (hellovietnam 2026-10-14: Claude Crews
+// 39 calls per task, 162k context per call), and with effort in the key
+// (CON-75) Opus high and Sonnet medium are two lines, not one.
 func printByModel(stdout io.Writer, tasks []ledgerRow) {
 	type group struct {
 		tasks, calls, ctxCalls, ctxSum int64
@@ -207,6 +222,9 @@ func printByModel(stdout io.Writer, tasks []ledgerRow) {
 			continue
 		}
 		key := dashIfEmpty(r.Model)
+		if r.Effort != "" {
+			key += " " + r.Effort
+		}
 		g := groups[key]
 		if g == nil {
 			g = &group{}
@@ -224,7 +242,7 @@ func printByModel(stdout io.Writer, tasks []ledgerRow) {
 		return
 	}
 	sort.Strings(order)
-	fmt.Fprintln(stdout, "by model (each task's last model):")
+	fmt.Fprintln(stdout, "by model and effort (each task's last call):")
 	for _, key := range order {
 		g := groups[key]
 		ctx := "?"
@@ -281,9 +299,16 @@ func printCompactWarning(stdout io.Writer, tasks []ledgerRow, threshold int) {
 // Mate - its turns belong to the project rather than to any one task
 // (docs/timeline.md) - so State and Span are dashes and Asked/WaitedMs are
 // zero: those columns are a task's shape, not a Mate's.
-func mateLedgerRow(ctx context.Context, handle *db.DB, project string) (ledgerRow, error) {
+func mateLedgerRow(ctx context.Context, handle *db.DB, w *store.Workspace, project string) (ledgerRow, error) {
 	row := ledgerRow{ID: "mate", State: "-", Span: "-"}
 	actorID := timeline.MateActorID(project)
+
+	if err := handle.SQL().QueryRowContext(ctx, `
+		SELECT COALESCE(model, ''), COALESCE(effort, '') FROM turn WHERE actor_id = ?
+		 ORDER BY started_at DESC, ordinal DESC LIMIT 1`, actorID).
+		Scan(&row.Model, &row.Effort); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return row, err
+	}
 
 	var cacheRead, cacheWrite int64
 	if err := handle.SQL().QueryRowContext(ctx, `
@@ -325,6 +350,16 @@ func mateLedgerRow(ctx context.Context, handle *db.DB, project string) (ledgerRo
 			row.CtxPct = sql.NullFloat64{Float64: *usage.Pct, Valid: true}
 		}
 	}
+	if row.Model == "" || row.Effort == "" {
+		if meta, err := w.ReadMateMeta(project); err == nil {
+			if row.Model == "" {
+				row.Model = meta[spawn.MetaModel]
+			}
+			if row.Effort == "" {
+				row.Effort = meta[spawn.MetaEffort]
+			}
+		}
+	}
 
 	return row, nil
 }
@@ -352,14 +387,14 @@ func printLedgerTable(stdout io.Writer, rows []ledgerRow) {
 // so a cut table never understates what the project spent.
 func printLedgerRows(stdout io.Writer, shown, all []ledgerRow) {
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tSTATE\tTURNS\tIN\tCACHE-READ\tCACHE-WRITE\tOUT\tTOTAL\tCOST\tCTX\tCTX-AVG\tCTX%\tASKED\tWAITED\tSPAWN→CLOSE")
+	fmt.Fprintln(tw, "ID\tSTATE\tMODEL\tEFFORT\tTURNS\tIN\tCACHE-READ\tCACHE-WRITE\tOUT\tTOTAL\tCOST\tCTX\tCTX-AVG\tCTX%\tASKED\tWAITED\tSPAWN→CLOSE")
 
 	var totalTurns, totalIn, totalCached, totalOut, totalTotal, totalAsked, totalWaited int64
 	var totalCost float64
 	haveCost := false
 	for _, r := range shown {
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
-			r.ID, dashIfEmpty(r.State), r.Turns,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+			r.ID, dashIfEmpty(r.State), dashIfEmpty(r.Model), dashIfEmpty(r.Effort), r.Turns,
 			query.HumanizeTokens(r.In), query.HumanizeTokens(r.CacheRead), query.HumanizeTokens(r.CacheWrite), query.HumanizeTokens(r.Out), query.HumanizeTokens(r.Total),
 			costWord(r.Cost), contextWord(r.Context), contextWord(r.CtxAvg), ctxWord(r.CtxPct), r.Asked, waitedWord(r.WaitedMs), r.Span)
 	}
@@ -419,7 +454,7 @@ func waitedWord(ms int64) string {
 func printCrewTurns(ctx context.Context, handle *db.DB, stdout io.Writer, project, crew string) error {
 	actorID := timeline.CrewActorID(project, crew)
 	rows, err := handle.SQL().QueryContext(ctx, `
-		SELECT ordinal, started_at, ended_at, model, input_tokens, cache_read_tokens,
+		SELECT ordinal, started_at, ended_at, model, effort, input_tokens, cache_read_tokens,
 		       cache_write_tokens, output_tokens, context_tokens_after, outcome
 		  FROM turn WHERE actor_id = ? ORDER BY started_at, ordinal`, actorID)
 	if err != nil {
@@ -428,14 +463,14 @@ func printCrewTurns(ctx context.Context, handle *db.DB, stdout io.Writer, projec
 	defer rows.Close()
 
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "TURN\tSTARTED\tMODEL\tIN\tCACHED\tOUT\tTOTAL\tCTX\tDURATION\tOUTCOME")
+	fmt.Fprintln(tw, "TURN\tSTARTED\tMODEL\tEFFORT\tIN\tCACHED\tOUT\tTOTAL\tCTX\tDURATION\tOUTCOME")
 	n := 0
 	for rows.Next() {
 		var ordinal int
 		var startedAt sql.NullString
-		var endedAt, model, outcome sql.NullString
+		var endedAt, model, effort, outcome sql.NullString
 		var in, cacheRead, cacheWrite, out, ctxAfter int64
-		if err := rows.Scan(&ordinal, &startedAt, &endedAt, &model, &in, &cacheRead, &cacheWrite,
+		if err := rows.Scan(&ordinal, &startedAt, &endedAt, &model, &effort, &in, &cacheRead, &cacheWrite,
 			&out, &ctxAfter, &outcome); err != nil {
 			return err
 		}
@@ -444,8 +479,8 @@ func printCrewTurns(ctx context.Context, handle *db.DB, stdout io.Writer, projec
 		if endedAt.Valid {
 			dur = db.ParseTime(endedAt.String).Sub(started)
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			ordinal+1, started.Local().Format("15:04:05"), dashIfEmpty(model.String),
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			ordinal+1, started.Local().Format("15:04:05"), dashIfEmpty(model.String), dashIfEmpty(effort.String),
 			query.HumanizeTokens(in), query.HumanizeTokens(cacheRead+cacheWrite), query.HumanizeTokens(out),
 			query.HumanizeTokens(in+cacheRead+cacheWrite+out), query.HumanizeTokens(ctxAfter),
 			dur.Round(time.Millisecond), dashIfEmpty(outcome.String))
