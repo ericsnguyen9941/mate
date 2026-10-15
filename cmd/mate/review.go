@@ -387,7 +387,7 @@ func checkReview(ctx context.Context, w *store.Workspace, g gitx.Git, project, c
 	}
 	ready := false
 	for _, c := range crews {
-		if c.Crew == reviewer && (c.State == "wait-mate" || c.State == "finished") {
+		if c.Crew == reviewer && (c.State == "wait-mate" || c.State == "finished" || c.State == spawn.CrewStateReviewed) {
 			ready = true
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/brief"
+	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
@@ -127,7 +128,7 @@ func RelaunchCrew(ctx context.Context, w *store.Workspace, deps Deps, project, c
 		return RelaunchResult{}, observability.NewError(observability.CodeNotFound,
 			fmt.Sprintf("no crew %s is recorded for project %s; %s is empty", crew, project, w.CrewMeta(project, crew)))
 	}
-	if state := meta[MetaState]; state == CrewStateFinished || state == CrewStateFailed {
+	if state := meta[MetaState]; crewstate.State(state).Closed() {
 		return RelaunchResult{}, observability.NewError(observability.CodeStateConflict,
 			fmt.Sprintf("crew %s of %s is %s; a closed crew is not relaunched - spawn a new one if the task is not over",
 				crew, project, state))

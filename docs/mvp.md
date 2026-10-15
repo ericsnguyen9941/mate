@@ -163,6 +163,7 @@ Chốt 2026-09-18 sau khi test tay M2. Bảy trạng thái, ba người đặt, 
 | `blocked` | Observer | `incidents.log`, không đụng `.status` | Crew không tự nói được nữa: pane treo, agent biến mất khỏi Herdr, kẹt dialog. Chỉ `stale` và `runtime_lost` tạo ra nó; `budget` (M5) chỉ vào inbox, không đổi trạng thái (quyết định 2026-09-20). Vào inbox. Gỡ khi observer thấy crew chạy lại, hoặc khi crew đã đóng (2026-10-13). |
 | `finished` | Mate hoặc người dùng, qua `crew stop` | `.meta` `state=finished` | Trạng thái cuối. Scout: người dùng nhận report và bảo đóng. Ship: branch đã merge. |
 | `failed` | Mate hoặc người dùng, qua `crew stop --discard` khi lệnh này thật sự bỏ việc chưa landed (`teardown=discarded`); app, khi spawn thất bại | `.meta` `state=failed` | Trạng thái cuối. Việc bị bỏ, hoặc crew chưa bao giờ lên. `--discard` mà không có gì để bỏ (`teardown=clean`) là một lần stop thường và ghi `finished` (2026-10-13). |
+| `reviewed` | App, qua `crew stop` (có hay không `--discard`) của một reviewer (`review.meta`) mà report đã có `## Verdict` | `.meta` `state=reviewed`, kèm `verdict=` | Trạng thái cuối (CON-75, 2026-10-15). Việc của reviewer là report, không phải branch: `--discard` worktree nháp của nó không bỏ gì ai cần, nên không là `failed`; ledger và `mate usage` không đếm là thất bại. Reviewer bị stop trước khi có Verdict vẫn theo luật `finished`/`failed` ở trên. |
 
 Quy tắc:
 

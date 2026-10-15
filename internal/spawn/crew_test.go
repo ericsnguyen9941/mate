@@ -1159,3 +1159,55 @@ func TestStopCrewTakesAMergedPullRequestAsLanded(t *testing.T) {
 		})
 	}
 }
+
+// A reviewer whose report carries a Verdict delivered its work, however it
+// is stopped: `crew stop --discard` of its scratch worktree closes it as
+// `reviewed` with the verdict in the meta, not as `failed` (CON-75). The
+// same reviewer stopped before it wrote a Verdict is still a discard.
+func TestStopCrewDiscardOfADeliveredReviewerIsReviewed(t *testing.T) {
+	for _, tc := range []struct {
+		name, report, wantState, wantVerdict string
+	}{
+		{"verdict delivered", "## Summary\nfine\n\n## Verdict\nchanges-requested\n", spawn.CrewStateReviewed, "changes-requested"},
+		{"no verdict yet", "## Summary\nstill reading\n", spawn.CrewStateFailed, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := crewWorkspace(t, "shop")
+			rt := runtime.NewFake()
+			deps := fakeDeps(t, rt)
+			res, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+				Project: "shop", Crew: "rev1", BriefText: brieftest.Scout("review k3", "does it pass?"), Scout: true,
+			})
+			if err != nil {
+				t.Fatalf("SpawnCrew: %v", err)
+			}
+			commitInWorktree(t, res.Worktree, "scratch.txt", "review notes\n")
+			if err := store.WriteMeta(w.CrewReviewMeta("shop", "rev1"), map[string]string{"crew": "k3", "head": "abc"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(w.CrewReport("shop", "rev1"), []byte(tc.report), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			stopped, err := spawn.StopCrew(context.Background(), w, deps, "shop", "rev1", true)
+			if err != nil {
+				t.Fatalf("StopCrew --discard: %v", err)
+			}
+			if stopped.Teardown != spawn.TeardownDiscarded || stopped.State != tc.wantState {
+				t.Fatalf("stop = teardown %q state %q, want discarded and %s", stopped.Teardown, stopped.State, tc.wantState)
+			}
+			meta, err := w.ReadCrewMeta("shop", "rev1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta[spawn.MetaState] != tc.wantState || meta[crewstate.MetaVerdict] != tc.wantVerdict {
+				t.Fatalf("meta = %v, want state=%s verdict=%q", meta, tc.wantState, tc.wantVerdict)
+			}
+			// A second stop reports the recorded outcome and changes nothing.
+			again, err := spawn.StopCrew(context.Background(), w, deps, "shop", "rev1", true)
+			if err != nil || !again.AlreadyClosed || again.State != tc.wantState {
+				t.Fatalf("second stop = %+v, %v; want already closed as %s", again, err, tc.wantState)
+			}
+		})
+	}
+}

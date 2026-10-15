@@ -1151,6 +1151,7 @@
     if (ledger.closed) {
       var close = ledger.close_state || "";
       info = close === "finished" ? { word: "done", glyph: "✓", tone: "good" }
+        : close === "reviewed" ? { word: "reviewed", glyph: "✓", tone: "good" }
         : close === "failed" ? { word: "failed", glyph: "×", tone: "critical" }
         : { word: close ? close.replace(/[_-]/g, " ") : "closed", glyph: "■", tone: "muted" };
     } else info = stateInfo(ledger.state);

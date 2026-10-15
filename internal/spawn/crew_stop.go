@@ -120,7 +120,7 @@ func StopCrew(ctx context.Context, w *store.Workspace, deps Deps, project, crew 
 	// the crew, or a --discard sweep over every crew - reports the outcome
 	// already recorded and changes nothing; it never turns a merged crew
 	// into a failed one.
-	if state := meta[MetaState]; state == CrewStateFinished || state == CrewStateFailed {
+	if state := meta[MetaState]; crewstate.State(state).Closed() {
 		out.AlreadyClosed, out.AlreadyGone, out.TabClosed = true, true, true
 		out.Branch = meta[MetaBranch]
 		if rel := meta[MetaWorktree]; rel != "" {
@@ -293,12 +293,37 @@ func StopCrew(ctx context.Context, w *store.Workspace, deps Deps, project, crew 
 	// throw away is an ordinary stop - a reviewer whose comment is already
 	// on the pull request and whose worktree is clean finished its task
 	// (mvp.md section 4b, 2026-10-13).
+	//
+	// A reviewer is the exception to `failed` (CON-75). Its work is the
+	// report, not the branch: once the report carries a Verdict the review
+	// was delivered, and a --discard of its scratch worktree throws away
+	// nothing anyone wanted. So a reviewer that delivered closes as
+	// `reviewed` whichever way it was stopped, and `teardown=` still says
+	// what happened to the worktree.
 	teardown, state := TeardownClean, CrewStateFinished
 	if unlanded {
 		teardown, state = TeardownDiscarded, CrewStateFailed
 	}
+	if verdict := ReviewerVerdict(w, project, crew); verdict != "" {
+		state = CrewStateReviewed
+		stoppedMeta[crewstate.MetaVerdict] = verdict
+	}
 	out.Teardown, out.State = teardown, state
 	return out, writeCrewTeardownMeta(w, project, crew, stoppedMeta, deps.now(), teardown, state)
+}
+
+// ReviewerVerdict is the Verdict a reviewer crew delivered, or "" for a
+// crew that is not a reviewer (no review.meta) or whose report has no
+// `## Verdict` yet. It is the one fact that turns a stop into `reviewed`.
+func ReviewerVerdict(w *store.Workspace, project, crew string) string {
+	if _, err := os.Stat(w.CrewReviewMeta(project, crew)); err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(w.CrewReport(project, crew))
+	if err != nil {
+		return ""
+	}
+	return store.ReviewVerdict(string(data))
 }
 
 // orphanedWorktreeChanges answers "would removing this directory lose

@@ -603,6 +603,7 @@
     }
     if (t.merged_at) return { word: "merged", tone: "t-ok", icon: "merge", why: "the work landed" };
     if (t.close_state === "failed") return { word: "discarded", tone: "t-gone", icon: "gone", why: "closed without landing its work" };
+    if (t.close_state === "reviewed") return { word: "reviewed", tone: "t-ok", icon: "review", why: "the review was delivered" };
     if (t.close_state) return { word: String(t.close_state).replace(/_/g, " "), tone: "t-gone", icon: "done" };
     return { word: "closed", tone: "t-gone", icon: "done" };
   }

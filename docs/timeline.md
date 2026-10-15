@@ -158,7 +158,7 @@ The actor is the Mate, the subject is the crew: hiring is something the Mate did
 
 ### `crew.finished`, `crew.failed`
 
-From `state=finished|failed` in the same file, dated by `stopped_at`.
+From `state=finished|reviewed|failed` in the same file, dated by `stopped_at`. `reviewed` (a reviewer closed after its Verdict, CON-75) is a `crew.finished` whose payload says `"state":"reviewed"`; only `failed` is `crew.failed`.
 
 ```json
 {"crew":"buybtn","state":"finished"}

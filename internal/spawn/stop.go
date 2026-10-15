@@ -69,7 +69,8 @@ type StopResult struct {
 	// the crew down. It is empty on a refusal, which changes nothing.
 	Teardown string
 	// State is the terminal state written to `crews/<id>.meta`:
-	// CrewStateFinished for a clean stop, CrewStateFailed for a --discard.
+	// CrewStateFinished for a clean stop, CrewStateFailed for a --discard,
+	// CrewStateReviewed for a reviewer that delivered a Verdict.
 	// Empty on a refusal, for the same reason.
 	State string
 	// WorktreeRemoved and BranchRemoved report what a teardown actually did,

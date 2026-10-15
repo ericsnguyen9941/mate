@@ -200,13 +200,16 @@ const (
 	// failed spawn) writes them.
 	CrewFinished = CrewStatus(crewstate.StateFinished)
 	CrewFailed   = CrewStatus(crewstate.StateFailed)
+	// CrewReviewed is terminal too: a reviewer closed after it delivered
+	// its Verdict (CON-75).
+	CrewReviewed = CrewStatus(crewstate.StateReviewed)
 )
 
 // ParseCrewStatus rejects empty and unknown values.
 func ParseCrewStatus(s string) (CrewStatus, error) {
 	v := CrewStatus(strings.ToLower(strings.TrimSpace(s)))
 	switch v {
-	case CrewSpawned, CrewWorking, CrewNeedsDecision, CrewWaitMate, CrewBlocked, CrewFinished, CrewFailed:
+	case CrewSpawned, CrewWorking, CrewNeedsDecision, CrewWaitMate, CrewBlocked, CrewFinished, CrewFailed, CrewReviewed:
 		return v, nil
 	case "":
 		return "", fmt.Errorf("crew status: %w", ErrEmptyValue)
