@@ -8,6 +8,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/brief"
 	"github.com/nguyenngocanh94/mate/internal/facts"
 	"github.com/nguyenngocanh94/mate/internal/memory"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // The brief schema has one source of truth, internal/brief. These tests
@@ -190,10 +191,12 @@ func TestManualTeachesOneCrewOneRepo(t *testing.T) {
 var headingMention = regexp.MustCompile("`## ([^`]+)`")
 
 // templateHeadings are the `##` headings the crew template itself asks a
-// Crew to write, in a hand-back or a report, and the sections of the Mate's
-// own files (internal/memory); they are not brief sections.
+// Crew to write, in a hand-back or a report, the sections the review brief
+// (cmd/mate/review.go) asks a reviewer to write, and the sections of the
+// Mate's own files (internal/memory); they are not brief sections.
 var templateHeadings = func() map[string]bool {
-	m := map[string]bool{"Deviations from Build": true, "Still open": true, "Durable facts": true, "For the next crew": true}
+	m := map[string]bool{"Deviations from Build": true, "Still open": true, "Durable facts": true, "For the next crew": true,
+		store.VerdictSection: true, store.FindingsSection: true, store.PriorFindingsSection: true}
 	for _, set := range [][]string{memory.Sections, memory.ProjectSections, memory.BacklogSections} {
 		for _, s := range set {
 			m[s] = true

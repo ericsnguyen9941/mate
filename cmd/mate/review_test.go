@@ -31,7 +31,7 @@ func TestReviewRejectsChangedCommitOrAcceptanceContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if problems := brief.Check(reviewBrief(f.w, "shop", "k3", fp), brief.Scout); len(problems) > 0 {
+			if problems := brief.Check(reviewBrief(f.w, "shop", "k3", fp, nil), brief.Scout); len(problems) > 0 {
 				t.Fatal(problems)
 			}
 			path, err := reviewRecordPath(f.w, "shop", "review-k3")
@@ -79,7 +79,7 @@ func TestReviewVerdictDoesNotInferApprovalFromProse(t *testing.T) {
 			t.Fatal(text)
 		}
 	}
-	if !strings.Contains(reviewBrief(nilSafeReviewWorkspace(t), "shop", "k3", map[string]string{}), "FULL committed change") {
+	if !strings.Contains(reviewBrief(nilSafeReviewWorkspace(t), "shop", "k3", map[string]string{}, nil), "FULL committed change") {
 		t.Fatal("missing full review")
 	}
 }
@@ -89,4 +89,232 @@ func nilSafeReviewWorkspace(t *testing.T) *store.Workspace {
 		t.Fatal(err)
 	}
 	return w
+}
+
+// sinceFixture is a crew reviewed once at its first commit, with the
+// reviewer's record and report in place, then a second commit on the
+// branch: what `mate review --since` is for.
+type sinceFixture struct {
+	diffFixture
+	first, second string
+}
+
+func newSinceFixture(t *testing.T, priorReport string) sinceFixture {
+	t.Helper()
+	f := newDiffFixture(t)
+	commitInWorktree(t, f.worktree, "README.md", "review this\n", "change")
+	dir := filepath.Dir(f.w.CrewBrief("shop", "k3"))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"brief.md", "handback.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("original acceptance evidence"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := recordReview(t, f, "review-k3", priorReport)
+	commitInWorktree(t, f.worktree, "README.md", "review this, fixed\n", "fix the findings")
+	second, err := gitx.New().HeadCommit(context.Background(), f.worktree, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sinceFixture{diffFixture: f, first: first, second: second}
+}
+
+// recordReview writes what `mate review` writes for a reviewer of k3 at the
+// branch's current head, marks it handed back and gives it a report. It
+// returns the head it recorded.
+func recordReview(t *testing.T, f diffFixture, reviewer, report string) string {
+	t.Helper()
+	fp, err := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := reviewRecordPath(f.w, "shop", reviewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteMeta(path, fp); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.w.WriteCrewMeta("shop", reviewer, map[string]string{spawn.MetaState: spawn.CrewStateSpawned, spawn.MetaKind: "scout"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.w.AppendStatus("shop", reviewer, "wait-mate: review done"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f.w.CrewReport("shop", reviewer), []byte(report), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return fp["head"]
+}
+
+const priorReportWithFindings = `## Summary
+Two problems.
+## Findings
+- cmd/app/main.go:12 ignores the error from Open
+- README.md:1 still says "review this"
+## Verdict
+changes-requested
+`
+
+func TestReviewSinceBriefCoversOnlyTheChangeAndListsTheFindings(t *testing.T) {
+	f := newSinceFixture(t, priorReportWithFindings)
+	fp, err := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := reviewSince(context.Background(), f.w, gitx.New(), "shop", "k3", "review-k3", fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope.Reviewed != f.first || fp["head"] != f.second {
+		t.Fatalf("scope reviewed %s head %s, want %s and %s", scope.Reviewed, fp["head"], f.first, f.second)
+	}
+	scope.record(fp)
+	for key, want := range map[string]string{"since": "review-k3", "reviewed": f.first, "head": f.second} {
+		if fp[key] != want {
+			t.Errorf("record %s = %q, want %q", key, fp[key], want)
+		}
+	}
+	text := reviewBrief(f.w, "shop", "k3", fp, scope)
+	if problems := brief.Check(text, brief.Scout); len(problems) > 0 {
+		t.Fatal(problems)
+	}
+	for _, want := range []string{
+		"git diff " + f.first + "..." + f.second,
+		"F1: cmd/app/main.go:12 ignores the error from Open",
+		"F2: README.md:1 still says \"review this\"",
+		"Rerun a gate",
+		"section named Prior findings",
+		"F<n> closed or F<n> open",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("brief lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "FULL committed change") || strings.Contains(text, "git diff "+fp["base"]+"...") {
+		t.Fatalf("scoped brief still asks for the full diff:\n%s", text)
+	}
+}
+
+func TestReviewCheckAcceptsAScopedReviewOnlyWhenEveryFindingIsClosed(t *testing.T) {
+	cases := map[string]struct {
+		report string
+		want   string // "" for accepted, else a substring of the error
+	}{
+		"all closed":  {"## Summary\nBoth fixed.\n## Prior findings\n- F1 closed: main.go:12 now returns err\n- F2 closed: README.md:1 reads fixed\n## Findings\nnone\n## Verdict\npass\n", ""},
+		"one open":    {"## Summary\nOne left.\n## Prior findings\n- F1 closed: main.go:12 now returns err\n- F2 open: README.md:1 unchanged\n## Findings\nnone\n## Verdict\npass\n", "incomplete: prior finding F2"},
+		"one missing": {"## Summary\nForgot one.\n## Prior findings\n- F1 closed: main.go:12 now returns err\n## Findings\nnone\n## Verdict\npass\n", "incomplete: prior finding F2"},
+		"no section":  {"## Summary\nAll good.\n## Findings\nnone\n## Verdict\npass\n", "incomplete: prior finding F1"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newSinceFixture(t, priorReportWithFindings)
+			fp, err := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope, err := reviewSince(context.Background(), f.w, gitx.New(), "shop", "k3", "review-k3", fp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope.record(fp)
+			path, err := reviewRecordPath(f.w, "shop", "review2-k3")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.WriteMeta(path, fp); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.w.WriteCrewMeta("shop", "review2-k3", map[string]string{spawn.MetaState: spawn.CrewStateSpawned, spawn.MetaKind: "scout"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.w.AppendStatus("shop", "review2-k3", "wait-mate: review done"); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(f.w.CrewReport("shop", "review2-k3"), []byte(tc.report), 0644); err != nil {
+				t.Fatal(err)
+			}
+			got, _, err := checkReview(context.Background(), f.w, gitx.New(), "shop", "k3", "review2-k3")
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("closed findings rejected: %v", err)
+				}
+				if got["head"] != f.second {
+					t.Fatalf("check pins %s, want the new head %s", got["head"], f.second)
+				}
+				// The earlier report is part of the contract: editing it
+				// after the scoped review started makes the review stale.
+				if err := os.WriteFile(f.w.CrewReport("shop", "review-k3"), []byte(priorReportWithFindings+"- a third finding\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if _, _, err := checkReview(context.Background(), f.w, gitx.New(), "shop", "k3", "review2-k3"); err == nil || !strings.Contains(err.Error(), "stale") {
+					t.Fatalf("edited prior report accepted: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want an error containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestReviewSinceRefusesWhatItCannotScope(t *testing.T) {
+	t.Run("no record", func(t *testing.T) {
+		f := newSinceFixture(t, priorReportWithFindings)
+		fp, _ := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+		_, err := reviewSince(context.Background(), f.w, gitx.New(), "shop", "k3", "nobody", fp)
+		if err == nil || !strings.Contains(err.Error(), "no review record") {
+			t.Fatal(err)
+		}
+	})
+	t.Run("other crew", func(t *testing.T) {
+		f := newSinceFixture(t, priorReportWithFindings)
+		rec, _ := reviewRecordPath(f.w, "shop", "review-k3")
+		meta, _ := store.ReadMeta(rec)
+		meta["crew"] = "k9"
+		if err := store.WriteMeta(rec, meta); err != nil {
+			t.Fatal(err)
+		}
+		fp, _ := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+		_, err := reviewSince(context.Background(), f.w, gitx.New(), "shop", "k3", "review-k3", fp)
+		if err == nil || !strings.Contains(err.Error(), "reviewed crew k9, not k3") {
+			t.Fatal(err)
+		}
+	})
+	t.Run("no verdict yet", func(t *testing.T) {
+		f := newSinceFixture(t, "## Summary\nstill reading\n")
+		fp, _ := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+		_, err := reviewSince(context.Background(), f.w, gitx.New(), "shop", "k3", "review-k3", fp)
+		if err == nil || !strings.Contains(err.Error(), "no ## Verdict") {
+			t.Fatal(err)
+		}
+	})
+	t.Run("nothing new", func(t *testing.T) {
+		f := newDiffFixture(t)
+		commitInWorktree(t, f.worktree, "README.md", "review this\n", "change")
+		dir := filepath.Dir(f.w.CrewBrief("shop", "k3"))
+		_ = os.MkdirAll(dir, 0755)
+		for _, name := range []string{"brief.md", "handback.md"} {
+			_ = os.WriteFile(filepath.Join(dir, name), []byte("original acceptance evidence"), 0644)
+		}
+		recordReview(t, f, "review-k3", priorReportWithFindings)
+		fp, _ := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+		_, err := reviewSince(context.Background(), f.w, gitx.New(), "shop", "k3", "review-k3", fp)
+		if err == nil || !strings.Contains(err.Error(), "nothing to review") {
+			t.Fatal(err)
+		}
+	})
+	t.Run("rewritten branch", func(t *testing.T) {
+		f := newSinceFixture(t, priorReportWithFindings)
+		runGitOrFatal(t, f.worktree, "reset", "--hard", "main")
+		commitInWorktree(t, f.worktree, "README.md", "rewritten\n", "start over")
+		fp, _ := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+		_, err := reviewSince(context.Background(), f.w, gitx.New(), "shop", "k3", "review-k3", fp)
+		if err == nil || !strings.Contains(err.Error(), "does not descend") {
+			t.Fatal(err)
+		}
+	})
 }
