@@ -256,7 +256,7 @@ func (c Claude) Prepare(_ context.Context, req harness.PrepareRequest) (harness.
 		launch.sessionID = sessionID
 	}
 	if req.Role == harness.RoleMate {
-		files, err := ClaudeMateFiles(req)
+		files, err := ClaudeMateFiles(req, c.ConfigDir)
 		if err != nil {
 			return harness.Prepared{}, err
 		}
@@ -307,8 +307,11 @@ func (c Claude) Prepare(_ context.Context, req harness.PrepareRequest) (harness.
 // things added to it are `autoMemoryEnabled: false` when the file does not
 // say (EnsureAutoMemoryOff), and the SessionStart hook when no SessionStart
 // entry runs it (EnsureSessionHook), so a Mate directory made before task 35
-// or 37 starts with auto-memory off and its digest wired too.
-func ClaudeMateFiles(req harness.PrepareRequest) ([]harness.LaunchFile, error) {
+// or 37 starts with auto-memory off and its digest wired too. Every start
+// also sets the captain's apiKeyHelper and env from configDir's settings.json
+// (EnsureCaptainSettings), so the Mate stays on the captain's proxy under
+// --setting-sources project.
+func ClaudeMateFiles(req harness.PrepareRequest, configDir string) ([]harness.LaunchFile, error) {
 	manual, err := filepath.Rel(req.Cwd, req.ContextPath)
 	if err != nil || manual == ".." || strings.HasPrefix(manual, ".."+string(filepath.Separator)) {
 		return nil, observability.WrapError(observability.CodeUsage,
@@ -333,6 +336,13 @@ func ClaudeMateFiles(req harness.PrepareRequest) ([]harness.LaunchFile, error) {
 		}
 	default:
 		return nil, err
+	}
+	user, userPath, err := captainSettings(configDir)
+	if err != nil {
+		return nil, err
+	}
+	if settings, _, err = EnsureCaptainSettings(settings, user); err != nil {
+		return nil, fmt.Errorf("%s: %w", userPath, err)
 	}
 	return []harness.LaunchFile{
 		{Path: filepath.Join(req.Cwd, Claude{}.Info().InstructionFile), Data: []byte("@" + filepath.ToSlash(manual) + "\n")},

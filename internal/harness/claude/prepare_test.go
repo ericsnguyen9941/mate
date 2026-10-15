@@ -16,6 +16,7 @@ import (
 // A Claude Mate loads its manual from CLAUDE.md in its cwd, so the launch
 // carries no context flag, and its session and settings go on the argv.
 func TestClaudePrepareMate(t *testing.T) {
+	noCaptainSettings(t)
 	req := harnesstest.PrepareFixture(t, harness.RoleMate)
 	prep, err := Claude{}.Prepare(context.Background(), req)
 	if err != nil {
@@ -74,6 +75,7 @@ func TestClaudePrepareMate(t *testing.T) {
 // An existing settings file keeps its keys; one that is not JSON refuses the
 // launch rather than being overwritten.
 func TestClaudePrepareMateKeepsTheSettingsFileItFinds(t *testing.T) {
+	noCaptainSettings(t)
 	req := harnesstest.PrepareFixture(t, harness.RoleMate)
 	path := ClaudeSettingsPath(req.Cwd)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -101,8 +103,7 @@ func TestClaudePrepareMateKeepsTheSettingsFileItFinds(t *testing.T) {
 // A Claude Crew takes its brief as the context flag and its settings from
 // its state directory: nothing lands in the worktree.
 func TestClaudePrepareCrewWritesNothingInTheWorktree(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv(ClaudeConfigDirEnv, "")
+	noCaptainSettings(t)
 	req := harnesstest.PrepareFixture(t, harness.RoleCrew)
 	want, err := CrewClaudeSettings(nil)
 	if err != nil {
@@ -161,5 +162,58 @@ func TestClaudePrepareCrewKeepsTheCaptainsAuthPath(t *testing.T) {
 	}
 	if _, err := (Claude{}).Prepare(context.Background(), req); err == nil {
 		t.Fatal("a captain settings file that is not JSON must refuse the launch")
+	}
+}
+
+// noCaptainSettings points HOME at an empty directory, so a launch finds no
+// captain settings.json.
+func noCaptainSettings(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(ClaudeConfigDirEnv, "")
+}
+
+// A Mate launches with --setting-sources project as a Crew does, so each
+// start sets the captain's apiKeyHelper and env in the Mate's settings,
+// keeping its hooks and every other key, and a start with nothing new to
+// set leaves the file byte for byte.
+func TestClaudePrepareMateKeepsTheCaptainsAuthPath(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(ClaudeConfigDirEnv, configDir)
+	if err := os.WriteFile(filepath.Join(configDir, ClaudeSettingsFile), []byte(`{"apiKeyHelper":"echo k","env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8317"},"hooks":{"Stop":[]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req := harnesstest.PrepareFixture(t, harness.RoleMate)
+	path := ClaudeSettingsPath(req.Cwd)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const mine = `{"autoMemoryEnabled":false,"apiKeyHelper":"old","model":"opus","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"x hook mate-session"}]}]}}`
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prep, err := Claude{}.Prepare(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := harnesstest.FileData(t, prep, path)
+	keys := settingsKeys(t, got)
+	var env map[string]string
+	if err := json.Unmarshal(keys["env"], &env); err != nil || string(keys["apiKeyHelper"]) != `"echo k"` || env["ANTHROPIC_BASE_URL"] != "http://127.0.0.1:8317" {
+		t.Fatalf("mate settings lost the captain's auth: %s", got)
+	}
+	if string(keys["model"]) != `"opus"` || !bytes.Contains(keys["hooks"], []byte("x hook mate-session")) || bytes.Contains(keys["hooks"], []byte("Stop")) {
+		t.Fatalf("mate settings lost their own keys or took the captain's hooks: %s", got)
+	}
+	if err := os.WriteFile(path, got, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Claude{}.Prepare(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(harnesstest.FileData(t, again, path), got) {
+		t.Fatal("a second start with the same captain settings rewrote the file")
 	}
 }

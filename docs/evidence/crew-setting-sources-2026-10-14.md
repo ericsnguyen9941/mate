@@ -59,3 +59,14 @@ lsof theo pid mỗi 0,25 s trong lúc chạy:
 
 Các kết nối :443 có ở cả hai lượt. Chưa đo: crew thật spawn dưới Herdr bằng
 binary mới. Lượt này phải làm trước khi cài binary.
+
+### Mate cũng qua cliproxy (captain chốt 2026-10-15)
+
+Mate chạy với `--setting-sources project` từ M15, nên cũng đi thẳng Anthropic.
+Captain chốt Mate phải qua proxy. Mỗi lần start, `ClaudeMateFiles` gán
+`apiKeyHelper` và `env` của captain vào `.claude/settings.json` của Mate, các khoá
+khác giữ nguyên. Probe tương tự trên: file sinh bằng `ClaudeMateFiles` có khoá
+`apiKeyHelper`, `autoMemoryEnabled`, `env`, `hooks`. Chạy với `--settings` đó,
+`--setting-sources project --autocompact 300000`, lsof thấy 5 mẫu có
+`127.0.0.1:8317`, trả lời `ok`. Mate đang chạy chỉ đổi đường auth sau lần
+start kế tiếp.
