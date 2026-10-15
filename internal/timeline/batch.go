@@ -350,6 +350,9 @@ func (w *writer) flush(ctx context.Context, b *batch) error {
 			return err
 		}
 	}
+	if err := w.rankSessions(ctx, b); err != nil {
+		return err
+	}
 	for _, a := range b.actions {
 		if err := w.upsertAction(ctx, a); err != nil {
 			return err
@@ -424,6 +427,35 @@ func (w *writer) upsertSession(ctx context.Context, s pendingSession) error {
 		s.ID, s.ActorID, s.HarnessSession, s.TranscriptPath,
 		nullTime(s.StartedAt), nullTime(s.EndedAt), nullString(s.ResumedFrom))
 	return err
+}
+
+// rankSessions recomputes `session.crew_session` (CON-73, db schema 4) for
+// every actor whose sessions this batch wrote: each session's ordinal
+// among the actor's sessions, by the time of its first turn (its own
+// started_at when it has none yet), ties by id. It runs after the turns so
+// a session first seen in this batch is placed by its turns, and it is a
+// pure function of the rows, so a rebuild (`mate reindex`) gives every
+// session the number it had live.
+func (w *writer) rankSessions(ctx context.Context, b *batch) error {
+	seen := map[string]bool{}
+	for _, s := range b.sessions {
+		if seen[s.ActorID] {
+			continue
+		}
+		seen[s.ActorID] = true
+		if _, err := w.tx.ExecContext(ctx, `
+			WITH ranked AS (
+				SELECT s.id AS id,
+				       ROW_NUMBER() OVER (
+				         ORDER BY COALESCE((SELECT MIN(t.started_at) FROM turn t WHERE t.session_id = s.id), s.started_at, ''), s.id
+				       ) AS n
+				  FROM session s WHERE s.actor_id = ?)
+			UPDATE session SET crew_session = (SELECT n FROM ranked WHERE ranked.id = session.id)
+			 WHERE actor_id = ?`, s.ActorID, s.ActorID); err != nil {
+			return fmt.Errorf("timeline: rank sessions of %s: %w", s.ActorID, err)
+		}
+	}
+	return nil
 }
 
 func (w *writer) upsertTask(ctx context.Context, t pendingTask) error {

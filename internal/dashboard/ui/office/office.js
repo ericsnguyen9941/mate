@@ -139,6 +139,7 @@
     stale: "quiet too long",
     runtime_lost: "agent unreachable",
     wedged: "send wedged",
+    context_high: "context high",
     question: "with a question",
     handback: "with finished work",
     digest: "a digest",

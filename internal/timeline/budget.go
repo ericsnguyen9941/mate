@@ -41,6 +41,10 @@ const projectBudgetCrew = "mate"
 // the same lag every other incident kind already has behind the transcript
 // it is read from.
 //
+// The same call runs CON-73's context check (checkProjectContext): it is
+// the other thing the ledger tells the observer about a crew, read from
+// the same poll's turns.
+//
 // A budget incident is never resolved (mvp.md section 4b, decision
 // 2026-09-20: "nó là một sự thật" - it is a fact about spend that already
 // happened, not a condition that can clear). CheckBudgets therefore only
@@ -62,6 +66,9 @@ func (i *Ingester) CheckBudgets(ctx context.Context) error {
 		}
 		if err := i.checkProjectBudget(ctx, ref.Name); err != nil {
 			errs = append(errs, fmt.Errorf("timeline: budget check %s: %w", ref.Name, err))
+		}
+		if err := i.checkProjectContext(ctx, ref.Name); err != nil {
+			errs = append(errs, fmt.Errorf("timeline: context check %s: %w", ref.Name, err))
 		}
 	}
 	return errors.Join(errs...)

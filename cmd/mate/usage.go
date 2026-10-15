@@ -33,11 +33,12 @@ func cmdUsage(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("usage", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate usage <project> [--top <n>] | mate usage <project> <crew> [--why] [--workspace <dir>]")
+		fmt.Fprintln(stderr, "usage: mate usage <project> [--top <n>] | mate usage <project> <crew> [--why | --sessions] [--workspace <dir>]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	top := fs.Int("top", 0, "print only the Mate and the n largest tasks by TOTAL")
 	why := fs.Bool("why", false, "print what a crew's tokens were spent on instead of its model calls")
+	sessions := fs.Bool("sessions", false, "print a crew's tokens per session (one row per harness session, CON-73) instead of its model calls")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
 	}
@@ -54,6 +55,12 @@ func cmdUsage(args []string, stdout, stderr io.Writer) error {
 	}
 	if *why && fs.NArg() == 1 {
 		return newUsageError("mate usage: --why explains one task; name the crew")
+	}
+	if *sessions && fs.NArg() == 1 {
+		return newUsageError("mate usage: --sessions splits one task; name the crew")
+	}
+	if *sessions && *why {
+		return newUsageError("mate usage: --sessions and --why are two different pages; pick one")
 	}
 
 	w, err := resolveWorkspace(*workspaceFlag)
@@ -74,6 +81,9 @@ func cmdUsage(args []string, stdout, stderr io.Writer) error {
 	if fs.NArg() == 2 {
 		if *why {
 			return printCrewWhy(ctx, handle, w, stdout, project, fs.Arg(1))
+		}
+		if *sessions {
+			return printCrewSessions(ctx, handle, stdout, project, fs.Arg(1))
 		}
 		return printCrewTurns(ctx, handle, stdout, project, fs.Arg(1))
 	}
@@ -459,6 +469,64 @@ func printCrewTurns(ctx context.Context, handle *db.DB, stdout io.Writer, projec
 		fmt.Fprintf(stdout, "no turns recorded for %s\n", crew)
 	}
 	return nil
+}
+
+// printCrewSessions is the `usage <project> <crew> --sessions` form
+// (CON-73): one row per harness session the crew has had, in order, with
+// the session's calls, tokens and largest context. It is how a task with
+// two review rounds shows what each round cost: the acceptance of CON-73
+// is the tokens after `pr-open` against the tokens before it.
+func printCrewSessions(ctx context.Context, handle *db.DB, stdout io.Writer, project, crew string) error {
+	actorID := timeline.CrewActorID(project, crew)
+	rows, err := handle.SQL().QueryContext(ctx, `
+		SELECT s.crew_session, COUNT(*),
+		       COALESCE(SUM(u.input_tokens), 0), COALESCE(SUM(u.cache_read_tokens + u.cache_write_tokens), 0),
+		       COALESCE(SUM(u.output_tokens), 0), COALESCE(MAX(u.context_tokens_after), 0),
+		       MIN(u.started_at), MAX(COALESCE(u.ended_at, u.started_at))
+		  FROM turn u JOIN session s ON s.id = u.session_id
+		 WHERE u.actor_id = ?
+		 GROUP BY s.id ORDER BY MIN(u.started_at), s.id`, actorID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "SESSION\tTURNS\tIN\tCACHED\tOUT\tTOTAL\tCTX-MAX\tSTARTED\tENDED")
+	n := 0
+	var grand int64
+	for rows.Next() {
+		var ordinal, turns, in, cached, out, ctxMax int64
+		var startedAt, endedAt sql.NullString
+		if err := rows.Scan(&ordinal, &turns, &in, &cached, &out, &ctxMax, &startedAt, &endedAt); err != nil {
+			return err
+		}
+		total := in + cached + out
+		grand += total
+		fmt.Fprintf(tw, "%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			ordinal, turns, query.HumanizeTokens(in), query.HumanizeTokens(cached), query.HumanizeTokens(out),
+			query.HumanizeTokens(total), query.HumanizeTokens(ctxMax),
+			clockWord(startedAt), clockWord(endedAt))
+		n++
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_ = tw.Flush()
+	if n == 0 {
+		fmt.Fprintf(stdout, "no turns recorded for %s\n", crew)
+		return nil
+	}
+	fmt.Fprintf(stdout, "total: %d session(s), %s tokens\n", n, query.HumanizeTokens(grand))
+	return nil
+}
+
+// clockWord is a stored time as a local clock, or a dash for none.
+func clockWord(v sql.NullString) string {
+	if !v.Valid || v.String == "" {
+		return "-"
+	}
+	return db.ParseTime(v.String).Local().Format("15:04:05")
 }
 
 // contextWord keeps missing usage distinct from a measured zero.

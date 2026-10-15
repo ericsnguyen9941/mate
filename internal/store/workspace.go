@@ -82,6 +82,12 @@ type CrewLaunch struct {
 	// DefaultCrewAutocompact; a negative number launches without the flag,
 	// so the harness's own threshold applies.
 	Autocompact int `yaml:"autocompact,omitempty"`
+	// ContextHigh is the context size, in tokens, past which the observer
+	// files a `context_high` incident on a Crew that is still working
+	// (CON-73): the Mate is told to open a fresh session at its next
+	// hand-back rather than run a fix round in a bloated one. 0 or absent
+	// is DefaultCrewContextHigh; a negative number turns the check off.
+	ContextHigh int `yaml:"context_high,omitempty"`
 }
 
 // DefaultCrewAutocompact is a Crew's compaction threshold when workspace.yaml
@@ -89,6 +95,13 @@ type CrewLaunch struct {
 // averaged 162k tokens of context per call and never compacted, and the four
 // that passed 300k (the largest 434k) cost 138M tokens between them.
 const DefaultCrewAutocompact = 160000
+
+// DefaultCrewContextHigh is the context size past which a working Crew is
+// reported (`context_high`) when workspace.yaml names none. hellovietnam's
+// top ten tasks (2026-10-15, CON-73) ran their fix rounds at 250-434k of
+// context without compacting; 180k is above the autocompact default and
+// below where those rounds started.
+const DefaultCrewContextHigh = 180000
 
 // Workspace is an opened workspace: a resolved root plus the parsed
 // workspace.yaml. It is the handle every other package holds.
@@ -282,6 +295,21 @@ func (w *Workspace) CrewAutocompact() int {
 		return 0
 	case n == 0:
 		return DefaultCrewAutocompact
+	default:
+		return n
+	}
+}
+
+// CrewContextHigh is the context size past which the observer reports a
+// working Crew (`context_high`, CON-73): the `crew.context_high` of
+// workspace.yaml, DefaultCrewContextHigh when it says none, and 0 (off)
+// when it is negative.
+func (w *Workspace) CrewContextHigh() int {
+	switch n := w.cfg.Crew.ContextHigh; {
+	case n < 0:
+		return 0
+	case n == 0:
+		return DefaultCrewContextHigh
 	default:
 		return n
 	}

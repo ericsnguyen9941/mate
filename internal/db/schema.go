@@ -4,7 +4,7 @@ package db
 // same number docs/timeline.md prints at the top of its schema section; a
 // reader that finds a different one in `schema_version` is reading a file
 // this build does not understand.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // migration is one ordered, all-or-nothing step. Each runs inside the same
 // transaction that records its version, so a half-applied schema cannot
@@ -21,6 +21,7 @@ var migrations = []migration{
 	{version: 1, stmts: schema1},
 	{version: 2, stmts: schema2},
 	{version: 3, stmts: schema3},
+	{version: 4, stmts: schema4},
 }
 
 // schema1 is the M5 schema of docs/mvp.md. Times are RFC3339 with nanosecond
@@ -440,4 +441,16 @@ var schema3 = []string{
 		error TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE INDEX telemetry_cursor_actor ON telemetry_cursor(actor_id)`,
+}
+
+// schema4 is CON-73's session ordinal: which of a crew's sessions a turn
+// belongs to, so `mate usage <project> <crew> --sessions` can split a
+// task's tokens by session. It is a column on `session`, not on `turn`:
+// every turn already names its session, and the ordinal is a fact about
+// the session (the n-th the actor opened, by the time of its first turn),
+// so a rebuild computes it the same way from the same files. The ingest
+// recomputes it for an actor whenever one of its sessions is written
+// (internal/timeline's writer).
+var schema4 = []string{
+	`ALTER TABLE session ADD COLUMN crew_session INTEGER NOT NULL DEFAULT 0`,
 }

@@ -63,6 +63,8 @@
         case "wedged": return "send wedged";
         // internal/box.BudgetHalfPrefix marks the half-budget incident (CON-76).
         case "budget": return (itemText(item)).indexOf("50%: ") === 0 ? "half the budget, no hand-back" : "over budget";
+        // CON-73: a working crew whose context passed crew.context_high.
+        case "context_high": return "context high";
         default: return "incident " + (item.verb || "");
       }
     }

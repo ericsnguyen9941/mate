@@ -232,3 +232,46 @@ func TestUsageContextPerCallCountsOnlyCallsThatRecordedOne(t *testing.T) {
 		t.Errorf("usage output lacks %q:\n%s", want, out)
 	}
 }
+
+// `mate usage <project> <crew> --sessions` is one row per session of the
+// task (CON-73), oldest first, with the session's calls and tokens.
+func TestUsageSessionsSplitsACrewsTokensBySession(t *testing.T) {
+	w := usageWorkspace(t)
+	handle, err := db.Open(w)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	crewActor := timeline.CrewActorID("shop", "k3")
+	later := db.FormatTime(time.Now().Add(time.Hour))
+	for _, stmt := range []string{
+		`UPDATE session SET crew_session = 1 WHERE id = '` + crewActor + `#s'`,
+		`INSERT INTO session(id, actor_id, started_at, crew_session) VALUES ('` + crewActor + `#s2', '` + crewActor + `', '` + later + `', 2)`,
+		`INSERT INTO turn(id, actor_id, session_id, started_at, ended_at, model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, context_tokens_after)
+		 VALUES ('` + crewActor + `#t2', '` + crewActor + `', '` + crewActor + `#s2', '` + later + `', '` + later + `', 'unpriced-model', 1000, 500, 0, 100, 1500)`,
+	} {
+		if _, err := handle.SQL().Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	handle.Close()
+
+	out := runCLI(t, "usage", "shop", "k3", "--sessions", "--workspace", w.Root())
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("usage --sessions printed %d line(s), want header, two sessions and a total:\n%s", len(lines), out)
+	}
+	for _, col := range []string{"SESSION", "TURNS", "IN", "CACHED", "OUT", "TOTAL", "CTX-MAX", "STARTED", "ENDED"} {
+		if !strings.Contains(lines[0], col) {
+			t.Fatalf("header %q lacks %s", lines[0], col)
+		}
+	}
+	if f := strings.Fields(lines[1]); len(f) < 7 || f[0] != "1" || f[1] != "1" || f[5] != "97.2k" || f[6] != "96k" {
+		t.Fatalf("session 1 row = %q, want ordinal 1, one turn, 97.2k total, 96k context", lines[1])
+	}
+	if f := strings.Fields(lines[2]); len(f) < 7 || f[0] != "2" || f[1] != "1" || f[5] != "1.6k" {
+		t.Fatalf("session 2 row = %q, want ordinal 2, one turn, 1.6k total", lines[2])
+	}
+	if lines[3] != "total: 2 session(s), 98.8k tokens" {
+		t.Fatalf("total line = %q", lines[3])
+	}
+}
