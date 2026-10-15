@@ -311,7 +311,8 @@ test("the filing cabinet lists finished tasks by drawer, with their final state"
   assert.equal(d.querySelector("h2").text, "Filing cabinet");
   assert.match(d.querySelector(".role").text, /shop · finished tasks/);
   assert.match(d.querySelector(".dstate").text, /4 finished.*oldest Sep 10/);
-  assert.match(d.querySelector(".csum").text, /3 merged.*1 discarded.*708\.9k tokens/);
+  assert.match(d.querySelector(".csum").text, /3.*1.*708\.9k tokens/);
+  assert.deepEqual(d.querySelectorAll(".csum .cf").map(b => b.getAttribute("aria-label").split(":")[0]), ["3 merged", "1 discarded"]);
   const groups = d.querySelectorAll(".cg").map(g => [g.querySelector(".cgh b").text, g.querySelectorAll(".tn").map(n => n.text)]);
   assert.deepEqual(groups, [
     ["Top drawer", ["login-flow", "search-facets"]],
@@ -321,7 +322,7 @@ test("the filing cabinet lists finished tasks by drawer, with their final state"
   const discarded = d.querySelectorAll(".tr").find(r => r.querySelector(".tn").text === "search-facets");
   assert.ok(!discarded.querySelector(".chip").classes.includes("t-bad"), "work thrown away on purpose is not an error");
   assert.match(discarded.querySelector(".chip").getAttribute("aria-label"), /^discarded/);
-  assert.match(discarded.text, /4d ago.*Sep 29.*133k/);
+  assert.match(discarded.text, /2h 0m.*4d ago.*Sep 29.*133k/);
   assert.ok(roomOf(app.root, "shop").querySelector(".cab").classes.includes("open"), "its top drawer is pulled out");
 });
 
@@ -345,15 +346,43 @@ test("the cabinet says what a review concluded and tells a start that never came
   assert.deepEqual([word("search-facets"), tone("search-facets")], ["changes requested", "t-wait"]);
   assert.deepEqual([word("order-email"), tone("order-email")], ["no verdict", "t-gone"]);
   assert.deepEqual([word("healthcheck"), tone("healthcheck")], ["didn't start", "t-bad"]);
-  assert.equal(chipOf("healthcheck").getAttribute("title"), "didn't start: herdr refused the launch");
+  assert.equal(chipOf("healthcheck").getAttribute("data-tip"), "didn't start: herdr refused the launch");
   for (const crew of Object.keys(rows)) {
     assert.ok(chipOf(crew).classes.includes("ico"), crew + "'s final state is a glyph");
     assert.equal(chipOf(crew).text, "", crew + "'s final state has no text to overflow the column");
   }
   const glyphs = Object.keys(rows).map(crew => chipOf(crew).querySelector("path").getAttribute("d"));
   assert.equal(new Set(glyphs).size, glyphs.length, "each final state has its own glyph");
-  assert.match(app.drawer().querySelector(".csum").text, /approved.*changes requested.*no verdict.*didn't start/, "the summary names them");
+  const summary = app.drawer().querySelectorAll(".csum .cf");
+  assert.deepEqual(summary.map(b => b.getAttribute("data-tip").split(":")[0]), ["1 approved", "1 changes requested", "1 no verdict", "1 didn't start"], "the summary names them on hover");
+  assert.deepEqual(summary.map(b => b.text), ["1", "1", "1", "1"], "the summary is glyph and count only");
   assert.ok(!app.drawer().text.includes("failed"), "no row reads failed");
+});
+
+test("pressing a summary state shows only its tasks, pressing it again shows them all", async () => {
+  const app = await boot({ hash: "#cabinet/shop" });
+  const crews = () => app.drawer().querySelectorAll(".tn").map(n => n.text);
+  const filter = word => app.drawer().querySelectorAll(".csum .cf").find(b => b.getAttribute("aria-label").includes(" " + word));
+  await app.click(filter("discarded"));
+  assert.deepEqual(crews(), ["search-facets"]);
+  assert.equal(filter("discarded").getAttribute("aria-pressed"), "true");
+  assert.ok(filter("merged").classes.includes("dim"), "the other states are dimmed");
+  assert.match(app.drawer().querySelector(".csum .tt").text, /133k tokens/, "the total is of the tasks shown");
+  await app.click(filter("merged"));
+  assert.deepEqual(crews(), ["login-flow", "order-email", "healthcheck"]);
+  await app.click(filter("merged"));
+  assert.deepEqual(crews(), ["login-flow", "search-facets", "order-email", "healthcheck"]);
+  assert.equal(filter("merged").getAttribute("aria-pressed"), "false");
+});
+
+test("a task that ran under a minute, a day, or for an unknown time says so", async () => {
+  const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "testdata/office/busy.json"), "utf8"));
+  const closed = fx.projects.shop.tasks.filter(t => t.closed);
+  closed[0].age_ms = 42000;
+  closed[1].age_ms = 26 * 3600000 + 5 * 60000;
+  closed[2].age_ms = 0;
+  const app = await boot({ fixture: fx, hash: "#cabinet/shop" });
+  assert.deepEqual(app.drawer().querySelectorAll(".trun").map(n => n.text), ["42s", "1d 2h", "?", "2h 0m"]);
 });
 
 test("the cabinet names the harness, observed model and requested effort, retaining unknowns", async () => {
@@ -364,7 +393,7 @@ test("the cabinet names the harness, observed model and requested effort, retain
   Object.assign(closed[2], { harness: "", model: "", last_model: "", effort: "" });
   const app = await boot({ fixture: fx, hash: "#cabinet/shop" });
   assert.deepEqual(app.drawer().querySelector(".colh").children.map(n => n.text),
-    ["Task", "Harness / model / effort", "Final state", "Closed", "Tokens"]);
+    ["Task", "Harness / model / effort", "Final state", "Ran", "Closed", "Tokens"]);
   assert.ok(app.drawer().classes.includes("drawer-cabinet"));
   const agents = app.drawer().querySelectorAll(".ta");
   assert.equal(agents[0].text, "Codexobserved-modeleffort: high");
