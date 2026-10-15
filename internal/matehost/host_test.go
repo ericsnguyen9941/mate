@@ -20,7 +20,8 @@ import (
 // answers "—" to a prompt that says "quiet", and fails on "crash". A prompt
 // that says "chatty" writes text before its tool and two messages after
 // it, the last being the result; one that also says "stream" streams that
-// text (--include-partial-messages) before each whole message.
+// text (--include-partial-messages) before each whole message. One that
+// says "exitlate" fails after its result.
 const fakeClaude = `#!/bin/sh
 prompt=$(cat)
 echo "$*" >> "$(dirname "$0")/argv.log"
@@ -40,6 +41,7 @@ case "$prompt" in *slow*) sleep 2;; esac
 case "$prompt" in *quiet*) reply='—';; *) reply="re: $prompt";; esac
 case "$prompt" in *chatty*) say "Noted in the backlog."; say "$reply";; esac
 printf '{"type":"result","subtype":"success","result":"%s","session_id":"s1","is_error":false}\n' "$reply"
+case "$prompt" in *exitlate*) echo "late" >&2; exit 3;; esac
 `
 
 // streamTurns is a HeadlessTurns over the fake's stream-json lines.
@@ -483,7 +485,11 @@ func TestFinalReply(t *testing.T) {
 	}{
 		{"", "only", false, "only"},
 		{"a\n\nb", "b", false, "a\n\nb"},
-		{"a\n\nb\nc", "b c", false, "a\n\nb\nc"},
+		{"a\n\nb  c", "b c", false, "a\n\nb  c"},
+		{"a\n\nx\n\ny", "x\n\ny", false, "a\n\nx\n\ny"},
+		{"a\n\nOK.", "OK.", false, "a\n\nOK."},
+		{"It is OK.", "OK.", false, "It is OK.\n\nOK."}, // not a whole line: missed
+		{"It is\nOK.", "is\nOK.", false, "It is\nOK.\n\nis\nOK."},
 		{"a", "b", false, "a\n\nb"},      // the stream missed the last message
 		{"so far", "", false, "so far"},  // interrupted: how far it got
 		{"chatter\n\n—", "—", true, "—"}, // silent digest
@@ -492,5 +498,18 @@ func TestFinalReply(t *testing.T) {
 		if got := finalReply(c.streamed, c.result, c.resultOnly); got != c.want {
 			t.Errorf("finalReply(%q, %q, %v) = %q, want %q", c.streamed, c.result, c.resultOnly, got, c.want)
 		}
+	}
+}
+
+// A run that fails after its result keeps that result's turn: the runner
+// reports a failure only when no result came, so the reply is the whole
+// reply and the turn is not an error.
+func TestHostRunFailingAfterItsResult(t *testing.T) {
+	f := newFixture(t)
+	f.host.Submit("chatty exitlate")
+	it := f.done(t, 1)[0]
+	want := "Epic 1 has 3 tasks left.\n\nNoted in the backlog.\n\nre: chatty exitlate"
+	if it.Error != "" || it.Reply != want {
+		t.Fatalf("item = %+v, want reply %q and no error", it, want)
 	}
 }

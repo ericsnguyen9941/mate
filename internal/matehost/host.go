@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -493,20 +494,41 @@ func (h *Host) Stop(wait time.Duration, force bool) (killed bool) {
 // alone is kept when nothing streamed, and when it decides the turn by
 // itself (resultOnly: a silent digest, an error), so an app turn that
 // wrote something before its tools and then answered "—" stays silent. A
-// run with no result (interrupted, failed) keeps how far it got.
+// run with no result (interrupted, or failed: Runner sets Reply.Err only
+// when no result came) keeps how far it got.
 func finalReply(streamed, result string, resultOnly bool) string {
 	switch {
 	case resultOnly && result != "", streamed == "":
 		return result
-	case result == "" || strings.HasSuffix(squash(streamed), squash(result)):
+	case result == "" || endsWithMessage(streamed, result):
 		return streamed
 	}
 	return paragraph(streamed) + result
 }
 
-// squash is s with every run of white space made one space, so text is
-// compared without the paragraph breaks the stream added.
-func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
+// endsWithMessage reports whether streamed ends with msg as whole lines:
+// msg must start where a line starts, so a short result such as "OK." is
+// not taken for the end of "…is OK.". Spaces inside a line and blank lines
+// are not compared.
+func endsWithMessage(streamed, msg string) bool {
+	s, m := messageLines(streamed), messageLines(msg)
+	if len(m) == 0 || len(m) > len(s) {
+		return false
+	}
+	return slices.Equal(s[len(s)-len(m):], m)
+}
+
+// messageLines is s's non-blank lines, each with its runs of white space made one
+// space.
+func messageLines(s string) []string {
+	var out []string
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.Join(strings.Fields(l), " "); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
 
 // streamState is what progressLocked remembers between a turn's events.
 type streamState struct {
