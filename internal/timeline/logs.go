@@ -129,12 +129,23 @@ func (p *pass) ingestStatus(ctx context.Context) error {
 // reader of a payload can tell an exact timestamp from an approximate one.
 // Dated by a command, it also returns that command, whose transcript byte the
 // line sorts at.
+//
+// A crew that writes the same words twice - `pr-open: <url>` after a
+// force-push, as ui-evidence-harness did on 2026-10-13 - has two echoes in
+// its transcript, and the earliest one dates only the first line. So the
+// commands at or before the previous status line's time are not candidates:
+// the repeated line is dated by the echo that wrote it, which is what keeps
+// it after the lines between the two echoes instead of two hours before
+// them (CON-75).
 func (p *pass) dateStatusLine(actorID, line string, mtime, previous time.Time) (time.Time, string, datedCommand) {
 	text := strings.TrimSpace(line)
 	if text != "" {
 		var best datedCommand
 		for _, cmd := range p.statusClock[actorID] {
 			if !strings.Contains(cmd.command, text) {
+				continue
+			}
+			if !previous.IsZero() && !cmd.at.After(previous) {
 				continue
 			}
 			if best.at.IsZero() || cmd.at.Before(best.at) {

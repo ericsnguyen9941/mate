@@ -262,3 +262,28 @@ func between(t *testing.T, s, open, close string) string {
 	}
 	return out
 }
+
+// A line the crew writes twice is two lines. The second `pr-open` is past
+// the cursor the first one moved, so it is gathered again whatever its
+// words: nothing in the digest path compares text, and a Mate that handled
+// the first one still has to hear about the second (CON-75,
+// ui-evidence-harness 2026-10-13).
+func TestGatherDigestsARepeatedLinePastTheCursor(t *testing.T) {
+	f := newFixture(t)
+	f.status("k3", "pr-open: https://github.com/o/r/pull/27")
+	first := autopilot.Gather(f.view(), nil, f.clock.Now())
+	if len(first) != 1 || first[0].Kind != autopilot.ItemWaitMate {
+		t.Fatalf("gathered %+v, want the pr-open as a hand-back", first)
+	}
+	cursor := autopilot.Advance(nil, first)
+
+	f.status("k3", "working: force-pushed after review")
+	f.status("k3", "pr-open: https://github.com/o/r/pull/27")
+	again := autopilot.Gather(f.view(), cursor, f.clock.Now())
+	if len(again) != 1 || again[0].Kind != autopilot.ItemWaitMate || again[0].Offset <= first[0].Offset {
+		t.Fatalf("gathered %+v after the repeat, want the second pr-open at a later offset", again)
+	}
+	if autopilot.Key(again) == autopilot.Key(first) {
+		t.Fatal("the two digests share a key; the outbox would treat the second as the first")
+	}
+}

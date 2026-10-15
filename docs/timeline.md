@@ -130,7 +130,7 @@ It is an event rather than a log line because the consequence is otherwise invis
 A `crews/<id>.status` line carries no timestamp of its own.
 Two rules, in order, and the `status.appended` payload records which one fired in `dated_by`.
 
-1. `transcript.shell` - the crew wrote the line with `echo "state: one line" >> $MATE_STATUS`, and that shell command is in the crew's own transcript with a timestamp on it, so the line is dated by the earliest action whose command contains it verbatim.
+1. `transcript.shell` - the crew wrote the line with `echo "state: one line" >> $MATE_STATUS`, and that shell command is in the crew's own transcript with a timestamp on it, so the line is dated by the earliest action whose command contains it verbatim and ran after the crew's previous status line. A line the crew writes twice (`pr-open:` again after a force-push) is therefore dated by its own echo, not the first one (CON-75, 2026-10-15).
    This rule is exact and it survives a rebuild.
 2. `status.mtime` - the file's modification time, clamped so a file's lines never go backwards.
    It is a fallback and not the primary rule because mtime is the time of the file's *last* line: dating every line by it would put a question after the answer to it the moment the crew wrote anything else, and `question.waited_ms` would go negative on the first reindex.
