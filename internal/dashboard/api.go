@@ -184,7 +184,7 @@ func (s *Server) handleTask(ctx context.Context, r *http.Request, env envelope) 
 	}
 	return TaskResponse{
 		envelope: env, Project: project, Crew: crew, Ledger: ledger,
-		Turns: turns, StatusLines: lines, Questions: questions,
+		Turns: turns, StatusLines: lines, Questions: decisionsOnly(questions),
 		Branch:      s.branch(ctx, project, crew, ledger.Branch),
 		Performance: performance,
 	}, nil
@@ -509,4 +509,16 @@ func (s *Server) writeError(w http.ResponseWriter, r *http.Request, status int, 
 		return
 	}
 	writeJSON(w, status, body)
+}
+
+// decisionsOnly is the questions card of the task page: what the crew
+// asked. Hand-back waits are in the performance findings, not here.
+func decisionsOnly(questions []Question) []Question {
+	out := make([]Question, 0, len(questions))
+	for _, q := range questions {
+		if q.Kind == "" || q.Kind == timeline.QuestionDecision {
+			out = append(out, q)
+		}
+	}
+	return out
 }

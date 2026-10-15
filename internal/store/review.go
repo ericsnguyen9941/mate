@@ -1,8 +1,10 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -162,4 +164,84 @@ func reportSection(report, name string) (string, bool) {
 		return "", false
 	}
 	return strings.Join(lines, "\n"), true
+}
+
+// MetaReviews is the implementing crew's `.meta` key naming the reviewers
+// `mate review` started for it, comma-separated and in the order they were
+// started (CON-75). It is what lets a ledger roll a task's reviewers into
+// the task: before it, "Review <crew> at <sha>" in the reviewer's task text
+// was the only link, and summing them was hand work.
+const MetaReviews = "reviews"
+
+// AddCrewReview records reviewer on crew's `.meta` under MetaReviews,
+// once. The crew's meta must exist; a crew that was already stopped keeps
+// its reviewers (clearCrewRunMeta keeps the key).
+func (w *Workspace) AddCrewReview(project, crew, reviewer string) error {
+	meta, err := w.ReadCrewMeta(project, crew)
+	if err != nil {
+		return err
+	}
+	ids := splitReviews(meta[MetaReviews])
+	for _, id := range ids {
+		if id == reviewer {
+			return nil
+		}
+	}
+	ids = append(ids, reviewer)
+	return w.UpdateCrewMeta(project, crew, map[string]string{MetaReviews: strings.Join(ids, ",")})
+}
+
+func splitReviews(value string) []string {
+	var out []string
+	for _, id := range strings.Split(value, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// ReviewLinks is every task→reviewer link of a project, from both records
+// that carry one: the implementing crew's `reviews=` and the reviewer's own
+// review.meta (`crew=`), which reviewers started before `reviews=` existed
+// still have. reviewersOf maps a crew to its reviewers, sorted; reviewOf
+// maps a reviewer to the crew it reviewed.
+func (w *Workspace) ReviewLinks(project string) (reviewersOf map[string][]string, reviewOf map[string]string, err error) {
+	ids, err := w.CrewIDs(project)
+	if err != nil {
+		return nil, nil, err
+	}
+	reviewersOf, reviewOf = map[string][]string{}, map[string]string{}
+	link := func(crew, reviewer string) {
+		if crew == "" || reviewer == "" || crew == reviewer {
+			return
+		}
+		for _, have := range reviewersOf[crew] {
+			if have == reviewer {
+				return
+			}
+		}
+		reviewersOf[crew] = append(reviewersOf[crew], reviewer)
+		if _, ok := reviewOf[reviewer]; !ok {
+			reviewOf[reviewer] = crew
+		}
+	}
+	for _, id := range ids {
+		meta, err := w.ReadCrewMeta(project, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, reviewer := range splitReviews(meta[MetaReviews]) {
+			link(id, reviewer)
+		}
+		if _, statErr := os.Stat(w.CrewReviewMeta(project, id)); statErr == nil {
+			if rec, err := ReadMeta(w.CrewReviewMeta(project, id)); err == nil {
+				link(strings.TrimSpace(rec["crew"]), id)
+			}
+		}
+	}
+	for crew := range reviewersOf {
+		sort.Strings(reviewersOf[crew])
+	}
+	return reviewersOf, reviewOf, nil
 }

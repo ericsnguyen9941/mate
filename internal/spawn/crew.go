@@ -80,6 +80,7 @@ const (
 	CrewStateSpawned  = string(crewstate.StateSpawned)
 	CrewStateFinished = string(crewstate.StateFinished)
 	CrewStateFailed   = string(crewstate.StateFailed)
+	CrewStateReviewed = string(crewstate.StateReviewed)
 )
 
 // ErrCrewRunning is returned by SpawnCrew when the recorded crew is still

@@ -53,6 +53,9 @@ type Action struct {
 type Decision struct {
 	ID, Text, AskedAt, AnsweredAt string
 	EventID                       int64
+	// Kind is "decision" (the crew asked) or "handback" (the crew handed
+	// back and waited for the next instruction); "" reads as decision.
+	Kind string
 }
 
 type Options struct {

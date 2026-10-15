@@ -58,7 +58,7 @@ func (s *Server) actorPerformance(ctx context.Context, actorID string, closed bo
 			ContextAfter: t.ContextAfter, Ref: diagnostics.Ref{Path: t.Ref.Path, Offset: t.Ref.Offset}, Outcome: t.Outcome})
 	}
 	for _, q := range questions {
-		in.Decisions = append(in.Decisions, diagnostics.Decision{ID: q.ID, Text: q.Text, AskedAt: q.AskedAt, AnsweredAt: q.AnsweredAt, EventID: q.AskedEventID})
+		in.Decisions = append(in.Decisions, diagnostics.Decision{ID: q.ID, Kind: q.Kind, Text: q.Text, AskedAt: q.AskedAt, AnsweredAt: q.AnsweredAt, EventID: q.AskedEventID})
 	}
 	rows, err := s.db.SQL().QueryContext(ctx, `
 		SELECT a.id,COALESCE(a.turn_id,''),COALESCE(t.session_id,''),a.tool,a.target,a.summary,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -99,7 +100,7 @@ func RemoveProject(ctx context.Context, w *store.Workspace, deps Deps, project s
 			fail("crew "+id, err)
 			continue
 		}
-		if state := meta[MetaState]; state == CrewStateFinished || state == CrewStateFailed || meta[MetaPane] == "" {
+		if crewstate.State(meta[MetaState]).Closed() || meta[MetaPane] == "" {
 			continue
 		}
 		progress("stopping crew " + id)

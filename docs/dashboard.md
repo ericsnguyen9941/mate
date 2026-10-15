@@ -122,7 +122,8 @@ The UI shows newest exchanges first and reveals older ones in batches of 20.
 `harness` is the crew's `actor.harness`, the same source the Mate card reads, so a page can name the harness of a recording whose telemetry carries no version.
 `closed` is true when the task has a `close_state` or a `closed_at`.
 `review` is set only for a reviewer crew, one `mate review` started and so left `review.meta` beside its report: the first line of the report's `## Verdict` section (`pass`, `changes-requested`, `incomplete`), or `pending` while there is none. A reviewer is closed `finished` or `failed` like any crew; `review` is what it concluded.
-`failed_reason` is crew meta's `failed_reason=`, written when a spawn never came up; a crew closed with `crew stop --discard` is `failed` with none.
+`failed_reason` is crew meta's `failed_reason=`, written when a spawn never came up; a crew closed with `crew stop --discard` is `failed` with none. A reviewer that delivered its Verdict is closed `reviewed` instead (CON-75).
+`reviews` names the reviewers `mate review` started for the task (crew meta `reviews=`, or a reviewer's `review.meta` naming the crew); `review_of` is the task a reviewer row reviewed; `tokens_with_reviews` is `tokens.total` plus every reviewer's total, so a task's cost with its reviews is one number (CON-75). The Office's cabinet peek reads it.
 
 `inbox` is `box.Inbox` flattened through `query.LoadBox`, oldest first, the same rows in the same order the console's rail draws.
 A failed box read leaves `inbox` empty and puts the reason in `inbox_error` rather than failing the page.

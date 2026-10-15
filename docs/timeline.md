@@ -1,6 +1,6 @@
 # Timeline
 
-Schema version: **3**.
+Schema version: **5**.
 
 This is the contract of `.mate/mate.db` and of `internal/timeline`.
 The database is derived: every row here is read out of `crews/<id>.status`, `sent.log`, `incidents.log`, the `.meta` files, the harness transcripts or git, and `mate reindex <workspace>` rebuilds all of it from those sources.
@@ -130,7 +130,7 @@ It is an event rather than a log line because the consequence is otherwise invis
 A `crews/<id>.status` line carries no timestamp of its own.
 Two rules, in order, and the `status.appended` payload records which one fired in `dated_by`.
 
-1. `transcript.shell` - the crew wrote the line with `echo "state: one line" >> $MATE_STATUS`, and that shell command is in the crew's own transcript with a timestamp on it, so the line is dated by the earliest action whose command contains it verbatim.
+1. `transcript.shell` - the crew wrote the line with `echo "state: one line" >> $MATE_STATUS`, and that shell command is in the crew's own transcript with a timestamp on it, so the line is dated by the earliest action whose command contains it verbatim and ran after the crew's previous status line. A line the crew writes twice (`pr-open:` again after a force-push) is therefore dated by its own echo, not the first one (CON-75, 2026-10-15).
    This rule is exact and it survives a rebuild.
 2. `status.mtime` - the file's modification time, clamped so a file's lines never go backwards.
    It is a fallback and not the primary rule because mtime is the time of the file's *last* line: dating every line by it would put a question after the answer to it the moment the crew wrote anything else, and `question.waited_ms` would go negative on the first reindex.
@@ -158,7 +158,7 @@ The actor is the Mate, the subject is the crew: hiring is something the Mate did
 
 ### `crew.finished`, `crew.failed`
 
-From `state=finished|failed` in the same file, dated by `stopped_at`.
+From `state=finished|reviewed|failed` in the same file, dated by `stopped_at`. `reviewed` (a reviewer closed after its Verdict, CON-75) is a `crew.finished` whose payload says `"state":"reviewed"`; only `failed` is `crew.failed`.
 
 ```json
 {"crew":"buybtn","state":"finished"}
@@ -186,7 +186,7 @@ For Claude that is one assistant message group (one `message.id`), which is the 
 {"cache_read_tokens":57690,"cache_write_tokens":739,"context_tokens_after":58461,"harness_turn":"e6114c69-5e7a-4d34-b35d-ef6c74677ed2","input_tokens":32,"model":"claude-fable-5-1","outcome":"tool_use","output_tokens":911,"thinking_tokens":73,"tool_count":1}
 ```
 
-`turn.ended` carries the same payload plus `duration_ms`.
+`turn.ended` carries the same payload plus `duration_ms`. Schema v5 (CON-75) adds `effort` to the payload and to `turn`: the harness's telemetry state when it records one (Codex, pi), else the actor's launch profile (`effort=` in `.meta`, which is a Claude turn's only source); `model` takes the same fallback when the transcript names none.
 
 `context_tokens_after` is what the context held when the call returned.
 For Claude it is the message's `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`.
@@ -257,6 +257,10 @@ One per line of `crews/<id>.status`.
 A question is answered by a `sent.log` line addressed to `crew:<id>` at or after it, which is `internal/box`'s inbox rule.
 The comparison truncates the question's time to the second, because `sent.log` writes RFC3339 with no fractional part and an answer typed in the same second would otherwise read as older than the question.
 A crew that asked twice without being answered is answered in the order it asked.
+
+Schema v4 (CON-75) gives `question` a `kind`: `decision` for a `needs-decision` line, as above, and `handback` for a `wait-mate` line (the watcher's `pr-merged`/`pr-closed` excepted).
+A hand-back row is asked by its `status.appended` event and answered by the next `message.sent` into the crew's pane, with no `question.asked`/`question.answered` of its own, so `task.question_count` still counts decisions while `waited_ms` and the dashboard's `decision_wait` findings cover both - e0-components' 93 hours on hellovietnam were a hand-back nobody picked up.
+The holding-line rule: a line the Mate or the captain sends a crew that has no open question, when the crew has written no status line since its last answer, is that answer arriving - the earlier reply was "hold on" and the crew could do nothing with it - so the answer moves to the later line and `waited_ms` grows with it (`question.answered_event_id` then names a `message.sent`). A crew that wrote any status line in between acted on the first reply, and nothing moves.
 
 ### `message.sent`, `digest.sent`, `assign.clicked`
 

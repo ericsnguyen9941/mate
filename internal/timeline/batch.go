@@ -56,6 +56,7 @@ type pendingTurn struct {
 	EndedAt        time.Time
 	Outcome        string
 	Model          string
+	Effort         string
 	HarnessTurnRef string
 	Input          int64
 	CacheRead      int64
@@ -97,11 +98,16 @@ type pendingQuestion struct {
 	CrewActorID string
 	Text        string
 	AskedAt     time.Time
+	// Kind is QuestionDecision or QuestionHandback; "" reads as a decision.
+	Kind string
 	// The answer half is filled in the same pass when the answering line is
 	// already in `sent.log`, and by a later pass otherwise.
 	AnsweredDedup string
 	AnsweredBy    string
 	AnsweredAt    time.Time
+	// Reanswer moves an already recorded answer to a later line: the first
+	// one was a holding reply the crew never acted on (CON-75).
+	Reanswer bool
 }
 
 type pendingIncident struct {
@@ -474,14 +480,15 @@ func (w *writer) insertEvent(ctx context.Context, e pendingEvent) error {
 
 func (w *writer) upsertTurn(ctx context.Context, t pendingTurn) error {
 	_, err := w.tx.ExecContext(ctx,
-		`INSERT INTO turn(id, actor_id, session_id, ordinal, started_at, ended_at, outcome, model, harness_turn_ref,
+		`INSERT INTO turn(id, actor_id, session_id, ordinal, started_at, ended_at, outcome, model, effort, harness_turn_ref,
 		                  input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,
 		                  context_tokens_after, tool_count, ref_path, ref_offset)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   ended_at             = COALESCE(excluded.ended_at, turn.ended_at),
 		   outcome              = excluded.outcome,
 		   model                = excluded.model,
+		   effort               = excluded.effort,
 		   input_tokens         = excluded.input_tokens,
 		   cache_read_tokens    = excluded.cache_read_tokens,
 		   cache_write_tokens   = excluded.cache_write_tokens,
@@ -490,7 +497,7 @@ func (w *writer) upsertTurn(ctx context.Context, t pendingTurn) error {
 		   context_tokens_after = excluded.context_tokens_after,
 		   tool_count           = excluded.tool_count`,
 		t.ID, t.ActorID, t.SessionID, t.Ordinal, nullTime(t.StartedAt), nullTime(t.EndedAt),
-		t.Outcome, t.Model, t.HarnessTurnRef,
+		t.Outcome, t.Model, t.Effort, t.HarnessTurnRef,
 		t.Input, t.CacheRead, t.CacheWrite, t.Output, t.Thinking,
 		t.ContextAfter, t.ToolCount, t.RefPath, t.RefOffset)
 	return err
@@ -550,6 +557,20 @@ func (w *writer) upsertQuestion(ctx context.Context, q pendingQuestion) error {
 		answered = id
 		waited = q.AnsweredAt.Sub(q.AskedAt).Milliseconds()
 	}
+	if q.Reanswer {
+		if answered == nil {
+			return nil
+		}
+		_, err := w.tx.ExecContext(ctx,
+			`UPDATE question SET answered_event_id = ?, answered_by_actor_id = ?, answered_at = ?, waited_ms = ?
+			  WHERE id = ?`,
+			answered, q.AnsweredBy, db.FormatTime(q.AnsweredAt), waited, q.ID)
+		return err
+	}
+	kind := q.Kind
+	if kind == "" {
+		kind = QuestionDecision
+	}
 	asked, ok := w.eventID(ctx, q.AskedDedup)
 	if !ok {
 		// An older question, already in the table, that this pass has just
@@ -564,14 +585,14 @@ func (w *writer) upsertQuestion(ctx context.Context, q pendingQuestion) error {
 		return err
 	}
 	_, err := w.tx.ExecContext(ctx,
-		`INSERT INTO question(id, asked_event_id, crew_actor_id, text, asked_at, answered_event_id, answered_by_actor_id, answered_at, waited_ms)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO question(id, asked_event_id, crew_actor_id, text, asked_at, kind, answered_event_id, answered_by_actor_id, answered_at, waited_ms)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   answered_event_id    = COALESCE(excluded.answered_event_id, question.answered_event_id),
 		   answered_by_actor_id = COALESCE(excluded.answered_by_actor_id, question.answered_by_actor_id),
 		   answered_at          = COALESCE(excluded.answered_at, question.answered_at),
 		   waited_ms            = COALESCE(excluded.waited_ms, question.waited_ms)`,
-		q.ID, asked, q.CrewActorID, q.Text, db.FormatTime(q.AskedAt),
+		q.ID, asked, q.CrewActorID, q.Text, db.FormatTime(q.AskedAt), kind,
 		answered, nullString(q.AnsweredBy), nullTime(q.AnsweredAt), waited)
 	return err
 }

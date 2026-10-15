@@ -20,7 +20,11 @@ import (
 // start or stop an agent. TestMetaKeysMatchSpawn is what keeps the two
 // spellings equal.
 const (
-	MetaHarness      = "harness"
+	MetaHarness = "harness"
+	// MetaModel and MetaEffort are the launch profile, spelled as
+	// internal/spawn writes them.
+	MetaModel        = "model"
+	MetaEffort       = "effort"
 	MetaAgent        = "agent"
 	MetaSessionID    = "session_id"
 	MetaTranscript   = "transcript"

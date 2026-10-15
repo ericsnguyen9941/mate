@@ -163,6 +163,7 @@ Chốt 2026-09-18 sau khi test tay M2. Bảy trạng thái, ba người đặt, 
 | `blocked` | Observer | `incidents.log`, không đụng `.status` | Crew không tự nói được nữa: pane treo, agent biến mất khỏi Herdr, kẹt dialog. Chỉ `stale` và `runtime_lost` tạo ra nó; `budget` (M5) chỉ vào inbox, không đổi trạng thái (quyết định 2026-09-20). Vào inbox. Gỡ khi observer thấy crew chạy lại, hoặc khi crew đã đóng (2026-10-13). |
 | `finished` | Mate hoặc người dùng, qua `crew stop` | `.meta` `state=finished` | Trạng thái cuối. Scout: người dùng nhận report và bảo đóng. Ship: branch đã merge. |
 | `failed` | Mate hoặc người dùng, qua `crew stop --discard` khi lệnh này thật sự bỏ việc chưa landed (`teardown=discarded`); app, khi spawn thất bại | `.meta` `state=failed` | Trạng thái cuối. Việc bị bỏ, hoặc crew chưa bao giờ lên. `--discard` mà không có gì để bỏ (`teardown=clean`) là một lần stop thường và ghi `finished` (2026-10-13). |
+| `reviewed` | App, qua `crew stop` (có hay không `--discard`) của một reviewer (`review.meta`) mà report đã có `## Verdict` | `.meta` `state=reviewed`, kèm `verdict=` | Trạng thái cuối (CON-75, 2026-10-15). Việc của reviewer là report, không phải branch: `--discard` worktree nháp của nó không bỏ gì ai cần, nên không là `failed`; ledger và `mate usage` không đếm là thất bại. Reviewer bị stop trước khi có Verdict vẫn theo luật `finished`/`failed` ở trên. |
 
 Quy tắc:
 
@@ -703,11 +704,11 @@ event(id PK AUTOINCREMENT, project, at, actor_id FK, kind, subject_actor_id NULL
       task_actor_id NULL, cause_event_id NULL, payload JSON, ref_path, ref_offset)
   INDEX (project, at), (actor_id, at), (kind, at), (cause_event_id), (task_actor_id, at)
 turn(id PK, actor_id FK, session_id FK, ordinal, started_at, ended_at, trigger_event_id, outcome,
-     model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,
+     model, effort /*v5 CON-75*/, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,
      context_tokens_after, tool_count, ref_path, ref_offset)
 action(id PK, turn_id FK, event_id FK, at, tool, target, summary, duration_ms, ok)  INDEX (target), (turn_id)
 message(event_id PK FK, from_actor_id, to_actor_id, channel /*pane|status|digest|assign|hook*/, text, marked)
-question(id PK, asked_event_id FK, crew_actor_id FK, text, answered_event_id NULL, answered_by_actor_id NULL, waited_ms NULL)
+question(id PK, asked_event_id FK, crew_actor_id FK, text, kind /*decision|handback, v4 CON-75*/, answered_event_id NULL, answered_by_actor_id NULL, waited_ms NULL)
 incident(id PK, actor_id FK, kind, opened_event_id FK, resolved_event_id NULL)
 usage_sample(id PK, session_id FK, at, cumulative, input, cache_read, cache_write, output, thinking, ref_path, ref_offset)
 transition(id PK, actor_id FK, from_state, to_state, at, event_id FK, target_actor_id NULL, detail)  INDEX (actor_id, at)

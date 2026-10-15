@@ -35,13 +35,19 @@ func (p *projection) detect() {
 		if wait == nil {
 			continue
 		}
-		f := Finding{ID: "decision#" + q.ID, Kind: "decision_wait", Title: "Waiting for a decision", Detail: q.Text,
+		title, done := "Waiting for a decision", "Decision wait completed"
+		review, evidence := "Review the brief, decision authority and path for answering Crew questions.", "question"
+		if q.Kind == "handback" {
+			title, done = "Waiting after a hand-back", "Hand-back wait completed"
+			review, evidence = "Review how quickly hand-backs are picked up: the Mate's wake, the review round and the captain's turnaround.", "handback"
+		}
+		f := Finding{ID: "decision#" + q.ID, Kind: "decision_wait", Title: title, Detail: q.Text,
 			Severity: "info", Confidence: "recorded", Ongoing: q.AnsweredAt == "" && !p.opts.Closed,
 			StartedAt: q.AskedAt, EndedAt: q.AnsweredAt, Count: 1, SegmentIDs: []string{}, CallIDs: []string{}, ExecutionIDs: []string{},
-			Evidence: []Evidence{{ID: fmt.Sprintf("event#%d", q.EventID), Kind: "question", Label: q.Text, At: q.AskedAt}},
-			Review:   "Review the brief, decision authority and path for answering Crew questions.", Rule: Version + "/decision"}
+			Evidence: []Evidence{{ID: fmt.Sprintf("event#%d", q.EventID), Kind: evidence, Label: q.Text, At: q.AskedAt}},
+			Review:   review, Rule: Version + "/decision"}
 		if !f.Ongoing {
-			f.Title = "Decision wait completed"
+			f.Title = done
 		}
 		f.Detail = fmt.Sprintf("%s · %s observed waiting; this is not model or CPU time.", q.Text, elapsedWord(*wait))
 		p.out.Findings = append(p.out.Findings, f)
