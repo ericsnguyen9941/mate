@@ -375,9 +375,9 @@ svg.fc { position: absolute; left: 17%; top: 17%; width: 66%; height: 66%; fill:
   background: var(--surface); box-shadow: -1px 0 0 var(--line), -18px 0 40px rgba(30,24,18,.16);
   overflow-y: auto; overscroll-behavior: contain; z-index: 5;
 }
-.drawer-cabinet { width: 720px; }
+.drawer-cabinet { width: 780px; }
 .cab-table { overflow-x: auto; }
-.cab-table > .colh, .cab-table > .cg { min-width: 660px; }
+.cab-table > .colh, .cab-table > .cg { min-width: 720px; }
 .drawer[hidden] { display: none; }
 .grab { display: none; }
 .dh { display: flex; gap: 14px; align-items: flex-start; padding: 18px 16px 16px 20px; border-bottom: 1px solid var(--line); }
@@ -449,7 +449,19 @@ svg.fc { position: absolute; left: 17%; top: 17%; width: 66%; height: 66%; fill:
 .csum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .csum .tt { margin-left: auto; font-size: 12.5px; color: var(--ink2); }
 .csum .tt b { color: var(--ink); font-size: 16px; }
-.colh { display: grid; grid-template-columns: minmax(0, 1fr) 170px 76px 62px 46px; gap: 8px; padding: 12px 20px 0; font-size: 12px; color: var(--ink2); }
+.chip.cf { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; box-shadow: inset 0 0 0 1.5px transparent; }
+.chip.cf:hover { filter: brightness(1.08); }
+.chip.cf.on { box-shadow: inset 0 0 0 1.5px var(--t); }
+.chip.cf.dim { opacity: .45; }
+/* A tooltip that shows at once, where a title waits a second or more. */
+.tip { position: relative; }
+.tip:hover::after, .tip:focus-visible::after {
+  content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); z-index: 3;
+  width: max-content; max-width: 260px; padding: 5px 8px; border-radius: 7px; background: var(--ink); color: var(--surface);
+  font-size: 12px; font-weight: 500; line-height: 1.35; white-space: normal; text-align: left; pointer-events: none;
+}
+.chip.cf:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+.colh { display: grid; grid-template-columns: minmax(0, 1fr) 170px 76px 56px 62px 46px; gap: 8px; padding: 12px 20px 0; font-size: 12px; color: var(--ink2); }
 .colh span:last-child { text-align: right; }
 .cg { padding: 10px 20px 6px; }
 .cgh { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink2); margin-bottom: 2px; }
@@ -457,7 +469,7 @@ svg.fc { position: absolute; left: 17%; top: 17%; width: 66%; height: 66%; fill:
 .cgh .knob { width: 18px; height: 6px; border-radius: 3px; background: var(--cabE); }
 .cgh .n { margin-left: auto; }
 .tl { list-style: none; margin: 0; padding: 0; }
-.tr { display: grid; grid-template-columns: minmax(0, 1fr) 170px 76px 62px 46px; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+.tr { display: grid; grid-template-columns: minmax(0, 1fr) 170px 76px 56px 62px 46px; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
 .tn { font-family: "Geist Mono", ui-monospace, monospace; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ta { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .ta b { font-weight: 600; }
@@ -465,6 +477,7 @@ svg.fc { position: absolute; left: 17%; top: 17%; width: 66%; height: 66%; fill:
 .td { color: var(--ink2); line-height: 1.25; }
 .td small { display: block; font-size: 12px; }
 .tt2 { text-align: right; font-weight: 600; }
+.trun { color: var(--ink2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tu { grid-column: 1 / -1; margin-top: 0; font-size: 12px; font-weight: 500; }
 .cab-empty { padding: 16px 20px; color: var(--ink2); }
 
@@ -571,7 +584,7 @@ svg.fc { position: absolute; left: 17%; top: 17%; width: 66%; height: 66%; fill:
   .kv dt, .kv .mono { font-size: 12px; }
   .link { min-height: 44px; margin-top: 4px; }
   .cr { grid-template-columns: 24px minmax(0, 1fr) 72px 48px; gap: 8px; width: 100%; min-height: 44px; margin: 0; padding: 4px 0; }
-  .colh, .tr { grid-template-columns: minmax(0, 1fr) 170px 72px 58px 46px; }
+  .colh, .tr { grid-template-columns: minmax(0, 1fr) 170px 72px 52px 58px 46px; }
   .colh, .cg { padding-left: 16px; padding-right: 16px; }
 }
 

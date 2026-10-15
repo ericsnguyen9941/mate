@@ -188,6 +188,18 @@
     return Math.floor(ms / 86400000) + "d";
   }
 
+  // formatRun is how long a task ran, to two units: a crew that ran 1 hour
+  // 23 minutes reads "1h 23m" where formatAge would say "1h". Unknown (age_ms
+  // 0: no spawn time, or one after the close) reads "?".
+  function formatRun(ms) {
+    if (!ms || !isFinite(ms) || ms < 0) return "?";
+    if (ms < 60000) return Math.floor(ms / 1000) + "s";
+    if (ms < 3600000) return Math.floor(ms / 60000) + "m";
+    var h = Math.floor(ms / 3600000);
+    if (ms < 86400000) return h + "h " + Math.floor(ms % 3600000 / 60000) + "m";
+    return Math.floor(ms / 86400000) + "d " + h % 24 + "h";
+  }
+
   function parseAt(ts) {
     if (!ts) return null;
     var t = Date.parse(ts);
@@ -338,6 +350,7 @@
   var live = { state: "loading", at: null, reason: "" };
   var sel = parseHash();
   var lastOpener = null;
+  var cabFilter = { project: "", word: "" }; // the cabinet's final-state filter, for one room
 
   function parseHash() {
     var h = (window.location.hash || "").replace(/^#\/?/, "");
@@ -600,7 +613,7 @@
   // are the chip's tooltip and accessible name.
   function finalChip(f) {
     var label = f.word + (f.why ? ": " + f.why : "");
-    return el("span", { class: "chip ico " + f.tone, title: label, role: "img", "aria-label": label }, icon(f.icon));
+    return el("span", { class: "chip ico tip " + f.tone, "data-tip": label, role: "img", "aria-label": label }, icon(f.icon));
   }
 
   function isAway(state) { return state === "walking_to_ceo" || state === "waiting_at_ceo"; }
@@ -1357,17 +1370,21 @@
 
     var counts = {};
     var order = [];
-    var sum = 0;
     closed.forEach(function (t) {
       var f = finalState(t);
       if (!counts[f.word]) { counts[f.word] = { f: f, n: 0 }; order.push(f.word); }
       counts[f.word].n++;
-      sum += t.tokens ? t.tokens.total : 0;
     });
+    // A filter set in another room, or on a state no longer in this one,
+    // shows everything.
+    var only = cabFilter.project === name && counts[cabFilter.word] ? cabFilter.word : "";
+    var shown = only ? closed.filter(function (t) { return finalState(t).word === only; }) : closed;
+    var sum = 0;
+    shown.forEach(function (t) { sum += t.tokens ? t.tokens.total : 0; });
     var nowMs = Date.now();
     var groups = DRAWERS.map(function (dr, i) {
       var min = i === 0 ? -Infinity : DRAWERS[i - 1].max;
-      return { dr: dr, items: closed.filter(function (t) {
+      return { dr: dr, items: shown.filter(function (t) {
         var at = parseAt(closedAt(t));
         var days = at == null ? Infinity : (nowMs - at) / 86400000;
         return days >= min && days < dr.max || (at == null && dr.max === Infinity);
@@ -1376,9 +1393,9 @@
 
     return [head,
       el("section", { class: "ds", "aria-label": "Summary" }, el("div", { class: "csum" }, order.map(function (w) {
-        return chip(counts[w].f, counts[w].n + " " + w);
-      }).concat([el("span", { class: "tt" }, [el("b", { text: tok(sum) }), " tokens"])]))),
-      el("div", { class: "cab-table" }, [el("div", { class: "colh", "aria-hidden": "true" }, [el("span", { text: "Task" }), el("span", { text: "Harness / model / effort" }), el("span", { text: "Final state" }), el("span", { text: "Closed" }), el("span", { text: "Tokens" })])
+        return stateFilter(name, counts[w].f, counts[w].n, only);
+      }).concat([el("span", { class: "tt", title: only ? "tokens of the " + only + " tasks shown" : null }, [el("b", { text: tok(sum) }), " tokens"])]))),
+      el("div", { class: "cab-table" }, [el("div", { class: "colh", "aria-hidden": "true" }, [el("span", { text: "Task" }), el("span", { text: "Harness / model / effort" }), el("span", { text: "Final state" }), el("span", { text: "Ran" }), el("span", { text: "Closed" }), el("span", { text: "Tokens" })])
     ].concat(groups.map(function (g) {
       return el("div", { class: "cg" }, [
         el("div", { class: "cgh" }, [el("i", { class: "knob" }), el("b", { text: g.dr.name }), el("span", { text: g.dr.range }), el("span", { class: "n", text: plural(g.items.length, "task", "tasks") })]),
@@ -1394,6 +1411,7 @@
                 title: "Requested effort; runtime effort may differ" })
             ]),
             el("span", { class: "fs" }, finalChip(f)),
+            el("span", { class: "trun", title: "spawned to closed" }, formatRun(t.age_ms)),
             el("span", { class: "td", title: closedAt(t) }, [age(closedAt(t)) + " ago", el("small", { text: monthDay(closedAt(t)) })]),
             el("span", { class: "tt2", text: tok(t.tokens ? t.tokens.total : null) }),
             usageLink(name, t.crew, "tu")
@@ -1402,6 +1420,22 @@
       ]);
     })))
     ];
+  }
+
+  // A summary chip is a final state's glyph and count, the word its
+  // tooltip; pressing it shows only that state's tasks, pressing it again
+  // shows them all.
+  function stateFilter(name, f, n, only) {
+    var on = only === f.word;
+    var label = n + " " + f.word + (f.why ? ": " + f.why : "");
+    var b = el("button", { class: "chip cf tip " + f.tone + (on ? " on" : only ? " dim" : ""), type: "button",
+      "data-tip": label, "aria-label": label, "aria-pressed": on ? "true" : "false", "data-focus": "cab-filter:" + f.word },
+    [icon(f.icon), String(n)]);
+    b.addEventListener("click", function () {
+      cabFilter = on ? { project: "", word: "" } : { project: name, word: f.word };
+      draw();
+    });
+    return b;
   }
 
   function drawer() {
