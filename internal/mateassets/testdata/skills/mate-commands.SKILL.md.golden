@@ -74,6 +74,8 @@ It is the cheapest way to answer "what is in flight"; `mate backlog` (below) is 
 `crew spawn` cannot do it: the branch and worktree already exist and a spawn refuses both.
 The recorded harness runs in a fresh session and the brief on disk is pointed at once more; `--note "<one line>"` is carried into that first prompt for progress that lived only in the dead pane.
 A closed crew, or one whose worktree is gone, is refused: spawn a new crew instead. `restart` is accepted as the same verb.
+Every relaunch that opens a new conversation counts a session (`sessions=` in the Crew's record, 1 at spawn); `mate usage <project> <crew> --sessions` splits the task's tokens by it.
+You rarely run `crew relaunch` for a fix round yourself: `mate send` to a Crew that has handed back opens the fresh session for you (Supervision, below).
 
 `crew stop` ends a task. It checks the branch **first**: unlanded in the default branch of the Crew's repo, or a dirty worktree, without `--discard`, and it refuses and changes nothing at all - the Crew still running, its pane still open.
 That is a refusal to destroy work, not an error to route around: get the branch merged, or ask the captain whether the work should be thrown away. Never reach for `--discard` to make the message go away.
@@ -85,7 +87,7 @@ When you run it, a second line follows the outcome, `record: update backlog.md D
 
 ```text
 mate brief check <file> [--scout]
-mate brief append <project> <crew> [-] [--workspace <dir>]
+mate brief append <project> <crew> [-] [--fresh] [--workspace <dir>]
 ```
 
 `brief check` runs on a brief file exactly the check `crew spawn` runs, and changes nothing.
@@ -121,6 +123,7 @@ EOF
 
 It refuses a Crew with no live agent, and then the brief is not changed.
 If the brief was changed but the send was refused - the Crew is mid-turn - stderr prints the exact `mate send` line to run once it is free; run that, never `brief append` again, or the words land twice.
+To a Crew that has handed back, `brief append` does what `mate send` does: it opens a fresh session whose third part is the words you appended (Supervision, below), and prints the same `fresh session` report instead of the send trace. `--fresh` forces that on a Crew still working, when the change is big enough that its current conversation would only mislead it.
 
 ### Project facts
 
@@ -151,7 +154,7 @@ The `(anchor ...)` of a repo's `head:` line is exactly what a fact about that re
 ```text
 mate state <project> <crew> [--workspace <dir>]
 mate peek <project> <crew> [--lines 40] [--workspace <dir>]
-mate send <project> <crew> "<one line>" [--workspace <dir>] [--marker] [--queue] [--from user|mate]
+mate send <project> <crew> "<one line>" [--workspace <dir>] [--marker] [--queue] [--same-session] [--from user|mate]
 ```
 
 `mate state` is your default question about a Crew, because it is one deterministic line and costs you almost nothing:
@@ -198,6 +201,16 @@ A send refuses rather than guessing, and each refusal is a different situation:
 One line per send.
 Anything longer goes in a file and you send the Crew a line naming that file's absolute path.
 `--from` and `--marker` exist for the app's own calls; you never pass them.
+
+**A Crew that has handed back is resting, and your next message to it opens a fresh session.** Once a ship has written `pr-open:` (or `wait-mate:` for a local ship), `mate send` does not type into its pane: a fix round in the session that already read everything is where a task's tokens go (hellovietnam: two to three times the first round, at 250-434k of context). Instead it relaunches the Crew - same branch, worktree, status file and id - in a new session whose opening input is exactly four parts, in this order: the original brief, the Crew's last hand-back (`handback.md`), your message, and `git diff --stat <reviewed>...HEAD` from the commit the latest `mate review` of that Crew saw (the base branch when none has run). The four parts are written to `/ws/.mate/projects/shop/crews/<crew>/session-<n>.md`; the Crew is pointed at that file. Put what the Crew should not repeat in your message after the words `Already tried`: that part is carried into the new session's first prompt as its progress note. The output is:
+
+```text
+fresh session 2 for shop/add-healthcheck: it had handed back (pr-open), so the message opens a new session instead of typing into the old one
+relaunched shop/add-healthcheck: agent crew-add-healthcheck in pane pane-9 (harness codex, model gpt-5.5, effort medium, repo shop, branch mate/add-healthcheck, worktree /ws/.worktrees/shop-add-healthcheck; the resting agent was stopped)
+input /ws/.mate/projects/shop/crews/add-healthcheck/session-2.md
+```
+
+followed by the usual `turn:` line. Your message is in `sent.log` as if typed, so the hand-back leaves the inbox. A Crew that has written `working:` again, or a scout (its hand-back is its report; a line to it is a follow-up question), gets the plain send. `--same-session` types into the resting Crew's pane anyway; it is the captain's flag, not yours. A `context high` item in `mate wake` (a working Crew past `crew.context_high`, 180k by default) is the same rule seen early: do not cut the Crew mid-turn; its next hand-back gets a fresh session through this path.
 
 ### Delivery
 
@@ -364,6 +377,7 @@ mate wake <project> [--peek] [--workspace <dir>]
 It prints three parts: 1, every open item in the order you act on it - `blocked` and `no turn` (a Crew launched minutes ago with no turn in the ledger yet: peek it, and relaunch it if the pane is empty or at a sign-in screen), `needs-decision` with the question in full, `wait-mate` with its branch's commit count and diff summary, its hand-back or report path with that file's `## For the next crew` section, and the reviews recorded for it (a review's own hand-back is its verdict); 2, the status lines written since your last `wake`; 3, every open Crew with its state, profile and last note.
 Part 1 lists an item until it is dealt with, however many wakes showed it; part 2 moves on with every run but `--peek`, which prints the same wake and leaves its lines for your next one (the way to look without taking them).
 It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a `blocked` Crew.
+A `context high <crew>: <n> tokens of context, over <threshold>` item (CON-73) means the Crew is working on a bloated context; its `next:` line says what to do - never cut it mid-turn, open a fresh session at its next hand-back, which `mate send` does by itself.
 
 
 ### Bounded coordination commands
@@ -374,5 +388,5 @@ It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a 
 - `mate backlog add <project> <id> --section "Held for the captain" --text '<verbatim obligation>'` adds an entry. Use `In flight`, `Held for the captain`, `Queued` or `Done` for the section.
 - `mate backlog move <project> <id> --section "In flight"` moves the complete entry unchanged. `mate backlog done <project> <id>` moves it to Done and archives overflow beyond 10 entries. Duplicate or missing ids are errors. Use these commands instead of writing Python to edit backlog.
 - When the project has a tracker plugin, a task the tracker holds is only a pointer in `/ws/.mate/projects/shop/mate/backlog.md`: `mate backlog add <project> <crew-id> --tracker <tracker-id>` writes the one line `- <crew-id>: <tracker-id>` under `In flight` (another `--section` if you say so), and `move` or `done` with `--tracker <tracker-id>` rewrites the entry to that line; no content is copied, the tracker has it. Without `--tracker` nothing changes, so `Held for the captain` and `Queued` entries the tracker does not hold are written as before. A project with no tracker plugin refuses `--tracker`.
-- `mate usage <project> --top <n>` prints your own row, the n largest tasks by TASK-TOTAL (the task with the reviewers `mate review` started for it, listed under it; REVIEWS counts them) and a total over every task; every row names its MODEL and EFFORT (the last call's, else the launch profile), and the per-model lines key on both, so Opus high and Sonnet medium compare as two lines. `mate usage <project> <crew> --why` prints one bounded page on what that task's tokens were spent on: buckets, work by kind, loops, findings, instructions loaded, costliest prompts. Load `token-review` before drawing a conclusion from either; plain `mate usage <project>` prints every task and `mate usage <project> <crew>` every model call, which you rarely need.
+- `mate usage <project> --top <n>` prints your own row, the n largest tasks by TASK-TOTAL (the task with the reviewers `mate review` started for it, listed under it; REVIEWS counts them) and a total over every task; every row names its MODEL and EFFORT (the last call's, else the launch profile), and the per-model lines key on both, so Opus high and Sonnet medium compare as two lines. `mate usage <project> <crew> --why` prints one bounded page on what that task's tokens were spent on: buckets, work by kind, loops, findings, instructions loaded, costliest prompts. `mate usage <project> <crew> --sessions` prints one row per session of the task (calls, tokens, largest context), which is how a fix round's cost shows against the first round's. Load `token-review` before drawing a conclusion from either; plain `mate usage <project>` prints every task and `mate usage <project> <crew>` every model call, which you rarely need.
 - A context refresh asks for `mate checkpoint <project> <nonce>` only after stow has preserved questions, promises, decisions and active work. Run exactly that command, then end the turn. The console starts a fresh session with recall only after receiving a valid receipt and a real turn-end signal.

@@ -35,6 +35,15 @@ const (
 	// never a `blocked` state: the crew has not stopped talking, it never
 	// started, and `mate crew list` keeps saying so.
 	IncidentNoTurn IncidentKind = "no_turn"
+	// IncidentContextHigh is a crew still working on a context larger than
+	// the workspace's `crew.context_high` (CON-73): the observer's context
+	// check (internal/timeline.CheckBudgets) files one, once per crew, so
+	// the Mate opens a fresh session at the crew's next hand-back instead
+	// of running a fix round in a bloated one. Like `budget` it is an
+	// inbox item, never a state; unlike `budget` it is resolved once the
+	// crew's latest context is back under the threshold (a new session)
+	// or the crew is closed.
+	IncidentContextHigh IncidentKind = "context_high"
 )
 
 // BudgetHalfPrefix opens the text of a `budget` incident the observer filed

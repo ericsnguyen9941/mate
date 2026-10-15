@@ -140,6 +140,7 @@
     runtime_lost: "agent unreachable",
     wedged: "send wedged",
     no_turn: "no turn yet",
+    context_high: "context high",
     question: "with a question",
     handback: "with finished work",
     digest: "a digest",

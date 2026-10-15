@@ -49,6 +49,11 @@ const (
 	// with no turn in the token ledger. Its own kind for the reason
 	// ItemBudget is: the crew is not blocked, it never started.
 	ItemNoTurn ItemKind = "no turn"
+	// ItemContextHigh is an open `context_high` incident (CON-73): the
+	// crew is still working on a context past the workspace's
+	// `crew.context_high`. Its own kind for the same reason as ItemBudget:
+	// it never changed the crew's state.
+	ItemContextHigh ItemKind = "context high"
 )
 
 // Item is one thing a digest reports, with the entry it came from kept so a
@@ -159,6 +164,10 @@ func Gather(v box.View, cursor map[string]int64, now time.Time) []Item {
 				kind = ItemBudget
 			case box.IncidentNoTurn:
 				kind = ItemNoTurn
+			case box.IncidentContextHigh:
+				// Likewise (CON-73): a large context is a fact about the
+				// session, not the crew falling silent.
+				kind = ItemContextHigh
 			}
 			out = append(out, Item{
 				Kind:         kind,
@@ -276,6 +285,10 @@ func itemText(item Item) string {
 		return fmt.Sprintf("%s over budget: %s", crew, item.Text)
 	case ItemNoTurn:
 		return fmt.Sprintf("%s no turn: %s", crew, item.Text)
+	case ItemContextHigh:
+		// "<crew> context high: <latest> tokens of context, over
+		// <threshold>" (CON-73), the observer's text verbatim.
+		return fmt.Sprintf("%s context high: %s", crew, item.Text)
 	default:
 		return fmt.Sprintf("%s %s: %q", crew, item.Kind, oneLine(item.Text, MaxItemRunes))
 	}

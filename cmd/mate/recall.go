@@ -357,6 +357,8 @@ func inboxLine(w *store.Workspace, project string, e query.BoxEntry) string {
 			}
 		case "no_turn":
 			need = "no turn yet"
+		case "context_high":
+			need = "context high"
 		default:
 			need = "incident " + e.Verb
 		}

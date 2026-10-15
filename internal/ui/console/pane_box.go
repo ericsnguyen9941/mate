@@ -251,6 +251,8 @@ func boxNeedPhrase(e query.BoxEntry) string {
 		return "over budget"
 	case "no_turn":
 		return "no turn yet"
+	case "context_high":
+		return "context high"
 	}
 	return e.Verb
 }

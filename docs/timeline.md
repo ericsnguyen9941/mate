@@ -1,6 +1,6 @@
 # Timeline
 
-Schema version: **5**.
+Schema version: **6**.
 
 This is the contract of `.mate/mate.db` and of `internal/timeline`.
 The database is derived: every row here is read out of `crews/<id>.status`, `sent.log`, `incidents.log`, the `.meta` files, the harness transcripts or git, and `mate reindex <workspace>` rebuilds all of it from those sources.
@@ -708,6 +708,14 @@ Against that limit `CheckBudgets` files a second, earlier incident: at half of i
 For every open crew whose last status verb is `working`, or that has written no status at all, launched (`launched_at`, else `started_at`) more than that long ago, and whose actor has no row in `turn`, it appends one `no_turn` `open` line to `incidents.log` with the text `"no turn in the ledger <d> after launch"`; a crew already carrying an open one is left alone. The case it is for is hellovietnam's `e1-auth-signin-rev` (2026-10-14): a Codex reviewer that sat at a sign-in screen with 0 calls and no incident.
 Unlike `budget` it resolves: the poll after the ledger first records a turn for the crew appends a `resolved` line (`"the ledger now records N turn(s)"`), and a crew that closes first is resolved by the observer's sweep of closed crews like every other kind. A crew that asked a question or handed back is never filed, whatever the ledger says: it has spoken, and a ledger behind it is the ingest's problem.
 `box.IncidentNoTurn` is excluded from `box.BlockingIncidents` like `budget`: the crew is not `blocked`, it never started, and `crew list` keeps saying `working` or `spawned`. `internal/autopilot.Gather` gives it its own `ItemNoTurn` kind; the digest line is `<crew> no turn: <text>`; `mate wake` ranks it with `blocked` in part 1 as `no turn <crew>: <text>, open for <age>` with `next: mate peek <crew>; if the pane is empty or at a sign-in screen, mate crew relaunch <crew>`; the console inbox, `mate recall` and the dashboard read it as "no turn yet"; the Office scene leaves the crew where it is (`crew.incident.other`).
+
+### Context (`workspace.yaml`'s `crew.context_high`)
+
+`CheckBudgets` also runs CON-73's context check (`internal/timeline/context.go`) on every project, budget or not: a crew that is open, whose latest status line is not a hand-back, and whose latest `turn.context_tokens_after` is above `store.Workspace.CrewContextHigh()` (`crew.context_high`, default 180000, negative off) gets one `context_high` incident (`box.IncidentContextHigh`), text `"<latest> tokens of context, over <threshold>"`, filed once per crew (an open one is left alone). It is resolved - unlike `budget` - once the crew's latest context is back under the threshold, which is what a fresh session does, or the crew is closed. The digest renders it as `<crew> context high: <text>` (`autopilot.ItemContextHigh`), `mate wake` as `context high <crew>: <text>` with a `next:` line that says not to cut the crew mid-turn and to open a fresh session at its next hand-back, and the console, `mate recall` and the dashboard as "context high". Nothing ever cuts a crew: `mate send` to a crew that has handed back opens the fresh session itself (`cmd/mate/send_fresh.go`).
+
+### Sessions (`session.crew_session`, schema 6)
+
+Schema v6 (CON-73) gives each `session` row `crew_session`: the session's ordinal among its actor's sessions, by the time of its first turn (its own `started_at` when it has none yet), ties by id. The writer recomputes it for an actor whenever one of that actor's sessions is in a batch (`rankSessions`), after the turns, so it is a pure function of the rows and `mate reindex` gives every session the number it had live. It is the ledger's side of `sessions=` in `crews/<id>.meta` (1 at spawn, one more per relaunch that opens a new conversation; a resume continues the same row). `mate usage <project> <crew> --sessions` groups the crew's turns by it.
 
 Per the 2026-09-20 decision (mvp.md section 4b), a `budget` incident is deliberately excluded from what makes a crew `blocked`: `box.BlockingIncidents` narrows `box.OpenIncidents` to `stale` and `runtime_lost` only, and every caller that used to feed `OpenIncidents` into `crewstate.Declaration.OpenIncident` (`query.CrewStateOf`, `spawn.crew_stop`'s open-crew resolution, the Console's session metadata, `mate state`) now goes through `BlockingIncidents` instead.
 `box.OpenIncidents` itself is unchanged and still puts a `budget` incident in the inbox, where the phrase table (`internal/ui/console/box.go`'s `boxNeedPhrase`) reads it as `over budget`.

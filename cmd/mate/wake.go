@@ -157,10 +157,12 @@ func wake(ctx context.Context, w *store.Workspace, git gitx.Git, project string,
 // wakeItems is a digest's items in the order a Mate works them: blocked
 // first (a crew that never took a turn, CON-74, is in that group: it is as
 // unable to speak for itself), then questions, then hand-backs, then
-// budgets, each kind oldest first as Gather gave them.
+// budgets, then context-high items (CON-73: nothing to do until the
+// crew's next hand-back), each kind oldest first as Gather gave them.
 func wakeItems(items []autopilot.Item) []autopilot.Item {
 	rank := map[autopilot.ItemKind]int{
 		autopilot.ItemBlocked: 0, autopilot.ItemNoTurn: 0, autopilot.ItemNeedsDecision: 1, autopilot.ItemWaitMate: 2, autopilot.ItemBudget: 3,
+		autopilot.ItemContextHigh: 4,
 	}
 	out := append([]autopilot.Item(nil), items...)
 	sort.SliceStable(out, func(i, j int) bool { return rank[out[i].Kind] < rank[out[j].Kind] })
@@ -193,6 +195,12 @@ func writeWakeItem(ctx context.Context, out *strings.Builder, w *store.Workspace
 		}
 		fmt.Fprintf(out, "over budget %s: %s\n", crew, it.Text)
 		fmt.Fprintf(out, "  next: tell the captain; the Crew keeps running until someone stops it\n")
+	case autopilot.ItemContextHigh:
+		// CON-73: the crew is working on a bloated context. Nothing is
+		// cut mid-turn; the fix round goes into a fresh session, which
+		// `mate send` opens by itself once the crew has handed back.
+		fmt.Fprintf(out, "context high %s: %s\n", crew, it.Text)
+		fmt.Fprintf(out, "  next: do not cut it mid-turn; at its next hand-back open a fresh session - mate send does that for a resting crew, or mate crew relaunch %s %s --note \"<what it already tried>\"\n", project, crew)
 	case autopilot.ItemNeedsDecision:
 		fmt.Fprintf(out, "needs-decision %s: %s\n", crew, it.Text)
 	case autopilot.ItemWaitMate:

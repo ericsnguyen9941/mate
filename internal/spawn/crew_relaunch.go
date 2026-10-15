@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,6 +60,13 @@ type RelaunchResult struct {
 	DeliveryWarning string
 	PaneTail        string
 
+	// Ordinal is which session of the crew this is (MetaSessions after the
+	// relaunch): unchanged by a resume, one more otherwise. InputPath is
+	// the composed opening input of a fresh session (CON-73), empty for a
+	// relaunch that pointed at the brief alone.
+	Ordinal   int
+	InputPath string
+
 	// launchedAt is when the harness process was started, for the meta's
 	// launched_at= key. Unexported: it is a recording detail, not part of
 	// what a caller reads.
@@ -70,6 +78,11 @@ type RelaunchOptions struct {
 	// Resume continues the harness conversation recorded in the crew's meta
 	// (`session_id=`) instead of starting a new one.
 	Resume bool
+	// Fresh composes the new session's opening input out of the brief, the
+	// last hand-back, its Message and the diff since its Reviewed commit
+	// (CON-73). It is a new conversation by definition, so Resume is
+	// ignored with it.
+	Fresh *FreshSession
 }
 
 // RelaunchCrew starts an agent for an existing crew in the worktree it
@@ -183,8 +196,22 @@ func RelaunchCrew(ctx context.Context, w *store.Workspace, deps Deps, project, c
 		autocompact: w.CrewAutocompact(),
 	}
 
+	if opt.Fresh != nil {
+		opt.Resume = false
+	}
 	decision := crewResumeDecision(deps, plan, meta, opt)
 	plan.resumeID = decision.SessionID
+	ordinal := SessionOrdinal(meta)
+	if !decision.Resume {
+		ordinal++
+	}
+	inputPath := ""
+	if opt.Fresh != nil {
+		inputPath = w.CrewSessionInput(project, crew, ordinal)
+		if err := writeSessionInput(ctx, w, deps, project, crew, ordinal, briefPath, worktree, repoCfg, *opt.Fresh); err != nil {
+			return RelaunchResult{}, err
+		}
+	}
 
 	// 1. Everything that can be refused without touching the old agent:
 	// the harness files and the argv. Claude gets a fresh settings file and
@@ -244,6 +271,9 @@ func RelaunchCrew(ctx context.Context, w *store.Workspace, deps Deps, project, c
 	if decision.Note != "" {
 		prompt = resumeLostPrompt(briefPath, note, decision.Note)
 	}
+	if opt.Fresh != nil {
+		prompt = FreshSessionPrompt(inputPath, ordinal, note)
+	}
 	if _, err := relaunchInTab(ctx, w, deps, saga, plan, briefPath, prep.SessionID, launch, prompt); err != nil {
 		saga.compensate(ctx)
 		if !decision.Resume || ctx.Err() != nil {
@@ -288,6 +318,7 @@ func RelaunchCrew(ctx context.Context, w *store.Workspace, deps Deps, project, c
 	result.Model, result.Effort = plan.model, plan.effort
 	result.Stopped, result.AlreadyGone = stopped, !stopped
 	result.Repo, result.Branch, result.Worktree, result.BriefPath = repoCfg.Name, meta[MetaBranch], worktree, briefPath
+	result.Ordinal, result.InputPath = ordinal, inputPath
 
 	// 4. The meta, written last. Everything that named a live pane is
 	// replaced; the task, branch, worktree and repo are kept. `state=spawned`
@@ -315,6 +346,12 @@ func RelaunchCrew(ctx context.Context, w *store.Workspace, deps Deps, project, c
 		next[MetaResumed] = "true"
 		next[MetaResumedFrom] = result.ResumedFrom
 	}
+	next[MetaSessions] = strconv.Itoa(ordinal)
+	if !result.Resumed {
+		// A new conversation: a hand-back written before this byte belongs
+		// to the session that is gone, and the crew is not resting on it.
+		next[MetaSessionStatusOffset] = strconv.FormatInt(statusSize(w.CrewStatus(project, crew)), 10)
+	}
 	delete(next, MetaStoppedAt)
 	delete(next, MetaTeardown)
 	delete(next, MetaFailedReason)
@@ -322,6 +359,43 @@ func RelaunchCrew(ctx context.Context, w *store.Workspace, deps Deps, project, c
 		return RelaunchResult{}, err
 	}
 	return result, nil
+}
+
+// writeSessionInput composes and writes a fresh session's opening input
+// (ComposeSessionInput) for session n. The diff is `git diff --stat
+// <reviewed>...HEAD` in the worktree, from the commit the latest review
+// saw or the base branch when there is none; a diff that cannot be taken
+// is said in the file rather than refusing the relaunch, because the three
+// other parts are still what the crew needs.
+func writeSessionInput(ctx context.Context, w *store.Workspace, deps Deps, project, crew string, n int, briefPath, worktree string, repoCfg store.RepoConfig, fresh FreshSession) error {
+	briefText, err := os.ReadFile(briefPath)
+	if err != nil {
+		return err
+	}
+	handback, err := os.ReadFile(w.CrewHandback(project, crew))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	from := strings.TrimSpace(fresh.Reviewed)
+	if from == "" {
+		from = repoCfg.DefaultBranch
+	}
+	diffRange := from + "...HEAD"
+	stat, err := deps.git().Diff(ctx, worktree, from, "HEAD", true)
+	if err != nil {
+		stat = fmt.Sprintf("(git diff --stat %s failed: %s)", diffRange, oneLineErr(err))
+	}
+	text := ComposeSessionInput(crew, n, string(briefText), string(handback), fresh.Message, diffRange, stat)
+	return w.WriteCrewSessionInput(project, crew, n, []byte(text))
+}
+
+// statusSize is the size of a crew's status file, 0 when it has none yet.
+func statusSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 // relaunchHarness is the harness a relaunch launches: the one the crew was

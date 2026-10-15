@@ -120,3 +120,20 @@ func StripComments(text string) string {
 		text = text[i+4+j+3:]
 	}
 }
+
+// WriteCrewSessionInput writes `crews/<crew>/session-<n>.md` atomically
+// (CrewSessionInput): the opening input a fresh relaunch composed for the
+// crew's n-th session (CON-73). The crew's directory must already exist -
+// a crew with no brief has no session to compose for.
+func (w *Workspace) WriteCrewSessionInput(project, crew string, n int, data []byte) error {
+	if err := ValidateProjectName(project); err != nil {
+		return err
+	}
+	if err := ValidateCrewID(crew); err != nil {
+		return err
+	}
+	if _, err := os.Stat(w.CrewDir(project, crew)); err != nil {
+		return err
+	}
+	return w.writeFile(w.CrewSessionInput(project, crew, n), data, 0o644)
+}

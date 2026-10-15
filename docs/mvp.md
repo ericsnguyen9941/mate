@@ -176,7 +176,7 @@ Quy tắc:
 - Spawn thất bại (dialog không nhận ra, agent không lên, trust không qua) ghi `state=failed` và lý do vào `.meta` ngay tại chỗ, không để lại thư mục mồ côi ở `spawned`.
 
 `incidents.log` là file append-only, tab-separated, mỗi dòng `RFC3339 \t crew \t kind \t open|resolved \t text`.
-Kind: `stale` (status và pane không đổi quá ngưỡng mà composer không bận, và trạng thái pane không phải `busy` hay `busy_background`: hết lượt nhưng còn shell/monitor chạy nền, sửa 2026-10-13), `runtime_lost` (Herdr không còn agent), `wedged` (gửi vào pane không kiểm chứng được quá lâu), `budget` (sau MVP), `no_turn` (crew `working` hoặc mới spawn quá 5 phút mà ledger không ghi lượt nào; gỡ khi có lượt đầu; chỉ vào inbox, không đổi trạng thái; CON-74, 2026-10-15).
+Kind: `stale` (status và pane không đổi quá ngưỡng mà composer không bận, và trạng thái pane không phải `busy` hay `busy_background`: hết lượt nhưng còn shell/monitor chạy nền, sửa 2026-10-13), `runtime_lost` (Herdr không còn agent), `wedged` (gửi vào pane không kiểm chứng được quá lâu), `budget` (sau MVP), `no_turn` (crew `working` hoặc mới spawn quá 5 phút mà ledger không ghi lượt nào; gỡ khi có lượt đầu; chỉ vào inbox, không đổi trạng thái; CON-74, 2026-10-15)., `context_high` (crew còn working mà `context_tokens_after` mới nhất vượt `crew.context_high` của workspace.yaml, mặc định 180000; CON-73. Như `budget` chỉ vào inbox, không đổi trạng thái; khác `budget` ở chỗ observer gỡ nó khi context mới nhất xuống dưới ngưỡng - tức crew đã sang phiên mới - hoặc crew đã đóng).
 Một incident đang mở khi dòng cuối của cặp (crew, kind) là `open`.
 Chỉ observer ghi file này; `box.Load` đọc nó và gộp vào view cùng `.status` và `sent.log`.
 Observer sống trong tiến trình console: đóng console thì không ai canh crew và không có `blocked` mới; chấp nhận cho MVP.
@@ -224,6 +224,7 @@ Chế độ tự động (daemon `internal/autopilot`, chốt 2026-09-18 ở tas
   ```
 
   Dạng thứ tư (task 27) là một incident `budget`: nó không bao giờ là `blocked` (quyết định 2026-09-20, mục 4b) vì vượt ngân sách là một sự thật về chi tiêu, không phải crew ngừng nói được.
+  Từ CON-73 (2026-10-15) incident `context_high` đi cùng dạng đó: `<crew> context high: <n> tokens of context, over <ngưỡng>`, cũng không bao giờ là `blocked`.
 
   `<k>` luôn là số mục thật. Dòng chỉ trải tối đa 5 mục rồi ghi `· +<n> more`, vì một composer nhận dòng quá dài sẽ wrap và chính `send.Send` không đọc lại được.
   `quiet for` đo từ dòng `open` của incident, tức là cận dưới: observer chỉ mở `stale` sau khi ngưỡng của nó đã trôi qua.
@@ -1217,3 +1218,13 @@ Captain mở 2026-10-14 từ số đo hellovietnam 6–14/10: 990M token, 979M l
 - `mate recall --part <n>[,<n>...]` in đúng các phần đó; dòng báo cắt của `--max-bytes` chỉ ra `recall --part` cho phần bị cắt. Nội dung từng phần chưa bị giới hạn thêm: PROJECT.md (10KB) và backlog (9KB) là phần lớn nhất và là việc giữ gọn của Mate (`stow`).
 - `mate wake <project>`: một output khi Mate bị đánh thức. Phần 1 là mọi việc đang mở theo thứ tự blocked → needs-decision → wait-mate (dựng từ cùng `box.View` và `autopilot.Gather` của digest, không cursor), câu hỏi in nguyên văn, hand-back kèm số commit và dòng tóm tắt diff, đường dẫn hand-back/report và mục `## For the next crew`, các review đã ghi và verdict; phần 2 là status mới từ lần wake trước (`mate/.wake-cursor`, lần đầu chỉ dòng cuối mỗi crew đang mở, tối đa 20 dòng); phần 3 là crew đang mở với state, profile, ghi chú. Không hỏi Herdr. Manual mục 10 và `event-handling` dạy chạy nó một lần trước mọi thứ khác.
 - Chưa làm: chưa đo lại sau 10 task (`mate usage hellovietnam`, mốc 39 lần gọi/task, 162k context, 6,9 lượt/lần thức); chưa chạy crew thật compact ở 160000; Codex chưa nhận ngưỡng (`model_auto_compact_token_limit` chưa được truyền); dòng digest vẫn chỉ "act per AGENTS.md section 10", nay mục đó dạy `mate wake`.
+
+### Phiên crew mới cho mỗi vòng sửa (CON-73)
+
+Chốt 2026-10-15 từ top 10 task hellovietnam: lượt đầu của crew ra PR trong 8–15 phút, 4–14M token; vòng sửa theo review chạy trong cùng phiên ở context 250–434k tốn gấp hai, ba lần.
+
+- Crew ship đã ghi `pr-open` (hoặc `wait-mate` với ship local) là đang **nghỉ**. `mate send <project> <crew> "<finding>"` tới crew nghỉ không gõ vào pane cũ: nó chạy `spawn.RelaunchCrew` với `FreshSession` - cùng `.status`, worktree, branch, meta, id - và đầu vào mở phiên là đúng bốn phần theo thứ tự: brief gốc, hand-back cuối (`handback.md`), lời của Mate (finding), và `git diff --stat <reviewed>...HEAD` với `<reviewed>` là `head=` của review mới nhất về crew đó (`crews/<reviewer>/review.meta`; không có review thì từ branch mặc định). Bốn phần ghi ở `crews/<id>/session-<n>.md`; dòng mở phiên trỏ vào đó. Đoạn "Already tried" trong lời của Mate đi vào `--note` của relaunch ("Progress so far"). In một dòng `fresh session <n> for <p>/<crew>: it had handed back (<verb>), so the message opens a new session instead of typing into the old one` rồi báo cáo relaunch và `input <path>`. `--same-session` giữ cách cũ, cho captain. Scout không nghỉ: lời gửi scout là câu hỏi tiếp, không phải vòng sửa.
+- `mate brief append` trên crew nghỉ (hoặc crew đang làm với `--fresh`) đi cùng đường, phần thứ ba là chữ vừa nối thêm.
+- Observer (`CheckBudgets`, cùng vòng poll): crew còn working mà `context_tokens_after` mới nhất vượt `crew.context_high` thì mở incident `context_high` một lần (dedupe bằng incident đang mở); `mate wake` in `context high <crew>: <n> tokens of context, over <ngưỡng>` và `next:` gợi ý mở phiên mới ở lần hand-back tới. Không bao giờ tự cắt giữa lượt.
+- Meta `sessions=<n>` đếm phiên: 1 khi spawn, +1 mỗi relaunch mở hội thoại mới (resume không tính); fresh relaunch ghi thêm `session_status_offset` = cỡ `.status` lúc đó, để hand-back trước phiên này không làm crew "nghỉ" ngay sau khi vừa mở phiên. Ledger: cột `session.crew_session` (schema 4) là thứ tự phiên suy từ turn, tính lại mỗi batch; `mate usage <project> <crew> --sessions` tách token theo phiên.
+- Chưa chứng minh live: `TestLiveCrewFreshSessionAfterFindings` skip trừ `MATE_LIVE=1`; nghiệm thu "token sau `pr-open` dưới 40% token trước" chờ một task hellovietnam có hai vòng review.

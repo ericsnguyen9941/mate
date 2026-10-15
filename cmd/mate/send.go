@@ -25,12 +25,13 @@ func cmdSend(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("send", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, `usage: mate send <project> <crew> "<one line>" [--workspace <dir>] [--marker] [--queue] [--from user|mate]`)
+		fmt.Fprintln(stderr, `usage: mate send <project> <crew> "<one line>" [--workspace <dir>] [--marker] [--queue] [--same-session] [--from user|mate]`)
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	markerFlag := fs.Bool("marker", false, "prefix the app-sent sentinel "+strconv.Quote(send.Marker))
 	queueFlag := fs.Bool("queue", false, "type into a busy pane instead of refusing; the harness queues it")
 	fromFlag := fs.String("from", "", "who is sending: user or mate (default: mate when MATE_AGENT_ROLE=mate, else user)")
+	sameSession := fs.Bool("same-session", false, "type into the pane of a crew that has handed back instead of opening a fresh session for it")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
 	}
@@ -47,12 +48,35 @@ func cmdSend(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	opts := send.Options{Marker: *markerFlag, QueueWhileBusy: *queueFlag}
-	report, err := sendToCrew(context.Background(), w, liveDeps(w, stderr), fs.Arg(0), fs.Arg(1), fs.Arg(2), source, opts)
+	deps := liveDeps(w, stderr)
+	project, crew := fs.Arg(0), fs.Arg(1)
+	if !*sameSession {
+		meta, err := w.ReadCrewMeta(project, crew)
+		if err != nil {
+			return err
+		}
+		resting, verb, err := restingCrew(w, project, crew, meta)
+		if err != nil {
+			return err
+		}
+		if resting {
+			// CON-73: a message to a crew that handed back is a fix
+			// round, and it runs in a fresh session, never in the one
+			// that has already read everything.
+			res, err := freshSession(context.Background(), w, deps, project, crew, fs.Arg(2), source)
+			if err != nil {
+				return err
+			}
+			writeFreshSessionReport(stdout, project, crew, verb, source, res)
+			return nil
+		}
+	}
+	report, err := sendToCrew(context.Background(), w, deps, project, crew, fs.Arg(2), source, opts)
 	if err != nil {
 		printSendRefusalDetails(stderr, err)
 		return err
 	}
-	writeSendReport(stdout, w, fs.Arg(0), fs.Arg(1), source, report)
+	writeSendReport(stdout, w, project, crew, source, report)
 	return nil
 }
 

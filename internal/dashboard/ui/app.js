@@ -65,6 +65,8 @@
         case "budget": return (itemText(item)).indexOf("50%: ") === 0 ? "half the budget, no hand-back" : "over budget";
         // internal/box.IncidentNoTurn (CON-74): launched, no turn in the ledger.
         case "no_turn": return "no turn yet";
+        // CON-73: a working crew whose context passed crew.context_high.
+        case "context_high": return "context high";
         default: return "incident " + (item.verb || "");
       }
     }
