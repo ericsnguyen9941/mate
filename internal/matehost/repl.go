@@ -56,8 +56,6 @@ type Model struct {
 
 	input  []rune
 	cursor int
-	// sent is the captain's last message, for ↑ on an empty composer.
-	sent string
 
 	width, height int
 	// scroll is how many lines the conversation is scrolled up from its
@@ -89,19 +87,14 @@ type Model struct {
 
 // NewModel shows history (oldest first) and then what the host does.
 func NewModel(host *Host, cfg Config, history []Item) Model {
-	m := Model{host: host, cfg: cfg, now: time.Now, items: history, crews: -1}
-	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Source == SourceCaptain {
-			m.sent = history[i].Text
-			break
-		}
-	}
-	return m
+	return Model{host: host, cfg: cfg, now: time.Now, items: history, crews: -1}
 }
 
 // Program runs the REPL; the host's events reach it through Send.
 func Program(m Model) *tea.Program {
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Mouse reporting makes the wheel scroll the view; without it the
+	// terminal turns the wheel into ↑/↓ keys.
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.host.Subscribe(func(ev Event) { p.Send(hostMsg(ev)) })
 	return p
 }
@@ -139,8 +132,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.note = msg.Error()
 	case tea.KeyMsg:
 		return m.key(msg)
+	case tea.MouseMsg:
+		m.mouse(msg)
 	}
 	return m, nil
+}
+
+// wheelLines is how far one notch of the mouse wheel scrolls.
+const wheelLines = 3
+
+// mouse scrolls the view under the wheel; other mouse events do nothing.
+func (m *Model) mouse(msg tea.MouseMsg) {
+	if msg.Action != tea.MouseActionPress {
+		return
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.wheel(1)
+	case tea.MouseButtonWheelDown:
+		m.wheel(-1)
+	}
+}
+
+// wheel moves what is shown by one notch: up is n > 0. In the news list
+// it moves the selection; in a news it scrolls the news; else the chat.
+func (m *Model) wheel(n int) {
+	if m.mode == viewList && !m.help {
+		m.listSel = min(max(0, len(m.listFlat())-1), max(0, m.listSel-n))
+		return
+	}
+	m.scrollView(n * wheelLines)
+}
+
+// scrollView scrolls the shown chat or news n lines up (down if n < 0).
+func (m *Model) scrollView(n int) {
+	if m.shownMode() == viewNews {
+		m.newsScroll = min(m.maxScroll(), max(0, m.newsScroll+n))
+		return
+	}
+	m.scrollBy(n)
 }
 
 func (m *Model) apply(ev Event) {
@@ -235,17 +265,17 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyUp:
 		if empty {
-			if m.mode == viewChat {
-				m.recall()
-			}
+			m.scrollView(1)
 			return m, nil
 		}
 		m.lineUp()
 		return m, nil
 	case tea.KeyDown:
-		if !empty {
-			m.lineDown()
+		if empty {
+			m.scrollView(-1)
+			return m, nil
 		}
+		m.lineDown()
 		return m, nil
 	case tea.KeyPgUp:
 		m.scrollBy(max(1, m.viewRows()-2))
@@ -306,25 +336,12 @@ func (m *Model) send() {
 	if m.chatNewsRef(text) {
 		return
 	}
-	m.sent = text
 	m.scroll, m.unseen = 0, 0
 	if !m.state.Busy && len(m.queue) == 0 {
 		// Shown at once; the host's start event replaces it.
 		m.running = &Item{At: m.now(), Source: SourceCaptain, Text: text}
 	}
 	go m.host.Submit(text)
-}
-
-// recall fills an empty composer: the newest queued message, taken back
-// from the queue to edit, or else the message last sent.
-func (m *Model) recall() {
-	if text, ok := m.host.TakeLast(); ok {
-		m.setInput([]rune(text))
-		return
-	}
-	if m.sent != "" {
-		m.setInput([]rune(m.sent))
-	}
 }
 
 // retry sends again a captain message whose turn failed.
@@ -341,8 +358,10 @@ func (m *Model) retry() {
 	go m.host.Submit(last.Text)
 }
 
+// scrollBy scrolls the chat n lines up (down if n < 0), no further up
+// than its top: lines past it would have to be scrolled back first.
 func (m *Model) scrollBy(n int) {
-	m.scroll = max(0, m.scroll+n)
+	m.scroll = min(m.maxScroll(), max(0, m.scroll+n))
 	if m.scroll == 0 {
 		m.unseen = 0
 	}

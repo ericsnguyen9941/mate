@@ -46,7 +46,11 @@ func busyModel(w, h int) Model {
 // no line may be wider than the pane, and the screen is exactly its height.
 func TestREPLFitsTheWidth(t *testing.T) {
 	for _, w := range []int{80, 100, 60} {
-		for name, m := range map[string]Model{"idle": sampleModel(w, 30), "busy": busyModel(w, 30)} {
+		help := sampleModel(w, 30)
+		help.help = true
+		scrolled := sampleModel(w, 30)
+		scrolled.wheel(1)
+		for name, m := range map[string]Model{"idle": sampleModel(w, 30), "busy": busyModel(w, 30), "help": help, "scrolled": scrolled} {
 			view := m.View()
 			lines := strings.Split(view, "\n")
 			if len(lines) != 30 {
@@ -121,12 +125,75 @@ func TestREPLComposerKeys(t *testing.T) {
 		t.Fatalf("^C left %q", string(m.input))
 	}
 	press(tea.KeyMsg{Type: tea.KeyUp})
-	if got := string(m.input); got != "second" || len(m.host.queue) != 1 {
-		t.Fatalf("↑ took %q, queue %q", got, m.host.queue)
+	if got := string(m.input); got != "" || len(m.host.queue) != 2 {
+		t.Fatalf("↑ on an empty composer filled %q, queue %q", got, m.host.queue)
 	}
-	press(tea.KeyMsg{Type: tea.KeyCtrlC})
+	press(tea.KeyMsg{Type: tea.KeyCtrlX})
 	press(tea.KeyMsg{Type: tea.KeyCtrlX})
 	if len(m.host.queue) != 0 {
 		t.Fatalf("^X left %q", m.host.queue)
+	}
+}
+
+// TestREPLMouseWheel: the wheel scrolls the chat and never fills the
+// composer, which the ↑ keys a terminal makes of the wheel once did.
+func TestREPLMouseWheel(t *testing.T) {
+	m := sampleModel(80, 12)
+	m.host = New(&Runner{}, Options{})
+	m.host.queue = []message{{Source: SourceCaptain, Text: "queued", Prompt: "queued"}}
+	wheel := func(b tea.MouseButton) {
+		next, _ := m.Update(tea.MouseMsg{Button: b, Action: tea.MouseActionPress})
+		m = next.(Model)
+	}
+	bottom := ansi.Strip(m.View())
+	next, _ := m.key(tea.KeyMsg{Type: tea.KeyUp})
+	m = next.(Model)
+	if m.scroll != 1 || len(m.input) != 0 {
+		t.Fatalf("↑ on an empty composer: scroll %d, input %q", m.scroll, string(m.input))
+	}
+	next, _ = m.key(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(Model)
+	wheel(tea.MouseButtonWheelUp)
+	wheel(tea.MouseButtonWheelUp)
+	if m.scroll != 2*wheelLines || len(m.input) != 0 || len(m.host.queue) != 1 {
+		t.Fatalf("wheel up: scroll %d, input %q, queue %q", m.scroll, string(m.input), m.host.queue)
+	}
+	up := ansi.Strip(m.View())
+	if up == bottom || !strings.Contains(up, "đang xem tin cũ") {
+		t.Errorf("wheel up did not scroll the chat:\n%s", up)
+	}
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = next.(Model)
+	if m.scroll != 2*wheelLines {
+		t.Fatalf("a click scrolled to %d", m.scroll)
+	}
+	for range 3 {
+		wheel(tea.MouseButtonWheelDown)
+	}
+	if m.scroll != 0 || ansi.Strip(m.View()) != bottom {
+		t.Fatalf("wheel down left scroll %d", m.scroll)
+	}
+
+	// Past the top the wheel stops, so one notch down moves at once.
+	for range 50 {
+		wheel(tea.MouseButtonWheelUp)
+	}
+	top := ansi.Strip(m.View())
+	if m.scroll != m.maxScroll() || m.scroll == 0 {
+		t.Fatalf("50 notches up: scroll %d, top at %d", m.scroll, m.maxScroll())
+	}
+	wheel(tea.MouseButtonWheelDown)
+	if ansi.Strip(m.View()) == top {
+		t.Fatalf("one notch down after overscrolling did not move the view (scroll %d)", m.scroll)
+	}
+	next, _ = m.key(tea.KeyMsg{Type: tea.KeyHome})
+	m = next.(Model)
+	if m.scroll != m.maxScroll() {
+		t.Fatalf("Home scrolled to %d, top at %d", m.scroll, m.maxScroll())
+	}
+	next, _ = m.key(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(Model)
+	if ansi.Strip(m.View()) == top {
+		t.Fatal("↓ after Home did not move the view")
 	}
 }

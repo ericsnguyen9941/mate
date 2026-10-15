@@ -277,10 +277,10 @@ func (m Model) newsViewKey(k tea.KeyMsg) (Model, bool) {
 		m.closeView()
 		return m, true
 	case tea.KeyPgUp:
-		m.newsScroll += max(1, m.viewRows()-2)
+		m.scrollView(max(1, m.viewRows()-2))
 		return m, true
 	case tea.KeyPgDown:
-		m.newsScroll = max(0, m.newsScroll-max(1, m.viewRows()-2))
+		m.scrollView(-max(1, m.viewRows()-2))
 		return m, true
 	case tea.KeyTab:
 		if m.focusOptions {
