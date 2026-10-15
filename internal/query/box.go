@@ -285,6 +285,19 @@ func withAssign(e BoxEntry, assigned map[string]BoxAssign) BoxEntry {
 	return e
 }
 
+// BudgetHalf reports whether e is the observer's half-budget incident
+// (box.BudgetHalfPrefix, CON-76): a `budget` incident filed at half the
+// crew's budget with no hand-back yet, which a reader phrases differently
+// from "over budget". It is here so the Console, which may not import
+// internal/box, reads it off the DTO.
+func (e BoxEntry) BudgetHalf() bool {
+	if e.Kind != BoxIncident || e.Verb != string(box.IncidentBudget) {
+		return false
+	}
+	percent, _ := box.BudgetThreshold(e.Text)
+	return percent == 50
+}
+
 // BoxResolveLine and BoxIncidentResolveLine are the two lines `[resolve]`
 // sends into the Mate's pane. They are spelled once, here, so the console,
 // the action that sends them, the manual the Mate reads (assets/mate,

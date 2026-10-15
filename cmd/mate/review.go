@@ -25,11 +25,15 @@ func cmdReview(args []string, stdout, stderr io.Writer) error {
 	model := fs.String("model", "", "reviewer's model from crew dispatch")
 	effort := fs.String("effort", "", "reviewer's reasoning effort")
 	kind := fs.String("harness", "", "reviewer's harness from crew dispatch")
+	budget := fs.Int64("budget", 0, "reviewer's token budget (default: the dispatch table's review_budget, if any)")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return newUsageError("usage: mate review <project> <crew> --id <reviewer> [--harness <kind>] [--model <model>] [--effort <effort>] | --check <reviewer>")
+		return newUsageError("usage: mate review <project> <crew> --id <reviewer> [--harness <kind>] [--model <model>] [--effort <effort>] [--budget <tokens>] | --check <reviewer>")
+	}
+	if *budget < 0 {
+		return newUsageError("mate review: --budget wants a positive number of tokens")
 	}
 	w, err := resolveWorkspace(*workspace)
 	if err != nil {
@@ -77,7 +81,7 @@ func cmdReview(args []string, stdout, stderr io.Writer) error {
 	}
 	// The table is read before anything is written, so a malformed one
 	// leaves no review record behind.
-	profile, note, err := applyReviewDispatch(w, spawn.SpawnCrewRequest{Harness: h, Model: m, Effort: e})
+	profile, note, err := applyReviewDispatch(w, spawn.SpawnCrewRequest{Harness: h, Model: m, Effort: e, Budget: *budget})
 	if err != nil {
 		return err
 	}
@@ -92,7 +96,7 @@ func cmdReview(args []string, stdout, stderr io.Writer) error {
 	if err := store.WriteMeta(path, fp); err != nil {
 		return err
 	}
-	req := spawn.SpawnCrewRequest{Project: project, Crew: *id, Repo: fp["repo"], Harness: h, Model: m, Effort: e, Scout: true, Task: "Review " + crew + " at " + fp["head"], BriefText: reviewBrief(w, project, crew, fp)}
+	req := spawn.SpawnCrewRequest{Project: project, Crew: *id, Repo: fp["repo"], Harness: h, Model: m, Effort: e, Budget: profile.Budget, Scout: true, Task: "Review " + crew + " at " + fp["head"], BriefText: reviewBrief(w, project, crew, fp)}
 	result, err := spawn.SpawnCrew(ctx, w, liveDeps(w, stderr), req)
 	if err != nil {
 		return err

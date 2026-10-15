@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/box"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -102,6 +103,37 @@ func TestWakePrintsWhatToActOnInOrder(t *testing.T) {
 	}
 	if strings.Contains(text, "done-old") {
 		t.Errorf("a closed Crew was shown:\n%s", text)
+	}
+}
+
+// A budget incident is printed with the tokens used and the threshold it
+// was filed at (CON-76): "budget 50%" for the half one, with what to do
+// next, and "over budget" for the full one; both after the hand-backs.
+func TestWakePrintsBudgetIncidentsWithTheirThreshold(t *testing.T) {
+	w := wakeFixture(t)
+	for crew, text := range map[string]string{
+		"busy-k5": box.BudgetHalfPrefix + "1.1M tokens of 2M tokens, no hand-back yet",
+		"ask-k4":  "2.3M tokens of 2M tokens",
+	} {
+		if err := w.AppendIncident("shop", store.IncidentEntry{
+			Time: time.Date(2026, 10, 14, 21, 0, 0, 0, time.UTC), Crew: crew,
+			Kind: string(box.IncidentBudget), State: store.IncidentOpen, Text: text,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	text := runWake(t, w)
+	for _, want := range []string{
+		"== 1. To act on (4) ==\n",
+		"budget 50% busy-k5: 1.1M tokens of 2M tokens, no hand-back yet\n  next: mate peek busy-k5 once; if it is looping or polling, send it one line\n",
+		"over budget ask-k4: 2.3M tokens of 2M tokens\n  next: tell the captain",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("wake lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Index(text, "budget 50% busy-k5") < strings.Index(text, "wait-mate k3") {
+		t.Errorf("a budget item must come after the hand-backs:\n%s", text)
 	}
 }
 

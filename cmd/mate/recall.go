@@ -350,6 +350,9 @@ func inboxLine(w *store.Workspace, project string, e query.BoxEntry) string {
 			need = "send wedged"
 		case "budget":
 			need = "over budget"
+			if e.BudgetHalf() {
+				need = "half the budget, no hand-back"
+			}
 		default:
 			need = "incident " + e.Verb
 		}

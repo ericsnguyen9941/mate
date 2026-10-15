@@ -174,7 +174,18 @@ func writeWakeItem(ctx context.Context, out *strings.Builder, w *store.Workspace
 		fmt.Fprintf(out, "blocked %s: %s, open for %s - %s\n", crew, kind, formatAge(it.QuietFor), it.Text)
 		fmt.Fprintf(out, "  next: mate state, then mate peek, then stuck-crew-recovery\n")
 	case autopilot.ItemBudget:
+		// The observer's text is "<used> tokens of <budget> tokens"; the
+		// half-budget one (CON-76) carries box.BudgetHalfPrefix and the
+		// reason it was filed. The next lines are the issue's handling:
+		// at half, one look, and a line if the Crew is looping or
+		// polling; at the budget, the captain decides.
+		if percent, rest := box.BudgetThreshold(it.Text); percent == 50 {
+			fmt.Fprintf(out, "budget 50%% %s: %s\n", crew, rest)
+			fmt.Fprintf(out, "  next: mate peek %s once; if it is looping or polling, send it one line\n", crew)
+			return
+		}
 		fmt.Fprintf(out, "over budget %s: %s\n", crew, it.Text)
+		fmt.Fprintf(out, "  next: tell the captain; the Crew keeps running until someone stops it\n")
 	case autopilot.ItemNeedsDecision:
 		fmt.Fprintf(out, "needs-decision %s: %s\n", crew, it.Text)
 	case autopilot.ItemWaitMate:

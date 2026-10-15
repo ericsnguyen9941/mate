@@ -245,6 +245,9 @@ func boxNeedPhrase(e query.BoxEntry) string {
 	case "wedged":
 		return "wedged"
 	case "budget":
+		if e.BudgetHalf() {
+			return "half the budget, no hand-back"
+		}
 		return "over budget"
 	}
 	return e.Verb

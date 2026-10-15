@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/box"
 	"github.com/nguyenngocanh94/mate/internal/query"
@@ -21,10 +23,18 @@ import (
 const projectBudgetCrew = "mate"
 
 // CheckBudgets is mvp.md M5 task 27's budget check, run by the observer at
-// the end of every poll (watch.Deps.Budget): for every project whose
-// project.yaml carries a `budget:` block, it opens a `budget` incident on
-// whichever crew - or, for the project-wide ceiling, on projectBudgetCrew -
-// has crossed a configured limit.
+// the end of every poll (watch.Deps.Budget): for every project, it opens a
+// `budget` incident on whichever crew - or, for the project-wide ceiling,
+// on projectBudgetCrew - has crossed a configured limit.
+//
+// A crew's token limit is its own `budget=` (the dispatch rule's budget
+// `mate crew spawn --budget` recorded, CON-76) when it has one, else the
+// project's `budget.crew_tokens`; `crew_usd` and `project_usd` are the
+// project's alone. Against the token limit there are two thresholds: all
+// of it, and half of it while the crew has not handed back (no `pr-open`
+// or `wait-mate` line yet) - the early warning for a task that is spending
+// its size away without delivering. The half incident carries
+// box.BudgetHalfPrefix so every reader tells the two apart.
 //
 // It reads the ledger this same poll's Ingest just wrote, so a crossing
 // becomes visible in incidents.log one poll after the turn that caused it -
@@ -34,9 +44,10 @@ const projectBudgetCrew = "mate"
 // A budget incident is never resolved (mvp.md section 4b, decision
 // 2026-09-20: "nó là một sự thật" - it is a fact about spend that already
 // happened, not a condition that can clear). CheckBudgets therefore only
-// ever appends one `open` line per (crew, kind): a crew already carrying one
-// is left alone even if it has spent more since, because the record already
-// says what needs saying.
+// ever appends one `open` line per (crew, threshold): a crew already
+// carrying one for a threshold is left alone even if it has spent more
+// since, because the record already says what needs saying; a crew
+// carrying the full one is not checked again at all.
 func (i *Ingester) CheckBudgets(ctx context.Context) error {
 	if !i.d.Writable() {
 		return errors.New("timeline: this database handle is read-only")
@@ -61,7 +72,16 @@ func (i *Ingester) checkProjectBudget(ctx context.Context, project string) error
 	if err != nil {
 		return err
 	}
-	if cfg.Budget == nil {
+	crews, err := listCrewMetas(i.ws, project)
+	if err != nil {
+		return err
+	}
+	budget := cfg.Budget
+	if budget == nil {
+		budget = &store.BudgetConfig{}
+	}
+	if *budget == (store.BudgetConfig{}) && !anyCrewBudget(crews) {
+		// Nothing to hold anyone to; most projects never configure one.
 		return nil
 	}
 
@@ -69,55 +89,67 @@ func (i *Ingester) checkProjectBudget(ctx context.Context, project string) error
 	if err != nil {
 		return err
 	}
-	alreadyOpen := func(crew string) bool {
+	// filed is which thresholds the crew already carries an open budget
+	// incident for: the record of a crossing is written once.
+	filed := func(crew string) (half, full bool) {
 		for _, inc := range box.OpenIncidents(view, crew) {
-			if inc.Kind == box.IncidentBudget {
-				return true
+			if inc.Kind != box.IncidentBudget {
+				continue
+			}
+			if percent, _ := box.BudgetThreshold(inc.Text); percent == 50 {
+				half = true
+			} else {
+				full = true
 			}
 		}
-		return false
+		return half, full
 	}
 
-	if cfg.Budget.CrewTokens > 0 || cfg.Budget.CrewUSD > 0 {
-		crews, err := listCrewMetas(i.ws, project)
+	for _, crew := range crews {
+		half, full := filed(crew.ID)
+		if full {
+			continue
+		}
+		limit := crewBudget(crew.Meta, budget.CrewTokens)
+		if limit == 0 && budget.CrewUSD == 0 {
+			continue
+		}
+		tokens, cost, err := i.crewSpend(ctx, crew.ActorID)
 		if err != nil {
 			return err
 		}
-		for _, crew := range crews {
-			if alreadyOpen(crew.ID) {
-				continue
-			}
-			tokens, cost, err := i.crewSpend(ctx, crew.ActorID)
-			if err != nil {
-				return err
-			}
-			text := ""
-			switch {
-			case cfg.Budget.CrewTokens > 0 && tokens > cfg.Budget.CrewTokens:
-				text = fmt.Sprintf("%s tokens of %s tokens",
-					query.HumanizeTokens(tokens), query.HumanizeTokens(cfg.Budget.CrewTokens))
-			case cfg.Budget.CrewUSD > 0 && cost.Valid && cost.Float64 > cfg.Budget.CrewUSD:
-				text = fmt.Sprintf("%s of %s", query.HumanizeCost(cost.Float64), query.HumanizeCost(cfg.Budget.CrewUSD))
-			}
-			if text == "" {
-				continue
-			}
-			if err := i.ws.AppendIncident(project, store.IncidentEntry{
-				Time: i.deps.now(), Crew: crew.ID, Kind: string(box.IncidentBudget),
-				State: store.IncidentOpen, Text: text,
-			}); err != nil {
-				return err
-			}
+		text := ""
+		switch {
+		case limit > 0 && tokens > limit:
+			text = fmt.Sprintf("%s tokens of %s tokens",
+				query.HumanizeTokens(tokens), query.HumanizeTokens(limit))
+		case budget.CrewUSD > 0 && cost.Valid && cost.Float64 > budget.CrewUSD:
+			text = fmt.Sprintf("%s of %s", query.HumanizeCost(cost.Float64), query.HumanizeCost(budget.CrewUSD))
+		case limit > 0 && !half && tokens*2 > limit && !view.Closed[crew.ID] && !handedBack(view, crew.ID):
+			// Half the budget spent and nothing handed back yet. A closed
+			// crew is past warning about, and one that has handed back
+			// has the Mate's eyes on it already.
+			text = box.BudgetHalfPrefix + fmt.Sprintf("%s tokens of %s tokens, no hand-back yet",
+				query.HumanizeTokens(tokens), query.HumanizeTokens(limit))
+		}
+		if text == "" {
+			continue
+		}
+		if err := i.ws.AppendIncident(project, store.IncidentEntry{
+			Time: i.deps.now(), Crew: crew.ID, Kind: string(box.IncidentBudget),
+			State: store.IncidentOpen, Text: text,
+		}); err != nil {
+			return err
 		}
 	}
 
-	if cfg.Budget.ProjectUSD > 0 && !alreadyOpen(projectBudgetCrew) {
+	if _, full := filed(projectBudgetCrew); budget.ProjectUSD > 0 && !full {
 		cost, err := i.projectSpend(ctx, project)
 		if err != nil {
 			return err
 		}
-		if cost.Valid && cost.Float64 > cfg.Budget.ProjectUSD {
-			text := fmt.Sprintf("%s of %s", query.HumanizeCost(cost.Float64), query.HumanizeCost(cfg.Budget.ProjectUSD))
+		if cost.Valid && cost.Float64 > budget.ProjectUSD {
+			text := fmt.Sprintf("%s of %s", query.HumanizeCost(cost.Float64), query.HumanizeCost(budget.ProjectUSD))
 			if err := i.ws.AppendIncident(project, store.IncidentEntry{
 				Time: i.deps.now(), Crew: projectBudgetCrew, Kind: string(box.IncidentBudget),
 				State: store.IncidentOpen, Text: text,
@@ -127,6 +159,44 @@ func (i *Ingester) checkProjectBudget(ctx context.Context, project string) error
 		}
 	}
 	return nil
+}
+
+// crewBudget is the token limit one crew is held to: its own `budget=`
+// when the meta carries a positive one, else the project's crew_tokens
+// (0 when neither). A meta value that is not a number is ignored rather
+// than failing the poll: the record is the Mate's, and a bad one costs the
+// crew its own limit, not every crew its check.
+func crewBudget(meta map[string]string, projectTokens int64) int64 {
+	if raw := strings.TrimSpace(meta[store.MetaBudget]); raw != "" {
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return projectTokens
+}
+
+// anyCrewBudget reports whether any crew carries its own `budget=`.
+func anyCrewBudget(crews []crewRecord) bool {
+	for _, crew := range crews {
+		if crewBudget(crew.Meta, 0) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// handedBack reports whether the crew has ever written a hand-back line:
+// `wait-mate`, `pr-open`, or any other verb box reads as StateWaitMate. It
+// is "ever", not "latest": a crew sent back to work after handing back is
+// one the Mate already looked at, so the half-budget warning has nothing
+// to add.
+func handedBack(view box.View, crew string) bool {
+	for _, e := range view.ByCrew[crew] {
+		if e.Kind == box.KindStatus && box.ParseStatus(e.Text).State == box.StateWaitMate {
+			return true
+		}
+	}
+	return false
 }
 
 // crewSpend is one crew's whole-task token total and cost, read the same way
