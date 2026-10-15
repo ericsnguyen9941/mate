@@ -277,6 +277,14 @@ The default and `--stat` give git's summary of which files moved and by how much
 It measures the branch, not the worktree, so it still answers after a Crew has been closed and its worktree removed.
 A leading `note:` line warns you that the Crew's worktree holds uncommitted files: the patch is only what was committed, so that note is the difference between what you are reading and what the Crew has done.
 
+```text
+mate review <project> <crew> --id <reviewer> [--since <prior-reviewer>] [--harness <kind>] [--model <model>] [--effort <effort>] [--workspace <dir>]
+mate review <project> <crew> --check <reviewer> [--workspace <dir>]
+```
+
+`mate review` starts an independent reviewer: a scout Crew briefed to read the full committed change and hand back a report whose `## Verdict` is `pass`, `changes-requested` or `incomplete`, with its material findings under `## Findings`, one list item each. The record it writes pins the branch's commit, base, brief and hand-back; `--check` refuses when any of them moved.
+`--since <prior-reviewer>` is the second review of the same Crew after it fixed what the first one found. The new reviewer is briefed with `git diff <commit the prior review saw>...<head>` and the prior report's findings as a numbered checklist (F1, F2, ...); it re-verifies only the acceptance criteria those findings touch and reruns a gate only when the diff touches that gate's files or commands, so it costs a fraction of a full review. Its report answers under `## Prior findings`, one item per finding starting with `F<n> closed` or `F<n> open` and the evidence. `--check` on it passes only when the prior review has a verdict and every prior finding is marked closed; an open or unmarked one is `incomplete`, named. `--since` refuses a reviewer with no record, one that reviewed another Crew, one whose report has no verdict yet, a branch still at the commit it saw (use `--check` on it instead) and a branch rewritten past that commit (review in full). The record still carries the new head, so `mate merge --review` pins what this reviewer saw.
+
 ### Memory
 
 ```text
@@ -354,7 +362,7 @@ It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a 
 
 - `mate diff <project> <crew>` prints the commit list and stat by default. `--full` prints the complete patch; `--stat` remains accepted.
 - `mate report <project> <crew> --summary` prints only `## Summary`, at most 6000 characters. Missing or oversized summaries are errors, never a silent full-report fallback. `--full` explicitly reads everything.
-- `mate review <project> <crew> --id <reviewer> [--harness <kind>] [--model <model> --effort <effort>]` starts a separate scout; end your turn. Without `--model` and `--effort` the reviewer runs the dispatch table's review profile (`crew-dispatch` section 9). `mate review <project> <crew> --check <reviewer>` validates the unchanged SHA, base, brief, hand-back and passing report. `mate merge <project> <crew> --review <reviewer>` repeats that validation and merges the reviewed SHA.
+- `mate review <project> <crew> --id <reviewer> [--harness <kind>] [--model <model> --effort <effort>]` starts a separate scout; end your turn. Without `--model` and `--effort` the reviewer runs the dispatch table's review profile (`crew-dispatch` section 9). After the Crew fixes a review's findings, `--since <that-reviewer>` on the new review scopes it to the change since the commit that review saw and to closing its findings (section Review above). `mate review <project> <crew> --check <reviewer>` validates the unchanged SHA, base, brief, hand-back and passing report, and for a `--since` review that every prior finding is marked closed. `mate merge <project> <crew> --review <reviewer>` repeats that validation and merges the reviewed SHA.
 - `mate backlog add <project> <id> --section "Held for the captain" --text '<verbatim obligation>'` adds an entry. Use `In flight`, `Held for the captain`, `Queued` or `Done` for the section.
 - `mate backlog move <project> <id> --section "In flight"` moves the complete entry unchanged. `mate backlog done <project> <id>` moves it to Done and archives overflow beyond 10 entries. Duplicate or missing ids are errors. Use these commands instead of writing Python to edit backlog.
 - `mate usage <project> --top <n>` prints your own row, the n largest tasks by TOTAL and a total over every task. `mate usage <project> <crew> --why` prints one bounded page on what that task's tokens were spent on: buckets, work by kind, loops, findings, instructions loaded, costliest prompts. Load `token-review` before drawing a conclusion from either; plain `mate usage <project>` prints every task and `mate usage <project> <crew>` every model call, which you rarely need.
