@@ -24,8 +24,11 @@ type MateConfig struct {
 	Effort string `yaml:"effort,omitempty"`
 	// RefreshContext defaults to 150000; -1 disables automatic refresh.
 	RefreshContext int64 `yaml:"refresh_context,omitempty"`
-	// Headless starts the Mate as a headless host (CON-78) when a start
-	// names no mode; the default is the harness's own TUI in the pane.
+	// Mode is the Mate's mode when a start names none and the last run
+	// recorded none: `headless` (CON-78, the default for a harness with
+	// headless turns) or `pane`, the harness's own TUI.
+	Mode string `yaml:"mode,omitempty"`
+	// Headless is the first spelling of Mode: headless.
 	Headless bool `yaml:"headless,omitempty"`
 }
 

@@ -112,6 +112,10 @@ const (
 type Deps struct {
 	// Runtime is the Herdr adapter. Tests pass runtime.NewFake().
 	Runtime runtime.Adapter
+	// DefaultMode is the Mate's mode when neither the start, the last run
+	// nor project.yaml names one. LiveDeps sets ModeHeadless (2026-10-15);
+	// empty is ModePane.
+	DefaultMode string
 	// HostStopWait bounds how long a stop lets a headless Mate finish its
 	// turn; zero means HostStopWait.
 	HostStopWait time.Duration
@@ -167,7 +171,7 @@ func LiveDeps(harnesses harness.Registry) Deps {
 	names := runtime.NewMemoryNameRegistry()
 	rt := runtime.NewHerdr(process.ExecRunner{})
 	rt.Names = names
-	return Deps{Runtime: rt, Harnesses: harnesses, Names: names}
+	return Deps{Runtime: rt, Harnesses: harnesses, Names: names, DefaultMode: ModeHeadless}
 }
 
 // defaultHarness is the harness a role gets when the request named none:

@@ -228,11 +228,12 @@ CODEX_HOME={{CODEX_HOME}}
 ## Done
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/backlog.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=292 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/mate.meta mode=-rw-r--r-- bytes=302 ---
 agent=mate-shop
 effort=medium
 harness=claude
 launched_at=2026-09-17T10:00:00Z
+mode=pane
 model=opus
 pane=w2:p1
 resumed=true
