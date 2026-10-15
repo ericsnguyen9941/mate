@@ -231,7 +231,7 @@ func boxWaiting(proj query.ProjectNode) int {
 	if !proj.Box.IsKnown() {
 		return 0
 	}
-	return len(proj.Box.Value.Inbox)
+	return len(proj.Box.Value.Waiting())
 }
 
 // modeLine is the Project's communication mode: manual, or auto and when

@@ -73,3 +73,40 @@ func TestBoxEntriesCarryTheirAssignFromTheOutbox(t *testing.T) {
 		}
 	}
 }
+
+// What the Mate has received leaves the captain's box (Waiting) and stays
+// in the inbox the Mate reads: a delivered [assign], or a delivered digest
+// whose cursor is past the line. A queued assign, or a line after the
+// cursor, is still waiting.
+func TestBoxWaitingDropsWhatTheMateReceived(t *testing.T) {
+	ws := newWorkspace(t, "shop")
+	for _, c := range []string{"k1", "k2", "k3"} {
+		if err := ws.AppendStatus("shop", c, "needs-decision: pick A or B"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inbox := LoadBox(ws, "shop").Value.Inbox
+	if len(inbox) != 3 {
+		t.Fatalf("inbox = %+v", inbox)
+	}
+	at := time.Date(2026, 10, 15, 21, 0, 0, 0, time.UTC)
+	if err := ws.UpdateOutbox("shop", at, func([]store.OutboxItem) ([]store.OutboxItem, bool, error) {
+		return []store.OutboxItem{
+			{ID: 1, At: at, Source: store.OutboxSourceAssign, Key: inbox[0].AssignKey, Text: inbox[0].Resolve, State: store.OutboxSent, SentAt: at},
+			{ID: 2, At: at, Source: store.OutboxSourceAssign, Key: inbox[2].AssignKey, Text: inbox[2].Resolve, State: store.OutboxQueued},
+		}, true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ws.WriteAutoCursor("shop", map[string]int64{ws.CrewStatus("shop", "k2"): 0}); err != nil {
+		t.Fatal(err)
+	}
+	box := LoadBox(ws, "shop").Value
+	if len(box.Inbox) != 3 {
+		t.Fatalf("inbox = %d entries, want all three for the Mate", len(box.Inbox))
+	}
+	waiting := box.Waiting()
+	if len(waiting) != 1 || waiting[0].Crew != "k3" {
+		t.Fatalf("waiting = %+v, want only k3 (its assign is still queued)", waiting)
+	}
+}

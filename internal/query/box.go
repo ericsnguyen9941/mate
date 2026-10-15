@@ -79,6 +79,12 @@ type BoxEntry struct {
 	// Assigned is what the Mate's outbox says about that key: nothing, a
 	// line still waiting for the Mate's composer, or one delivered.
 	Assigned BoxAssign
+	// Handed is whether the Mate has received the entry: its `[assign]`
+	// line was delivered, or a digest that carried it was (the auto
+	// cursor is past it, and that cursor moves only when a digest is
+	// delivered). The entry is the Mate's from then on, so the captain's
+	// box no longer shows it as waiting (BoxView.Waiting).
+	Handed bool
 }
 
 // BoxAssign is an entry's `[assign]` as the Mate's outbox records it.
@@ -135,6 +141,20 @@ func (v BoxView) Attention() int {
 	return n
 }
 
+// Waiting is the inbox without what the Mate has already received
+// (BoxEntry.Handed): what the captain's box shows. The Mate's own reads
+// (recall) keep the whole inbox, since a thing it was handed is still open
+// until it is resolved.
+func (v BoxView) Waiting() []BoxEntry {
+	var out []BoxEntry
+	for _, e := range v.Inbox {
+		if !e.Handed {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // ToResolve is how many things are waiting on a decision: the inbox's own
 // length, spelled as a method so the rail header, the digest line and the
 // project panel all count the same thing.
@@ -180,6 +200,7 @@ func loadBox(ws *store.Workspace, project string) (box.View, bool, Field[BoxView
 func boxView(ws *store.Workspace, project string, v box.View) BoxView {
 	sum := box.Summarize(v)
 	assigned := assignedByKey(ws, project)
+	digested, _ := ws.ReadAutoCursor(project)
 	out := BoxView{
 		Entries:  make([]BoxEntry, 0, len(v.Entries)),
 		Crews:    sum.Crews,
@@ -194,9 +215,23 @@ func boxView(ws *store.Workspace, project string, v box.View) BoxView {
 	// with the same Seq - a reader who toggles [all] sees the entry they
 	// were looking at, not a second copy of it built by other code.
 	for _, item := range box.Inbox(v) {
-		out.Inbox = append(out.Inbox, withAssign(boxEntry(ws, project, item.Entry), assigned))
+		e := withAssign(boxEntry(ws, project, item.Entry), assigned)
+		e.Handed = e.Assigned.State == BoxAssignSent || digestedEntry(item, digested)
+		out.Inbox = append(out.Inbox, e)
 	}
 	return out
+}
+
+// digestedEntry reports whether a delivered digest carried item: the auto
+// cursor is at or past its line. The daemon's `wedged` finding about the
+// Mate's own composer is never digested (autopilot.Gather), so a cursor
+// past it says nothing.
+func digestedEntry(item box.Item, cursor map[string]int64) bool {
+	if item.Incident() && item.Kind == box.IncidentWedged && item.Crew() == "mate" {
+		return false
+	}
+	last, ok := cursor[item.Entry.Ref.File]
+	return ok && item.Entry.Ref.Offset <= last
 }
 
 func boxEntry(ws *store.Workspace, project string, e box.Entry) BoxEntry {
