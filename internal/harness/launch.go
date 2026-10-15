@@ -143,6 +143,10 @@ type AgentSpec struct {
 	// the spec, so it is recorded, and is left out of the argv.
 	Model  string
 	Effort Effort
+	// Autocompact is the context size, in tokens, at which a Crew compacts
+	// its conversation; 0 is the harness's own threshold. A harness with no
+	// such flag ignores it. A Mate's threshold is its harness's own profile.
+	Autocompact int
 	// MCPServers are PrepareRequest.MCPServers of the launch this spec was
 	// prepared for, so Build can turn them into flags.
 	MCPServers []MCPServer

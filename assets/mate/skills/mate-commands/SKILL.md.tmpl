@@ -328,7 +328,7 @@ A `warning:` line on stderr names `{{.ProjectDoc}}` lines anchored at an older c
 ### Recall
 
 ```text
-mate recall <project> [--live] [--max-bytes <n>] [--workspace <dir>]
+mate recall <project> [--live] [--part <n>[,<n>...]] [--max-bytes <n>] [--workspace <dir>]
 ```
 
 `recall` is your session-start digest (section 3), and it only reads.
@@ -345,14 +345,26 @@ It opens with `# mate recall <project>` and one contract line, then prints numbe
 
 Each file is framed by `----- begin <name> (<path>) -----` and `----- end <name> -----`; a missing file prints `ABSENT` and an empty one `(empty)`, which mean different things.
 `--live` prints part 1 only; the SessionStart hook uses it after a resume.
-`--max-bytes <n>` cuts from the bottom, whole lines at a time, and part 1 always survives whole; the last line then names what was not shown and tells you to run `recall` yourself.
+`--part <n>[,<n>...]` prints only those parts, whole: the way to read one file of the digest again, or the parts a cut digest left out, without the rest a second time.
+`--max-bytes <n>` cuts from the bottom, whole lines at a time, and part 1 always survives whole; the last line then names what was not shown and the `recall --part` that prints it.
+
+### Wake
+
+```text
+mate wake <project> [--peek] [--workspace <dir>]
+```
+
+`wake` is the one read when an app event wakes you (`event-handling`, "Acting on a digest").
+It prints three parts: 1, every open item in the order you act on it - `blocked`, `needs-decision` with the question in full, `wait-mate` with its branch's commit count and diff summary, its hand-back or report path with that file's `## For the next crew` section, and the reviews recorded for it (a review's own hand-back is its verdict); 2, the status lines written since your last `wake`; 3, every open Crew with its state, profile and last note.
+Part 1 lists an item until it is dealt with, however many wakes showed it; part 2 moves on with every run but `--peek`, which prints the same wake and leaves its lines for your next one (the way to look without taking them).
+It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a `blocked` Crew.
 
 
 ### Bounded coordination commands
 
 - `mate diff <project> <crew>` prints the commit list and stat by default. `--full` prints the complete patch; `--stat` remains accepted.
 - `mate report <project> <crew> --summary` prints only `## Summary`, at most 6000 characters. Missing or oversized summaries are errors, never a silent full-report fallback. `--full` explicitly reads everything.
-- `mate review <project> <crew> --id <reviewer> --harness <kind> --model <model> --effort <effort>` starts a separate scout; end your turn. `mate review <project> <crew> --check <reviewer>` validates the unchanged SHA, base, brief, hand-back and passing report. `mate merge <project> <crew> --review <reviewer>` repeats that validation and merges the reviewed SHA.
+- `mate review <project> <crew> --id <reviewer> [--harness <kind>] [--model <model> --effort <effort>]` starts a separate scout; end your turn. Without `--model` and `--effort` the reviewer runs the dispatch table's review profile (`crew-dispatch` section 9). `mate review <project> <crew> --check <reviewer>` validates the unchanged SHA, base, brief, hand-back and passing report. `mate merge <project> <crew> --review <reviewer>` repeats that validation and merges the reviewed SHA.
 - `mate backlog add <project> <id> --section "Held for the captain" --text '<verbatim obligation>'` adds an entry. Use `In flight`, `Held for the captain`, `Queued` or `Done` for the section.
 - `mate backlog move <project> <id> --section "In flight"` moves the complete entry unchanged. `mate backlog done <project> <id>` moves it to Done and archives overflow beyond 10 entries. Duplicate or missing ids are errors. Use these commands instead of writing Python to edit backlog.
 - `mate usage <project> --top <n>` prints your own row, the n largest tasks by TOTAL and a total over every task. `mate usage <project> <crew> --why` prints one bounded page on what that task's tokens were spent on: buckets, work by kind, loops, findings, instructions loaded, costliest prompts. Load `token-review` before drawing a conclusion from either; plain `mate usage <project>` prints every task and `mate usage <project> <crew>` every model call, which you rarely need.

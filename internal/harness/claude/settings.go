@@ -3,6 +3,7 @@ package claude
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -153,14 +154,116 @@ func EnsureSessionHook(data []byte, binary string) (out []byte, changed bool, er
 	return append(out, '\n'), true, nil
 }
 
+// CrewInheritedSettings are the keys of the captain's own settings.json
+// (the config dir's, `~/.claude` or CLAUDE_CONFIG_DIR) that a Crew's
+// settings file carries over. A Crew launches with --setting-sources
+// project, which drops the user settings file and with it these two:
+// apiKeyHelper and env (ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_*) are how the
+// captain routes Claude through a proxy or another account, and without them
+// a Crew falls back to the keychain login straight to api.anthropic.com
+// (docs/evidence/claude-mcp-probe-2026-10-12.md, "Phát hiện phụ 2"). A file
+// passed with --settings still loads under that flag, apiKeyHelper and env
+// included (docs/evidence/crew-setting-sources-2026-10-14.md), so copying
+// them keeps every Crew, and every Mate (EnsureCaptainSettings), on the
+// captain's auth path while the rest of the user settings - hooks, plugins,
+// skills - stays out.
+var CrewInheritedSettings = []string{"apiKeyHelper", "env"}
+
 // CrewClaudeSettings is the settings file a Claude Crew launches with. It
 // wires no hooks (the Mate's hooks are the Mate's) and turns auto-memory off
 // for the same reason as the Mate's: what a Crew should know is in its brief,
 // and what it learns goes back through its report and the Mate, never into a
-// per-machine directory outside the workspace.
-func CrewClaudeSettings() []byte {
-	data, _ := json.MarshalIndent(map[string]any{AutoMemoryKey: false}, "", "  ")
-	return append(data, '\n')
+// per-machine directory outside the workspace. user is the captain's
+// settings.json, or nil when there is none; only CrewInheritedSettings are
+// taken from it.
+func CrewClaudeSettings(user []byte) ([]byte, error) {
+	settings := map[string]any{AutoMemoryKey: false}
+	if len(user) > 0 {
+		var all map[string]json.RawMessage
+		if err := json.Unmarshal(user, &all); err != nil {
+			return nil, fmt.Errorf("claude settings are not a JSON object: %w", err)
+		}
+		for _, key := range CrewInheritedSettings {
+			if raw, ok := all[key]; ok {
+				settings[key] = raw
+			}
+		}
+	}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+// EnsureCaptainSettings sets each CrewInheritedSettings key the captain's
+// settings.json (user) has to the captain's value in a Mate's existing
+// settings file, keeping every other key. A Mate launches with
+// --setting-sources project too (M15), so without this it would leave the
+// captain's proxy as a Crew would. A key the captain does not set is left as
+// the file has it, so a Mate-only value the captain wrote there survives;
+// nothing to change returns data byte for byte (changed is false).
+func EnsureCaptainSettings(data, user []byte) (out []byte, changed bool, err error) {
+	if len(user) == 0 {
+		return data, false, nil
+	}
+	var captain map[string]json.RawMessage
+	if err := json.Unmarshal(user, &captain); err != nil {
+		return nil, false, fmt.Errorf("claude settings are not a JSON object: %w", err)
+	}
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, false, fmt.Errorf("claude settings are not a JSON object: %w", err)
+	}
+	if settings == nil {
+		settings = map[string]json.RawMessage{}
+	}
+	for _, key := range CrewInheritedSettings {
+		raw, ok := captain[key]
+		if !ok || jsonEqual(settings[key], raw) {
+			continue
+		}
+		settings[key] = raw
+		changed = true
+	}
+	if !changed {
+		return data, false, nil
+	}
+	out, err = json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, false, err
+	}
+	return append(out, '\n'), true, nil
+}
+
+// jsonEqual reports whether two JSON values are the same value, whatever
+// their spacing.
+func jsonEqual(a, b json.RawMessage) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	var x, y any
+	if json.Unmarshal(a, &x) != nil || json.Unmarshal(b, &y) != nil {
+		return false
+	}
+	ja, _ := json.Marshal(x)
+	jb, _ := json.Marshal(y)
+	return string(ja) == string(jb)
+}
+
+// captainSettings reads settings.json of the config dir a launch uses, nil
+// when it does not exist.
+func captainSettings(configDir string) ([]byte, string, error) {
+	dir, err := EffectiveClaudeConfigDir(configDir)
+	if err != nil {
+		return nil, "", err
+	}
+	path := filepath.Join(dir, ClaudeSettingsFile)
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, path, nil
+	}
+	return data, path, err
 }
 
 // EnsureAutoMemoryOff adds `"autoMemoryEnabled": false` to an existing

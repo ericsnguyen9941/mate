@@ -56,6 +56,10 @@ type Info struct {
 	// Efforts are the reasoning-effort levels the launch passes as a flag.
 	// A requested effort outside them is recorded and left out of the argv.
 	Efforts []Effort
+	// Autocompact reports that a Crew launch passes AgentSpec.Autocompact
+	// as a flag, so the workspace's crew autocompact threshold bounds that
+	// Crew's context.
+	Autocompact bool
 	// AdapterNotes is the harness's section of the Mate's harness-adapters
 	// skill: what its pane shows and how a Crew on it is steered, as
 	// measured. Markdown with no heading of its own; the skill adds one.

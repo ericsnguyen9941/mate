@@ -305,7 +305,7 @@ func (c Codex) Prepare(_ context.Context, req harness.PrepareRequest) (harness.P
 	override := CodexInstructionPath(req.Cwd)
 	files := []harness.LaunchFile{{Path: override, Data: manual, Exclude: true}}
 	if req.Role == harness.RoleMate {
-		claude, err := claude.ClaudeMateFiles(req)
+		claude, err := claude.ClaudeMateFiles(req, "")
 		if err != nil {
 			return harness.Prepared{}, err
 		}

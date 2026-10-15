@@ -57,6 +57,19 @@ func (i *Ingester) ingestPricing(ctx context.Context, shared *sql.Tx) error {
 		}
 	}
 
+	// A workspace seeded before a model was known has no row for it, and
+	// its CTX% would stay `?` forever. The known context window fills in
+	// for a model the file does not name; a row the file has always wins,
+	// and no price is ever made up.
+	for _, m := range store.KnownModels {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO pricing(model, input_per_m, cache_read_per_m, cache_write_per_m, output_per_m, context_window)
+			VALUES (?, 0, 0, 0, 0, ?)
+			ON CONFLICT(model) DO NOTHING`, m.Model, m.ContextWindow); err != nil {
+			return err
+		}
+	}
+
 	if shared != nil {
 		return nil
 	}

@@ -23,6 +23,7 @@ const (
 	autoFlagName      = ".auto"
 	manualHoldName    = ".manual"
 	autoCursorName    = ".auto-cursor"
+	wakeCursorName    = ".wake-cursor"
 	outboxName        = ".outbox"
 	outboxLockName    = ".outbox.lock"
 	memoryFileName    = "memory.md"
@@ -147,6 +148,12 @@ func (w *Workspace) ManualHold(project string) string {
 // far the auto daemon has digested (mvp.md section 5).
 func (w *Workspace) AutoCursorFile(project string) string {
 	return filepath.Join(w.MateDir(project), autoCursorName)
+}
+
+// WakeCursorFile is `projects/<project>/mate/.wake-cursor`; it records how
+// far `mate wake` has shown the project's status lines to the Mate.
+func (w *Workspace) WakeCursorFile(project string) string {
+	return filepath.Join(w.MateDir(project), wakeCursorName)
 }
 
 // MemoryFile is `projects/<project>/mate/memory.md`.

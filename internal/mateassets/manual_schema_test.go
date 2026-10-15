@@ -193,7 +193,7 @@ var headingMention = regexp.MustCompile("`## ([^`]+)`")
 // Crew to write, in a hand-back or a report, and the sections of the Mate's
 // own files (internal/memory); they are not brief sections.
 var templateHeadings = func() map[string]bool {
-	m := map[string]bool{"Deviations from Build": true, "Still open": true, "Durable facts": true}
+	m := map[string]bool{"Deviations from Build": true, "Still open": true, "Durable facts": true, "For the next crew": true}
 	for _, set := range [][]string{memory.Sections, memory.ProjectSections, memory.BacklogSections} {
 		for _, s := range set {
 			m[s] = true

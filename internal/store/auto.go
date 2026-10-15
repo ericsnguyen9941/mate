@@ -58,7 +58,31 @@ func (w *Workspace) ReadAutoCursor(project string) (map[string]int64, error) {
 	if err := ValidateProjectName(project); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(w.AutoCursorFile(project))
+	return w.readCursor(project, w.AutoCursorFile(project))
+}
+
+// ReadWakeCursor reads `mate/.wake-cursor`, `mate wake`'s own cursor, in
+// the auto cursor's format and with its tolerance. It is a separate file
+// because the two move at different moments: the daemon's when a digest is
+// delivered, this one when the Mate reads a wake.
+func (w *Workspace) ReadWakeCursor(project string) (map[string]int64, error) {
+	if err := ValidateProjectName(project); err != nil {
+		return nil, err
+	}
+	return w.readCursor(project, w.WakeCursorFile(project))
+}
+
+// WriteWakeCursor writes `mate/.wake-cursor` as WriteAutoCursor writes its
+// file.
+func (w *Workspace) WriteWakeCursor(project string, cursor map[string]int64) error {
+	if err := ValidateProjectName(project); err != nil {
+		return err
+	}
+	return w.writeCursor(project, w.WakeCursorFile(project), cursor)
+}
+
+func (w *Workspace) readCursor(project, file string) (map[string]int64, error) {
+	data, err := os.ReadFile(file)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]int64{}, nil
@@ -97,6 +121,10 @@ func (w *Workspace) WriteAutoCursor(project string, cursor map[string]int64) err
 	if err := ValidateProjectName(project); err != nil {
 		return err
 	}
+	return w.writeCursor(project, w.AutoCursorFile(project), cursor)
+}
+
+func (w *Workspace) writeCursor(project, file string, cursor map[string]int64) error {
 	base := w.ProjectDir(project)
 	lines := make([]string, 0, len(cursor))
 	for path, offset := range cursor {
@@ -115,7 +143,7 @@ func (w *Workspace) WriteAutoCursor(project string, cursor map[string]int64) err
 		b.WriteString(line)
 		b.WriteByte('\n')
 	}
-	return w.writeFile(w.AutoCursorFile(project), []byte(b.String()), 0o644)
+	return w.writeFile(file, []byte(b.String()), 0o644)
 }
 
 // autoCursorKey is the on-disk spelling of one absolute path: relative to the

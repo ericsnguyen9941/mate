@@ -118,6 +118,7 @@ func TestTheBuiltInTableIsTheCaptains(t *testing.T) {
 		{"--harness claude --model opus --effort high", "--harness codex --model gpt-5.6-terra --effort high"},
 		{"--harness claude --model opus --effort high", "--harness codex --model gpt-6-sol --effort high"},
 		{"--harness claude --model sonnet --effort medium", "--harness codex --model gpt-6-luna --effort medium"},
+		{"--harness claude --model opus --effort medium", "--harness codex --model gpt-5.6-terra --effort medium"},
 	}
 	if len(tbl.Rules) != len(want) {
 		t.Fatalf("%d rules, want %d", len(tbl.Rules), len(want))
@@ -127,9 +128,60 @@ func TestTheBuiltInTableIsTheCaptains(t *testing.T) {
 			t.Errorf("rule %d (%s) = %v, want %v", i+1, r.When, got, want[i])
 		}
 	}
-	for i, prefix := range []string{"A ship that is a small", "A ship that is a medium", "A ship that is a large", "A scout that", "A light scout"} {
+	for i, prefix := range []string{"A ship that is a small", "A ship that is a medium", "A ship that is a large", "A scout that", "A light scout", "A review of another Crew's branch whose own task was a large change"} {
 		if !strings.HasPrefix(tbl.Rules[i].When, prefix) {
 			t.Errorf("rule %d = %q, want it to start %q", i+1, tbl.Rules[i].When, prefix)
+		}
+	}
+	if got := strings.Join(flags(tbl.Review), "|"); got != "--harness claude --model sonnet --effort medium|--harness codex --model gpt-6-luna --effort medium" {
+		t.Errorf("review = %s, want sonnet and luna at medium", got)
+	}
+}
+
+// A review profile is read like the default and checked like every
+// profile; a table may name none.
+func TestReviewIsReadAndChecked(t *testing.T) {
+	tbl, _, err := Load(writeTable(t, `{"default": {"harness": "codex"}, "review": {"harness": "claude", "model": "haiku", "effort": "low"}}`), catalog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tbl.Review) != 1 || tbl.Review[0].Flags() != "--harness claude --model haiku --effort low" {
+		t.Fatalf("review = %+v", tbl.Review)
+	}
+	if _, _, err := Load(writeTable(t, `{"default": {"harness": "codex"}, "review": {"harness": "nope"}}`), catalog.Default()); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("an unknown review harness: err = %v, want ErrInvalid", err)
+	}
+	none, _, err := Load(writeTable(t, `{"default": {"harness": "codex"}}`), catalog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := none.ReviewFor("codex", false); ok {
+		t.Error("a table with no review profile returned one")
+	}
+}
+
+// ReviewFor answers a named harness only with a profile on it, and the
+// workspace's default harness with the first alternative when none runs
+// on it.
+func TestReviewForFollowsTheReviewersHarness(t *testing.T) {
+	tbl, _ := Resolve(t.TempDir(), catalog.Default())
+	for _, c := range []struct {
+		kind  string
+		named bool
+		want  string
+	}{
+		{"codex", true, "--harness codex --model gpt-6-luna --effort medium"},
+		{"claude", false, "--harness claude --model sonnet --effort medium"},
+		{"pi", false, "--harness claude --model sonnet --effort medium"},
+		{"pi", true, ""},
+	} {
+		p, ok := tbl.ReviewFor(c.kind, c.named)
+		got := ""
+		if ok {
+			got = p.Flags()
+		}
+		if got != c.want {
+			t.Errorf("ReviewFor(%s, %v) = %q, want %q", c.kind, c.named, got, c.want)
 		}
 	}
 }

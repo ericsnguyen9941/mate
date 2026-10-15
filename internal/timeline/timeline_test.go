@@ -669,20 +669,53 @@ func TestIngestPricingLoadsAndUpdatesFromPricingYAML(t *testing.T) {
 }
 
 // A workspace with no pricing.yaml at all - store.Init not run, or the file
-// removed by hand - is not an ingest error: every model is simply unpriced.
+// removed by hand - is not an ingest error: every model is simply unpriced,
+// and the known models still have their context windows.
 func TestIngestPricingToleratesNoFileAtAll(t *testing.T) {
 	f := newFixture(t)
 	if err := os.Remove(f.ws.PricingFile()); err != nil {
 		t.Fatalf("remove pricing.yaml: %v", err)
 	}
 	f.ingest(t)
-	if n := f.count(t, `SELECT COUNT(*) FROM pricing`); n != 0 {
-		t.Fatalf("%d pricing row(s) with no pricing.yaml, want 0", n)
+	if n := f.count(t, `SELECT COUNT(*) FROM pricing`); n != len(store.KnownModels) {
+		t.Fatalf("%d pricing row(s) with no pricing.yaml, want the %d known models", n, len(store.KnownModels))
+	}
+	if n := f.count(t, `SELECT COUNT(*) FROM pricing WHERE input_per_m > 0 OR cache_read_per_m > 0 OR cache_write_per_m > 0 OR output_per_m > 0`); n != 0 {
+		t.Fatalf("%d known model(s) were given a price nobody wrote", n)
+	}
+}
+
+// A workspace seeded before a model was known (hellovietnam's pricing.yaml
+// named neither claude-opus-5-5 nor claude-sonnet-5-5, CON-68) still gets
+// that model's context window; a row the file has wins over the known one.
+func TestIngestPricingFillsInKnownWindowsTheFileLacks(t *testing.T) {
+	f := newFixture(t)
+	if err := f.ws.SavePricing(store.PricingConfig{Models: []store.PricingModel{
+		{Model: "claude-opus-5-5", OutputPerM: 25, ContextWindow: 500000},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	f.ingest(t)
+	var window int64
+	var output float64
+	if err := f.db.SQL().QueryRow(`SELECT output_per_m, context_window FROM pricing WHERE model = 'claude-opus-5-5'`).
+		Scan(&output, &window); err != nil {
+		t.Fatal(err)
+	}
+	if output != 25 || window != 500000 {
+		t.Fatalf("file row = (%v, %d), want the file's (25, 500000)", output, window)
+	}
+	if err := f.db.SQL().QueryRow(`SELECT context_window FROM pricing WHERE model = 'claude-sonnet-5-5'`).
+		Scan(&window); err != nil {
+		t.Fatalf("claude-sonnet-5-5 has no row: %v", err)
+	}
+	if window != 1000000 {
+		t.Fatalf("claude-sonnet-5-5 window = %d, want 1000000", window)
 	}
 }
 
 // v_task_ledger's context_pct and v_now's context_pct both read the seeded
-// pricing.yaml's context_window (store.Init seeds gpt-5.6-terra at 400000,
+// pricing.yaml's context_window (store.Init seeds gpt-5.6-terra at 272000,
 // matching the fixture's codex model) even though that model's price is
 // still the placeholder 0 - context size is a technical fact, not something
 // priced, so it is usable before the captain has entered a single price.
@@ -690,7 +723,7 @@ func TestContextPctUsesTheSeededContextWindowBeforeAnyPriceIsSet(t *testing.T) {
 	f := newFixture(t)
 	f.ingest(t)
 
-	want := 100.0 * float64(codexLastContext) / 400000.0
+	want := 100.0 * float64(codexLastContext) / 272000.0
 
 	var ledgerPct sql.NullFloat64
 	if err := f.db.SQL().QueryRow(`SELECT context_pct FROM v_task_ledger`).Scan(&ledgerPct); err != nil {

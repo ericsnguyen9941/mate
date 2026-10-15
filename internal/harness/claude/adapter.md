@@ -5,6 +5,8 @@
 | Directory trust | a trust confirmation whose default highlight is the refusing option |
 | Instructions | the brief is delivered as a launch-time system prompt, so nothing lands in the worktree |
 | Model and effort | `--model` takes an alias (`haiku`, `sonnet`, `opus`) or a full name; `--effort` takes low to max |
+| Crew settings | a Crew loads the worktree's own `.claude/` settings and skills, never the captain's user-level skills, plugins or hooks; the captain's `apiKeyHelper` and `env` (from `~/.claude/settings.json` or `$CLAUDE_CONFIG_DIR/settings.json`) are copied into the Crew's own `crews/<id>/settings.json`, so a Crew keeps the captain's auth path and proxy; it compacts at `crew.autocompact` of `.mate/workspace.yaml` (160000 tokens when unset, a negative number for never) |
+| Mate settings | a Claude Mate also loads project settings only; each start sets the captain's `apiKeyHelper` and `env` in the Mate's own `.claude/settings.json`, keeping every other key there, so the Mate goes through the same proxy as its Crews |
 
 The trust dialog's default highlight is the choice that exits the agent.
 This is exactly why you have no key-sending command: a blind confirmation here kills the Crew rather than starting it.

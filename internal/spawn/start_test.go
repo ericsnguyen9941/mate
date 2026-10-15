@@ -18,6 +18,9 @@ import (
 )
 
 func TestStartMateWritesManualAndMeta(t *testing.T) {
+	// No captain settings.json: the Mate's settings are mate's alone.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(claude.ClaudeConfigDirEnv, "")
 	w := newWorkspace(t, "shop")
 	rt := runtime.NewFake()
 	deps := fakeDeps(t, rt)

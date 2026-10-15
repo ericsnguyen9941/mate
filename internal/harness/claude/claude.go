@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,6 +60,7 @@ func (Claude) Info() harness.Info {
 		},
 		// claude 2.1.282 --help takes all five.
 		Efforts:      harness.Efforts,
+		Autocompact:  true,
 		AdapterNotes: adapterNotes,
 	}
 }
@@ -254,7 +256,7 @@ func (c Claude) Prepare(_ context.Context, req harness.PrepareRequest) (harness.
 		launch.sessionID = sessionID
 	}
 	if req.Role == harness.RoleMate {
-		files, err := ClaudeMateFiles(req)
+		files, err := ClaudeMateFiles(req, c.ConfigDir)
 		if err != nil {
 			return harness.Prepared{}, err
 		}
@@ -278,9 +280,19 @@ func (c Claude) Prepare(_ context.Context, req harness.PrepareRequest) (harness.
 	// file, and decision 9 wants session_id= recorded from the first day,
 	// so the crew gets a settings file of its own. It wires no hooks (the
 	// Mate's hooks are the Mate's) and turns auto-memory off.
+	// It also carries the captain's apiKeyHelper and env, which
+	// --setting-sources project would otherwise drop (CrewInheritedSettings).
 	launch.settingsPath = filepath.Join(req.StateDir, ClaudeSettingsFile)
+	user, userPath, err := captainSettings(c.ConfigDir)
+	if err != nil {
+		return harness.Prepared{}, err
+	}
+	settings, err := CrewClaudeSettings(user)
+	if err != nil {
+		return harness.Prepared{}, fmt.Errorf("%s: %w", userPath, err)
+	}
 	return harness.Prepared{
-		Files:       []harness.LaunchFile{{Path: launch.settingsPath, Data: CrewClaudeSettings()}},
+		Files:       []harness.LaunchFile{{Path: launch.settingsPath, Data: settings}},
 		SessionID:   sessionID,
 		ContextPath: req.ContextPath,
 		Launch:      launch,
@@ -295,8 +307,11 @@ func (c Claude) Prepare(_ context.Context, req harness.PrepareRequest) (harness.
 // things added to it are `autoMemoryEnabled: false` when the file does not
 // say (EnsureAutoMemoryOff), and the SessionStart hook when no SessionStart
 // entry runs it (EnsureSessionHook), so a Mate directory made before task 35
-// or 37 starts with auto-memory off and its digest wired too.
-func ClaudeMateFiles(req harness.PrepareRequest) ([]harness.LaunchFile, error) {
+// or 37 starts with auto-memory off and its digest wired too. Every start
+// also sets the captain's apiKeyHelper and env from configDir's settings.json
+// (EnsureCaptainSettings), so the Mate stays on the captain's proxy under
+// --setting-sources project.
+func ClaudeMateFiles(req harness.PrepareRequest, configDir string) ([]harness.LaunchFile, error) {
 	manual, err := filepath.Rel(req.Cwd, req.ContextPath)
 	if err != nil || manual == ".." || strings.HasPrefix(manual, ".."+string(filepath.Separator)) {
 		return nil, observability.WrapError(observability.CodeUsage,
@@ -321,6 +336,13 @@ func ClaudeMateFiles(req harness.PrepareRequest) ([]harness.LaunchFile, error) {
 		}
 	default:
 		return nil, err
+	}
+	user, userPath, err := captainSettings(configDir)
+	if err != nil {
+		return nil, err
+	}
+	if settings, _, err = EnsureCaptainSettings(settings, user); err != nil {
+		return nil, fmt.Errorf("%s: %w", userPath, err)
 	}
 	return []harness.LaunchFile{
 		{Path: filepath.Join(req.Cwd, Claude{}.Info().InstructionFile), Data: []byte("@" + filepath.ToSlash(manual) + "\n")},
@@ -434,6 +456,17 @@ func (c Claude) Build(_ context.Context, spec harness.AgentSpec) (harness.Launch
 		}
 		if spec.Effort == "" {
 			spec.Effort = harness.EffortMedium
+		}
+	} else if spec.Role == harness.RoleCrew {
+		// A Crew keeps every tool and MCP server, but not the captain's
+		// user-level skills and plugins: on hellovietnam (CON-68) 92 global
+		// skills put ~8k tokens into every Crew call. The worktree's own
+		// project skills still load. It compacts at the workspace's threshold
+		// rather than never: Crews there never compacted, and four passed
+		// 300k tokens of context.
+		extra = append(extra, "--setting-sources", "project")
+		if spec.Autocompact > 0 {
+			extra = append(extra, "--autocompact", strconv.Itoa(spec.Autocompact))
 		}
 	}
 	effortOmitted := spec.Effort != "" && !c.Info().SupportsEffort(spec.Effort)

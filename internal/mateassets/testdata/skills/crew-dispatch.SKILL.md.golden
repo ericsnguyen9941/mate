@@ -1,6 +1,6 @@
 ---
 name: crew-dispatch
-description: How to choose a Crew's launch profile - harness, model, effort - from `mate crew dispatch` and pass it to `mate crew spawn`. Covers sizing a task against the table's rules, the captain's overrides, choosing between a rule's alternatives, batches of spawns, a harness that fails to launch, and the profile of a replacement Crew. Load it before every `crew spawn`, including the replacement spawn in `stuck-crew-recovery`.
+description: How to choose a Crew's launch profile - harness, model, effort - from `mate crew dispatch` and pass it to `mate crew spawn`. Covers sizing a task against the table's rules, the captain's overrides, choosing between a rule's alternatives, batches of spawns, a harness that fails to launch, the profile of a replacement Crew, and a reviewer's profile. Load it before every `crew spawn` and `mate review`, including the replacement spawn in `stuck-crew-recovery`.
 ---
 
 # crew-dispatch
@@ -17,7 +17,7 @@ Every command below is run with the binary's absolute path, `/usr/local/bin/mate
 /usr/local/bin/mate crew dispatch
 ```
 
-It prints each rule in order - its condition, its profiles as the exact flags to pass, and why - then `default`, then the quota evidence (section 4).
+It prints each rule in order - its condition, its profiles as the exact flags to pass, and why - then `default`, then `review` when the table has one (section 9), then the quota evidence (section 4).
 The first line says whose table it is: the captain's `.mate/crew-dispatch.json`, or the built-in one while they have not written theirs.
 Read it once per turn in which you spawn, not once per session: the captain may have changed it since.
 
@@ -46,6 +46,7 @@ When the captain's words and the table disagree, the words win and the table is 
 ## 3. Size the task, then match the first rule that fits
 
 Decide the kind first, because it is not a judgment call: a spawn with `--scout` is a scout and matches only a rule written for scouts; a spawn without it is a ship and never matches a scout rule.
+A reviewer started by `mate review` is neither: section 9 is its whole procedure.
 
 Then size it from the brief you wrote, not from how the request sounded.
 The signals, heaviest first:
@@ -138,3 +139,15 @@ If the replacement fails too, the task is failed (`stuck-crew-recovery` step 5);
 The spawn's first line and `crew list` both show the profile, so the record needs nothing more from you.
 The captain gets one clause in the line saying the work has started, in outcome terms - "on the strong profile, because it touches every caller of the API" - and a model name only when they spoke in model names themselves.
 When you chose against the table because of the captain's words, launch evidence or load, say that reason, not the table's.
+
+## 9. A reviewer's profile
+
+A review is not sized like the change it reviews: a medium ship gets a reviewer on the review profile, not on the medium-ship rule.
+`mate review` without `--model` and `--effort` runs the table's `review` profile, the `review` line of `crew dispatch`, and prints a `note:` naming it.
+Pass `--harness` alone to choose the harness, for example a reviewer on another harness than the Crew's; the review profile on that harness is used.
+
+The one exception is a rule the table writes for a review.
+On the built-in table that is the review of a large change: the Crew ran on the large-change rule, or its diff carries section 3's first signal, the blast radius.
+Then pass that rule's profile in full - `--harness`, `--model` and `--effort` - chosen between its alternatives as in section 4.
+The captain's words about the reviewer (section 2) still come first.
+A table that prints no `review` line has no review profile: take the profile of its light scout rule, or of `default` when it has none.

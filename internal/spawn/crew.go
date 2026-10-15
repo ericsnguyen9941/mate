@@ -303,6 +303,7 @@ func SpawnCrew(ctx context.Context, w *store.Workspace, deps Deps, req SpawnCrew
 		worktree:         worktree,
 		repoCfg:          repoCfg,
 		delivery:         delivery,
+		autocompact:      w.CrewAutocompact(),
 	})
 	if err != nil {
 		saga.compensate(ctx)
@@ -400,6 +401,9 @@ type crewPlan struct {
 	// resumeID is the harness session a relaunch resumes; empty is a fresh
 	// session.
 	resumeID string
+	// autocompact is the workspace's compaction threshold for the Crew
+	// (store.Workspace.CrewAutocompact); 0 is none.
+	autocompact int
 }
 
 // spawnInWorktree is everything a failure has to compensate for: the brief,
@@ -881,6 +885,7 @@ func buildCrewLaunchSpec(ctx context.Context, plan crewPlan, prep harness.Prepar
 		Model:           plan.model,
 		Effort:          plan.effort,
 		ResumeSessionID: plan.resumeID,
+		Autocompact:     plan.autocompact,
 	})
 }
 

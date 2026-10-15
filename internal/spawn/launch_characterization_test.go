@@ -411,6 +411,8 @@ type mateCase struct {
 	// plugins binds an http, a stdio and a disabled plugin instance to the
 	// project before the start.
 	plugins bool
+	// captainSettings, when set, is the settings.json of the config dir.
+	captainSettings string
 }
 
 func TestLaunchCharacterizationMate(t *testing.T) {
@@ -433,6 +435,10 @@ func TestLaunchCharacterizationMate(t *testing.T) {
 		// plus --mcp-config last, fresh and resumed.
 		{name: "mate-claude-fresh-mcp", kind: claude.KindClaude, plugins: true},
 		{name: "mate-claude-resume-mcp", kind: claude.KindClaude, plugins: true, resume: true},
+		// The captain's apiKeyHelper and env go into the Mate's settings,
+		// from CLAUDE_CONFIG_DIR; the captain's hooks do not.
+		{name: "mate-claude-captain-auth", kind: claude.KindClaude, env: map[string]string{claude.ClaudeConfigDirEnv: "dir"},
+			captainSettings: `{"apiKeyHelper":"/usr/local/bin/proxy-key","env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8317"},"hooks":{"Stop":[]}}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -444,6 +450,11 @@ func TestLaunchCharacterizationMate(t *testing.T) {
 				env[k] = v
 			}
 			f := newLaunchFixture(t, false, env)
+			if tc.captainSettings != "" {
+				if err := os.WriteFile(filepath.Join(env[claude.ClaudeConfigDirEnv], claude.ClaudeSettingsFile), []byte(tc.captainSettings), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if tc.mate != (store.MateConfig{}) {
 				cfg, err := f.w.LoadProject("shop")
 				if err != nil {
@@ -496,6 +507,10 @@ type crewCase struct {
 	effort   harness.Effort
 	env      map[string]string
 	relaunch bool
+	// autocompact, when set, is the workspace's crew.autocompact.
+	autocompact int
+	// captainSettings, when set, is the settings.json of the config dir.
+	captainSettings string
 }
 
 func TestLaunchCharacterizationCrew(t *testing.T) {
@@ -503,7 +518,13 @@ func TestLaunchCharacterizationCrew(t *testing.T) {
 		{name: "crew-claude-default", kind: claude.KindClaude},
 		{name: "crew-claude-model-effort", kind: claude.KindClaude, model: "sonnet", effort: harness.EffortMax},
 		{name: "crew-claude-config-dir", kind: claude.KindClaude, env: map[string]string{claude.ClaudeConfigDirEnv: "dir"}},
+		// The captain's apiKeyHelper and env follow the Crew into its own
+		// settings, from CLAUDE_CONFIG_DIR; the captain's hooks do not.
+		{name: "crew-claude-captain-auth", kind: claude.KindClaude, env: map[string]string{claude.ClaudeConfigDirEnv: "dir"},
+			captainSettings: `{"apiKeyHelper":"/usr/local/bin/proxy-key","env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8317"},"hooks":{"Stop":[]}}`},
 		{name: "crew-claude-relaunch", kind: claude.KindClaude, model: "sonnet", effort: harness.EffortHigh, relaunch: true},
+		{name: "crew-claude-autocompact-set", kind: claude.KindClaude, autocompact: 200000, relaunch: true},
+		{name: "crew-claude-autocompact-off", kind: claude.KindClaude, autocompact: -1},
 		{name: "crew-codex-default", kind: codex.KindCodex},
 		{name: "crew-codex-model-effort", kind: codex.KindCodex, model: "gpt-5.5", effort: harness.EffortHigh},
 		{name: "crew-codex-effort-omitted", kind: codex.KindCodex, effort: harness.EffortMax},
@@ -519,6 +540,14 @@ func TestLaunchCharacterizationCrew(t *testing.T) {
 				env[k] = v
 			}
 			f := newLaunchFixture(t, true, env)
+			if tc.autocompact != 0 {
+				setCrewAutocompact(t, f.w, tc.autocompact)
+			}
+			if tc.captainSettings != "" {
+				if err := os.WriteFile(filepath.Join(env[claude.ClaudeConfigDirEnv], claude.ClaudeSettingsFile), []byte(tc.captainSettings), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			f.pinHead(t)
 			f.before = f.collect(t)
 			ctx := context.Background()
@@ -558,4 +587,21 @@ func TestLaunchCharacterizationEnvSets(t *testing.T) {
 		b.WriteString(k + "\n")
 	}
 	checkLaunchGolden(t, "env-sets", b.String())
+}
+
+// setCrewAutocompact writes crew.autocompact into the workspace's
+// workspace.yaml and reloads it.
+func setCrewAutocompact(t *testing.T, w *store.Workspace, n int) {
+	t.Helper()
+	data, err := os.ReadFile(w.WorkspaceFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, fmt.Sprintf("crew:\n  autocompact: %d\n", n)...)
+	if err := os.WriteFile(w.WorkspaceFile(), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.LoadConfig(); err != nil {
+		t.Fatal(err)
+	}
 }

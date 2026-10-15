@@ -20,9 +20,16 @@ import (
 // (docs/evidence/pi-contract-2026-10-01/probe/thinking-levels.tsv), and the
 // table names the level the Crew really runs at.
 //
-// The three change rules say "ship" and the two scout rules say "scout", so
-// the first rule that fits is the only one: a ship never matches a scout
-// rule, and the other way round.
+// The three change rules say "ship", the two scout rules say "scout" and
+// the review rule says "review", so the first rule that fits is the only
+// one: a ship never matches a scout rule, and the other way round.
+//
+// `review` is what `mate review` launches with when the Mate names no
+// model or effort (captain, CON-68, 2026-10-14): a mid-size model at medium
+// effort, because on hellovietnam (2026-10-06..14) 29 Opus reviews averaged
+// 39 calls and 149M cache-read tokens against 16 calls and 46M for 27 Sonnet
+// ones. The review rule is the one exception, a large change, which the
+// Mate passes as flags.
 const BuiltInJSON = `{
   "rules": [
     {
@@ -67,11 +74,23 @@ const BuiltInJSON = `{
         { "harness": "codex", "model": "gpt-6-luna", "effort": "medium" }
       ],
       "why": "A narrow question does not need a large model."
+    },
+    {
+      "when": "A review of another Crew's branch whose own task was a large change: it ran on the large-change rule, or its diff is a cross-cutting refactor, a migration, or reaches many callers, users or data.",
+      "use": [
+        { "harness": "claude", "model": "opus", "effort": "medium" },
+        { "harness": "codex", "model": "gpt-5.6-terra", "effort": "medium" }
+      ],
+      "why": "A wide change needs a strong reviewer; any other review takes the review profile below."
     }
   ],
   "default": [
     { "harness": "codex", "model": "gpt-6-luna", "effort": "high" },
     { "harness": "claude", "model": "sonnet", "effort": "high" }
+  ],
+  "review": [
+    { "harness": "claude", "model": "sonnet", "effort": "medium" },
+    { "harness": "codex", "model": "gpt-6-luna", "effort": "medium" }
   ]
 }
 `
@@ -116,4 +135,21 @@ func (t Table) DefaultFor(kind string) (Profile, bool) {
 		}
 	}
 	return t.Default[0], true
+}
+
+// ReviewFor is the reviewer profile for a `mate review` that named no model
+// or effort. kind is the reviewer's harness: the one the Mate named, which
+// only a profile on that harness answers, or, when named is false, the
+// workspace's default, where the first alternative answers when no profile
+// runs on it. ok is false when the table has no review profile that fits.
+func (t Table) ReviewFor(kind string, named bool) (Profile, bool) {
+	for _, p := range t.Review {
+		if string(p.Harness) == kind {
+			return p, true
+		}
+	}
+	if named || len(t.Review) == 0 {
+		return Profile{}, false
+	}
+	return t.Review[0], true
 }

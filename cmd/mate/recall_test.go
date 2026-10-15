@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -220,7 +221,8 @@ func TestRecallMaxBytesCutsFromTheBottom(t *testing.T) {
 		}
 		last := strings.TrimSpace(out[strings.LastIndex(strings.TrimRight(out, "\n"), "\n")+1:])
 		if !strings.HasPrefix(last, fmt.Sprintf("recall cut to fit %d bytes; not shown: ", max)) ||
-			!strings.Contains(last, "part 7 (Memory check") || !strings.HasSuffix(last, "Run `/usr/local/bin/mate recall shop` once before acting on anything those parts cover.") {
+			!strings.Contains(last, "part 7 (Memory check") || !strings.Contains(last, "Run `/usr/local/bin/mate recall shop --part ") ||
+			!strings.HasSuffix(last, ",7` once before acting on anything those parts cover.") {
 			t.Fatalf("--max-bytes %d: last line = %q", max, last)
 		}
 		for _, l := range strings.Split(out, "\n") {
@@ -367,5 +369,41 @@ func TestRecallCLI(t *testing.T) {
 	}
 	if code := mainRun([]string{"recall", "nosuch", "--workspace", w.Root()}, &out, &errw); code != 1 {
 		t.Errorf("an unknown project: exit %d, want 1", code)
+	}
+}
+
+// --part prints only the parts asked for, whole, under a contract that says
+// the rest of the digest still stands; a part the digest does not have is
+// refused, and so is --part together with --live (CON-68).
+func TestRecallPartPrintsOnlyThoseParts(t *testing.T) {
+	w, now, _ := recallFixture(t)
+	full := recallText(t, w, now, recallOptions{})
+	out := recallText(t, w, now, recallOptions{Parts: []int{5, 3}})
+	if !strings.Contains(out, "Contract: only the part(s) you asked for (5,3)") {
+		t.Fatalf("no part contract:\n%s", out)
+	}
+	for _, heading := range []string{"\n== 1. ", "\n== 2. ", "\n== 4. ", "\n== 6. ", "\n== 7. "} {
+		if strings.Contains(out, heading) {
+			t.Errorf("--part 5,3 printed%s:\n%s", heading, out)
+		}
+	}
+	for _, heading := range []string{"\n== 3. PROJECT.md ==\n", "\n== 5. memory.md ==\n"} {
+		if !strings.Contains(out, heading) {
+			t.Fatalf("--part 5,3 lacks %q:\n%s", heading, out)
+		}
+	}
+	part5 := full[strings.Index(full, "\n== 5. memory.md ==\n"):strings.Index(full, "\n== 6. ")]
+	if !strings.Contains(out, part5) {
+		t.Errorf("part 5 was not printed whole")
+	}
+	if _, err := recall(context.Background(), w, gitx.New(), "shop", now, recallOptions{Parts: []int{42}}); err == nil {
+		t.Error("a part the digest does not have was accepted")
+	}
+	if _, err := parseRecallParts("3,x"); err == nil {
+		t.Error("--part 3,x was accepted")
+	}
+	var errw strings.Builder
+	if err := cmdRecall([]string{"shop", "--live", "--part", "1", "--workspace", w.Root()}, io.Discard, &errw); err == nil {
+		t.Error("--live with --part was accepted")
 	}
 }
