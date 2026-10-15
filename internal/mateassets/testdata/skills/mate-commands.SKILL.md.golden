@@ -22,8 +22,8 @@ Exit 2 is a usage mistake you made, exit 1 is a refusal or a real failure, and t
 ### Crew lifecycle
 
 ```text
-mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--workspace <dir>] [--harness codex|claude] [--model <name>] [--effort low|medium|high|xhigh|max] [--task "<one line>"]
-mate crew dispatch [--workspace <dir>] [--example]
+mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--workspace <dir>] [--harness codex|claude] [--model <name>] [--effort low|medium|high|xhigh|max] [--budget <tokens>] [--skip <harness>]... [--task "<one line>"]
+mate crew dispatch [<project>] [--skip <harness>]... [--workspace <dir>] [--example]
 mate crew list <project> [--workspace <dir>]
 mate crew relaunch <project> <id> [--note "<one line>"] [--workspace <dir>]
 mate crew stop <project> <id> [--discard] [--workspace <dir>]
@@ -45,6 +45,11 @@ An effort the harness does not take (Codex has no `max`) is recorded and left ou
 `crew dispatch` prints the dispatch table in force: each rule's condition and its profiles as the exact flags to pass, then each harness's quota as quota-axi reads it and the harness that quota favours (the `crew-dispatch` skill says how to use it).
 That is `/ws/.mate/crew-dispatch.json` when the captain has written one, which replaces the built-in table whole, and the built-in table otherwise; `crew dispatch --example` prints the built-in table as JSON for the captain to copy and edit.
 A malformed table refuses every spawn (exit 2, the reason on stderr) until the captain fixes it, and is never replaced by the built-in one; tell the captain what it says.
+The table may carry a harness rotation, `"rotate": ["claude", "claude", "claude", "codex", "pi"]`, at table level or on a rule (the rule's wins for a task of its kind); the built-in table has none, the captain opts in.
+`crew dispatch <project>` then prints `rotation: <harnesses>` and `next in rotation: <harness> (position k/n)`, read from the `rotation_slot=` the project's earlier spawns recorded (closed crews count too); without the project it prints the rotation and says the position is unknown.
+Pass `--skip <harness>` (repeatable) for a harness a perishable lesson says fails to start: that turn is passed over, `skipped <harness>: --skip` says so, and the next harness after it is named; every harness skipped prints `next in rotation: none`.
+A spawn whose harness is the one named next records the turn as `rotation_slot=` in the Crew's record, so the next `crew dispatch` moves on; pass the same `--skip` to `crew spawn` as to `crew dispatch`, so the skipped turn is taken too.
+A spawn on any other harness takes no turn and prints `note: rotation not advanced: ...` on stderr: the captain's explicit choice never moves the rotation.
 
 A successful spawn prints three lines:
 
@@ -335,7 +340,7 @@ It opens with `# mate recall <project>` and one contract line, then prints numbe
 1. Live state: `mode:`, the `mate backlog` table, every unresolved inbox item with what it needs and its status file, and every line queued in your outbox.
 2. `mate project facts`: one block per repo, `head:` included, or `repos: none`.
 3. `/ws/.mate/projects/shop/PROJECT.md`, then a `warning:` for each anchor its own repo's default branch has moved past.
-4. `/ws/.mate/projects/shop/mate/backlog.md` without `## Done`, then the `## In flight` ids that are not an open crew in part 1 and the open crews with no `- <id>` line there, matched by id only.
+4. `/ws/.mate/projects/shop/mate/backlog.md` without `## Done`, then the `## In flight` ids that are not an open crew in part 1 and the open crews with no `- <id>` line there, matched by id only. When the project has a tracker plugin (a `tracker:` block on an instance in `/ws/.mate/plugins.yaml`), then the In flight entries that are not a `- <id>: <tracker-id>` pointer, and one line per pointer with what the tracker's read command says about that id, or one line saying the plugin has no read command.
 5. `/ws/.mate/projects/shop/mate/memory.md`.
 6. `/ws/.mate/WORKSPACE.md`, then one line saying whether the two `CREW.md` files the app appends to every brief have rules.
 7. What `memory check` says: the budget line, and every problem.
@@ -365,5 +370,6 @@ It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a 
 - `mate review <project> <crew> --id <reviewer> [--harness <kind>] [--model <model> --effort <effort>]` starts a separate scout; end your turn. Without `--model` and `--effort` the reviewer runs the dispatch table's review profile (`crew-dispatch` section 9). After the Crew fixes a review's findings, `--since <that-reviewer>` on the new review scopes it to the change since the commit that review saw and to closing its findings (section Review above). `mate review <project> <crew> --check <reviewer>` validates the unchanged SHA, base, brief, hand-back and passing report, and for a `--since` review that every prior finding is marked closed. `mate merge <project> <crew> --review <reviewer>` repeats that validation and merges the reviewed SHA.
 - `mate backlog add <project> <id> --section "Held for the captain" --text '<verbatim obligation>'` adds an entry. Use `In flight`, `Held for the captain`, `Queued` or `Done` for the section.
 - `mate backlog move <project> <id> --section "In flight"` moves the complete entry unchanged. `mate backlog done <project> <id>` moves it to Done and archives overflow beyond 10 entries. Duplicate or missing ids are errors. Use these commands instead of writing Python to edit backlog.
+- When the project has a tracker plugin, a task the tracker holds is only a pointer in `/ws/.mate/projects/shop/mate/backlog.md`: `mate backlog add <project> <crew-id> --tracker <tracker-id>` writes the one line `- <crew-id>: <tracker-id>` under `In flight` (another `--section` if you say so), and `move` or `done` with `--tracker <tracker-id>` rewrites the entry to that line; no content is copied, the tracker has it. Without `--tracker` nothing changes, so `Held for the captain` and `Queued` entries the tracker does not hold are written as before. A project with no tracker plugin refuses `--tracker`.
 - `mate usage <project> --top <n>` prints your own row, the n largest tasks by TOTAL and a total over every task. `mate usage <project> <crew> --why` prints one bounded page on what that task's tokens were spent on: buckets, work by kind, loops, findings, instructions loaded, costliest prompts. Load `token-review` before drawing a conclusion from either; plain `mate usage <project>` prints every task and `mate usage <project> <crew>` every model call, which you rarely need.
 - A context refresh asks for `mate checkpoint <project> <nonce>` only after stow has preserved questions, promises, decisions and active work. Run exactly that command, then end the turn. The console starts a fresh session with recall only after receiving a valid receipt and a real turn-end signal.

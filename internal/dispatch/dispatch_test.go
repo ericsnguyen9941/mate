@@ -287,3 +287,83 @@ func TestDefaultForPrefersTheWorkspaceHarness(t *testing.T) {
 		t.Error("a table with no default returned one")
 	}
 }
+
+// A table may carry a harness rotation (CON-77) at table level or per
+// rule; the rule's is its own, and a rule without one reads as nil so the
+// table's applies. Entries must be registered harnesses.
+func TestLoadReadsAnOptionalRotation(t *testing.T) {
+	p := writeTable(t, `{
+  "rules": [
+    {"when": "a small change", "use": {"harness": "claude", "model": "sonnet"}, "rotate": ["claude", "codex"]},
+    {"when": "anything else", "use": {"harness": "codex"}}
+  ],
+  "default": {"harness": "codex"},
+  "rotate": ["Claude", "claude", "claude", "codex", "pi"]
+}`)
+	tbl, ok, err := Load(p, catalog.Default())
+	if err != nil || !ok {
+		t.Fatalf("Load: ok=%v err=%v", ok, err)
+	}
+	if got := tbl.Rotate.String(); got != "claude, claude, claude, codex, pi" {
+		t.Fatalf("table rotation = %q", got)
+	}
+	if got := tbl.Rules[0].Rotate.String(); got != "claude, codex" {
+		t.Fatalf("rule 1 rotation = %q", got)
+	}
+	if tbl.Rules[1].Rotate != nil {
+		t.Fatalf("rule 2 rotation = %v, want none", tbl.Rules[1].Rotate)
+	}
+	if rs := tbl.Rotations(); len(rs) != 2 || rs[0].String() != "claude, codex" || rs[1].String() != "claude, claude, claude, codex, pi" {
+		t.Fatalf("rotations in force = %v", rs)
+	}
+
+	for name, body := range map[string]string{
+		"empty rotation":   `{"default": {"harness": "codex"}, "rotate": []}`,
+		"unknown harness":  `{"default": {"harness": "codex"}, "rotate": ["claude", "gemini"]}`,
+		"not an array":     `{"default": {"harness": "codex"}, "rotate": "claude"}`,
+		"rule unknown":     `{"rules": [{"when": "x", "use": {"harness": "codex"}, "rotate": ["gemini"]}]}`,
+		"rule empty array": `{"rules": [{"when": "x", "use": {"harness": "codex"}, "rotate": []}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := Load(writeTable(t, body), catalog.Default())
+			if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "rotate") {
+				t.Fatalf("Load accepted a bad rotation, or did not name `rotate`: %v", err)
+			}
+		})
+	}
+	// The built-in table has no rotation: the captain opts in.
+	if tbl, err := builtIn(catalog.Default()); err != nil || tbl.Rotate != nil || len(tbl.Rotations()) != 0 {
+		t.Fatalf("built-in rotation = %v, %v; want none", tbl.Rotate, err)
+	}
+}
+
+// Next walks the rotation from the slots already taken, and `--skip`
+// passes over a harness without deferring its turn.
+func TestRotationNext(t *testing.T) {
+	r := Rotation{claude.KindClaude, claude.KindClaude, claude.KindClaude, codex.KindCodex, "pi"}
+	for _, tc := range []struct {
+		consumed int
+		skip     []harness.Kind
+		want     Step
+		skipped  string
+		ok       bool
+	}{
+		{0, nil, Step{claude.KindClaude, 1, 1}, "", true},
+		{1, nil, Step{claude.KindClaude, 2, 2}, "", true},
+		{3, nil, Step{codex.KindCodex, 4, 4}, "", true},
+		{4, nil, Step{"pi", 5, 5}, "", true},
+		{5, nil, Step{claude.KindClaude, 1, 6}, "", true},
+		{3, []harness.Kind{codex.KindCodex}, Step{"pi", 5, 5}, "codex", true},
+		{0, []harness.Kind{claude.KindClaude}, Step{codex.KindCodex, 4, 4}, "claude", true},
+		{4, []harness.Kind{"pi", claude.KindClaude}, Step{codex.KindCodex, 4, 9}, "pi, claude", true},
+		{0, []harness.Kind{claude.KindClaude, codex.KindCodex, "pi"}, Step{}, "claude, codex, pi", false},
+	} {
+		step, skipped, ok := r.Next(tc.consumed, tc.skip)
+		if ok != tc.ok || step != tc.want || Rotation(skipped).String() != tc.skipped {
+			t.Errorf("Next(%d, %v) = %+v skipped %q ok %v; want %+v %q %v", tc.consumed, tc.skip, step, Rotation(skipped).String(), ok, tc.want, tc.skipped, tc.ok)
+		}
+	}
+	if _, _, ok := Rotation(nil).Next(0, nil); ok {
+		t.Fatal("an empty rotation has a next")
+	}
+}

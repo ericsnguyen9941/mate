@@ -38,3 +38,32 @@ func TestBacklogDoneArchivesOldEntriesWithoutLosingThem(t *testing.T) {
 		t.Fatalf("next=%s archive=%s", next, archive)
 	}
 }
+
+// With rewrite, a move or done leaves the one pointer line `- <id>: <text>`
+// where the entry's body was (CON-77): the tracker holds the content.
+func TestBacklogRewriteLeavesAPointerLine(t *testing.T) {
+	text := "# Backlog\n\n## In flight\n- k2: fix the flaky test\n  evidence: logs\n\n## Held for the captain\n\n## Queued\n- k3: pick a colour\n\n## Done\n"
+	next, _, err := EditBacklogEntry(text, "move", "k3", BacklogInFlight, "HVN-12", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# Backlog\n\n## In flight\n- k3: HVN-12\n- k2: fix the flaky test\n  evidence: logs\n\n## Held for the captain\n\n## Queued\n\n## Done\n"
+	if next != want {
+		t.Fatalf("move with rewrite =\n%s\nwant\n%s", next, want)
+	}
+	next, _, err = EditBacklogEntry(next, "done", "k2", BacklogDone, "HVN-7", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(next, "## Done\n- k2: HVN-7\n") || strings.Contains(next, "evidence: logs") {
+		t.Fatalf("done with rewrite =\n%s", next)
+	}
+	if _, _, err := EditBacklogEntry(text, "move", "k3", BacklogInFlight, "", true); err == nil {
+		t.Fatal("a rewrite with no text was accepted")
+	}
+	// Without rewrite the body travels whole, as before.
+	next, _, err = EditBacklogEntry(text, "done", "k2", BacklogDone, "ignored", false)
+	if err != nil || !strings.Contains(next, "## Done\n- k2: fix the flaky test\n  evidence: logs\n") {
+		t.Fatalf("done without rewrite = %v\n%s", err, next)
+	}
+}

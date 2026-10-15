@@ -11,6 +11,13 @@ import (
 // EditBacklog serializes CLI edits. Archive first: a crash can duplicate an
 // old Done entry, but can never remove it from both durable files.
 func (w *Workspace) EditBacklog(project, action, id, section, text string) error {
+	return w.EditBacklogEntry(project, action, id, section, text, false)
+}
+
+// EditBacklogEntry is EditBacklog with memory.EditBacklogEntry's rewrite:
+// a move or done that leaves the one-line pointer `- <id>: <text>` in
+// place of the entry's body.
+func (w *Workspace) EditBacklogEntry(project, action, id, section, text string, rewrite bool) error {
 	if err := ValidateProjectName(project); err != nil {
 		return err
 	}
@@ -35,7 +42,7 @@ func (w *Workspace) EditBacklog(project, action, id, section, text string) error
 	if err != nil {
 		return err
 	}
-	next, archive, err := memory.EditBacklog(string(data), action, id, section, text)
+	next, archive, err := memory.EditBacklogEntry(string(data), action, id, section, text, rewrite)
 	if err != nil {
 		return err
 	}

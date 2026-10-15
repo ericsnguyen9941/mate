@@ -37,15 +37,17 @@ func cmdCrew(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 }
 
 // cmdCrewSpawn implements
-// `mate crew spawn <project> <id> --brief <file> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--harness codex|claude] [--model <name>] [--effort <level>] [--budget <tokens>] [--task "<one line>"]`.
+// `mate crew spawn <project> <id> --brief <file> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--harness codex|claude] [--model <name>] [--effort <level>] [--budget <tokens>] [--skip <harness>]... [--task "<one line>"]`.
 func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("crew spawn", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, `usage: mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--workspace <dir>] [--harness `+harnessChoices(harness.RoleCrew, "|")+`] [--model <name>] [--effort low|medium|high|xhigh|max] [--budget <tokens>] [--task "<one line>"]`)
+		fmt.Fprintln(stderr, `usage: mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--workspace <dir>] [--harness `+harnessChoices(harness.RoleCrew, "|")+`] [--model <name>] [--effort low|medium|high|xhigh|max] [--budget <tokens>] [--skip <harness>]... [--task "<one line>"]`)
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	scoutFlag := fs.Bool("scout", false, "a scout: the brief has ## Deliverable and the crew writes a report instead of committing")
+	var skip kindList
+	fs.Var(&skip, "skip", "a harness passed over in the dispatch table's rotation, as passed to `crew dispatch` (repeatable)")
 	// --size (CON-72) may later imply a budget when none is passed; this
 	// command records only what it is told.
 	budgetFlag := fs.Int64("budget", 0, "token budget from the dispatch rule the task matched; the observer reports the crew at half of it without a hand-back and at all of it (default: the project's budget.crew_tokens, if any)")
@@ -107,6 +109,14 @@ func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) erro
 	}
 	if note != "" {
 		fmt.Fprintf(stderr, "note: %s\n", note)
+	}
+	slot, rotationNote, err := applyRotation(w, req.Project, req.Harness, skip)
+	if err != nil {
+		return err
+	}
+	req.RotationSlot = slot
+	if rotationNote != "" {
+		fmt.Fprintf(stderr, "note: %s\n", rotationNote)
 	}
 	if warn := quotaWarning(req.Harness); warn != "" {
 		fmt.Fprintf(stderr, "warning: %s\n", warn)

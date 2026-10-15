@@ -54,6 +54,14 @@ const (
 	// MetaSize is the task's size (brief.Size, `--size`): `small`, `medium`
 	// or `large`. It chose the hand-back shape the brief asks for (CON-72).
 	MetaSize = "size"
+	// MetaRotationSlot is the turn this spawn took in the dispatch table's
+	// harness rotation (dispatch.Step.Slot, CON-77): the running count of
+	// turns the project has taken, from which `crew dispatch` reads the
+	// next harness. Absent when the table has no rotation or the spawn's
+	// harness was not the rotation's next (the captain's words win and the
+	// position stays). It survives `crew stop`, because the rotation
+	// keeps counting after a crew is closed.
+	MetaRotationSlot = "rotation_slot"
 	// MetaState is the crew's declared state (mvp.md section 4b). Only the
 	// app writes it, and only three values ever land in it: `spawned` at
 	// spawn, `finished` or `failed` at `crew stop`, and `failed` when a
@@ -129,6 +137,10 @@ type SpawnCrewRequest struct {
 	// later `--size` (CON-72) may imply one when the Mate passes no
 	// --budget; nothing here infers it.
 	Budget int64
+	// RotationSlot is the rotation turn this spawn takes (`rotation_slot=`,
+	// CON-77), 0 for none. cmd/mate computes it from the dispatch table
+	// and the project's earlier spawns; nothing here reads the table.
+	RotationSlot int
 	// Size is how big the task is (`--size`, brief.ParseSize): small,
 	// medium or large; empty means medium. It picks the hand-back shape and
 	// evidence level the brief template asks of a ship (CON-72). A scout's
@@ -329,6 +341,7 @@ func SpawnCrew(ctx context.Context, w *store.Workspace, deps Deps, req SpawnCrew
 		delivery:         delivery,
 		autocompact:      w.CrewAutocompact(),
 		budget:           spawnBudget(req, cfg),
+		rotationSlot:     req.RotationSlot,
 	})
 	if err != nil {
 		saga.compensate(ctx)
@@ -433,6 +446,9 @@ type crewPlan struct {
 	autocompact int
 	// budget is the token budget recorded as `budget=`; 0 is none.
 	budget int64
+	// rotationSlot is the rotation turn recorded as `rotation_slot=`; 0 is
+	// none.
+	rotationSlot int
 }
 
 // spawnBudget is the budget a crew is recorded with: the one the request
@@ -582,6 +598,9 @@ func spawnInWorktree(ctx context.Context, w *store.Workspace, deps Deps, saga *c
 	}
 	if plan.budget > 0 {
 		meta[MetaBudget] = strconv.FormatInt(plan.budget, 10)
+	}
+	if plan.rotationSlot > 0 {
+		meta[MetaRotationSlot] = strconv.Itoa(plan.rotationSlot)
 	}
 	if err := w.WriteCrewMeta(plan.project, plan.crew, meta); err != nil {
 		return CrewResult{}, err

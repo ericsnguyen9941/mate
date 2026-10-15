@@ -1159,3 +1159,35 @@ func TestStopCrewTakesAMergedPullRequestAsLanded(t *testing.T) {
 		})
 	}
 }
+
+// A spawn that takes the rotation's turn records `rotation_slot=` (CON-77),
+// and `crew stop` keeps it: the rotation goes on counting after a crew is
+// closed. A spawn given no slot records none.
+func TestSpawnCrewRecordsTheRotationSlotAndStopKeepsIt(t *testing.T) {
+	w := crewWorkspace(t, "shop")
+	deps := fakeDeps(t, runtime.NewFake())
+	if _, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k3", BriefText: brieftest.Ship("work"), RotationSlot: 4,
+	}); err != nil {
+		t.Fatalf("SpawnCrew: %v", err)
+	}
+	if meta, _ := w.ReadCrewMeta("shop", "k3"); meta[spawn.MetaRotationSlot] != "4" {
+		t.Fatalf("meta rotation_slot = %q, want 4", meta[spawn.MetaRotationSlot])
+	}
+	if _, err := spawn.StopCrew(context.Background(), w, deps, "shop", "k3", false); err != nil {
+		t.Fatalf("StopCrew: %v", err)
+	}
+	meta, _ := w.ReadCrewMeta("shop", "k3")
+	if meta[spawn.MetaRotationSlot] != "4" || meta[spawn.MetaState] != spawn.CrewStateFinished {
+		t.Fatalf("meta after stop = %v, want rotation_slot=4 kept and state=finished", meta)
+	}
+
+	if _, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k4", BriefText: brieftest.Ship("work"),
+	}); err != nil {
+		t.Fatalf("SpawnCrew k4: %v", err)
+	}
+	if meta, _ := w.ReadCrewMeta("shop", "k4"); meta[spawn.MetaRotationSlot] != "" {
+		t.Fatalf("a spawn with no slot recorded rotation_slot=%q", meta[spawn.MetaRotationSlot])
+	}
+}

@@ -337,7 +337,7 @@ func orphanedWorktreeChanges(ctx context.Context, git gitx.Git, repo, worktree, 
 // request the crew opened and how it ended.
 func clearCrewRunMeta(meta map[string]string) map[string]string {
 	next := map[string]string{}
-	for _, key := range []string{MetaTask, MetaHarness, MetaSession, MetaSessionID, MetaTranscript, MetaWorktree, MetaBranch, MetaSize, store.MetaRepo, MetaStartedAt, MetaLaunchedAt,
+	for _, key := range []string{MetaTask, MetaHarness, MetaSession, MetaSessionID, MetaTranscript, MetaWorktree, MetaBranch, MetaSize, MetaRotationSlot, store.MetaRepo, MetaStartedAt, MetaLaunchedAt,
 		crewstate.MetaPRURL, crewstate.MetaPRState, crewstate.MetaMergeCommit, crewstate.MetaPRSync} {
 		if v, ok := meta[key]; ok {
 			next[key] = v

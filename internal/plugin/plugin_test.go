@@ -453,3 +453,99 @@ instances:
 		t.Error("skill still has {instance_id}")
 	}
 }
+
+// An instance may carry a `tracker:` block (CON-77): the one hook mate has
+// into a task tracker. Its optional `read` is an argv; an empty command
+// name is refused. TrackerFor is the first enabled instance bound to the
+// project that has the block.
+func TestTrackerBlock(t *testing.T) {
+	root := workspace(t, `apiVersion: mate.plugins/v1
+instances:
+  notes:
+    path: $PKG/skillsonly
+  tracker-work:
+    path: $PKG/full
+    config: {project_url: "https://tracker.example/workspace"}
+    tracker:
+      read: [linear-axi, issue, view, "{id}"]
+  legacy:
+    path: $PKG/full
+    projects:
+      other:
+        config: {project_url: "https://tracker.example/other"}
+    tracker: {}
+`)
+	for _, read := range []func(string) (Config, error){ReadConfig, Load} {
+		cfg, err := read(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, ok := cfg.TrackerFor("shop")
+		if !ok || in.ID != "tracker-work" || strings.Join(in.Tracker.Read, " ") != "linear-axi issue view {id}" {
+			t.Fatalf("TrackerFor(shop) = %+v %v", in, ok)
+		}
+		if in, ok := cfg.TrackerFor("other"); !ok || in.ID != "tracker-work" {
+			t.Fatalf("TrackerFor(other) = %s %v, want the first instance with the block", in.ID, ok)
+		}
+		if cfg.Instances[0].Tracker != nil {
+			t.Fatal("an instance without the block has a tracker")
+		}
+		if legacy := cfg.Instances[2]; legacy.Tracker == nil || legacy.Tracker.Read != nil {
+			t.Fatalf("an empty tracker block = %+v, want a tracker with no read command", legacy.Tracker)
+		}
+	}
+
+	disabled := workspace(t, "apiVersion: mate.plugins/v1\ninstances:\n  t:\n    path: $PKG/full\n    enabled: false\n    tracker: {}\n")
+	if cfg, err := ReadConfig(disabled); err != nil {
+		t.Fatal(err)
+	} else if _, ok := cfg.TrackerFor("shop"); ok {
+		t.Fatal("a disabled instance is a tracker")
+	}
+
+	_, err := ReadConfig(workspace(t, "apiVersion: mate.plugins/v1\ninstances:\n  t:\n    path: $PKG/full\n    tracker:\n      read: [\"\"]\n"))
+	if err == nil || !strings.Contains(err.Error(), "tracker.read") {
+		t.Fatalf("an empty read command was accepted: %v", err)
+	}
+	_, err = ReadConfig(workspace(t, "apiVersion: mate.plugins/v1\ninstances:\n  t:\n    path: $PKG/full\n    tracker:\n      raed: [x]\n"))
+	if err == nil || !strings.Contains(err.Error(), "raed") {
+		t.Fatalf("a misspelt tracker field was accepted: %v", err)
+	}
+}
+
+// Doctor finds the tracker's read command the way it finds a stdio
+// server's, and says when there is none to find.
+func TestDoctorChecksTheTrackerReadCommand(t *testing.T) {
+	root := workspace(t, `apiVersion: mate.plugins/v1
+instances:
+  present:
+    path: $PKG/skillsonly
+    tracker:
+      read: [sh, -c, "echo {id}"]
+  absent:
+    path: $PKG/skillsonly
+    tracker:
+      read: [./no-such-reader]
+  silent:
+    path: $PKG/skillsonly
+    tracker: {}
+`)
+	var got []string
+	for _, c := range Doctor(root, DoctorOptions{}) {
+		if strings.Contains(c.Name, "tracker") {
+			got = append(got, c.String())
+		}
+	}
+	want := []string{
+		"present: tracker read sh: ok (",
+		"absent: tracker read ./no-such-reader: fail: ",
+		"silent: tracker: ok (no read command; recall cannot cross-check In flight)",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("tracker checks = %q, want %d", got, len(want))
+	}
+	for i := range want {
+		if !strings.HasPrefix(got[i], want[i]) {
+			t.Errorf("check %d = %q, want prefix %q", i, got[i], want[i])
+		}
+	}
+}
