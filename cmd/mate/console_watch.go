@@ -102,6 +102,9 @@ func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *d
 		// workspace handle a budget check needs, and it is the same single
 		// writer the rest of M5 keeps to one.
 		Budget: ingest,
+		// And watch.TurnChecker (CON-74): the no-turn check reads the same
+		// ledger.
+		Turns: ingest,
 	})
 	return watcher, handle, nil
 }

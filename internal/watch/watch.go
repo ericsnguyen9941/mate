@@ -37,6 +37,11 @@ const (
 	// crew's handle, its agent, its pane, and the session. It is the
 	// console's own bound on a Herdr question (cmd/mate livenessBound).
 	DefaultHerdrTimeout = 3 * time.Second
+	// DefaultNoTurnAfter is how long a working crew may go after launch
+	// with no turn in the token ledger before `no_turn` opens (CON-74).
+	// Longer than a sign-in or a trust dialog takes to clear, shorter than
+	// a Mate should wait on a reviewer that never started.
+	DefaultNoTurnAfter = 5 * time.Minute
 )
 
 // Runtime is the slice of runtime.Adapter the observer needs. It is narrow
@@ -101,6 +106,15 @@ type BudgetChecker interface {
 	CheckBudgets(ctx context.Context) error
 }
 
+// TurnChecker is the observer's no-turn check
+// (internal/timeline.Ingester.CheckNoTurn, CON-74): at the end of a poll,
+// it opens a `no_turn` incident on every working crew launched more than
+// after ago whose actor has no turn in the ledger, and resolves it once a
+// turn is recorded. A seam for the same reason BudgetChecker is.
+type TurnChecker interface {
+	CheckNoTurn(ctx context.Context, after time.Duration) error
+}
+
 // SessionFunc asks whether the workspace's terminal runtime is up, without
 // starting one. It is a seam for the same reason HandleFunc is: the
 // observer imports nothing that can start an agent. nil means the runtime
@@ -134,12 +148,19 @@ type Deps struct {
 	// are checked, the honest behaviour when there is no timeline database
 	// to check them against.
 	Budget BudgetChecker
+	// Turns checks every open crew for a turn in the ledger Timeline just
+	// wrote, at the end of every poll. Nil means no such check, as for
+	// Budget.
+	Turns TurnChecker
 	// PollInterval is the pause between rounds; zero means
 	// DefaultPollInterval.
 	PollInterval time.Duration
 	// StaleAfter is the quiet period that opens `stale`; zero means
 	// DefaultStaleAfter.
 	StaleAfter time.Duration
+	// NoTurnAfter is how long after launch a working crew with no turn in
+	// the ledger opens `no_turn`; zero means DefaultNoTurnAfter.
+	NoTurnAfter time.Duration
 	// HerdrTimeout bounds each Herdr call of a round; zero means
 	// DefaultHerdrTimeout.
 	HerdrTimeout time.Duration
@@ -184,6 +205,13 @@ func (d Deps) staleAfter() time.Duration {
 		return d.StaleAfter
 	}
 	return DefaultStaleAfter
+}
+
+func (d Deps) noTurnAfter() time.Duration {
+	if d.NoTurnAfter > 0 {
+		return d.NoTurnAfter
+	}
+	return DefaultNoTurnAfter
 }
 
 func (d Deps) herdrTimeout() time.Duration {
@@ -373,6 +401,12 @@ func (w *Watcher) Poll(ctx context.Context) error {
 	if w.deps.Budget != nil {
 		if err := w.deps.Budget.CheckBudgets(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("watch: check budgets: %w", err))
+		}
+	}
+	// The no-turn check reads the same ledger, for the same reason.
+	if w.deps.Turns != nil {
+		if err := w.deps.Turns.CheckNoTurn(ctx, w.deps.noTurnAfter()); err != nil {
+			errs = append(errs, fmt.Errorf("watch: check turns: %w", err))
 		}
 	}
 	return errors.Join(errs...)

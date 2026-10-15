@@ -203,3 +203,27 @@ func TestMarkdownSectionStopsAtTheNextHeadingAndBounds(t *testing.T) {
 		t.Errorf("missing section = %q", got)
 	}
 }
+
+// A `no_turn` incident (CON-74) is listed with the blocked items, before
+// the questions, with the one next step: peek, and relaunch if the pane
+// never got going.
+func TestWakePrintsANoTurnIncidentWithTheBlocked(t *testing.T) {
+	w := wakeFixture(t)
+	if err := w.AppendIncident("shop", store.IncidentEntry{
+		Time: time.Date(2026, 10, 14, 21, 54, 0, 0, time.UTC), Crew: "busy-k5",
+		Kind: string(box.IncidentNoTurn), State: store.IncidentOpen, Text: "no turn in the ledger 6m0s after launch",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	text := runWake(t, w)
+	want := "no turn busy-k5: no turn in the ledger 6m0s after launch, open for 6m\n  next: mate peek busy-k5; if the pane is empty or at a sign-in screen, mate crew relaunch busy-k5\n"
+	if !strings.Contains(text, want) {
+		t.Fatalf("wake lacks %q:\n%s", want, text)
+	}
+	if strings.Index(text, "no turn busy-k5") > strings.Index(text, "needs-decision ask-k4") {
+		t.Errorf("a no-turn item must come with the blocked ones, before the questions:\n%s", text)
+	}
+	if !strings.Contains(text, "busy-k5 working · codex · running the test suite\n") {
+		t.Errorf("a no-turn item changed the crew's state:\n%s", text)
+	}
+}

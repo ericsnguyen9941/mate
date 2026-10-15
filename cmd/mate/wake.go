@@ -155,11 +155,12 @@ func wake(ctx context.Context, w *store.Workspace, git gitx.Git, project string,
 }
 
 // wakeItems is a digest's items in the order a Mate works them: blocked
-// first, then questions, then hand-backs, then budgets, each kind oldest
-// first as Gather gave them.
+// first (a crew that never took a turn, CON-74, is in that group: it is as
+// unable to speak for itself), then questions, then hand-backs, then
+// budgets, each kind oldest first as Gather gave them.
 func wakeItems(items []autopilot.Item) []autopilot.Item {
 	rank := map[autopilot.ItemKind]int{
-		autopilot.ItemBlocked: 0, autopilot.ItemNeedsDecision: 1, autopilot.ItemWaitMate: 2, autopilot.ItemBudget: 3,
+		autopilot.ItemBlocked: 0, autopilot.ItemNoTurn: 0, autopilot.ItemNeedsDecision: 1, autopilot.ItemWaitMate: 2, autopilot.ItemBudget: 3,
 	}
 	out := append([]autopilot.Item(nil), items...)
 	sort.SliceStable(out, func(i, j int) bool { return rank[out[i].Kind] < rank[out[j].Kind] })
@@ -173,6 +174,12 @@ func writeWakeItem(ctx context.Context, out *strings.Builder, w *store.Workspace
 		kind := dashIfEmpty(string(it.IncidentKind))
 		fmt.Fprintf(out, "blocked %s: %s, open for %s - %s\n", crew, kind, formatAge(it.QuietFor), it.Text)
 		fmt.Fprintf(out, "  next: mate state, then mate peek, then stuck-crew-recovery\n")
+	case autopilot.ItemNoTurn:
+		// The observer's text is "no turn in the ledger <d> after launch".
+		// The crew is not blocked, it never started: look once, and
+		// relaunch it if the pane shows nothing or a sign-in screen.
+		fmt.Fprintf(out, "no turn %s: %s, open for %s\n", crew, it.Text, formatAge(it.QuietFor))
+		fmt.Fprintf(out, "  next: mate peek %s; if the pane is empty or at a sign-in screen, mate crew relaunch %s\n", crew, crew)
 	case autopilot.ItemBudget:
 		// The observer's text is "<used> tokens of <budget> tokens"; the
 		// half-budget one (CON-76) carries box.BudgetHalfPrefix and the

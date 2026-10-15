@@ -287,3 +287,61 @@ func TestDefaultForPrefersTheWorkspaceHarness(t *testing.T) {
 		t.Error("a table with no default returned one")
 	}
 }
+
+// A `review_small` profile and its threshold are read like `review` and
+// checked like every profile (CON-74); a table may name neither, and then
+// the threshold is the default and the small profile is absent.
+func TestReviewSmallIsReadAndChecked(t *testing.T) {
+	tbl, _, err := Load(writeTable(t, `{"default": {"harness": "codex"}, "review_small": {"harness": "claude", "model": "haiku", "effort": "low"}, "review_small_max_lines": 20}`), catalog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tbl.ReviewSmall) != 1 || tbl.ReviewSmall[0].Flags() != "--harness claude --model haiku --effort low" || tbl.ReviewSmallMaxLines != 20 {
+		t.Fatalf("review_small = %+v, max lines %d", tbl.ReviewSmall, tbl.ReviewSmallMaxLines)
+	}
+	for name, body := range map[string]string{
+		"unknown harness": `{"default": {"harness": "codex"}, "review_small": {"harness": "nope"}}`,
+		"zero threshold":  `{"default": {"harness": "codex"}, "review_small_max_lines": 0}`,
+		"string":          `{"default": {"harness": "codex"}, "review_small_max_lines": "50"}`,
+	} {
+		if _, _, err := Load(writeTable(t, body), catalog.Default()); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+		}
+	}
+	none, _, err := Load(writeTable(t, `{"default": {"harness": "codex"}}`), catalog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := none.ReviewSmallFor("codex", false); ok || none.ReviewSmallMaxLines != DefaultReviewSmallMaxLines {
+		t.Errorf("a table with no review_small: profile %v, max lines %d", ok, none.ReviewSmallMaxLines)
+	}
+	// The built-in table reviews a small change on the lightest profile of
+	// each harness, under the default threshold.
+	builtin, _ := Resolve(t.TempDir(), catalog.Default())
+	if p, ok := builtin.ReviewSmallFor("codex", true); !ok || p.Flags() != "--harness codex --model gpt-6-luna --effort low" {
+		t.Errorf("built-in review_small for codex = %+v %v", p, ok)
+	}
+	if p, ok := builtin.ReviewSmallFor("pi", false); !ok || p.Flags() != "--harness claude --model haiku --effort low" {
+		t.Errorf("built-in review_small for an unlisted default harness = %+v %v", p, ok)
+	}
+	if builtin.ReviewSmallMaxLines != 50 {
+		t.Errorf("built-in review_small_max_lines = %d, want 50", builtin.ReviewSmallMaxLines)
+	}
+}
+
+// IsCodePath is the conservative list the small-change rule relies on:
+// languages, shell and build files are code; prose, data, configuration
+// and markup are not.
+func TestIsCodePath(t *testing.T) {
+	for path, want := range map[string]bool{
+		"cmd/mate/main.go": true, "web/app.js": true, "lib/x.rb": true, "scripts/run.sh": true, "Makefile": true,
+		"deploy/Dockerfile": true, "go.mod": true, "db/schema.sql": true, "src/App.tsx": true,
+		"README.md": false, "docs/mvp.md": false, "config.yaml": false, "package.json": false,
+		"site/index.html": false, "site/style.css": false, "LICENSE": false, "data.csv": false,
+		"assets/mate/skills/x/SKILL.md.tmpl": false,
+	} {
+		if got := IsCodePath(path); got != want {
+			t.Errorf("IsCodePath(%q) = %v, want %v", path, got, want)
+		}
+	}
+}

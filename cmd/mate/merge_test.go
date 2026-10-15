@@ -158,3 +158,117 @@ func TestCmdProjectYoloAndModeAreGone(t *testing.T) {
 		}
 	}
 }
+
+// recordPassingReview writes what `mate review` and the reviewer leave
+// behind for k3 of mergeCLIWorkspace: the review record at the branch's
+// head, a handed-back reviewer, and a report with the given body.
+func recordPassingReview(t *testing.T, w *store.Workspace, reviewer, report string) {
+	t.Helper()
+	dir := w.CrewDir("shop", "k3")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"brief.md", "handback.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("contract"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fp, err := reviewFingerprint(context.Background(), w, gitx.New(), "shop", "k3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := reviewRecordPath(w, "shop", reviewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteMeta(path, fp); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WriteCrewMeta("shop", reviewer, map[string]string{spawn.MetaState: spawn.CrewStateSpawned, spawn.MetaKind: "scout"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.AppendStatus("shop", reviewer, "wait-mate: review done"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(w.CrewReport("shop", reviewer), []byte(report), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const passWithFindings = "## Summary\nFine, two things to tidy.\n## Findings\n- feature.txt:1 the word is misspelt\n- no test covers the empty case\n## Verdict\npass\n"
+
+// A passing review that left findings standing does not merge until the
+// findings are recorded somewhere `--followups` can name (CON-74): the
+// refusal prints them; a backlog line under ## Queued or a tracker id is
+// accepted, checked, and recorded in the crew's meta.
+func TestCmdMergeWantsFollowupsForAPassingReviewsFindings(t *testing.T) {
+	t.Setenv("MATE_CALLER", "")
+	refuse := func(t *testing.T, w *store.Workspace, root string, args []string, want ...string) {
+		t.Helper()
+		var out, errw bytes.Buffer
+		err := cmdMerge(append([]string{"--workspace", root, "shop", "k3"}, args...), &out, &errw)
+		if err == nil {
+			t.Fatalf("merge went through:\n%s", out.String())
+		}
+		for _, s := range want {
+			if !strings.Contains(err.Error(), s) {
+				t.Errorf("error %q lacks %q", err.Error(), s)
+			}
+		}
+		if meta, _ := w.ReadCrewMeta("shop", "k3"); meta[spawn.MetaState] != spawn.CrewStateSpawned {
+			t.Fatalf("a refused merge changed the crew: %v", meta)
+		}
+	}
+
+	t.Run("refused without --followups", func(t *testing.T) {
+		w, root := mergeCLIWorkspace(t)
+		recordPassingReview(t, w, "rev", passWithFindings)
+		refuse(t, w, root, []string{"--review", "rev"},
+			"merge refused: review rev passed but left 2 finding(s) standing; record them and name where with --followups backlog:<text of the ## Queued line> or --followups <TRACKER-id>, then merge again:",
+			"\n  F1: feature.txt:1 the word is misspelt\n  F2: no test covers the empty case")
+	})
+	t.Run("refused when the backlog line is not there", func(t *testing.T) {
+		w, root := mergeCLIWorkspace(t)
+		recordPassingReview(t, w, "rev", passWithFindings)
+		if err := os.WriteFile(w.BacklogFile("shop"), []byte("# Backlog\n\n## In flight\n- k3: tidy feature.txt\n\n## Held for the captain\n\n## Queued\n- other: unrelated\n\n## Done\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		refuse(t, w, root, []string{"--review", "rev", "--followups", "backlog:tidy feature.txt"}, "no line under ## Queued", `"tidy feature.txt"`)
+		refuse(t, w, root, []string{"--review", "rev", "--followups", "hvn-12"}, "--followups wants backlog:<text")
+	})
+	for name, ref := range map[string]string{"backlog line": "backlog:tidy feature.txt", "tracker id": "HVN-12"} {
+		t.Run(name, func(t *testing.T) {
+			w, root := mergeCLIWorkspace(t)
+			recordPassingReview(t, w, "rev", passWithFindings)
+			if err := os.WriteFile(w.BacklogFile("shop"), []byte("# Backlog\n\n## In flight\n\n## Held for the captain\n\n## Queued\n- k3-tidy: tidy feature.txt and cover the empty case (from review rev)\n\n## Done\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var out, errw bytes.Buffer
+			if err := cmdMerge([]string{"--workspace", root, "shop", "k3", "--review", "rev", "--followups", ref}, &out, &errw); err != nil {
+				t.Fatalf("merge: %v\n%s", err, errw.String())
+			}
+			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+			if len(lines) != 2 || !strings.HasPrefix(lines[0], "shop/k3: merged 1 commit(s) into main (") || lines[1] != "followups: "+ref+" (recorded as followups= in "+w.CrewMeta("shop", "k3")+")" {
+				t.Fatalf("merge printed:\n%s", out.String())
+			}
+			meta, err := w.ReadCrewMeta("shop", "k3")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta[store.MetaFollowups] != ref || meta[spawn.MetaState] != "finished" {
+				t.Fatalf("meta after merge = %v", meta)
+			}
+		})
+	}
+	t.Run("a review with no findings needs none", func(t *testing.T) {
+		w, root := mergeCLIWorkspace(t)
+		recordPassingReview(t, w, "rev", "## Summary\nClean.\n## Findings\nnone\n## Verdict\npass\n")
+		var out, errw bytes.Buffer
+		if err := cmdMerge([]string{"--workspace", root, "shop", "k3", "--review", "rev"}, &out, &errw); err != nil {
+			t.Fatalf("merge: %v\n%s", err, errw.String())
+		}
+		if meta, _ := w.ReadCrewMeta("shop", "k3"); meta[store.MetaFollowups] != "" || meta[spawn.MetaState] != "finished" {
+			t.Fatalf("meta after merge = %v", meta)
+		}
+	})
+}

@@ -44,6 +44,11 @@ const (
 	// ItemBlocked, because the digest's vocabulary must not tell the Mate
 	// a budget item changed the crew's state - it did not.
 	ItemBudget ItemKind = "over budget"
+	// ItemNoTurn is an open `no_turn` incident (CON-74): the crew has been
+	// working, or only spawned, for longer than the observer's threshold
+	// with no turn in the token ledger. Its own kind for the reason
+	// ItemBudget is: the crew is not blocked, it never started.
+	ItemNoTurn ItemKind = "no turn"
 )
 
 // Item is one thing a digest reports, with the entry it came from kept so a
@@ -146,11 +151,14 @@ func Gather(v box.View, cursor map[string]int64, now time.Time) []Item {
 				continue
 			}
 			kind := ItemBlocked
-			if item.Kind == box.IncidentBudget {
+			switch item.Kind {
+			case box.IncidentBudget:
 				// Never ItemBlocked: a budget incident does not change the
 				// crew's state (decision 2026-09-20), and the digest's own
 				// vocabulary must not suggest otherwise.
 				kind = ItemBudget
+			case box.IncidentNoTurn:
+				kind = ItemNoTurn
 			}
 			out = append(out, Item{
 				Kind:         kind,
@@ -266,6 +274,8 @@ func itemText(item Item) string {
 			return fmt.Sprintf("%s budget 50%%: %s", crew, rest)
 		}
 		return fmt.Sprintf("%s over budget: %s", crew, item.Text)
+	case ItemNoTurn:
+		return fmt.Sprintf("%s no turn: %s", crew, item.Text)
 	default:
 		return fmt.Sprintf("%s %s: %q", crew, item.Kind, oneLine(item.Text, MaxItemRunes))
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/dispatch"
+	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/process"
 	"github.com/nguyenngocanh94/mate/internal/quota"
@@ -186,6 +187,50 @@ func writeDispatchTable(out io.Writer, t dispatch.Table) {
 			fmt.Fprintf(out, "  or  %s\n", profileFlags(p, t.ReviewBudget))
 		}
 	}
+	if len(t.ReviewSmall) > 0 {
+		fmt.Fprintf(out, "\nreview_small (what `mate review` uses instead when the change is at most %d lines and touches no code file): %s\n", t.ReviewSmallMaxLines, profileFlags(t.ReviewSmall[0], t.ReviewBudget))
+		for _, p := range t.ReviewSmall[1:] {
+			fmt.Fprintf(out, "  or  %s\n", profileFlags(p, t.ReviewBudget))
+		}
+	}
+}
+
+// reviewStat is the size of the change a review reads, from `git diff
+// --numstat` over the reviewed range (CON-74): lines gained plus lost over
+// every file, how many files, and which of them look like code
+// (dispatch.IsCodePath). nil means the change was not measured.
+type reviewStat struct {
+	Lines int
+	Files int
+	Code  []string
+}
+
+func newReviewStat(entries []gitx.NumstatEntry) *reviewStat {
+	st := &reviewStat{Files: len(entries)}
+	for _, e := range entries {
+		st.Lines += e.Insertions + e.Deletions
+		if dispatch.IsCodePath(e.Path) {
+			st.Code = append(st.Code, e.Path)
+		}
+	}
+	return st
+}
+
+// small reports whether the change fits the small-change profile: at most
+// max changed lines and no code file.
+func (st *reviewStat) small(max int) bool {
+	return st != nil && st.Lines <= max && len(st.Code) == 0
+}
+
+// String is the stat as a note says it: "12 lines in 2 files, no code".
+func (st *reviewStat) String() string {
+	code := "no code"
+	if len(st.Code) == 1 {
+		code = "code in " + st.Code[0]
+	} else if len(st.Code) > 1 {
+		code = fmt.Sprintf("code in %d of them", len(st.Code))
+	}
+	return fmt.Sprintf("%d line(s) in %d file(s), %s", st.Lines, st.Files, code)
 }
 
 // profileFlags is the profile as spawn flags, with the rule's budget on
@@ -208,7 +253,12 @@ func profileFlags(p dispatch.Profile, budget int64) string {
 // profile for that harness leaves the request as it was. Whatever the
 // profile, a review that named no --budget is held to the table's
 // `review_budget` when there is one (CON-76).
-func applyReviewDispatch(w *store.Workspace, req spawn.SpawnCrewRequest) (spawn.SpawnCrewRequest, string, error) {
+//
+// stat is the size of the change (CON-74): a change that is small by the
+// table's `review_small_max_lines`, with no code file in it, takes the
+// table's `review_small` profile instead when the table has one for the
+// harness, and the note says why. nil is a change that was not measured.
+func applyReviewDispatch(w *store.Workspace, req spawn.SpawnCrewRequest, stat *reviewStat) (spawn.SpawnCrewRequest, string, error) {
 	t, err := dispatch.Resolve(w.StateDir(), harnesses)
 	if errors.Is(err, dispatch.ErrInvalid) {
 		return req, "", &usageError{err}
@@ -232,13 +282,24 @@ func applyReviewDispatch(w *store.Workspace, req spawn.SpawnCrewRequest) (spawn.
 			kind = string(k)
 		}
 	}
-	p, ok := t.ReviewFor(kind, named)
-	if !ok {
-		return req, "", nil
+	which := "review"
+	p, ok := dispatch.Profile{}, false
+	if stat.small(t.ReviewSmallMaxLines) {
+		if p, ok = t.ReviewSmallFor(kind, named); ok {
+			which = "review_small"
+		}
 	}
-	note := fmt.Sprintf("no --model or --effort; used the %s review profile: %s", tableName(t), p.Flags())
+	if !ok {
+		if p, ok = t.ReviewFor(kind, named); !ok {
+			return req, "", nil
+		}
+	}
+	note := fmt.Sprintf("no --model or --effort; used the %s %s profile: %s", tableName(t), which, p.Flags())
+	if which == "review_small" {
+		note = fmt.Sprintf("no --model or --effort; the change is small (%s, at most %d lines), so used the %s review_small profile: %s", stat, t.ReviewSmallMaxLines, tableName(t), p.Flags())
+	}
 	if string(p.Harness) != kind {
-		note = fmt.Sprintf("no --model or --effort, and the %s table has no review profile for the default harness %s; used %s", tableName(t), kind, p.Flags())
+		note = fmt.Sprintf("no --model or --effort, and the %s table has no %s profile for the default harness %s; used %s", tableName(t), which, kind, p.Flags())
 	}
 	req.Harness, req.Model, req.Effort = p.Harness, p.Model, p.Effort
 	return req, note, nil

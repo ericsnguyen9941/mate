@@ -63,6 +63,8 @@
         case "wedged": return "send wedged";
         // internal/box.BudgetHalfPrefix marks the half-budget incident (CON-76).
         case "budget": return (itemText(item)).indexOf("50%: ") === 0 ? "half the budget, no hand-back" : "over budget";
+        // internal/box.IncidentNoTurn (CON-74): launched, no turn in the ledger.
+        case "no_turn": return "no turn yet";
         default: return "incident " + (item.verb || "");
       }
     }

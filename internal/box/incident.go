@@ -25,6 +25,16 @@ const (
 	// not handed back yet (CON-76). Both carry this kind; the half one is
 	// told apart by BudgetHalfPrefix on its text.
 	IncidentBudget IncidentKind = "budget"
+	// IncidentNoTurn is a crew that has been working (or has only just
+	// been spawned) for longer than the observer's no-turn threshold while
+	// the token ledger records no turn for it (CON-74): a reviewer that
+	// never got past a sign-in screen, a harness that launched and did
+	// nothing. The observer's ledger check
+	// (internal/timeline.CheckNoTurn) files it once per crew and resolves
+	// it when the ledger shows a turn. Like `budget` it is an inbox item,
+	// never a `blocked` state: the crew has not stopped talking, it never
+	// started, and `mate crew list` keeps saying so.
+	IncidentNoTurn IncidentKind = "no_turn"
 )
 
 // BudgetHalfPrefix opens the text of a `budget` incident the observer filed
@@ -146,9 +156,10 @@ func OpenIncidents(v View, crew string) []Incident {
 // BlockingIncidents is OpenIncidents narrowed to the two kinds that make a
 // crew `blocked` (mvp.md section 4b, decision 2026-09-20): `stale` and
 // `runtime_lost` - a crew that has stopped being able to speak for itself.
-// `budget` (and `wedged`, which is never filed under a real crew) are
-// deliberately excluded: going over budget does not mean the crew stopped
-// talking, so it must stay an inbox item, not a state that displaces
+// `budget`, `no_turn` (and `wedged`, which is never filed under a real
+// crew) are deliberately excluded: going over budget, or never having
+// taken a turn, does not mean the crew stopped talking, so each stays an
+// inbox item, not a state that displaces
 // `working`/`needs-decision`/`wait-mate`.
 func BlockingIncidents(v View, crew string) []Incident {
 	var out []Incident

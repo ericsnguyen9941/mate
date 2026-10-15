@@ -47,6 +47,14 @@ type ProjectConfig struct {
 // (internal/timeline) already import this package.
 const MetaBudget = "budget"
 
+// MetaFollowups is the crew `.meta` key `mate merge --followups` writes
+// (CON-74): where the findings a passing review left standing were
+// recorded before the merge - a `backlog:<text>` line under the project's
+// `## Queued`, or a tracker issue id such as `HVN-12`. It is the record a
+// reader of the closed crew (`mate usage`, the Office) can show for "what
+// happened to the reviewer's findings".
+const MetaFollowups = "followups"
+
 // BudgetConfig is `project.yaml`'s `budget:` block. Every field is optional
 // and a zero value means "no limit on this dimension" - hand-editing the
 // file to add one line is the whole interface for the MVP; `project add
