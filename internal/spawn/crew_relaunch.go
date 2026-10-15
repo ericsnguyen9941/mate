@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/brief"
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
@@ -166,12 +167,15 @@ func RelaunchCrew(ctx context.Context, w *store.Workspace, deps Deps, project, c
 		return RelaunchResult{}, err
 	}
 	plan := crewPlan{
-		project:     project,
-		crew:        crew,
-		kind:        kind,
-		profile:     profile,
-		model:       meta[MetaModel],
-		effort:      harness.Effort(strings.TrimSpace(meta[MetaEffort])),
+		project: project,
+		crew:    crew,
+		kind:    kind,
+		profile: profile,
+		model:   meta[MetaModel],
+		effort:  harness.Effort(strings.TrimSpace(meta[MetaEffort])),
+		// size is kept for the harness profile only: the brief on disk
+		// already has the shape it chose.
+		size:        brief.Size(strings.TrimSpace(meta[MetaSize])),
 		branch:      meta[MetaBranch],
 		worktree:    worktree,
 		repoCfg:     repoCfg,

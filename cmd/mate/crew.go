@@ -10,7 +10,6 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/harness"
-	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -37,24 +36,22 @@ func cmdCrew(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 }
 
 // cmdCrewSpawn implements
-// `mate crew spawn <project> <id> --brief <file> [--repo <name>] [--scout] [--harness codex|claude] [--model <name>] [--effort <level>] [--budget <tokens>] [--task "<one line>"]`.
+// `mate crew spawn <project> <id> --brief <file> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--harness codex|claude] [--model <name>] [--effort <level>] [--task "<one line>"]`.
 func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("crew spawn", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, `usage: mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--workspace <dir>] [--harness `+harnessChoices(harness.RoleCrew, "|")+`] [--model <name>] [--effort low|medium|high|xhigh|max] [--budget <tokens>] [--task "<one line>"]`)
+		fmt.Fprintln(stderr, `usage: mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--workspace <dir>] [--harness `+harnessChoices(harness.RoleCrew, "|")+`] [--model <name>] [--effort low|medium|high|xhigh|max] [--task "<one line>"]`)
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	scoutFlag := fs.Bool("scout", false, "a scout: the brief has ## Deliverable and the crew writes a report instead of committing")
-	// --size (CON-72) may later imply a budget when none is passed; this
-	// command records only what it is told.
-	budgetFlag := fs.Int64("budget", 0, "token budget from the dispatch rule the task matched; the observer reports the crew at half of it without a hand-back and at all of it (default: the project's budget.crew_tokens, if any)")
 	harnessFlag := fs.String("harness", "", "harness to launch ("+harnessChoices(harness.RoleCrew, " or ")+"; default: the dispatch table's default profile)")
 	modelFlag := fs.String("model", "", "model the harness runs, as it names it (default: the harness's own)")
 	effortFlag := fs.String("effort", "", "reasoning effort: low, medium, high, xhigh or max (default: the harness's own)")
 	briefFlag := fs.String("brief", "", "file holding the task text, or - to read it from stdin")
 	repoFlag := fs.String("repo", "", "the project repo the crew works in (required when the project has several)")
 	deliverFlag := fs.String("deliver", "", "how a ship's work lands: local (fast-forward on the primary checkout, the default) or pr (push the branch and open a pull request; needs gh logged in and origin on GitHub)")
+	sizeFlag := fs.String("size", "", "how big the task is: small, medium (the default) or large; picks the hand-back shape and evidence level the brief asks of a ship")
 	taskFlag := fs.String("task", "", "one line recorded as task= (default: the brief's first line)")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
@@ -67,10 +64,7 @@ func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) erro
 		fs.Usage()
 		return newUsageError("mate crew spawn: --brief is required")
 	}
-	if *budgetFlag < 0 {
-		return newUsageError("mate crew spawn: --budget wants a positive number of tokens")
-	}
-	req := spawn.SpawnCrewRequest{Project: fs.Arg(0), Crew: fs.Arg(1), Task: *taskFlag, Scout: *scoutFlag, Repo: *repoFlag, Delivery: *deliverFlag, Budget: *budgetFlag}
+	req := spawn.SpawnCrewRequest{Project: fs.Arg(0), Crew: fs.Arg(1), Task: *taskFlag, Scout: *scoutFlag, Repo: *repoFlag, Delivery: *deliverFlag, Size: *sizeFlag}
 	if *briefFlag == "-" {
 		text, err := spawn.ReadBriefStdin(stdin)
 		if err != nil {
@@ -144,8 +138,8 @@ func writeCrewSpawnReport(stdout, stderr io.Writer, w *store.Workspace, res spaw
 	if res.EffortOmitted {
 		fmt.Fprintf(stderr, "note: %s does not take effort %s; it was recorded and left out of the launch\n", res.Harness, res.Effort)
 	}
-	fmt.Fprintf(stdout, "spawned %s/%s: agent %s in pane %s (harness %s%s%s, repo %s, branch %s%s, worktree %s)\n",
-		res.Project, res.Crew, res.Agent, res.Pane, res.Harness, profileNote(res), budgetNote(res.Budget), res.Repo, res.Branch, deliveryNote(res.Delivery), res.Worktree)
+	fmt.Fprintf(stdout, "spawned %s/%s: agent %s in pane %s (harness %s%s, repo %s, branch %s%s, worktree %s)\n",
+		res.Project, res.Crew, res.Agent, res.Pane, res.Harness, profileNote(res), res.Repo, res.Branch, deliveryNote(res.Delivery), res.Worktree)
 	fmt.Fprintf(stdout, "brief %s\nstatus %s\n", res.BriefPath, res.StatusPath)
 	printTurnEnd(stdout, turnSpawnLine(res.Crew))
 }
@@ -377,14 +371,6 @@ func deliveryNote(delivery string) string {
 		return ", delivers a pull request"
 	}
 	return ""
-}
-
-// budgetNote is ", budget 2M tokens" when the crew was recorded with one.
-func budgetNote(budget int64) string {
-	if budget <= 0 {
-		return ""
-	}
-	return ", budget " + query.HumanizeTokens(budget) + " tokens"
 }
 
 func profileNote(res spawn.CrewResult) string {

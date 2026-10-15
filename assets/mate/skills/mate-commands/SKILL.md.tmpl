@@ -22,7 +22,7 @@ Exit 2 is a usage mistake you made, exit 1 is a refusal or a real failure, and t
 ### Crew lifecycle
 
 ```text
-mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--workspace <dir>] [--harness codex|claude] [--model <name>] [--effort low|medium|high|xhigh|max] [--task "<one line>"]
+mate crew spawn <project> <id> --brief <file|-> [--repo <name>] [--scout] [--deliver local|pr] [--size small|medium|large] [--workspace <dir>] [--harness codex|claude] [--model <name>] [--effort low|medium|high|xhigh|max] [--task "<one line>"]
 mate crew dispatch [--workspace <dir>] [--example]
 mate crew list <project> [--workspace <dir>]
 mate crew relaunch <project> <id> [--note "<one line>"] [--workspace <dir>]
@@ -37,6 +37,7 @@ Before it creates anything, `crew spawn` runs the check `brief check` runs (belo
 `--scout` makes the task a scout (section 5): the brief must then have a `## Deliverable`, and the Crew is told to write its report to `{{.CrewsDir}}/<id>/report.md` instead of committing.
 Without `--scout` it is a ship, and a `## Deliverable` is refused.
 `--deliver` is how a ship lands, your choice per task (section 9): `local` (the default) has the Crew commit on its branch for `mate merge` to fast-forward; `pr` has it push the branch and open a GitHub pull request, watched until it ends. `pr` checks that `gh` is logged in and the repo's `origin` points at GitHub, and refuses with what to fix otherwise; a scout takes only `local`.
+`--size` is how big the task is, from the dispatch rule that matched it (the `crew-dispatch` skill): `small`, `medium` (the default) or `large`; anything else is refused (exit 2). It picks the hand-back shape the brief asks of a ship, and is recorded as `size=` in the Crew's record. `small` asks for a hand-back of about 30 lines, two or three quoted result lines per `verify:`, and no baseline run when the number is already in the repo's docs or logs; `medium` is the usual shape; `large` is the usual shape with a `## For the next crew` written in full. A scout's report is the same at every size.
 `--task "<one line>"` is the label recorded in the crew's record and shown by `crew list`; without it the first line of the brief's `## Captain's words` is used.
 `--harness`, `--model` and `--effort` are the Crew's launch profile; section 7 and the `crew-dispatch` skill say how to choose them.
 Without `--harness` the Crew runs the table's `default` profile on the workspace default harness, which is Codex, with a note on stderr; `--model` or `--effort` without `--harness` is refused (exit 2), because a model name belongs to one harness.

@@ -89,6 +89,51 @@ func Sections(k Kind) []string {
 // AllSections is every section name the check recognises, scout included.
 func AllSections() []string { return Sections(Scout) }
 
+// Size is how big a ship is, the Mate's estimate from the dispatch rule
+// that matched (CON-72). It picks the hand-back shape and how much evidence
+// the crew template asks for, nothing in the brief's own schema: Check and
+// Sections never read it.
+type Size string
+
+const (
+	// SizeSmall is a chore: a hand-back of about 30 lines, numbers the
+	// repository already holds cited rather than measured again, and a few
+	// quoted result lines per `verify:`.
+	SizeSmall Size = "small"
+	// SizeMedium is the default shape, the one every ship had before sizes.
+	SizeMedium Size = "medium"
+	// SizeLarge is the default shape plus a `## For the next crew` written
+	// in full.
+	SizeLarge Size = "large"
+)
+
+// Sizes lists the sizes a `crew spawn --size` takes, in the order they grow.
+var Sizes = []Size{SizeSmall, SizeMedium, SizeLarge}
+
+// ParseSize reads a `--size` value. Empty is SizeMedium; anything else
+// outside Sizes is an error naming the choices.
+func ParseSize(s string) (Size, error) {
+	if s == "" {
+		return SizeMedium, nil
+	}
+	for _, size := range Sizes {
+		if Size(s) == size {
+			return size, nil
+		}
+	}
+	return "", fmt.Errorf("--size wants %s, got %q", sizeChoices(), s)
+}
+
+func (s Size) String() string { return string(s) }
+
+func sizeChoices() string {
+	names := make([]string, len(Sizes))
+	for i, s := range Sizes {
+		names[i] = string(s)
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+}
+
 // Problem is one violation: the section it is about and what is wrong.
 type Problem struct {
 	// Section is the heading the problem is about, as written in a brief
