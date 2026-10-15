@@ -97,7 +97,7 @@ MATE_CALLER=crew
 
 == files the launch created or changed ==
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3.meta mode=-rw-r--r-- bytes=351 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3.meta mode=-rw-r--r-- bytes=362 ---
 agent=crew-k3
 branch=mate/k3
 delivery=local
@@ -108,6 +108,7 @@ pane=w1:p2
 repo=shop
 session={{HERDR_SESSION}}
 session_id=11111111-2222-3333-4444-555555555555
+sessions=1
 size=medium
 started_at=2026-09-17T10:00:00Z
 state=spawned

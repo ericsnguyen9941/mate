@@ -16,3 +16,7 @@ TestLiveClaudeMCPProbe
 # calls its tool, fresh and resumed (docs/evidence/claude-mcp-probe-2026-10-12.md,
 # "PR 4 verification"); already covered by TestLive*, listed by name.
 TestLiveClaudeMateLaunchMCP
+# A real Codex crew that handed back gets a fresh session from the Mate's findings
+# (CON-73): same worktree and branch, the four-part session input on disk, the new
+# agent live; already covered by TestLive*, listed by name so the claim is reviewable.
+TestLiveCrewFreshSessionAfterFindings

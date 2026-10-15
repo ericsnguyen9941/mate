@@ -566,6 +566,7 @@ func spawnInWorktree(ctx context.Context, w *store.Workspace, deps Deps, saga *c
 		MetaSize:       plan.size.String(),
 		store.MetaRepo: plan.repoCfg.Name,
 		MetaSessionID:  sessionID,
+		MetaSessions:   "1",
 		MetaTranscript: "",
 		MetaStartedAt:  startedAt.Format(time.RFC3339),
 		MetaLaunchedAt: launchedAt.Format(time.RFC3339),

@@ -79,9 +79,10 @@ func cmdBriefAppend(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 	fs := flag.NewFlagSet("brief append", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate brief append <project> <crew> [-] [--workspace <dir>]   (the captain's words on stdin)")
+		fmt.Fprintln(stderr, "usage: mate brief append <project> <crew> [-] [--fresh] [--workspace <dir>]   (the captain's words on stdin)")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
+	fresh := fs.Bool("fresh", false, "open a fresh session for the crew with the appended words as the Mate's message, even if it is still working")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
 	}
@@ -104,7 +105,7 @@ func cmdBriefAppend(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 	if err != nil {
 		return err
 	}
-	res, err := briefAppend(context.Background(), w, liveDeps(w, stderr), fs.Arg(0), fs.Arg(1), words, source, time.Now())
+	res, err := briefAppend(context.Background(), w, liveDeps(w, stderr), fs.Arg(0), fs.Arg(1), words, source, time.Now(), *fresh)
 	if res.Appended {
 		fmt.Fprintf(stdout, "appended the captain's words to %s %s\n", res.BriefPath, res.Added)
 	}
@@ -114,6 +115,10 @@ func cmdBriefAppend(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 			fmt.Fprintf(stderr, "the words are in the brief but the crew was not told; once it is free, run: mate send %s %s %q\n", fs.Arg(0), fs.Arg(1), res.Line)
 		}
 		return err
+	}
+	if res.Fresh != nil {
+		writeFreshSessionReport(stdout, fs.Arg(0), fs.Arg(1), res.Verb, source, *res.Fresh)
+		return nil
 	}
 	fmt.Fprintln(stdout, sendSummaryLine(res.Report))
 	return nil
@@ -127,13 +132,24 @@ type briefAppendResult struct {
 	Added     string
 	Line      string
 	Report    send.Report
+	// Fresh is the fresh session the words opened (CON-73) - on a resting
+	// crew, or on any crew with --fresh - and Verb the hand-back verb that
+	// made the crew resting ("spec change" with --fresh on a working
+	// crew). Nil when the words were typed into the pane.
+	Fresh *spawn.RelaunchResult
+	Verb  string
 }
 
 // briefAppend is brief append's core, separate from flag parsing so a test
 // can drive it over a fake runtime. It refuses before touching the brief
 // when the crew has no live agent to tell, because words nobody is told
 // about are a brief that disagrees with the work in flight.
-func briefAppend(ctx context.Context, w *store.Workspace, deps spawn.Deps, project, crew, words, source string, now time.Time) (briefAppendResult, error) {
+//
+// A crew that has handed back is resting (CON-73): the words are a spec
+// change for a fix round, so after the append the crew gets a fresh
+// session whose third part is the appended text, not a line in its old
+// pane; fresh forces the same on a crew still working.
+func briefAppend(ctx context.Context, w *store.Workspace, deps spawn.Deps, project, crew, words, source string, now time.Time, fresh bool) (briefAppendResult, error) {
 	res := briefAppendResult{BriefPath: w.CrewBrief(project, crew)}
 	if err := store.ValidateProjectName(project); err != nil {
 		return res, err
@@ -167,6 +183,25 @@ func briefAppend(ctx context.Context, w *store.Workspace, deps spawn.Deps, proje
 	res.Appended = true
 	res.Added = brief.AddedLine(now)
 	res.Line = briefAppendLine(res.BriefPath, res.Added)
+	meta, err := w.ReadCrewMeta(project, crew)
+	if err != nil {
+		return res, err
+	}
+	resting, verb, err := restingCrew(w, project, crew, meta)
+	if err != nil {
+		return res, err
+	}
+	if fresh && !resting {
+		verb = "spec change"
+	}
+	if fresh || resting {
+		session, err := freshSession(ctx, w, deps, project, crew, strings.TrimSpace(words), source)
+		if err != nil {
+			return res, err
+		}
+		res.Fresh, res.Verb = &session, verb
+		return res, nil
+	}
 	res.Report, err = sendToCrew(ctx, w, deps, project, crew, res.Line, source, send.Options{})
 	return res, err
 }

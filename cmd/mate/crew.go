@@ -319,6 +319,9 @@ func writeCrewRelaunchReport(stdout io.Writer, res spawn.RelaunchResult) {
 		fmt.Fprintf(stdout, "warning: %s\nlast pane lines:\n%s\n", res.DeliveryWarning, res.PaneTail)
 	}
 	fmt.Fprintf(stdout, "brief %s\n", res.BriefPath)
+	if res.InputPath != "" {
+		fmt.Fprintf(stdout, "input %s\n", res.InputPath)
+	}
 	printTurnEnd(stdout, turnRelaunchLine(res.Crew))
 }
 
