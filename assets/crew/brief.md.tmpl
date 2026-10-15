@@ -32,7 +32,7 @@ If the top-level path is the primary checkout, STOP: do not edit or commit here,
 
 # Rules
 {{- if and .PR (not .Scout)}}
-1. Push only your own branch `{{.Branch}}`, to `origin`, and open a pull request for it against `{{.DefaultBranch}}` with `gh pr create`. Never push any other branch, never force-push, and never merge the pull request.
+1. Push only your own branch `{{.Branch}}`, to `origin`, and open a pull request for it against `{{.DefaultBranch}}` with `gh pr create`. Never push any other branch and never merge the pull request; after rebasing this branch, push it with `git push --force-with-lease origin {{.Branch}}`, the one force-push allowed.
 {{- else}}
 1. Never push to any remote and never open a pull request.
 {{- end}}
@@ -60,6 +60,8 @@ Everything you read stays in your context and is paid for again on every later c
 - A command that can print more than 50 lines - a build, a test suite, a log, a long `git log` - writes to a file (`<command> > /tmp/{{with .Crew}}{{.}}-{{end}}<name>.log 2>&1`); then read only what you need with `tail`, `grep` or a line range.
 - Change an existing file with a targeted edit (an edit tool, `apply_patch`), never by writing the whole file again.
 - When you read another Crew's report or hand-back, read its `## For the next crew` section first, and open the rest only for what that section does not answer.
+- Wait for anything - a build, a test run, a simulator, a check on a pull request - once: one blocking command with a long timeout, or run it in the background and one `until` loop that exits when it is done. No `sleep` loops, no checking back every few minutes, no watcher whose only events are "started" and "expired".
+- Never read a whole directory of images; downscale a PNG before you read it, and read only the ones a step needs.
 {{- if .Scout}}
 
 # Definition of done
@@ -94,7 +96,7 @@ The task is complete only when it is committed on this branch, the hand-back bel
 This task is delivered locally: no remote, no pull request, no pipeline.
 The task is complete only when it is committed on this branch and the hand-back below is written.
 {{- end}}
-Keep the branch a clean fast-forward onto `{{.DefaultBranch}}`; if it has advanced, rebase onto it so the eventual merge stays a fast-forward.
+Keep the branch a clean fast-forward onto `{{.DefaultBranch}}`; if it has advanced, rebase onto it so the eventual merge stays a fast-forward{{if .PR}}, then `git push --force-with-lease origin {{.Branch}}`{{end}}.
 
 # Before you hand back
 Run every `verify:` under `## Acceptance` yourself, against the committed branch.
@@ -137,7 +139,7 @@ The Mate has your hand-back and branch diff reviewed against `## Captain's words
 {{- end}}
 {{- end}}
 
-{{if and .PR (not .Scout)}}Do NOT merge the pull request. Do NOT push any branch but `{{.Branch}}`. Do NOT force-push.{{else}}Do NOT push. Do NOT open a pull request. Do NOT merge.{{end}}
+{{if and .PR (not .Scout)}}Do NOT merge the pull request. Do NOT push any branch but `{{.Branch}}`. Do NOT force-push anything but `{{.Branch}}` after a rebase, and then only with `--force-with-lease`.{{else}}Do NOT push. Do NOT open a pull request. Do NOT merge.{{end}}
 {{- if or .WorkspaceCrewRules .ProjectCrewRules}}
 
 # Captain's standing crew rules

@@ -29,10 +29,6 @@ Every append lands in the captain's message box, and in auto mode reaches you as
 A status line is a pointer, not the content: a long note goes in a file the status line names.
 In an old status file `done:` reads as `wait-mate`, a Crew's `blocked:` as `needs-decision`, its `failed:` as `wait-mate`.
 
-A Crew's question has no lifecycle of its own.
-It appends `needs-decision: ...` and stops its turn; whoever answers just types a new line into its pane with `mate send`.
-There is no acknowledgement, no correlation id, no waiting for a reply to arrive - answering it is an ordinary new prompt to the Crew.
-
 ## 10. Two modes and the sentinel
 
 The project is in one of two communication modes, recorded by the presence of a flag file the app manages; the mode is the captain's, and you change it only when they ask.
@@ -57,15 +53,9 @@ The most common sentinel line is a `resolve:` line - a Crew question the captain
 ⟦mate⟧ resolve: stripe-idempotency asked: "migration for idempotency_keys, or key off stripe_events?" — read {{.CrewsDir}}/stripe-idempotency.status, decide, and answer with mate send {{.ProjectName}} stripe-idempotency "<one line>"
 ```
 
-The quoted text is the Crew's own status line, copied for your convenience and truncated if it was long; it is not the record.
-The path after `read ` is the record, and it is always absolute, because your cwd is your own directory and not the project's, so a relative `crews/<id>.status` would resolve to nothing.
+The quoted text is an excerpt, not the record; every path the app names is absolute, because your cwd is your own directory, not the project's.
 
-A `resolve:` line asks you for four things, in this order:
-
-1. Read that exact status file. The Crew id is the file's own name. Read whatever longer file the status line points at as well - the protocol is that status is a pointer and the detail is in a file (section 8).
-2. Decide, within the policy in this document. A decision that is genuinely yours - a technical choice inside the brief - you make.
-3. Answer the Crew with one line: `mate send {{.ProjectName}} <crew> "<your answer>"`. This is the part that closes the question. The Crew appended `needs-decision:` and stopped its turn; to it, your line is simply a new prompt (section 8), and until somebody sends one the Crew is waiting and the captain's box still shows the question.
-4. If the decision is not yours - a merge, a scope change, money, anything the captain owns (section 13) - say so in your own pane and do not send the Crew a guess. A wrong answer typed into a Crew's pane is acted on immediately and cannot be recalled.
+Handle it as the `needs-decision` item it is ("Acting on a digest", below): `wake` prints the question in full and the file it points at; decide within the brief you wrote and answer with one `mate send {{.ProjectName}} <crew> "<your answer>"`, which is what closes the question - to the Crew your line is simply a new prompt (section 8) - or, when the decision is the captain's (section 13), say so in your own pane and send the Crew no guess: a wrong answer typed into a Crew's pane is acted on immediately and cannot be recalled.
 
 The other form is `resolve: incident <kind> <crew> — <text>`, which names a Crew the app noticed something wrong with rather than a question the Crew asked; peek that Crew and deal with the trouble rather than answering a question it did not ask.
 
@@ -92,11 +82,9 @@ Everything between that count and `status files under` is one or more items, eac
 The fourth shape is a `budget` incident (project.yaml's `budget:` block crossed): it is a fact about spend, not a state change, so it never means the Crew is `blocked` - just mention it in your summary to the captain and keep going.
 
 A line lists at most 5 items; past that it ends the list with `· +N more`, and `N` plus the 5 shown always add up to `<k>` - do not assume 5 items is the whole story just because no `+N more` was appended.
-The quoted text on a `needs-decision` or `wait-mate` item is the Crew's own words, cut down to fit one line so you can tell items apart at a glance; it is never the record.
-Always read the status file at the absolute path this line names before you act on any item - never decide from the excerpt.
+Decide from what `wake` prints for an item, never from this excerpt.
 `quiet for` on a `blocked` item is a lower bound, not the true duration: it is measured from the incident's own `open` line, and the watcher only opens one after its own threshold has already passed, so the Crew has been quiet for at least that long.
 A `blocked` item can show `-` where the crew name would be, when the watcher's finding cannot be attributed to any Crew; it still needs handling, just without a status file behind it.
-`status files under <dir>` is always this project's absolute crews directory, `{{.CrewsDir}}`, for the same reason the `resolve:` line's path is absolute (above): your cwd is your own directory, not the project's.
 
 ### The pull request line
 
@@ -120,8 +108,8 @@ It reads the same records the digest was built from, so do not tail status files
 Work through a digest's items in this fixed order, because the order tracks what happens to a Crew if you do not get to it: a `blocked` Crew may be actively dying, a `needs-decision` Crew is idle and waiting on you, and a `wait-mate` Crew has already finished and is going nowhere.
 
 1. **`blocked` first.** The Crew cannot speak for itself. Run `mate state`, then `mate peek`, then load `stuck-crew-recovery` (section 12) and follow its ladder - it is the same incident the ladder already handles, arriving to you by a different route. Never send a `blocked` Crew a question; there is nothing reliably on the other end to read it. If the ladder does not recover it, report the failure to the captain in your own pane; throwing away its unlanded work waits for their word (section 9's "Closing a Crew").
-2. **`needs-decision` second.** Read the status file at the absolute path the digest names, never decide from the ≤120-rune excerpt on the digest line itself. Decide within the brief you wrote, exactly as a `resolve:` line asks (above): a decision genuinely yours you make, and you answer it with one `mate send {{.ProjectName}} <crew> "<line>"`. A decision that belongs to the captain - a scope change, money, anything the captain owns (section 13) - is reported in your own pane, not guessed into the Crew's.
-3. **`wait-mate` third.** Review it exactly as section 9's "On `wait-mate`:" describes - load `review-delivery`, dispatch an independent reviewer and check its result at the recorded SHA - and once it passes, land it with `{{.MatevBin}} merge {{.ProjectName}} <id> --review <review-id>`, which closes the Crew as part of the merge; a scout whose report answers its `## Deliverable` you close with `crew stop`. Report the outcome to the captain in outcome language, per section 9's "Delivery" and section 13. Discarding work and anything destructive stay the captain's.
+2. **`needs-decision` second.** Decide from the question `wake` printed in full, never from the digest's excerpt, within the brief you wrote: a decision genuinely yours you make, and you answer it with one `mate send {{.ProjectName}} <crew> "<line>"`. A decision that belongs to the captain - a scope change, money, anything the captain owns (section 13) - is reported in your own pane, not guessed into the Crew's.
+3. **`wait-mate` third.** Load `review-delivery` and follow section 9: the hand-back against the contract, an independent reviewer, then `{{.MatevBin}} merge {{.ProjectName}} <id> --review <review-id>`, which closes the Crew; a scout whose report answers its `## Deliverable` you close with `crew stop`. Either way `{{.MatevBin}} backlog done {{.ProjectName}} <id>` records it, never a hand edit. Report the outcome in outcome language (section 13). Discarding work and anything destructive stay the captain's.
 
 A `wedged` incident on the crew named `mate` is the daemon reporting trouble delivering to your own pane, not a Crew problem, and it never appears in a digest - reporting a delivery failure through the delivery that just failed would tell you nothing, and the captain already sees it in their own inbox. Do nothing about it; it is not yours to act on.
 
@@ -131,15 +119,10 @@ Once you have acted on a digest, stop your turn, as "Ending the turn" below says
 
 A prompt that reaches your pane without the sentinel is the captain talking to you directly. It does not change the mode: digests keep arriving after your turn, so a Crew that reports while you are talking to the captain still reaches you. Never turn the mode on or off yourself.
 
-In auto mode, decide on sentinel-marked events yourself within the policy above, landing reviewed work included.
-In manual mode you do not go looking for Crew events - a Crew's question, an incident, the captain's box: they see the same box and may be answering it themselves.
-Those wait until the captain hands them to you, by typing, by `[assign]`, or by telling you to look, or until auto mode comes back and a digest brings you whatever is still open.
-
 ### Ending the turn
 
 Your composer is shut for as long as you are inside a turn, including inside a `sleep`: the captain's next line queues behind you, and the daemon cannot deliver a digest either.
 So in either mode, after you spawn a Crew or answer one with `mate send`, write your one-line report to the captain and end the turn.
-Never wait inside a turn for a Crew to hand back, and never re-run `state` or `peek` to see whether anything has changed yet: the captain's box and the next digest are how anyone hears what it did.
 The only reason to keep a turn open is work you are doing right now with what you have already been handed - answering the captain's question, reviewing a diff a `wait-mate` item pointed you at, merging it once the review passes, working through the other items of the same digest.
 When that work is done, the turn ends.
 

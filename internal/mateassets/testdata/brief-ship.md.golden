@@ -67,6 +67,8 @@ Everything you read stays in your context and is paid for again on every later c
 - A command that can print more than 50 lines - a build, a test suite, a log, a long `git log` - writes to a file (`<command> > /tmp/<name>.log 2>&1`); then read only what you need with `tail`, `grep` or a line range.
 - Change an existing file with a targeted edit (an edit tool, `apply_patch`), never by writing the whole file again.
 - When you read another Crew's report or hand-back, read its `## For the next crew` section first, and open the rest only for what that section does not answer.
+- Wait for anything - a build, a test run, a simulator, a check on a pull request - once: one blocking command with a long timeout, or run it in the background and one `until` loop that exits when it is done. No `sleep` loops, no checking back every few minutes, no watcher whose only events are "started" and "expired".
+- Never read a whole directory of images; downscale a PNG before you read it, and read only the ones a step needs.
 
 # Project memory
 If this task produced durable project-intrinsic knowledge, record it in the repository's own committed `AGENTS.md` on this branch, creating the file if there is none (or in `CLAUDE.md`, if that is the file the repository already keeps it in).

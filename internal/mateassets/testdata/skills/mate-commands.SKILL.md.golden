@@ -262,7 +262,7 @@ mate backlog <project> [--all] [--workspace <dir>]
 ```
 
 `mate backlog` prints one row per open crew - ID, STATE, AGE since it was spawned, BRANCH, TASK and LAST (the text of its own last status line) - sorted oldest first, with a footer of `<n> open, <m> closed` and, when any row is `wait-mate`, `needs-decision` or `blocked`, an `attention: <ids>` line naming exactly which. `--all` adds the closed rows.
-It is a read of `.meta` and `.status` and nothing else: it never writes `/ws/.mate/projects/shop/mate/backlog.md`, so reconciling your own `## In flight`, `## Queued` and `## Done` against its table at bootstrap (section 3) is still your hand, every time; `## Held for the captain` has no Crew behind it, so no table can remind you of it (section 13).
+It is a read of `.meta` and `.status` and nothing else; reconciling your own `## In flight`, `## Queued` and `## Done` against its table at bootstrap (section 3) is `backlog add`, `move` and `done` (below), never a hand edit; `## Held for the captain` has no Crew behind it, so no table can remind you of it (section 13).
 
 ### Review
 

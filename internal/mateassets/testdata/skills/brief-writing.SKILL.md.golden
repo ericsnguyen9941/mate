@@ -56,6 +56,13 @@ When the captain's request was split across repos (section 5), each brief carrie
 
 Run `/usr/local/bin/mate brief check /ws/.mate/projects/shop/mate/briefs/<id>.md` (with `--scout` for a scout) before you spawn, and fix every line it prints; `crew spawn` refuses the same brief anyway (section 4).
 
+**Settle before you spawn.** A brief that carries a guess costs more than the question would have:
+
+- A criterion checked by a string or a number is tried before the spawn - on an earlier hand-back or report, a log one of them names, or the default branch through one read-only command when nowhere else can show it - and one you cannot make pass goes to `## Open decisions` or to the captain, never into the brief as it stands.
+- A diagnosis in the captain's words ("the unit job has one test and prints Executed 0 tests") goes under `## What we already know` labelled `verified (<source>)` or `unverified`; while unverified it is never an acceptance criterion.
+- "Try both ways" in `## Build` carries a cap and a stop condition: "B has failed before (ios-gotchas:25); one build each, and stop and record it when the same trap repeats".
+- A task on the table's small rule (`crew-dispatch`) gets a `## Build` that says so: no baseline run when the numbers are already in a document or a log, a hand-back of about 30 lines, and `verify:` quoting a few lines of output, not every line of both runs.
+
 The app wraps your sections in the Crew template, which already supplies the worker role, the worktree assertion, the rule that stops the Crew at every open decision, the status protocol, the hand-back a ship writes to `/ws/.mate/projects/shop/crews/<id>/handback.md`, the report path and report structure of a scout, the project-memory rule, the definition of done for the delivery you chose at spawn (`--deliver local`: nothing pushed; `--deliver pr`: push the branch and open a pull request), and the captain's CREW.md rules.
 Do not restate any of that; keep each section to what this task needs.
 

@@ -77,7 +77,7 @@ Every kind of knowledge has one owner. The recall digest frames these files; do 
 | Preferences and authority boundaries | `/ws/.mate/projects/shop/mate/memory.md` `## Captain` |
 | Operational lessons about Crews, harnesses or mate | memory.md `## Lessons`; no repository facts or report copies |
 | Task plan | The captain's task workflow in WORKSPACE.md, PROJECT.md or a user skill |
-| Crew notes and promises | `/ws/.mate/projects/shop/mate/backlog.md`: `## In flight`, `## Held for the captain`, `## Queued`, `## Done` (10 most recent); reconcile against live crews |
+| Crew notes and promises | `/ws/.mate/projects/shop/mate/backlog.md`: `## In flight`, `## Held for the captain`, `## Queued`, `## Done` (10 most recent); written with `mate backlog add|move|done`, by hand only under `## Held for the captain` |
 | Questions sent to captain | backlog.md `## Held for the captain`, verbatim with date and next action |
 | Code details | Repository AGENTS.md, committed by a Crew |
 | Task evidence | `/ws/.mate/projects/shop/crews/<id>/` brief, hand-back and report |
@@ -111,7 +111,7 @@ Run this at every session start, in order:
    If it is not in your context, or it ends with a `recall cut to fit` line, run `/usr/local/bin/mate recall shop` yourself, once.
 2. Read it once, top to bottom, and act on it.
    Do not read the files it framed again this session unless a part says `ABSENT`, looks corrupt, or was cut.
-3. Reconcile your own `/ws/.mate/projects/shop/mate/backlog.md` against part 1: part 4 names every `## In flight` id that is not an open crew, which you close or requeue, and every open crew with no line there, which you add.
+3. Reconcile your own `/ws/.mate/projects/shop/mate/backlog.md` against part 1: part 4 names every `## In flight` id that is not an open crew, which you close (`/usr/local/bin/mate backlog done shop <id>`) or requeue (`backlog move`), and every open crew with no line there, which you add (`backlog add`).
    `## Held for the captain` is what you owe the captain, and no table reminds you of it (section 13).
 4. When part 7 reports a problem - over budget, a stale entry, a missing anchor - load `stow` and fix it before the files grow further.
 5. Decide whether `/ws/.mate/projects/shop/PROJECT.md` can do its job: say what the project and each of its repos are, how each is laid out, how to build, test and run it, and what state it is in.
