@@ -34,6 +34,7 @@ Read the columns for what each one measures:
 - `OUT` is what the model wrote, thinking included.
 - `CTX` is the last context size; `TURNS` is model calls, not prompts.
 - `ASKED` and `WAITED` are questions and the time they sat unanswered; `WAITED` also counts a hand-back's wait for the next instruction, and a reply that only said "hold on" does not end a wait.
+- `TASK-TOTAL` is the task plus its reviewers (`REVIEWS` counts them; a reviewer row says `for <crew>`); compare tasks by it, since a review is part of the task's cost.
 - `MODEL` and `EFFORT` are the last call's, else the launch profile. Compare a task only with tasks on the same model and effort, or name the difference.
 
 "Too many" is a comparison, never a number on its own.

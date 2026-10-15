@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -255,5 +256,82 @@ func TestUsageShowsModelAndEffortFromTheTurnOrTheLaunchProfile(t *testing.T) {
 	turns := runCLI(t, "usage", "shop", "k3", "--workspace", w.Root())
 	if !strings.Contains(strings.Split(turns, "\n")[0], "EFFORT") {
 		t.Fatalf("per-turn header lacks EFFORT:\n%s", turns)
+	}
+}
+
+// A task's reviewers roll into it (CON-75): TASK-TOTAL is the task plus
+// every reviewer mate review started for it, REVIEWS counts them, and a
+// reviewer row says which task it reviewed. --top ranks by TASK-TOTAL and
+// keeps each shown task's reviewers under it; the footer still counts
+// every row once.
+func TestUsageRollsReviewersIntoTheirTask(t *testing.T) {
+	w := usageWorkspace(t)
+	for id, meta := range map[string]map[string]string{
+		"rev": {"harness": "claude", "task": "Review k3 at abc", "state": "spawned"},
+		"big": {"harness": "claude", "task": "unrelated", "state": "spawned"},
+		"old": {"harness": "claude", "task": "Review k3 at 000", "state": "finished"},
+	} {
+		if err := w.WriteCrewMeta("shop", id, meta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.AddCrewReview("shop", "k3", "rev"); err != nil {
+		t.Fatal(err)
+	}
+	// A reviewer from before reviews= existed links through its review.meta.
+	if err := store.WriteMeta(w.CrewReviewMeta("shop", "old"), map[string]string{"crew": "k3", "head": "000"}); err != nil {
+		t.Fatal(err)
+	}
+	handle, err := db.Open(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedActorTurnAndPricing(t, handle, timeline.CrewActorID("shop", "rev"), "shop", "crew", "unpriced-model", 10_000, 0, 0, 1_000, 200_000)
+	seedActorTurnAndPricing(t, handle, timeline.CrewActorID("shop", "old"), "shop", "crew", "unpriced-model", 2_000, 0, 0, 0, 200_000)
+	seedActorTurnAndPricing(t, handle, timeline.CrewActorID("shop", "big"), "shop", "crew", "unpriced-model", 100_000, 0, 0, 0, 200_000)
+	handle.Close()
+
+	out := runCLI(t, "usage", "shop", "--workspace", w.Root())
+	row := func(id string) []string {
+		t.Helper()
+		for _, line := range strings.Split(out, "\n") {
+			if f := strings.Fields(line); len(f) > 0 && f[0] == id {
+				return f
+			}
+		}
+		t.Fatalf("no row for %s:\n%s", id, out)
+		return nil
+	}
+	// k3: 97.2k own + rev 11k + old 2k = 110.2k with 2 reviews.
+	if f := row("k3"); f[9] != "97.2k" || f[10] != "110.2k" || f[11] != "2" {
+		t.Fatalf("k3 row = %v, want TOTAL 97.2k, TASK-TOTAL 110.2k, REVIEWS 2", f)
+	}
+	if f := row("rev"); f[10] != "-" || f[11] != "for" || f[12] != "k3" {
+		t.Fatalf("rev row = %v, want no TASK-TOTAL and 'for k3'", f)
+	}
+	if f := row("big"); f[10] != "100k" || f[11] != "-" {
+		t.Fatalf("big row = %v, want TASK-TOTAL equal to its own total and no reviews", f)
+	}
+	if !strings.Contains(out, "total: 5 turn(s)") {
+		t.Fatalf("footer does not count every row once:\n%s", out)
+	}
+
+	top := runCLI(t, "usage", "shop", "--top", "1", "--workspace", w.Root())
+	var ids []string
+	for _, line := range strings.Split(top, "\n")[1:] {
+		if f := strings.Fields(line); len(f) > 0 && !strings.HasPrefix(line, "total") && !strings.HasPrefix(line, "showing") && !strings.HasPrefix(line, "by ") && !strings.HasPrefix(line, " ") {
+			ids = append(ids, f[0])
+		}
+	}
+	if len(ids) != 4 || ids[0] != "mate" || ids[1] != "k3" {
+		t.Fatalf("--top 1 rows = %v, want the mate, then the largest task by TASK-TOTAL", ids)
+	}
+	reviewers := append([]string(nil), ids[2:]...)
+	sort.Strings(reviewers)
+	if strings.Join(reviewers, ",") != "old,rev" {
+		t.Fatalf("--top 1 rows = %v, want k3's two reviewers under it", ids)
+	}
+	if !strings.Contains(top, "largest of 2 task(s) by TASK-TOTAL") {
+		t.Fatalf("--top note:\n%s", top)
 	}
 }

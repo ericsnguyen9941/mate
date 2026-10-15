@@ -237,6 +237,29 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 		}
 		out[i].Review = s.reviewVerdict(project, out[i].Crew)
 	}
+	reviewersOf, reviewOf, err := s.ws.ReviewLinks(project)
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int, len(out))
+	for i, t := range out {
+		index[t.Crew] = i
+	}
+	for i := range out {
+		t := &out[i]
+		t.TokensWithReviews = t.Tokens.Total
+		if task, ok := reviewOf[t.Crew]; ok {
+			if _, known := index[task]; known {
+				t.ReviewOf = task
+			}
+		}
+		t.Reviews = reviewersOf[t.Crew]
+		for _, reviewer := range t.Reviews {
+			if j, ok := index[reviewer]; ok {
+				t.TokensWithReviews += out[j].Tokens.Total
+			}
+		}
+	}
 	return out, nil
 }
 

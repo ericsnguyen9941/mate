@@ -165,6 +165,15 @@ type Task struct {
 	// "pending" while there is none. A reviewer is closed `finished` or
 	// `failed` like any crew; this is what it concluded.
 	Review string `json:"review,omitempty"`
+	// Reviews are the reviewers `mate review` started for this task (crew
+	// meta reviews=, or the reviewer's review.meta naming this crew), and
+	// ReviewOf the task a reviewer reviewed (CON-75).
+	Reviews  []string `json:"reviews,omitempty"`
+	ReviewOf string   `json:"review_of,omitempty"`
+	// TokensWithReviews is Tokens.Total plus every reviewer's total: what
+	// the task cost with its reviews. Equal to Tokens.Total for a task with
+	// none, and the reviewer's own total for a reviewer row.
+	TokensWithReviews int64 `json:"tokens_with_reviews"`
 	// FailedReason is crew meta's failed_reason=, written when a spawn never
 	// came up. A crew closed with `crew stop --discard` is `failed` too and
 	// has none, which is how a page tells a broken start from work thrown

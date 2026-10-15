@@ -115,6 +115,12 @@ func cmdReview(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// The task knows its reviewers (CON-75): `mate usage` and the dashboard
+	// roll the reviewer's tokens into the task from this key. The reviewer
+	// is already running, so a failure here is a note, not a refusal.
+	if err := w.AddCrewReview(project, crew, *id); err != nil {
+		fmt.Fprintf(stderr, "note: %s's meta does not record review %s: %v\n", crew, *id, err)
+	}
 	if scope != nil {
 		fmt.Fprintf(stdout, "review started: %s for %s at %s, scoped to the change since %s (%s, %d finding(s))\n", result.Crew, crew, fp["head"], scope.Since, scope.Reviewed, len(scope.Findings))
 	} else {

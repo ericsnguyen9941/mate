@@ -112,6 +112,13 @@ type ledgerRow struct {
 	Asked    int64
 	WaitedMs int64
 	Span     string
+	// Reviews are the reviewers `mate review` started for this task, and
+	// ReviewOf the task this row reviewed (CON-75). TaskTotal is Total plus
+	// every reviewer's Total for a task; zero for a reviewer row, whose
+	// tokens are in its task's.
+	Reviews   []string
+	ReviewOf  string
+	TaskTotal int64
 }
 
 // printLedger is the no-crew form: the Mate's row first (mvp.md M5 task
@@ -187,20 +194,80 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 	if err := dbRows.Err(); err != nil {
 		return err
 	}
+	reviewersOf, reviewOf, err := w.ReviewLinks(project)
+	if err != nil {
+		return err
+	}
+	rollUpReviews(rows[1:], reviewersOf, reviewOf)
 
 	shown := rows
-	if tasks := len(rows) - 1; top > 0 && tasks > top {
-		ranked := append([]ledgerRow(nil), rows[1:]...)
-		sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].Total > ranked[j].Total })
-		shown = append([]ledgerRow{mate}, ranked[:top]...)
+	tasks := 0
+	for _, r := range rows[1:] {
+		if r.ReviewOf == "" {
+			tasks++
+		}
+	}
+	if top > 0 && tasks > top {
+		shown = append([]ledgerRow{mate}, topTasks(rows[1:], top)...)
 	}
 	printLedgerRows(stdout, shown, rows)
 	if len(shown) < len(rows) {
-		fmt.Fprintf(stdout, "showing the mate and the %d largest of %d task(s) by TOTAL; the total line counts all of them\n", top, len(rows)-1)
+		fmt.Fprintf(stdout, "showing the mate and the %d largest of %d task(s) by TASK-TOTAL, each with its reviewers; the total line counts all of them\n", top, tasks)
 	}
 	printByModel(stdout, rows[1:])
 	printCompactWarning(stdout, rows[1:], w.CrewAutocompact())
 	return nil
+}
+
+// rollUpReviews fills Reviews, ReviewOf and TaskTotal (CON-75): a task's
+// TaskTotal is its own Total plus its reviewers', a reviewer's is zero. A
+// reviewer whose task has no row of its own stands as a task.
+func rollUpReviews(rows []ledgerRow, reviewersOf map[string][]string, reviewOf map[string]string) {
+	index := make(map[string]int, len(rows))
+	for i, r := range rows {
+		index[r.ID] = i
+	}
+	for i := range rows {
+		r := &rows[i]
+		if task, ok := reviewOf[r.ID]; ok {
+			if _, known := index[task]; known {
+				r.ReviewOf = task
+				continue
+			}
+		}
+		r.Reviews = reviewersOf[r.ID]
+		r.TaskTotal = r.Total
+		for _, reviewer := range r.Reviews {
+			if j, ok := index[reviewer]; ok {
+				r.TaskTotal += rows[j].Total
+			}
+		}
+	}
+}
+
+// topTasks is the n largest tasks by TaskTotal, largest first, each
+// followed by its reviewers in the order the ledger has them.
+func topTasks(rows []ledgerRow, n int) []ledgerRow {
+	ranked := make([]ledgerRow, 0, len(rows))
+	for _, r := range rows {
+		if r.ReviewOf == "" {
+			ranked = append(ranked, r)
+		}
+	}
+	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].TaskTotal > ranked[j].TaskTotal })
+	if len(ranked) > n {
+		ranked = ranked[:n]
+	}
+	var out []ledgerRow
+	for _, task := range ranked {
+		out = append(out, task)
+		for _, r := range rows {
+			if r.ReviewOf == task.ID {
+				out = append(out, r)
+			}
+		}
+	}
+	return out
 }
 
 // printByModel is one line per model and effort the project's tasks last
@@ -387,15 +454,16 @@ func printLedgerTable(stdout io.Writer, rows []ledgerRow) {
 // so a cut table never understates what the project spent.
 func printLedgerRows(stdout io.Writer, shown, all []ledgerRow) {
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tSTATE\tMODEL\tEFFORT\tTURNS\tIN\tCACHE-READ\tCACHE-WRITE\tOUT\tTOTAL\tCOST\tCTX\tCTX-AVG\tCTX%\tASKED\tWAITED\tSPAWN→CLOSE")
+	fmt.Fprintln(tw, "ID\tSTATE\tMODEL\tEFFORT\tTURNS\tIN\tCACHE-READ\tCACHE-WRITE\tOUT\tTOTAL\tTASK-TOTAL\tREVIEWS\tCOST\tCTX\tCTX-AVG\tCTX%\tASKED\tWAITED\tSPAWN→CLOSE")
 
 	var totalTurns, totalIn, totalCached, totalOut, totalTotal, totalAsked, totalWaited int64
 	var totalCost float64
 	haveCost := false
 	for _, r := range shown {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 			r.ID, dashIfEmpty(r.State), dashIfEmpty(r.Model), dashIfEmpty(r.Effort), r.Turns,
 			query.HumanizeTokens(r.In), query.HumanizeTokens(r.CacheRead), query.HumanizeTokens(r.CacheWrite), query.HumanizeTokens(r.Out), query.HumanizeTokens(r.Total),
+			taskTotalWord(r), reviewsWord(r),
 			costWord(r.Cost), contextWord(r.Context), contextWord(r.CtxAvg), ctxWord(r.CtxPct), r.Asked, waitedWord(r.WaitedMs), r.Span)
 	}
 	for _, r := range all {
@@ -420,6 +488,27 @@ func printLedgerRows(stdout io.Writer, shown, all []ledgerRow) {
 	fmt.Fprintf(stdout, "total: %d turn(s), %s in, %s cached, %s out, %s total, %s cost, %d asked, %s waited\n",
 		totalTurns, query.HumanizeTokens(totalIn), query.HumanizeTokens(totalCached), query.HumanizeTokens(totalOut),
 		query.HumanizeTokens(totalTotal), cost, totalAsked, waitedWord(totalWaited))
+}
+
+// taskTotalWord is TASK-TOTAL: the task with its reviewers, a dash for a
+// reviewer row (its tokens are in its task's) and for the Mate.
+func taskTotalWord(r ledgerRow) string {
+	if r.ReviewOf != "" || r.ID == "mate" {
+		return "-"
+	}
+	return query.HumanizeTokens(r.TaskTotal)
+}
+
+// reviewsWord is REVIEWS: how many reviewers a task had, or which task a
+// reviewer row reviewed.
+func reviewsWord(r ledgerRow) string {
+	switch {
+	case r.ReviewOf != "":
+		return "for " + r.ReviewOf
+	case len(r.Reviews) > 0:
+		return fmt.Sprint(len(r.Reviews))
+	}
+	return "-"
 }
 
 // costWord and ctxWord render a nullable value as "?" - a missing price or

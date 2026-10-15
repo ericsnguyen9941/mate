@@ -617,6 +617,15 @@
     return el("span", { class: "chip ico tip " + f.tone, "data-tip": label, role: "img", "aria-label": label }, icon(f.icon));
   }
 
+  // A task's tokens with its reviewers' (tokens_with_reviews, CON-75), and
+  // how many reviews that counts; a task without reviews reads as before.
+  function tokensWithReviews(t) {
+    var own = t.tokens ? t.tokens.total : null;
+    var n = t.reviews ? t.reviews.length : 0;
+    if (!n || t.tokens_with_reviews == null) return tok(own) + " tokens";
+    return tok(t.tokens_with_reviews) + " tokens incl. " + n + (n === 1 ? " review" : " reviews");
+  }
+
   function isAway(state) { return state === "walking_to_ceo" || state === "waiting_at_ceo"; }
 
   function waitingCount(name) {
@@ -955,7 +964,7 @@
         return el("span", { class: "pk" }, [
           el("span", { class: "tn", text: t.crew }),
           el("span", { class: "pk-s " + f.tone, text: f.word }),
-          el("span", { class: "tok", text: age(closedAt(t)) + " ago · " + tok(t.tokens ? t.tokens.total : null) + " tokens" })
+          el("span", { class: "tok", text: age(closedAt(t)) + " ago · " + tokensWithReviews(t) })
         ]);
       }) : [el("span", { class: "pk-empty", text: "Nothing finished yet" })]));
     var btn = el("button", {
