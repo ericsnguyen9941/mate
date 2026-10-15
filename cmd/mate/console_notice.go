@@ -136,6 +136,8 @@ func consoleNoticeAction(ws *store.Workspace, deps spawn.Deps, classifier notice
 		var handle runtime.AgentHandle
 		var kind harness.Kind
 		switch {
+		case req.TargetKind == "mate" && req.Crew == "" && fresh.MateHeadless(req.Target):
+			return "", errors.New("a headless Mate has no screen to explain; its pane shows only the chat")
 		case req.TargetKind == "mate" && req.Crew == "":
 			handle, kind, err = spawn.MateHandle(ctx, fresh, deps, req.Target)
 		case req.TargetKind == "crew" && req.Crew != "":

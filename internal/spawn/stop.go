@@ -168,8 +168,11 @@ func StopMate(ctx context.Context, w *store.Workspace, deps Deps, project string
 		meta[MetaSessionID] = id
 		out.SessionID = id
 	}
+	if live && meta[MetaMode] == ModeHeadless {
+		out.Forced = stopHost(ctx, deps, w.MateDir(project), handle)
+	}
 	if live {
-		if out.Forced, err = stopLiveAgent(ctx, deps, handle); err != nil {
+		if out.Forced, err = stopLiveAgent(ctx, deps, handle, meta[MetaMode] == ModeHeadless, out.Forced); err != nil {
 			return StopResult{}, err
 		}
 	}
@@ -192,8 +195,23 @@ func StopMate(ctx context.Context, w *store.Workspace, deps Deps, project string
 // forces. A name Herdr already does not know is success, not a failure.
 // forced says why the pane was closed instead, empty when the harness
 // exited on its own.
-func stopLiveAgent(ctx context.Context, deps Deps, handle runtime.AgentHandle) (string, error) {
+//
+// A headless host has already been asked over its socket (stopHost); what
+// is left is only confirming it went, or closing its pane. The harness's
+// own exit prompt would be typed into the host's input, so it is never used.
+func stopLiveAgent(ctx context.Context, deps Deps, handle runtime.AgentHandle, headless bool, hostForced string) (string, error) {
+	if headless {
+		if confirmGone(ctx, deps, handle) == nil {
+			return hostForced, nil
+		}
+		if hostForced == "" {
+			hostForced = "the headless host was still in its pane after it was asked to stop"
+		}
+	}
 	exit, forced := gracefulStop(deps, handle.Kind)
+	if headless {
+		exit, forced = nil, hostForced
+	}
 	if exit != nil {
 		failed := deps.Runtime.StopAgent(ctx, handle, runtime.StopGraceful(exit))
 		if failed == nil || runtime.IsAgentNotFound(failed) {
@@ -309,7 +327,7 @@ func sessionAtStop(deps Deps, kind harness.Kind, mateDir string, meta map[string
 // restart needs: the harness, the Herdr session and the harness session id.
 func clearRunMeta(w *store.Workspace, project string, meta map[string]string, now time.Time) error {
 	next := map[string]string{}
-	for _, key := range []string{MetaHarness, MetaSession, MetaSessionID, MetaStartedAt} {
+	for _, key := range []string{MetaHarness, MetaSession, MetaSessionID, MetaStartedAt, MetaMode} {
 		if v := meta[key]; v != "" {
 			next[key] = v
 		}

@@ -68,6 +68,14 @@ type Adapter interface {
 	RemoveTab(ctx context.Context, handle TabHandle) error
 }
 
+// PaneRunner runs a program in a tab's pane that is not a harness Herdr
+// knows how to start: the headless Mate's host (CON-78), which reports
+// itself to Herdr as an agent from inside the pane. argv is quoted for the
+// pane's shell, word by word.
+type PaneRunner interface {
+	RunInPane(ctx context.Context, tab TabHandle, argv []string) error
+}
+
 // ReadAdapter is the deliberately narrow runtime port used by diagnostics
 // and Crew health observation. Keeping it separate from Adapter makes the
 // read-only boundary visible at the type level: an observer cannot start,

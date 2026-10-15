@@ -1,0 +1,213 @@
+package matehost
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"syscall"
+	"time"
+)
+
+// Socket ops.
+const (
+	OpPing       = "ping"
+	OpDeliver    = "deliver"
+	OpState      = "state"
+	OpStop       = "stop"
+	OpHistory    = "history"
+	OpClearDraft = "clear-draft"
+)
+
+type request struct {
+	Op    string `json:"op"`
+	Text  string `json:"text,omitempty"`
+	Force bool   `json:"force,omitempty"`
+	// WaitMS bounds a stop's wait for the turn in flight.
+	WaitMS int64 `json:"wait_ms,omitempty"`
+	N      int   `json:"n,omitempty"`
+}
+
+type response struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+	// Busy is set on a delivery refused because the Mate is busy, so the
+	// caller can tell it from a failure.
+	Busy   bool   `json:"busy,omitempty"`
+	State  *State `json:"state,omitempty"`
+	Items  []Item `json:"items,omitempty"`
+	Killed bool   `json:"killed,omitempty"`
+}
+
+// maxSocketPath is the longest path a unix socket binds (panerun's rule).
+var maxSocketPath = len(syscall.RawSockaddrUnix{}.Path) - 1
+
+func checkSocketPath(path string) error {
+	if len(path) > maxSocketPath {
+		return fmt.Errorf("matehost: socket path %s is %d bytes; a unix socket path holds at most %d", path, len(path), maxSocketPath)
+	}
+	return nil
+}
+
+// Serve answers the socket at path until ctx ends. stop is called after a
+// stop request was answered, so the caller can exit.
+func (h *Host) Serve(ctx context.Context, path string, stop func()) error {
+	if err := checkSocketPath(path); err != nil {
+		return err
+	}
+	// A socket file left by a host that crashed would refuse the bind; the
+	// host lock already says no other host is alive.
+	_ = os.Remove(path)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return err
+	}
+	go func() {
+		<-ctx.Done()
+		_ = ln.Close()
+	}()
+	defer os.Remove(path)
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		go h.serveConn(conn, stop)
+	}
+}
+
+func (h *Host) serveConn(conn net.Conn, stop func()) {
+	defer conn.Close()
+	var req request
+	if err := json.NewDecoder(bufio.NewReader(conn)).Decode(&req); err != nil {
+		_ = json.NewEncoder(conn).Encode(response{Error: err.Error()})
+		return
+	}
+	resp := h.answer(req)
+	_ = json.NewEncoder(conn).Encode(resp)
+	if req.Op == OpStop && resp.OK && stop != nil {
+		stop()
+	}
+}
+
+func (h *Host) answer(req request) response {
+	switch req.Op {
+	case OpPing:
+		return response{OK: true}
+	case OpState:
+		s := h.State()
+		return response{OK: true, State: &s}
+	case OpDeliver:
+		if err := h.Deliver(req.Text); err != nil {
+			busy := errors.Is(err, ErrBusy) || errors.Is(err, ErrQueued) || errors.Is(err, ErrStopping)
+			return response{Error: err.Error(), Busy: busy}
+		}
+		s := h.State()
+		return response{OK: true, State: &s}
+	case OpStop:
+		killed := h.Stop(time.Duration(req.WaitMS)*time.Millisecond, req.Force)
+		return response{OK: true, Killed: killed}
+	case OpHistory:
+		return response{OK: true, Items: History(h.history, req.N)}
+	case OpClearDraft:
+		h.ClearDraft()
+		return response{OK: true}
+	}
+	return response{Error: fmt.Sprintf("unknown op %q", req.Op)}
+}
+
+// Client talks to a host's socket.
+type Client struct {
+	Path string
+	// Timeout bounds one request; zero means 5 seconds. A stop is given its
+	// own wait on top.
+	Timeout time.Duration
+}
+
+// Dial is a client for the Mate in mateDir.
+func Dial(mateDir string) Client { return Client{Path: SocketPath(mateDir)} }
+
+// BusyError is a delivery the host refused because the Mate is busy.
+type BusyError struct{ Reason string }
+
+func (e *BusyError) Error() string { return e.Reason }
+
+func (c Client) do(ctx context.Context, req request, extra time.Duration) (response, error) {
+	timeout := c.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout+extra)
+	defer cancel()
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "unix", c.Path)
+	if err != nil {
+		return response{}, err
+	}
+	defer conn.Close()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
+		return response{}, err
+	}
+	var resp response
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		return response{}, fmt.Errorf("matehost: %s: %w", req.Op, err)
+	}
+	if !resp.OK {
+		if resp.Busy {
+			return resp, &BusyError{Reason: resp.Error}
+		}
+		return resp, fmt.Errorf("matehost: %s: %s", req.Op, resp.Error)
+	}
+	return resp, nil
+}
+
+// Ping reports whether a host answers.
+func (c Client) Ping(ctx context.Context) error {
+	_, err := c.do(ctx, request{Op: OpPing}, 0)
+	return err
+}
+
+// Deliver hands the host an app line; a *BusyError means try later.
+func (c Client) Deliver(ctx context.Context, text string) error {
+	_, err := c.do(ctx, request{Op: OpDeliver, Text: text}, 0)
+	return err
+}
+
+// State asks the host what it is doing.
+func (c Client) State(ctx context.Context) (State, error) {
+	resp, err := c.do(ctx, request{Op: OpState}, 0)
+	if err != nil {
+		return State{}, err
+	}
+	if resp.State == nil {
+		return State{}, errors.New("matehost: state: no state in the answer")
+	}
+	return *resp.State, nil
+}
+
+// Stop asks the host to finish (or, with force, kill) its turn and exit.
+func (c Client) Stop(ctx context.Context, wait time.Duration, force bool) (killed bool, err error) {
+	resp, err := c.do(ctx, request{Op: OpStop, Force: force, WaitMS: wait.Milliseconds()}, wait)
+	return resp.Killed, err
+}
+
+// History is the host's last n items.
+func (c Client) History(ctx context.Context, n int) ([]Item, error) {
+	resp, err := c.do(ctx, request{Op: OpHistory, N: n}, 0)
+	return resp.Items, err
+}
+
+// ClearDraft drops the captain's unsent draft.
+func (c Client) ClearDraft(ctx context.Context) error {
+	_, err := c.do(ctx, request{Op: OpClearDraft}, 0)
+	return err
+}

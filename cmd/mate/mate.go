@@ -12,10 +12,10 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// cmdMate dispatches `mate mate <start|stop|status|refresh>`.
+// cmdMate dispatches `mate mate <start|stop|status|refresh|host>`.
 func cmdMate(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return newUsageError("usage: mate mate <start|stop|status|refresh> <project> ...")
+		return newUsageError("usage: mate mate <start|stop|status|refresh|host> <project> ...")
 	}
 	switch args[0] {
 	case "start":
@@ -26,19 +26,22 @@ func cmdMate(args []string, stdout, stderr io.Writer) error {
 		return cmdMateRefresh(args[1:], stdout, stderr)
 	case "status":
 		return cmdMateStatus(args[1:], stdout, stderr)
+	case "host":
+		return cmdMateHost(args[1:], stdout, stderr)
 	default:
 		return newUsageErrorf("unknown mate subcommand %q", args[0])
 	}
 }
 
-// cmdMateStart implements `mate mate start <project> [--harness claude|codex] [--fresh]`.
+// cmdMateStart implements `mate mate start <project> [--harness claude|codex] [--fresh] [--mode pane|headless]`.
 func cmdMateStart(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("mate start", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate mate start <project> [--workspace <dir>] [--harness "+harnessChoices(harness.RoleMate, "|")+"] [--fresh]")
+		fmt.Fprintln(stderr, "usage: mate mate start <project> [--workspace <dir>] [--harness "+harnessChoices(harness.RoleMate, "|")+"] [--fresh] [--mode pane|headless]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
+	modeFlag := fs.String("mode", "", "pane (the harness's own TUI) or headless (mate's REPL, one harness run per message); default: the mode the Mate last ran in, else project.yaml's mate.headless")
 	harnessFlag := fs.String("harness", "", "harness to launch ("+harnessChoices(harness.RoleMate, " or ")+"; default: the workspace default)")
 	freshFlag := fs.Bool("fresh", false, "start a brand new harness session instead of resuming mate.meta's session_id")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
@@ -48,7 +51,7 @@ func cmdMateStart(args []string, stdout, stderr io.Writer) error {
 		fs.Usage()
 		return newUsageError("mate mate start: want exactly 1 argument: <project>")
 	}
-	req := spawn.StartRequest{Project: fs.Arg(0), Resume: true, Fresh: *freshFlag}
+	req := spawn.StartRequest{Project: fs.Arg(0), Resume: true, Fresh: *freshFlag, Mode: *modeFlag}
 	if *harnessFlag != "" {
 		kind, err := harnesses.Parse(*harnessFlag)
 		if err != nil {
@@ -85,6 +88,9 @@ func cmdMateStart(args []string, stdout, stderr io.Writer) error {
 	resumed := "fresh session"
 	if res.Resumed {
 		resumed = fmt.Sprintf("resumed session %s", res.ResumedFrom)
+	}
+	if res.Headless {
+		resumed += ", headless"
 	}
 	fmt.Fprintf(stdout, "started %s: agent %s in pane %s (session %s, harness %s, %s)\n",
 		res.Project, res.Agent, res.Pane, res.Session, res.Harness, resumed)

@@ -27,7 +27,7 @@ func (m Model) boxItems() []boxItem {
 		if !p.Box.IsKnown() {
 			return
 		}
-		entries := p.Box.Value.Inbox
+		entries := p.Box.Value.Waiting()
 		if m.boxAll {
 			entries = p.Box.Value.Entries
 		}

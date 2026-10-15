@@ -73,6 +73,9 @@ type Params struct {
 	// MateDir is the absolute path of the Mate's own working directory, the
 	// one place it may write: its briefs, memory and backlog live there.
 	MateDir string
+	// Headless is true for a Mate run as a headless host (CON-78): the
+	// captain sees only its replies, and a reply of `—` shows nothing.
+	Headless bool
 	// CrewsDir is the absolute path of `projects/<p>/crews/`, where every
 	// crew's `.meta` and `.status` file lives. The Mate reads it, never
 	// writes it.

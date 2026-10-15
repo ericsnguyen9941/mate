@@ -150,6 +150,16 @@ func TestRenderAgentsGolden(t *testing.T) {
 	compareGolden(t, filepath.Join("testdata", "AGENTS.md.golden"), got)
 }
 
+func TestRenderAgentsHeadlessGolden(t *testing.T) {
+	p := fixedParams()
+	p.Headless = true
+	got, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compareGolden(t, filepath.Join("testdata", "AGENTS-headless.md.golden"), got)
+}
+
 func TestRenderBriefGolden(t *testing.T) {
 	for name, p := range map[string]BriefParams{
 		"brief-ship.md.golden":       fixedBriefParams(),

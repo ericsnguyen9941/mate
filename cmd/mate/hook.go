@@ -13,6 +13,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/hook"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
@@ -133,6 +134,9 @@ func runSessionHook(stdin io.Reader, stdout, stderr io.Writer, kind harness.Kind
 	if err != nil {
 		// The session still started: say so, and print the digest anyway.
 		fmt.Fprintf(stderr, "mate hook %s: %v\n", name, err)
+	}
+	if matehost.QuietSessionStart(start.Source, os.Getenv(matehost.EnvHostTurn)) {
+		return
 	}
 	source := start.Source
 	if source == "" {

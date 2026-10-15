@@ -1,0 +1,269 @@
+package matehost
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+)
+
+// News is what a headless Mate has to tell the captain outside the
+// conversation they are having: something a crew reported that the Mate
+// decided needs the captain - a decision, a key, a review, a failure. The
+// Mate opens one with `mate news open` and closes it with `mate news
+// close`; the captain reads and answers it in the REPL, apart from the
+// chat. The news log (NewsName) is append-only, one event per line; a
+// news is the fold of its events.
+
+// NewsName is the news log in the Mate directory.
+const NewsName = "news.jsonl"
+
+// News statuses. New and Waiting are what the captain owes.
+const (
+	NewsNew     = "new"
+	NewsWaiting = "waiting"
+	NewsWorking = "working"
+	NewsDone    = "done"
+	NewsDropped = "dropped"
+)
+
+// News ops, one per log line.
+const (
+	opOpen    = "open"
+	opUpdate  = "update"
+	opAsk     = "ask"
+	opSeen    = "seen"
+	opAnswer  = "answer"
+	opFailed  = "failed"
+	opClose   = "close"
+	opDrop    = "drop"
+	opArchive = "archive"
+)
+
+// NewsOption is one answer the Mate offers.
+type NewsOption struct {
+	Key         string `json:"key"`
+	Text        string `json:"text"`
+	Recommended bool   `json:"recommended,omitempty"`
+}
+
+// NewsNote is a line added to a news after it opened: an update from the
+// Mate, or why it closed.
+type NewsNote struct {
+	At   time.Time `json:"at"`
+	Text string    `json:"text"`
+}
+
+// News is one news as its log has it now.
+type News struct {
+	ID       int          `json:"id"`
+	Crew     string       `json:"crew,omitempty"`
+	Kind     string       `json:"kind,omitempty"`
+	Title    string       `json:"title"`
+	Context  []string     `json:"context,omitempty"`
+	Question string       `json:"question,omitempty"`
+	Options  []NewsOption `json:"options,omitempty"`
+
+	Status   string     `json:"status"`
+	OpenedAt time.Time  `json:"opened_at"`
+	At       time.Time  `json:"at"`
+	Notes    []NewsNote `json:"notes,omitempty"`
+	// Answer is the captain's last answer.
+	Answer   string `json:"answer,omitempty"`
+	Archived bool   `json:"archived,omitempty"`
+}
+
+// Owed reports whether the news waits on the captain.
+func (n News) Owed() bool { return n.Status == NewsNew || n.Status == NewsWaiting }
+
+// Closed reports whether the news is over.
+func (n News) Closed() bool { return n.Status == NewsDone || n.Status == NewsDropped }
+
+type newsEvent struct {
+	At       time.Time    `json:"at"`
+	Op       string       `json:"op"`
+	ID       int          `json:"id"`
+	Crew     string       `json:"crew,omitempty"`
+	Kind     string       `json:"kind,omitempty"`
+	Title    string       `json:"title,omitempty"`
+	Context  []string     `json:"context,omitempty"`
+	Question string       `json:"question,omitempty"`
+	Options  []NewsOption `json:"options,omitempty"`
+	Text     string       `json:"text,omitempty"`
+}
+
+// NewsPath is the news log of the Mate in mateDir.
+func NewsPath(mateDir string) string { return filepath.Join(mateDir, NewsName) }
+
+// ErrNoNews is a news id the log does not have.
+var ErrNoNews = errors.New("no such news")
+
+// OpenNews adds a news and returns its id: one more than the largest the
+// log has, decided under an exclusive lock on the log.
+func OpenNews(path string, n News, now time.Time) (int, error) {
+	if strings.TrimSpace(n.Title) == "" {
+		return 0, errors.New("a news needs a title")
+	}
+	var id int
+	err := withNewsLog(path, func(list []News, f *os.File) error {
+		for _, x := range list {
+			id = max(id, x.ID)
+		}
+		id++
+		return writeNewsEvent(f, newsEvent{At: now, Op: opOpen, ID: id, Crew: n.Crew, Kind: n.Kind, Title: n.Title, Context: n.Context, Question: n.Question, Options: n.Options})
+	})
+	return id, err
+}
+
+// UpdateNews adds the Mate's line to an open news and moves it to the top.
+// It waits on the captain again only when the Mate asks them (ask): an
+// update is not a new debt.
+func UpdateNews(path string, id int, text string, ask bool, now time.Time) error {
+	op := opUpdate
+	if ask {
+		op = opAsk
+	}
+	return newsOp(path, newsEvent{At: now, Op: op, ID: id, Text: text}, false)
+}
+
+// CloseNews ends a news: done once it is settled, dropped when what it was
+// about went away before the captain answered. reason is shown with it.
+func CloseNews(path string, id int, reason string, dropped bool, now time.Time) error {
+	op := opClose
+	if dropped {
+		op = opDrop
+	}
+	return newsOp(path, newsEvent{At: now, Op: op, ID: id, Text: reason}, false)
+}
+
+func newsOp(path string, ev newsEvent, allowClosed bool) error {
+	return withNewsLog(path, func(list []News, f *os.File) error {
+		n, ok := findNews(list, ev.ID)
+		if !ok {
+			return fmt.Errorf("%w: #%d", ErrNoNews, ev.ID)
+		}
+		if n.Closed() && !allowClosed && ev.Op != opArchive {
+			return fmt.Errorf("news #%d is already closed", ev.ID)
+		}
+		return writeNewsEvent(f, ev)
+	})
+}
+
+func findNews(list []News, id int) (News, bool) {
+	for _, n := range list {
+		if n.ID == id {
+			return n, true
+		}
+	}
+	return News{}, false
+}
+
+// withNewsLog runs fn with the log read and held open for appending under
+// an exclusive lock, so two writers never pick the same id.
+func withNewsLog(path string, fn func([]News, *os.File) error) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:errcheck
+	list, err := LoadNews(path)
+	if err != nil {
+		return err
+	}
+	return fn(list, f)
+}
+
+func writeNewsEvent(f *os.File, ev newsEvent) error {
+	data, err := json.Marshal(ev)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(data, '\n'))
+	return err
+}
+
+// LoadNews folds the log into its news, oldest first. A missing log has
+// none; a line that does not parse, or names a news never opened, is
+// skipped.
+func LoadNews(path string) ([]News, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var list []News
+	index := map[int]int{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	for sc.Scan() {
+		var ev newsEvent
+		if json.Unmarshal(sc.Bytes(), &ev) != nil || ev.ID <= 0 {
+			continue
+		}
+		if ev.Op == opOpen {
+			if _, dup := index[ev.ID]; dup {
+				continue
+			}
+			index[ev.ID] = len(list)
+			list = append(list, News{ID: ev.ID, Crew: ev.Crew, Kind: ev.Kind, Title: ev.Title, Context: ev.Context,
+				Question: ev.Question, Options: ev.Options, Status: NewsNew, OpenedAt: ev.At, At: ev.At})
+			continue
+		}
+		i, ok := index[ev.ID]
+		if !ok {
+			continue
+		}
+		n := &list[i]
+		switch ev.Op {
+		case opUpdate, opAsk:
+			n.Notes = append(n.Notes, NewsNote{At: ev.At, Text: ev.Text})
+			if ev.Op == opAsk && !n.Closed() {
+				n.Status, n.Archived = NewsNew, false
+			}
+		case opSeen:
+			if n.Status == NewsNew {
+				n.Status = NewsWaiting
+			}
+			continue
+		case opAnswer:
+			n.Answer, n.Status = ev.Text, NewsWorking
+		case opFailed:
+			if n.Status == NewsWorking {
+				n.Status = NewsWaiting
+			}
+		case opClose, opDrop:
+			n.Status = NewsDone
+			if ev.Op == opDrop {
+				n.Status = NewsDropped
+			}
+			if ev.Text != "" {
+				n.Notes = append(n.Notes, NewsNote{At: ev.At, Text: ev.Text})
+			}
+		case opArchive:
+			n.Archived = true
+			continue
+		default:
+			continue
+		}
+		n.At = ev.At
+	}
+	return list, sc.Err()
+}
+
+// newsAnswerPrompt is the turn a captain's answer to a news becomes: the
+// Mate's manual reads `[news #n]` as the captain answering news n.
+func newsAnswerPrompt(n News, text string) string {
+	return fmt.Sprintf("[news #%d · %s] %s", n.ID, n.Title, text)
+}

@@ -310,6 +310,12 @@ func clearComposerAction(ctx context.Context, ws *store.Workspace, deps spawn.De
 	if req.Target == "" {
 		return "", observability.NewError(observability.CodeUsage, "no Project was named for the composer clear")
 	}
+	if host, ok := spawn.HostClient(ws, req.Target); ok {
+		if err := host.ClearDraft(ctx); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("cleared the draft in %s's headless Mate; nothing was sent", req.Target), nil
+	}
 	handle, _, err := spawn.MateHandle(ctx, ws, deps, req.Target)
 	if err != nil {
 		return "", err

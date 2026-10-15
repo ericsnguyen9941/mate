@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/screen"
@@ -116,6 +117,10 @@ func (s *Sender) Stow(ctx context.Context, project string, opts StowOptions) (St
 	// One stow reads the pane every poll for up to the ceiling; a pane
 	// that has not changed keeps its last reading.
 	look := &stowLook{}
+	if s.ws.MateHeadless(project) {
+		host := matehost.Dial(s.ws.MateDir(project))
+		look.host = &host
+	}
 	before, err := s.composer(ctx, handle, kind, look)
 	if err != nil {
 		return done(StowResult{Reason: "its pane could not be read (" + oneLine(err) + ")"})
@@ -268,6 +273,9 @@ func Span(d time.Duration) string {
 // stowLook is one stow's last reading of the Mate's pane and the hash of
 // the snapshot it was read from.
 type stowLook struct {
+	// host is a headless Mate's host (CON-78), which says itself what the
+	// composer holds; nil reads the pane.
+	host *matehost.Client
 	read bool
 	hash [sha256.Size]byte
 	obs  screen.Observation
@@ -290,6 +298,9 @@ func empty(obs screen.Observation) bool {
 // again.
 func (s *Sender) composer(ctx context.Context, handle runtime.AgentHandle, kind harness.Kind, look *stowLook) (screen.Observation, error) {
 	unknown := screen.Observation{Composer: send.StateUnknown, Deterministic: send.StateUnknown}
+	if look.host != nil {
+		return hostComposer(ctx, *look.host)
+	}
 	profile, err := s.deps.Harnesses.Lookup(kind)
 	if err != nil {
 		return unknown, err
@@ -309,6 +320,24 @@ func (s *Sender) composer(ctx context.Context, handle runtime.AgentHandle, kind 
 	}
 	look.read, look.hash, look.obs = true, hash, observed
 	return observed, nil
+}
+
+// hostComposer is a headless Mate's composer as its host states it: the
+// captain's draft, a turn in flight or a captain message queued behind one,
+// else empty. It is a deterministic reading, so a stow may end on it.
+func hostComposer(ctx context.Context, host matehost.Client) (screen.Observation, error) {
+	st, err := host.State(ctx)
+	if err != nil {
+		return screen.Observation{Composer: send.StateUnknown, Deterministic: send.StateUnknown}, err
+	}
+	state := send.StateEmpty
+	switch {
+	case st.Draft != "":
+		state = send.StatePending
+	case st.Busy || st.Queued > 0:
+		state = send.StateBusy
+	}
+	return screen.Observation{Composer: state, Deterministic: state, Draft: st.Draft}, nil
 }
 
 // answeredAfter reports whether sent.log has a line from the Mate after

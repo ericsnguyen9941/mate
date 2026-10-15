@@ -24,6 +24,9 @@ type MateConfig struct {
 	Effort string `yaml:"effort,omitempty"`
 	// RefreshContext defaults to 150000; -1 disables automatic refresh.
 	RefreshContext int64 `yaml:"refresh_context,omitempty"`
+	// Headless starts the Mate as a headless host (CON-78) when a start
+	// names no mode; the default is the harness's own TUI in the pane.
+	Headless bool `yaml:"headless,omitempty"`
 }
 
 type ProjectConfig struct {
@@ -46,6 +49,21 @@ type ProjectConfig struct {
 // MetaRepo, because both the writer (internal/spawn) and the reader
 // (internal/timeline) already import this package.
 const MetaBudget = "budget"
+
+// MetaMateMode is the mate.meta key recording how the Mate runs, and
+// MateModeHeadless its value for a headless host (CON-78). They live here
+// because the outbox, stow and the console ask it as well as spawn.
+const (
+	MetaMateMode     = "mode"
+	MateModeHeadless = "headless"
+)
+
+// MateHeadless reports whether the Mate of project runs headless now: its
+// meta names a live agent and records the headless mode.
+func (w *Workspace) MateHeadless(project string) bool {
+	meta, err := w.ReadMateMeta(project)
+	return err == nil && meta[MetaMateMode] == MateModeHeadless && strings.TrimSpace(meta["agent"]) != ""
+}
 
 // MetaFollowups is the crew `.meta` key `mate merge --followups` writes
 // (CON-74): where the findings a passing review left standing were

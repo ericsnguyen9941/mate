@@ -40,6 +40,10 @@ type StartRequest struct {
 	// Fresh forces a brand new harness session even when `mate.meta`
 	// carries one to resume: `mate mate start --fresh`.
 	Fresh bool
+	// Mode is ModeHeadless or ModePane (`mate mate start --mode`). Empty
+	// keeps the mode the last run recorded, else project.yaml's
+	// `mate.headless` (headlessMode).
+	Mode string
 }
 
 // StartResult is what a successful start recorded. Every field is also a
@@ -78,6 +82,8 @@ type StartResult struct {
 	// Adopted reports that nothing was launched: an interrupted start had
 	// left this Mate running without a mate.meta, and this start recorded it.
 	Adopted bool
+	// Headless is true when the Mate runs as a headless host (CON-78).
+	Headless bool
 }
 
 // StartMate starts the Mate of one project: it refreshes the Mate's
@@ -153,6 +159,13 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 	}
 	decision := decideResume(priorMeta, kind, req)
 	decision = checkResume(profile, decision)
+	headless, err := headlessMode(req, priorMeta, cfg.Mate)
+	if err != nil {
+		return StartResult{}, err
+	}
+	if _, ok := profile.(harness.HeadlessTurns); headless && !ok {
+		return StartResult{}, errUsage(fmt.Sprintf("the %s harness cannot run a headless Mate: it has no headless turns (harness.HeadlessTurns)", kind))
+	}
 
 	// 2. The Mate's directory: the manual, rendered again on every start,
 	// the skills of its plugins, and the files the harness launches with.
@@ -161,7 +174,7 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 		return StartResult{}, err
 	}
 	mateDir := w.MateDir(project)
-	if err := prepareMateDir(w, deps, project, cfg, profile, mateDir, plugins.skills); err != nil {
+	if err := prepareMateDir(w, deps, project, cfg, profile, mateDir, plugins.skills, headless); err != nil {
 		return StartResult{}, err
 	}
 	prep, err := prepareMateLaunch(ctx, w, deps, profile, mateDir, decision, plugins.servers)
@@ -185,7 +198,13 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 	// running with no mate.meta. It is this project's Mate, so it is
 	// adopted rather than launched a second time - which Herdr would refuse
 	// by name - or stopped, which would throw its conversation away.
-	if strings.TrimSpace(priorMeta[MetaAgent]) == "" {
+	if strings.TrimSpace(priorMeta[MetaAgent]) == "" && headless {
+		adopted, ok, err := adoptInterruptedHost(ctx, w, deps, project, kind, mateDir, session)
+		if err != nil || ok {
+			adopted.StaleMeta = staleMeta
+			return adopted, err
+		}
+	} else if strings.TrimSpace(priorMeta[MetaAgent]) == "" {
 		adopted, ok, err := adoptInterruptedStart(ctx, w, deps, project, kind, mateDir, session)
 		if err != nil || ok {
 			adopted.StaleMeta = staleMeta
@@ -199,6 +218,15 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 	}
 
 	// From here on every failure must undo the tab and leave no meta.
+	if headless {
+		result, err := startHostInTab(ctx, w, deps, project, profile, mateDir, decision, prep, plugins.servers, session, tab)
+		if err != nil {
+			compensate(ctx, deps, w, project, session, tab)
+			return StartResult{}, err
+		}
+		result.StaleMeta = staleMeta
+		return result, nil
+	}
 	result, err := startInTab(ctx, w, deps, project, profile, mateDir, decision, prep, plugins.servers, session, tab)
 	if err != nil {
 		compensate(ctx, deps, w, project, session, tab)
@@ -453,7 +481,7 @@ func refuseIfLive(ctx context.Context, w *store.Workspace, deps Deps, project st
 // prepareMateDir renders the Mate's cwd: the operating manual, the skills
 // - its own and its plugins' - where the harness finds them, and the memory
 // and backlog files mateassets creates only when missing.
-func prepareMateDir(w *store.Workspace, deps Deps, project string, cfg store.ProjectConfig, profile harness.Profile, mateDir string, pluginSkills []mateassets.PluginSkill) error {
+func prepareMateDir(w *store.Workspace, deps Deps, project string, cfg store.ProjectConfig, profile harness.Profile, mateDir string, pluginSkills []mateassets.PluginSkill, headless bool) error {
 	if err := os.MkdirAll(mateDir, 0o755); err != nil {
 		return err
 	}
@@ -485,6 +513,7 @@ func prepareMateDir(w *store.Workspace, deps Deps, project string, cfg store.Pro
 		MatevBin:         binary,
 		MateDir:          mateDir,
 		CrewsDir:         w.CrewsDir(project),
+		Headless:         headless,
 	}); err != nil {
 		return err
 	}

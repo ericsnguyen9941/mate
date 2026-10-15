@@ -1270,6 +1270,25 @@ func (h *Herdr) waitPaneShell(ctx context.Context, session, paneID string) error
 	}
 }
 
+// RunInPane implements PaneRunner with `herdr pane run`, which types the
+// command into the pane's shell.
+func (h *Herdr) RunInPane(ctx context.Context, tab TabHandle, argv []string) error {
+	if strings.TrimSpace(tab.Session.Name) == "" || strings.TrimSpace(tab.PaneID) == "" {
+		return observability.NewError(observability.CodeUsage, "pane run requires a named session and a pane")
+	}
+	if len(argv) == 0 {
+		return observability.NewError(observability.CodeUsage, "pane run requires a program")
+	}
+	words := make([]string, 0, len(argv))
+	for _, a := range argv {
+		words = append(words, shellQuote(a))
+	}
+	_, err := h.run(ctx, tab.Session.Name, append([]string{"pane", "run", tab.PaneID}, words...))
+	return err
+}
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
 // InspectAgent implements Adapter.
 func (h *Herdr) InspectAgent(ctx context.Context, handle AgentHandle) (ObservedAgent, error) {
 	res, err := h.run(ctx, handle.Session.Name, []string{"agent", "get", handle.Name})

@@ -54,6 +54,10 @@ type Fake struct {
 	// without removing the agent: the exit prompt was typed and the agent
 	// kept running. A force stop still removes it.
 	GracefulStopLeavesAgent bool
+	// PaneRuns are the argvs RunInPane was given, in order; OnRunInPane,
+	// when set, is called for each.
+	PaneRuns    [][]string
+	OnRunInPane func(tab TabHandle, argv []string) error
 	// ExitPrompts are, in order, the exit prompts graceful stops typed.
 	ExitPrompts []string
 	// ExitClearKeys are, in order, the keys graceful stops pressed before
@@ -170,6 +174,20 @@ func (f *Fake) SeedAgent(handle AgentHandle, status AgentStatus) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Agents[handle.Session.Name+"/"+handle.Name] = &fakeAgent{Handle: handle, Status: status}
+}
+
+// RunInPane implements PaneRunner: it records the argv and calls
+// OnRunInPane, which a test uses to play the program the pane would run.
+func (f *Fake) RunInPane(_ context.Context, tab TabHandle, argv []string) error {
+	f.mu.Lock()
+	f.record("RunInPane")
+	f.PaneRuns = append(f.PaneRuns, append([]string(nil), argv...))
+	fn := f.OnRunInPane
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(tab, argv)
+	}
+	return nil
 }
 
 func (f *Fake) record(op string) {

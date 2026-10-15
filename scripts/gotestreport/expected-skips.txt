@@ -20,3 +20,7 @@ TestLiveClaudeMateLaunchMCP
 # (CON-73): same worktree and branch, the four-part session input on disk, the new
 # agent live; already covered by TestLive*, listed by name so the claim is reviewable.
 TestLiveCrewFreshSessionAfterFindings
+# A headless Claude Mate in a real Herdr pane (CON-78, docs/evidence/headless-mate-probe-2026-10-15.md):
+# the host listed under the Mate's name, two resumed -p turns, hooks in sent.log, a clean stop.
+# Already covered by TestLive*, listed by name.
+TestLiveHeadlessMate
