@@ -184,12 +184,12 @@ func (m Model) footer(w int) []string {
 			hints = append(hints[:2], append([]keyHint{{"Tab", "lựa chọn"}}, hints[2:]...)...)
 		}
 	case m.state.Busy:
-		hints = []keyHint{{"Enter", "xếp hàng"}, {"↑", "sửa tin xếp hàng"}, {"^X", "bỏ tin cuối"}, {"^C", "ngắt"}, {"?", "phím tắt"}}
+		hints = []keyHint{{"Enter", "xếp hàng"}, {"^X", "bỏ tin cuối"}, {"^C", "ngắt"}, {"?", "phím tắt"}}
 		if len(m.input) > 0 {
 			hints = append(hints[:1], append([]keyHint{{"^U", "xoá ô"}}, hints[1:]...)...)
 		}
 	default:
-		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"^T", "news"}, {"↑", "gọi lại tin"}, {"PgUp", "cuộn"}, {"^O", "tool"}, {"?", "phím tắt"}}
+		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"^T", "news"}, {"↑↓ PgUp", "cuộn"}, {"^O", "tool"}, {"?", "phím tắt"}}
 		if len(m.input) > 0 {
 			hints = append(hints[:2], append([]keyHint{{"^U", "xoá ô"}}, hints[2:]...)...)
 		}
@@ -454,7 +454,7 @@ func (m Model) itemLines(it Item, w int, last bool) []string {
 	case it.Error != "":
 		out = append(out, styleDanger.Render(ansi.Truncate(fmt.Sprintf(" ✗ Lượt này lỗi · %s · %s", firstLine(it.Error), endAt(it).Format("15:04")), w-1, "…")))
 		if last && it.Source == SourceCaptain {
-			out = append(out, styleMuted.Render("   Tin của anh vẫn còn · ^R thử lại · ↑ sửa rồi gửi lại"))
+			out = append(out, styleMuted.Render("   Tin của anh vẫn còn · ^R thử lại"))
 		}
 		return out
 	}
@@ -598,7 +598,6 @@ func helpLines() []string {
 	rows := [][2]string{
 		{"Enter", "gửi (Mate bận: xếp hàng)"},
 		{"^J · Alt+Enter", "xuống dòng"},
-		{"↑ (ô trống)", "sửa tin xếp hàng cuối, hoặc gọi lại tin vừa gửi"},
 		{"^U · ⌘⌫", "xoá sạch ô nhập"},
 		{"^W · ⌥⌫", "xoá một từ"},
 		{"^A ^E ^K", "đầu dòng · cuối dòng · xoá tới cuối dòng"},
@@ -613,6 +612,9 @@ func helpLines() []string {
 		{"a b c (trong news)", "chọn đáp án · Tab gõ tự do"},
 		{"u", "hoàn tác câu trả lời trong 5 giây"},
 		{"PgUp PgDn · ⇧↑ ⇧↓", "cuộn trang · dòng"},
+		{"↑ ↓ (ô trống)", "cuộn một dòng"},
+		{"bánh xe chuột", "cuộn chat · news"},
+		{"⌥/⇧ + kéo chuột", "bôi đen chữ để copy"},
 		{"Home End (ô trống)", "lên đầu · về cuối"},
 		{"? · F1", "bảng phím này"},
 	}
