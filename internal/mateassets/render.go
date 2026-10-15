@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/nguyenngocanh94/mate/assets"
+	"github.com/nguyenngocanh94/mate/internal/brief"
 	"github.com/nguyenngocanh94/mate/internal/harness"
 )
 
@@ -214,6 +215,10 @@ type BriefParams struct {
 	// Scout selects the scout shape: a report at ReportPath instead of a
 	// commit and a hand-back at HandbackPath.
 	Scout bool
+	// Size picks a ship's hand-back shape and evidence level (CON-72):
+	// brief.SizeSmall, brief.SizeMedium or brief.SizeLarge. Empty renders as
+	// medium, the shape every ship had before sizes. A scout ignores it.
+	Size brief.Size
 	// RepoPath is the absolute path of the project's primary git checkout.
 	RepoPath string
 	// PR is the delivery the Mate chose for this ship (docs/mvp.md M19,

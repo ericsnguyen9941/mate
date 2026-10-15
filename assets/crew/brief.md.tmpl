@@ -99,13 +99,40 @@ Keep the branch a clean fast-forward onto `{{.DefaultBranch}}`; if it has advanc
 # Before you hand back
 Run every `verify:` under `## Acceptance` yourself, against the committed branch.
 Where a `verify:` asks you to find the project's own check, find it, run it, and name the exact command you ran.
+{{- if eq .Size "small"}}
+This is a small task, so the evidence is proportionate: run each `verify:` once and quote the two or three lines of its output that prove the result, never the whole of it.
+Do not run a baseline or a before-and-after comparison when the number it would give is already in the repository's docs or logs; cite where it is instead.
+Do not try a second way of doing the task to compare; do it the way `## Build` says and hand back.
+{{- end}}
 Then write `{{.HandbackPath}}`.
 It is outside this worktree on purpose, like the status file: the worktree is removed when the task is closed, and that file is kept.
+{{- if eq .Size "small"}}
+It has exactly these four parts, within 30 lines in all:
+
+```markdown
+## For the next crew
+At most 3 lines: what changed and where, and any trap you hit; or none.
+
+| criterion | pass/fail | command | output |
+| --- | --- | --- | --- |
+| (one row per line of ## Acceptance, in order) | pass or fail | the exact command you ran | the two or three lines of its output that prove the result |
+
+## Deviations from Build
+One line per thing you did that ## Build did not ask for, or did differently, and why; or none.
+
+## Still open
+One line per thing you could not settle or noticed but did not do, and anything ## What we already know got wrong; or none.
+```
+{{- else}}
 It has exactly these four parts, within 120 lines in all:
 
 ```markdown
 ## For the next crew
+{{- if eq .Size "large"}}
+Required, and written in full, never `none`: at most 20 lines that let a later Crew working in this area stop reading here - where things now are, what changed and where, how the pieces fit, the traps you hit and how you got past them, what you left undone and why, and the command that shows the current state.
+{{- else}}
 At most 10 lines: what a later Crew working in this area must know from this task - where things now are, what changed, the traps you hit - so it can stop reading here.
+{{- end}}
 
 | criterion | pass/fail | command | output |
 | --- | --- | --- | --- |
@@ -117,6 +144,7 @@ Everything you did that ## Build did not ask for, or did differently, and why; o
 ## Still open
 What you could not settle, follow-up work you noticed but did not do, and anything ## What we already know got wrong; or none.
 ```
+{{- end}}
 
 A criterion that fails is reported as `fail` with its output, never left out or softened.
 {{- if .PR}}

@@ -50,6 +50,9 @@ const (
 	MetaKind = "kind"
 	// MetaDelivery is crewstate.MetaDelivery: `local` or `pr`.
 	MetaDelivery = crewstate.MetaDelivery
+	// MetaSize is the task's size (brief.Size, `--size`): `small`, `medium`
+	// or `large`. It chose the hand-back shape the brief asks for (CON-72).
+	MetaSize = "size"
 	// MetaState is the crew's declared state (mvp.md section 4b). Only the
 	// app writes it, and only three values ever land in it: `spawned` at
 	// spawn, `finished` or `failed` at `crew stop`, and `failed` when a
@@ -119,6 +122,11 @@ type SpawnCrewRequest struct {
 	// it) or crewstate.DeliveryPR. A scout delivers a report and takes only
 	// local.
 	Delivery string
+	// Size is how big the task is (`--size`, brief.ParseSize): small,
+	// medium or large; empty means medium. It picks the hand-back shape and
+	// evidence level the brief template asks of a ship (CON-72). A scout's
+	// report is the same at every size.
+	Size string
 }
 
 // CrewResult is what a successful spawn established. Every field except the
@@ -144,6 +152,8 @@ type CrewResult struct {
 	Branch string
 	// Delivery is crewstate.DeliveryLocal or crewstate.DeliveryPR.
 	Delivery string
+	// Size is the task's brief.Size, as recorded in `size=`.
+	Size brief.Size
 	// Worktree and BriefPath are absolute; the meta records the worktree
 	// relative to the workspace root.
 	Worktree   string
@@ -225,6 +235,10 @@ func SpawnCrew(ctx context.Context, w *store.Workspace, deps Deps, req SpawnCrew
 	if err != nil {
 		return CrewResult{}, err
 	}
+	size, err := brief.ParseSize(req.Size)
+	if err != nil {
+		return CrewResult{}, errUsage("crew spawn: " + err.Error())
+	}
 	harnessKind := req.Harness
 	if harnessKind == "" {
 		if harnessKind, err = deps.defaultHarness(w.Defaults().CrewHarness, harness.RoleCrew); err != nil {
@@ -296,6 +310,7 @@ func SpawnCrew(ctx context.Context, w *store.Workspace, deps Deps, req SpawnCrew
 		task:             task,
 		brief:            briefText,
 		scout:            req.Scout,
+		size:             size,
 		crewRulesWS:      crewRulesWS,
 		crewRulesProject: crewRulesProject,
 		repo:             repo,
@@ -388,6 +403,8 @@ type crewPlan struct {
 	brief string
 	// scout picks the template's scout shape.
 	scout bool
+	// size picks the template's hand-back shape for a ship (brief.Size).
+	size brief.Size
 	// crewRulesWS and crewRulesProject are the captain's CREW.md texts.
 	crewRulesWS      string
 	crewRulesProject string
@@ -519,6 +536,7 @@ func spawnInWorktree(ctx context.Context, w *store.Workspace, deps Deps, saga *c
 		MetaBranch:     plan.branch,
 		MetaKind:       planKind(plan).String(),
 		MetaDelivery:   plan.delivery,
+		MetaSize:       plan.size.String(),
 		store.MetaRepo: plan.repoCfg.Name,
 		MetaSessionID:  sessionID,
 		MetaTranscript: "",
@@ -555,6 +573,7 @@ func spawnInWorktree(ctx context.Context, w *store.Workspace, deps Deps, saga *c
 		Repo:            plan.repoCfg.Name,
 		Branch:          plan.branch,
 		Delivery:        plan.delivery,
+		Size:            plan.size,
 		Worktree:        plan.worktree,
 		BriefPath:       briefPath,
 		StatusPath:      statusPath,
@@ -789,6 +808,7 @@ func renderCrewBrief(w *store.Workspace, deps Deps, plan crewPlan) ([]byte, erro
 		Crew:               plan.crew,
 		Task:               plan.brief,
 		Scout:              plan.scout,
+		Size:               plan.size,
 		RepoPath:           plan.repo,
 		WorktreePath:       plan.worktree,
 		Branch:             plan.branch,
