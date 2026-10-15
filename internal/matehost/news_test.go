@@ -156,11 +156,19 @@ func TestREPLNewsScreens(t *testing.T) {
 		}
 		press(tea.KeyMsg{Type: tea.KeyDown})
 		press(tea.KeyMsg{Type: tea.KeyEnter})
+		// A short pane, so the news does not fit and scrolls.
+		m.height = 16
 		wheel(tea.MouseButtonWheelUp)
 		if m.newsScroll != wheelLines || m.scroll != 0 || len(m.input) != 0 {
 			t.Fatalf("wheel up in a news: news scroll %d, chat scroll %d, input %q", m.newsScroll, m.scroll, string(m.input))
 		}
-		wheel(tea.MouseButtonWheelDown)
+		for range 50 {
+			wheel(tea.MouseButtonWheelUp)
+		}
+		if m.newsScroll != m.maxScroll() {
+			t.Fatalf("news scrolled to %d past its top %d", m.newsScroll, m.maxScroll())
+		}
+		m.height, m.newsScroll = 30, 0
 		news := ansi.Strip(m.View())
 		for _, want := range []string{"News #3", "CHỜ ANH · needs-decision · crew e1-settings-resume", "Ngữ cảnh", "│ Crew báo", "▸ [a] Thêm THEME=system", "khuyên dùng", "[c] Chỉ ghi chú", "Trả lời #3", "a/b/c chọn ngay"} {
 			if !strings.Contains(news, want) {

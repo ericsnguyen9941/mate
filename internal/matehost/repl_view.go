@@ -106,6 +106,13 @@ func (m Model) viewRows() int {
 	return max(1, n)
 }
 
+// maxScroll is how far the shown chat or news scrolls up: its top line at
+// the top of the screen.
+func (m Model) maxScroll() int {
+	w, _ := m.size()
+	return max(0, len(m.body(w))-m.viewRows())
+}
+
 // shownMode is the view under the list, or the view itself.
 func (m Model) shownMode() viewMode {
 	if m.mode == viewList {

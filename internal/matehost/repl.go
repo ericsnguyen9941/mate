@@ -167,7 +167,7 @@ func (m *Model) wheel(n int) {
 // scrollView scrolls the shown chat or news n lines up (down if n < 0).
 func (m *Model) scrollView(n int) {
 	if m.shownMode() == viewNews {
-		m.newsScroll = max(0, m.newsScroll+n)
+		m.newsScroll = min(m.maxScroll(), max(0, m.newsScroll+n))
 		return
 	}
 	m.scrollBy(n)
@@ -358,8 +358,10 @@ func (m *Model) retry() {
 	go m.host.Submit(last.Text)
 }
 
+// scrollBy scrolls the chat n lines up (down if n < 0), no further up
+// than its top: lines past it would have to be scrolled back first.
 func (m *Model) scrollBy(n int) {
-	m.scroll = max(0, m.scroll+n)
+	m.scroll = min(m.maxScroll(), max(0, m.scroll+n))
 	if m.scroll == 0 {
 		m.unseen = 0
 	}

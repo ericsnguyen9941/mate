@@ -125,12 +125,8 @@ func TestREPLComposerKeys(t *testing.T) {
 		t.Fatalf("^C left %q", string(m.input))
 	}
 	press(tea.KeyMsg{Type: tea.KeyUp})
-	if got := string(m.input); got != "" || len(m.host.queue) != 2 || m.scroll != 1 {
-		t.Fatalf("↑ on an empty composer filled %q, queue %q, scroll %d", got, m.host.queue, m.scroll)
-	}
-	press(tea.KeyMsg{Type: tea.KeyDown})
-	if m.scroll != 0 {
-		t.Fatalf("↓ left scroll %d", m.scroll)
+	if got := string(m.input); got != "" || len(m.host.queue) != 2 {
+		t.Fatalf("↑ on an empty composer filled %q, queue %q", got, m.host.queue)
 	}
 	press(tea.KeyMsg{Type: tea.KeyCtrlX})
 	press(tea.KeyMsg{Type: tea.KeyCtrlX})
@@ -150,6 +146,13 @@ func TestREPLMouseWheel(t *testing.T) {
 		m = next.(Model)
 	}
 	bottom := ansi.Strip(m.View())
+	next, _ := m.key(tea.KeyMsg{Type: tea.KeyUp})
+	m = next.(Model)
+	if m.scroll != 1 || len(m.input) != 0 {
+		t.Fatalf("↑ on an empty composer: scroll %d, input %q", m.scroll, string(m.input))
+	}
+	next, _ = m.key(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(Model)
 	wheel(tea.MouseButtonWheelUp)
 	wheel(tea.MouseButtonWheelUp)
 	if m.scroll != 2*wheelLines || len(m.input) != 0 || len(m.host.queue) != 1 {
@@ -159,7 +162,7 @@ func TestREPLMouseWheel(t *testing.T) {
 	if up == bottom || !strings.Contains(up, "đang xem tin cũ") {
 		t.Errorf("wheel up did not scroll the chat:\n%s", up)
 	}
-	next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	m = next.(Model)
 	if m.scroll != 2*wheelLines {
 		t.Fatalf("a click scrolled to %d", m.scroll)
@@ -169,5 +172,28 @@ func TestREPLMouseWheel(t *testing.T) {
 	}
 	if m.scroll != 0 || ansi.Strip(m.View()) != bottom {
 		t.Fatalf("wheel down left scroll %d", m.scroll)
+	}
+
+	// Past the top the wheel stops, so one notch down moves at once.
+	for range 50 {
+		wheel(tea.MouseButtonWheelUp)
+	}
+	top := ansi.Strip(m.View())
+	if m.scroll != m.maxScroll() || m.scroll == 0 {
+		t.Fatalf("50 notches up: scroll %d, top at %d", m.scroll, m.maxScroll())
+	}
+	wheel(tea.MouseButtonWheelDown)
+	if ansi.Strip(m.View()) == top {
+		t.Fatalf("one notch down after overscrolling did not move the view (scroll %d)", m.scroll)
+	}
+	next, _ = m.key(tea.KeyMsg{Type: tea.KeyHome})
+	m = next.(Model)
+	if m.scroll != m.maxScroll() {
+		t.Fatalf("Home scrolled to %d, top at %d", m.scroll, m.maxScroll())
+	}
+	next, _ = m.key(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(Model)
+	if ansi.Strip(m.View()) == top {
+		t.Fatal("↓ after Home did not move the view")
 	}
 }
