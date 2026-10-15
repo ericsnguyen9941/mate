@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -284,5 +285,82 @@ func TestBacklogCLIEntriesRemainVisibleToRecall(t *testing.T) {
 	_, _, ids := splitBacklog(string(data))
 	if len(ids) != 1 || ids[0] != "checkout" {
 		t.Fatalf("recall lost new CLI entry: %s", data)
+	}
+}
+
+// trackerPlugin installs a tracker plugin instance in the workspace's
+// plugins.yaml (CON-77): a package directory holding read.sh, which answers
+// for HVN-12 and knows no other id. With read false the block has no read
+// command.
+func trackerPlugin(t *testing.T, w *store.Workspace, read bool) {
+	t.Helper()
+	pkg := t.TempDir()
+	writeFixture(t, filepath.Join(pkg, "mate-plugin.yaml"), "apiVersion: mate.plugin/v1\nname: Tracker\n")
+	script := "#!/bin/sh\ncase \"$1\" in\n  HVN-12) echo \"HVN-12 In Progress: fix the flaky test\"; echo \"second line\";;\n  *) echo \"not found: $1\" >&2; exit 1;;\nesac\n"
+	writeFixture(t, filepath.Join(pkg, "read.sh"), script)
+	if err := os.Chmod(filepath.Join(pkg, "read.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	block := "    tracker:\n      read: [./read.sh]\n"
+	if !read {
+		block = "    tracker: {}\n"
+	}
+	writeFixture(t, filepath.Join(w.Root(), ".mate", "plugins.yaml"),
+		"apiVersion: mate.plugins/v1\ninstances:\n  tracker-work:\n    path: "+pkg+"\n"+block)
+}
+
+// With a tracker plugin, `--tracker <id>` writes only the pointer line
+// `- <crew>: <tracker-id>`, under In flight by default; a move or done
+// rewrites the entry to that pointer; entries without --tracker are
+// written as before. Without a tracker plugin --tracker is refused.
+func TestBacklogTrackerWritesAPointerLine(t *testing.T) {
+	w, _ := backlogFixtureWorkspace(t)
+	writeFixture(t, w.BacklogFile("shop"), memory.BacklogHeader())
+	var out, errs bytes.Buffer
+	var ue *usageError
+	if err := run([]string{"backlog", "add", "shop", "k2", "--tracker", "HVN-12", "--workspace", w.Root()}, &out, &errs); !errors.As(err, &ue) || !strings.Contains(err.Error(), "no tracker plugin") {
+		t.Fatalf("--tracker without a plugin: err = %v, want a usage error naming the missing tracker block", err)
+	}
+
+	trackerPlugin(t, w, true)
+	for _, args := range [][]string{
+		{"backlog", "add", "shop", "k2", "--tracker", "HVN-12", "--text", "this content is not copied"},
+		{"backlog", "add", "shop", "k3", "--section", "Held for the captain", "--text", "asked \"red or blue?\" Waiting on: the captain."},
+		{"backlog", "add", "shop", "k4", "--text", "ship the button"},
+		{"backlog", "add", "shop", "k6", "--section", "Queued", "--tracker", "HVN-15"},
+	} {
+		out.Reset()
+		if err := run(append(args, "--workspace", w.Root()), &out, &errs); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, errs.String())
+		}
+	}
+	if !strings.Contains(out.String(), "backlog add: k6 → Queued (pointer to HVN-15 in tracker-work)") {
+		t.Fatalf("add output = %q", out.String())
+	}
+	out.Reset()
+	if err := run([]string{"backlog", "move", "shop", "k4", "--section", "In flight", "--tracker", "HVN-20", "--workspace", w.Root()}, &out, &errs); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"backlog", "done", "shop", "k6", "--tracker", "HVN-15", "--workspace", w.Root()}, &out, &errs); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(w.BacklogFile("shop"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## In flight\n- k4: HVN-20\n- k2: HVN-12\n",
+		"## Held for the captain\n- k3: asked \"red or blue?\" Waiting on: the captain.\n",
+		"## Done\n- k6: HVN-15\n",
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("backlog.md lacks %q:\n%s", want, data)
+		}
+	}
+	if strings.Contains(string(data), "not copied") || strings.Contains(string(data), "ship the button") {
+		t.Errorf("backlog.md copied content a pointer replaces:\n%s", data)
+	}
+	if err := run([]string{"backlog", "add", "shop", "k7", "--tracker", "two words", "--workspace", w.Root()}, &out, &errs); !errors.As(err, &ue) {
+		t.Fatalf("a tracker id with spaces: err = %v, want a usage error", err)
 	}
 }

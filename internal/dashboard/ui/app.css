@@ -882,7 +882,7 @@ button.overview-stage:hover { border-color: var(--accent); color: var(--ink); }
 .sc-row { display: grid; align-items: center; gap: 0 8px; padding: 5px 8px; border-top: 1px solid var(--grid); font-size: 12.5px; min-width: 0; }
 .sc-table > .sc-row:first-child { border-top: 0; }
 .sc-stages .sc-row { grid-template-columns: 1.7em minmax(0, 1fr) 2.6em 2.6em 5.2em 4.4em; }
-.sc-efforts .sc-row { grid-template-columns: minmax(0, 1.7fr) 2.6em 2.6em 5.2em minmax(24px, 1fr) 3.8em; }
+.sc-efforts .sc-row { grid-template-columns: minmax(0, 1.7fr) 2.6em 2.6em 5.2em 5.2em 5.2em minmax(24px, 1fr) 3.8em; }
 .sc-efforts .sc-what { flex-wrap: nowrap; }
 .sc-efforts .sc-what > span { min-width: 0; overflow-wrap: anywhere; }
 .sc-th { background: var(--surface-2); font: 600 10px/1.4 var(--font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
@@ -902,7 +902,9 @@ button.overview-stage:hover { border-color: var(--accent); color: var(--ink); }
 .sc-later > summary { padding: 6px 8px; border-top: 1px solid var(--grid); font-size: 12px; color: var(--ink-2); }
 .sc-later > summary:hover { color: var(--ink); }
 .sc-track { display: block; height: 4px; border-radius: 2px; background: var(--grid); overflow: hidden; }
+.sc-track { display: flex; }
 .sc-track > i { display: block; height: 100%; background: var(--kind, var(--muted)); }
+.sc-track > i.sc-cache { opacity: 0.35; }
 .sc-effort[data-empty] { color: var(--muted); }
 .sc-effort[data-empty] .sc-swatch { opacity: 0.45; }
 .sc-total { border-top: 2px solid var(--muted); font-weight: 700; }
@@ -940,7 +942,7 @@ button.overview-stage:hover { border-color: var(--accent); color: var(--ink); }
   .sc-band { padding: 12px; }
   .sc-row { gap: 0 6px; padding: 5px 6px; }
   .sc-stages .sc-row { grid-template-columns: 1.5em minmax(0, 1fr) 2.5em 2.5em 4.8em 3.9em; }
-  .sc-efforts .sc-row { grid-template-columns: minmax(0, 1.7fr) 2.5em 2.5em 4.8em minmax(18px, 1fr) 3.6em; }
+  .sc-efforts .sc-row { grid-template-columns: minmax(0, 1.7fr) 2.5em 2.5em 4.8em 4.8em 4.8em minmax(18px, 1fr) 3.6em; }
   .sc-stats { gap: 8px 20px; }
   .sc-big { font-size: 18px; }
   .work-current-title { font-size: 18px; }

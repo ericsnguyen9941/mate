@@ -1,6 +1,6 @@
 # Timeline
 
-Schema version: **3**.
+Schema version: **6**.
 
 This is the contract of `.mate/mate.db` and of `internal/timeline`.
 The database is derived: every row here is read out of `crews/<id>.status`, `sent.log`, `incidents.log`, the `.meta` files, the harness transcripts or git, and `mate reindex <workspace>` rebuilds all of it from those sources.
@@ -130,7 +130,7 @@ It is an event rather than a log line because the consequence is otherwise invis
 A `crews/<id>.status` line carries no timestamp of its own.
 Two rules, in order, and the `status.appended` payload records which one fired in `dated_by`.
 
-1. `transcript.shell` - the crew wrote the line with `echo "state: one line" >> $MATE_STATUS`, and that shell command is in the crew's own transcript with a timestamp on it, so the line is dated by the earliest action whose command contains it verbatim.
+1. `transcript.shell` - the crew wrote the line with `echo "state: one line" >> $MATE_STATUS`, and that shell command is in the crew's own transcript with a timestamp on it, so the line is dated by the earliest action whose command contains it verbatim and ran after the crew's previous status line. A line the crew writes twice (`pr-open:` again after a force-push) is therefore dated by its own echo, not the first one (CON-75, 2026-10-15).
    This rule is exact and it survives a rebuild.
 2. `status.mtime` - the file's modification time, clamped so a file's lines never go backwards.
    It is a fallback and not the primary rule because mtime is the time of the file's *last* line: dating every line by it would put a question after the answer to it the moment the crew wrote anything else, and `question.waited_ms` would go negative on the first reindex.
@@ -158,7 +158,7 @@ The actor is the Mate, the subject is the crew: hiring is something the Mate did
 
 ### `crew.finished`, `crew.failed`
 
-From `state=finished|failed` in the same file, dated by `stopped_at`.
+From `state=finished|reviewed|failed` in the same file, dated by `stopped_at`. `reviewed` (a reviewer closed after its Verdict, CON-75) is a `crew.finished` whose payload says `"state":"reviewed"`; only `failed` is `crew.failed`.
 
 ```json
 {"crew":"buybtn","state":"finished"}
@@ -186,7 +186,7 @@ For Claude that is one assistant message group (one `message.id`), which is the 
 {"cache_read_tokens":57690,"cache_write_tokens":739,"context_tokens_after":58461,"harness_turn":"e6114c69-5e7a-4d34-b35d-ef6c74677ed2","input_tokens":32,"model":"claude-fable-5-1","outcome":"tool_use","output_tokens":911,"thinking_tokens":73,"tool_count":1}
 ```
 
-`turn.ended` carries the same payload plus `duration_ms`.
+`turn.ended` carries the same payload plus `duration_ms`. Schema v5 (CON-75) adds `effort` to the payload and to `turn`: the harness's telemetry state when it records one (Codex, pi), else the actor's launch profile (`effort=` in `.meta`, which is a Claude turn's only source); `model` takes the same fallback when the transcript names none.
 
 `context_tokens_after` is what the context held when the call returned.
 For Claude it is the message's `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`.
@@ -257,6 +257,10 @@ One per line of `crews/<id>.status`.
 A question is answered by a `sent.log` line addressed to `crew:<id>` at or after it, which is `internal/box`'s inbox rule.
 The comparison truncates the question's time to the second, because `sent.log` writes RFC3339 with no fractional part and an answer typed in the same second would otherwise read as older than the question.
 A crew that asked twice without being answered is answered in the order it asked.
+
+Schema v4 (CON-75) gives `question` a `kind`: `decision` for a `needs-decision` line, as above, and `handback` for a `wait-mate` line (the watcher's `pr-merged`/`pr-closed` excepted).
+A hand-back row is asked by its `status.appended` event and answered by the next `message.sent` into the crew's pane, with no `question.asked`/`question.answered` of its own, so `task.question_count` still counts decisions while `waited_ms` and the dashboard's `decision_wait` findings cover both - e0-components' 93 hours on hellovietnam were a hand-back nobody picked up.
+The holding-line rule: a line the Mate or the captain sends a crew that has no open question, when the crew has written no status line since its last answer, is that answer arriving - the earlier reply was "hold on" and the crew could do nothing with it - so the answer moves to the later line and `waited_ms` grows with it (`question.answered_event_id` then names a `message.sent`). A crew that wrote any status line in between acted on the first reply, and nothing moves.
 
 ### `message.sent`, `digest.sent`, `assign.clicked`
 
@@ -493,7 +497,7 @@ Rows are tried in order and the first match wins.
 | `crew.failed.gone` | anywhere | `crew.failed` | | - | |
 | `crew.asleep` | at work | `incident.opened` | `stale` | `asleep(stale)` | |
 | `crew.blocked` | at work | `incident.opened` | `runtime_lost`, `wedged` | `blocked(<kind>)` | |
-| `crew.incident.other` | anywhere | `incident.opened` | | - | `budget` is an inbox item and not a state (docs/mvp.md section 4b) |
+| `crew.incident.other` | anywhere | `incident.opened` | | - | `budget` and `no_turn` are inbox items and not states (docs/mvp.md section 4b) |
 | `crew.awake` | `asleep`, `blocked` | `incident.resolved` | | back where the incident found it | |
 | `crew.awake.other` | anywhere | `incident.resolved` | | - | |
 | `crew.asks` | in the building | `question.asked` | | `walking_to_ceo(question)` → `waiting_at_ceo` | the Mate |
@@ -694,6 +698,24 @@ Every number is humanised (`query.HumanizeTokens`, `query.HumanizeCost`: `96.3k`
 `internal/timeline.Ingester.CheckBudgets` runs at the end of every observer poll, after that poll's `Ingest` has written the turns a crossing would be based on, and is wired in as `watch.Deps.Budget` - a seam, the same shape as `Ingest`, so `internal/watch` still imports nothing that can read `pricing.yaml` or open the database itself.
 It opens a `budget` incident (`box.IncidentBudget`) on a crossing crew exactly once: a crew already carrying an open one is left alone even if it has since spent more, because the incident is a fact about spend that already happened, not a condition that clears - it is never resolved.
 The incident's text is `"<humanised total> tokens of <humanised limit> tokens"` or `"<humanised cost> of <humanised limit>"`, which a digest's fourth item shape reads verbatim as `<crew> over budget: <text>`.
+
+Since CON-76 (2026-10-15) a crew's token limit is its own `budget=` in `crews/<id>.meta` (`store.MetaBudget`) when it has one, else the project's `crew_tokens`. `mate crew spawn --budget <tokens>` writes it from the dispatch rule the Mate matched (`crew-dispatch.json` rules take an optional `budget`, the table a `review_budget` that `mate review` passes on; `mate crew dispatch` prints each as `--budget N` on the profile lines; the built-in table sizes a small ship at 2M, a medium one at 8M, a large one at 20M and a review at 3M), and without the flag it copies the project's `crew_tokens` so the record says what the crew was held to.
+Against that limit `CheckBudgets` files a second, earlier incident: at half of it, while the crew is open and has never written a hand-back line (`wait-mate`, `pr-open`, or any verb `box.ParseStatus` reads as wait-mate), with the same kind `budget` and the text `"50%: <used> tokens of <limit> tokens, no hand-back yet"`. `box.BudgetHalfPrefix` / `box.BudgetThreshold` are the one place that prefix is read: `CheckBudgets` uses it to file each threshold once per crew (an open half incident does not stop the full one, and a crew carrying the full one is not checked again), the digest renders the half one as `<crew> budget 50%: <text>` rather than "over budget", `mate wake` prints `budget 50% <crew>: ...` with a `next:` line (one peek; a line if the Crew is looping or polling) and `over budget <crew>: ...` with `next: tell the captain`, and the console, `mate recall` and the dashboard read it as "half the budget, no hand-back". Neither incident is ever resolved; the half one stops being filed, not shown, once the crew hands back.
+
+### No turn (`no_turn`, CON-74)
+
+`internal/timeline.Ingester.CheckNoTurn` is the observer's second ledger check, wired in as `watch.Deps.Turns` beside `Budget` and run after it with `watch.Deps.NoTurnAfter` (zero means `watch.DefaultNoTurnAfter`, 5 minutes - the same place `StaleAfter` lives).
+For every open crew whose last status verb is `working`, or that has written no status at all, launched (`launched_at`, else `started_at`) more than that long ago, and whose actor has no row in `turn`, it appends one `no_turn` `open` line to `incidents.log` with the text `"no turn in the ledger <d> after launch"`; a crew already carrying an open one is left alone. The case it is for is hellovietnam's `e1-auth-signin-rev` (2026-10-14): a Codex reviewer that sat at a sign-in screen with 0 calls and no incident.
+Unlike `budget` it resolves: the poll after the ledger first records a turn for the crew appends a `resolved` line (`"the ledger now records N turn(s)"`), and a crew that closes first is resolved by the observer's sweep of closed crews like every other kind. A crew that asked a question or handed back is never filed, whatever the ledger says: it has spoken, and a ledger behind it is the ingest's problem.
+`box.IncidentNoTurn` is excluded from `box.BlockingIncidents` like `budget`: the crew is not `blocked`, it never started, and `crew list` keeps saying `working` or `spawned`. `internal/autopilot.Gather` gives it its own `ItemNoTurn` kind; the digest line is `<crew> no turn: <text>`; `mate wake` ranks it with `blocked` in part 1 as `no turn <crew>: <text>, open for <age>` with `next: mate peek <crew>; if the pane is empty or at a sign-in screen, mate crew relaunch <crew>`; the console inbox, `mate recall` and the dashboard read it as "no turn yet"; the Office scene leaves the crew where it is (`crew.incident.other`).
+
+### Context (`workspace.yaml`'s `crew.context_high`)
+
+`CheckBudgets` also runs CON-73's context check (`internal/timeline/context.go`) on every project, budget or not: a crew that is open, whose latest status line is not a hand-back, and whose latest `turn.context_tokens_after` is above `store.Workspace.CrewContextHigh()` (`crew.context_high`, default 180000, negative off) gets one `context_high` incident (`box.IncidentContextHigh`), text `"<latest> tokens of context, over <threshold>"`, filed once per crew (an open one is left alone). It is resolved - unlike `budget` - once the crew's latest context is back under the threshold, which is what a fresh session does, or the crew is closed. The digest renders it as `<crew> context high: <text>` (`autopilot.ItemContextHigh`), `mate wake` as `context high <crew>: <text>` with a `next:` line that says not to cut the crew mid-turn and to open a fresh session at its next hand-back, and the console, `mate recall` and the dashboard as "context high". Nothing ever cuts a crew: `mate send` to a crew that has handed back opens the fresh session itself (`cmd/mate/send_fresh.go`).
+
+### Sessions (`session.crew_session`, schema 6)
+
+Schema v6 (CON-73) gives each `session` row `crew_session`: the session's ordinal among its actor's sessions, by the time of its first turn (its own `started_at` when it has none yet), ties by id. The writer recomputes it for an actor whenever one of that actor's sessions is in a batch (`rankSessions`), after the turns, so it is a pure function of the rows and `mate reindex` gives every session the number it had live. It is the ledger's side of `sessions=` in `crews/<id>.meta` (1 at spawn, one more per relaunch that opens a new conversation; a resume continues the same row). `mate usage <project> <crew> --sessions` groups the crew's turns by it.
 
 Per the 2026-09-20 decision (mvp.md section 4b), a `budget` incident is deliberately excluded from what makes a crew `blocked`: `box.BlockingIncidents` narrows `box.OpenIncidents` to `stale` and `runtime_lost` only, and every caller that used to feed `OpenIncidents` into `crewstate.Declaration.OpenIncident` (`query.CrewStateOf`, `spawn.crew_stop`'s open-crew resolution, the Console's session metadata, `mate state`) now goes through `BlockingIncidents` instead.
 `box.OpenIncidents` itself is unchanged and still puts a `budget` incident in the inbox, where the phrase table (`internal/ui/console/box.go`'s `boxNeedPhrase`) reads it as `over budget`.

@@ -39,10 +39,21 @@ const (
 	ItemWaitMate ItemKind = "wait-mate"
 	// ItemBudget is an open `budget` incident: the crew (or, with no crew
 	// name, the project) has crossed a limit in project.yaml's `budget:`
-	// block. It is its own kind, not ItemBlocked, because the digest's
-	// vocabulary must not tell the Mate a budget item changed the crew's
-	// state - it did not.
+	// block or its own `budget=`, or is half way to it with no hand-back
+	// yet (box.BudgetHalfPrefix, CON-76). It is its own kind, not
+	// ItemBlocked, because the digest's vocabulary must not tell the Mate
+	// a budget item changed the crew's state - it did not.
 	ItemBudget ItemKind = "over budget"
+	// ItemNoTurn is an open `no_turn` incident (CON-74): the crew has been
+	// working, or only spawned, for longer than the observer's threshold
+	// with no turn in the token ledger. Its own kind for the reason
+	// ItemBudget is: the crew is not blocked, it never started.
+	ItemNoTurn ItemKind = "no turn"
+	// ItemContextHigh is an open `context_high` incident (CON-73): the
+	// crew is still working on a context past the workspace's
+	// `crew.context_high`. Its own kind for the same reason as ItemBudget:
+	// it never changed the crew's state.
+	ItemContextHigh ItemKind = "context high"
 )
 
 // Item is one thing a digest reports, with the entry it came from kept so a
@@ -145,11 +156,18 @@ func Gather(v box.View, cursor map[string]int64, now time.Time) []Item {
 				continue
 			}
 			kind := ItemBlocked
-			if item.Kind == box.IncidentBudget {
+			switch item.Kind {
+			case box.IncidentBudget:
 				// Never ItemBlocked: a budget incident does not change the
 				// crew's state (decision 2026-09-20), and the digest's own
 				// vocabulary must not suggest otherwise.
 				kind = ItemBudget
+			case box.IncidentNoTurn:
+				kind = ItemNoTurn
+			case box.IncidentContextHigh:
+				// Likewise (CON-73): a large context is a fact about the
+				// session, not the crew falling silent.
+				kind = ItemContextHigh
 			}
 			out = append(out, Item{
 				Kind:         kind,
@@ -256,10 +274,21 @@ func itemText(item Item) string {
 		return fmt.Sprintf("%s blocked: %s, quiet for %s", crew, kind, quietWord(item.QuietFor))
 	case ItemBudget:
 		// item.Text is the observer's incident text, written as
-		// "<total> of <limit>" (internal/watch's budget check) - the fourth
-		// item shape of mvp.md section 5: "<crew> over budget: <total> of
-		// <limit>".
+		// "<total> of <limit>" (internal/timeline's budget check) - the
+		// fourth item shape of mvp.md section 5: "<crew> over budget:
+		// <total> of <limit>". The half-budget incident (CON-76) is the
+		// same shape under "budget 50%", so a Mate never reads "over
+		// budget" about a crew that is not.
+		if percent, rest := box.BudgetThreshold(item.Text); percent == 50 {
+			return fmt.Sprintf("%s budget 50%%: %s", crew, rest)
+		}
 		return fmt.Sprintf("%s over budget: %s", crew, item.Text)
+	case ItemNoTurn:
+		return fmt.Sprintf("%s no turn: %s", crew, item.Text)
+	case ItemContextHigh:
+		// "<crew> context high: <latest> tokens of context, over
+		// <threshold>" (CON-73), the observer's text verbatim.
+		return fmt.Sprintf("%s context high: %s", crew, item.Text)
 	default:
 		return fmt.Sprintf("%s %s: %q", crew, item.Kind, oneLine(item.Text, MaxItemRunes))
 	}

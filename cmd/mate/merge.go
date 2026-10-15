@@ -5,9 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"regexp"
+	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/gitx"
+	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // cmdMerge implements `mate merge <project> <crew>`: docs/mvp.md task 22.
@@ -25,9 +30,10 @@ func cmdMerge(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("merge", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate merge <project> <crew> [--workspace <dir>]")
+		fmt.Fprintln(stderr, "usage: mate merge <project> <crew> [--review <reviewer> [--followups <backlog:<text>|<TRACKER-id>>]] [--workspace <dir>]")
 	}
 	reviewFlag := fs.String("review", "", "require a passing review of this exact branch and contract")
+	followupsFlag := fs.String("followups", "", "where the review's non-blocking findings were recorded: a backlog:<text> line under ## Queued, or a tracker id")
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
@@ -41,10 +47,17 @@ func cmdMerge(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	project, crew := fs.Arg(0), fs.Arg(1)
+	followups, err := checkFollowups(w, project, *followupsFlag)
+	if err != nil {
+		return err
+	}
 	var reviewed []spawn.ReviewedCommit
 	if *reviewFlag != "" {
 		fp, _, err := checkReview(context.Background(), w, gitx.New(), project, crew, *reviewFlag)
 		if err != nil {
+			return err
+		}
+		if err := requireFollowups(w, project, *reviewFlag, followups); err != nil {
 			return err
 		}
 		reviewed = append(reviewed, spawn.ReviewedCommit{Head: fp["head"], Base: fp["base"]})
@@ -58,5 +71,93 @@ func cmdMerge(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	fmt.Fprintln(stdout, res.Line())
+	if followups != "" {
+		// Recorded after the merge, on the closed crew's meta: a refused
+		// merge leaves no claim behind that the findings were followed up.
+		if err := w.UpdateCrewMeta(project, crew, map[string]string{store.MetaFollowups: followups}); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "followups: %s (recorded as %s= in %s)\n", followups, store.MetaFollowups, w.CrewMeta(project, crew))
+	}
 	return nil
+}
+
+// trackerID is what `--followups` takes besides a backlog line: an issue id
+// of the captain's tracker, `HVN-12`, `CON-74`.
+var trackerID = regexp.MustCompile(`^[A-Z]+-[0-9]+$`)
+
+// followupsBacklogPrefix marks a `--followups` that points at the
+// project's backlog: `backlog:<text>`, where text is part of a line under
+// `## Queued` in backlog.md.
+const followupsBacklogPrefix = "backlog:"
+
+// checkFollowups validates a `--followups` reference (CON-74) and returns
+// it as recorded: "" when none was given, a tracker id, or the backlog
+// reference once the line it names is found under `## Queued`. It checks
+// the place exists, not what it says: the findings are the Mate's to
+// record, the app only refuses a merge that claims a record it cannot find.
+func checkFollowups(w *store.Workspace, project, ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", nil
+	}
+	if trackerID.MatchString(ref) {
+		return ref, nil
+	}
+	text, ok := strings.CutPrefix(ref, followupsBacklogPrefix)
+	if !ok || strings.TrimSpace(text) == "" {
+		return "", newUsageError("mate merge: --followups wants backlog:<text of a line under ## Queued in backlog.md> or a tracker id like HVN-12")
+	}
+	text = strings.TrimSpace(text)
+	data, err := os.ReadFile(w.BacklogFile(project))
+	if err != nil {
+		return "", fmt.Errorf("mate merge: --followups %s: %w", ref, err)
+	}
+	for _, line := range backlogQueued(string(data)) {
+		if strings.Contains(line, text) {
+			return followupsBacklogPrefix + text, nil
+		}
+	}
+	return "", fmt.Errorf("mate merge: --followups %s: no line under ## %s of %s contains %q; record the findings there first (mate backlog add)", ref, memory.BacklogQueued, w.BacklogFile(project), text)
+}
+
+// backlogQueued is each line under `## Queued` of a backlog, up to the next
+// heading.
+func backlogQueued(text string) []string {
+	var out []string
+	in := false
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			in = strings.TrimSpace(strings.TrimPrefix(line, "## ")) == memory.BacklogQueued
+			continue
+		}
+		if in && strings.TrimSpace(line) != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// requireFollowups is the merge's gate on a passing review's findings
+// (CON-74): a report whose verdict is pass may still list material
+// findings under `## Findings` (or leave a prior one open); those do not
+// block the merge, but they must be recorded somewhere before it, or
+// nobody follows them up. Without `--followups` the merge is refused with
+// the findings printed; with one, which checkFollowups already resolved,
+// it goes on.
+func requireFollowups(w *store.Workspace, project, reviewer, followups string) error {
+	data, err := os.ReadFile(w.CrewReport(project, reviewer))
+	if err != nil {
+		return err
+	}
+	findings := store.ReviewFindings(string(data))
+	if len(findings) == 0 || followups != "" {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "merge refused: review %s passed but left %d finding(s) standing; record them and name where with --followups backlog:<text of the ## %s line> or --followups <TRACKER-id>, then merge again:", reviewer, len(findings), memory.BacklogQueued)
+	for i, f := range findings {
+		fmt.Fprintf(&b, "\n  F%d: %s", i+1, strings.Join(strings.Fields(f), " "))
+	}
+	return newUsageError(b.String())
 }

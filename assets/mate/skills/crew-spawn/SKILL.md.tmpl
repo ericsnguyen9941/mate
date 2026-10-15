@@ -21,7 +21,7 @@ Spawn one Crew per task, and one Crew per repo:
 The first form spawns a ship; the second, with `--scout`, a scout, whose brief must carry a `## Deliverable` (section 4).
 A ship lands locally unless you add `--deliver pr`, which has it push its branch and open a pull request (`task-intake` says when).
 `--repo <repo>` names the one repo the Crew works in, from section 1's list or `mate project repo list {{.ProjectName}}`: required when the project has two or more repos, and optional with one, where it defaults to that one; pass it anyway, so the record says which.
-With no repo at all there is nothing to spawn into: add the repo yourself when the captain named it (section 1); otherwise ask which repo it is, in one sentence, and keep the task under Queued in `{{.BacklogFile}}` until you know.
+With no repo at all there is nothing to spawn into: add the repo yourself when the captain named it (section 1); otherwise ask which repo it is, in one sentence, and keep the task under Queued (`{{.MatevBin}} backlog add {{.ProjectName}} <id> --section Queued --text "<one line>"`) until you know.
 A request split across repos (section 5) is one spawn per repo, each with its own id, brief and `--repo`.
 When one depends on the other, spawn the one it depends on and queue the other with `blocked-by: <id>` until that branch has landed; otherwise spawn both in the same turn.
 
@@ -31,11 +31,11 @@ If whatever runs it for you asks for a timeout, give it at least five minutes; d
 Then, in order:
 
 1. Record the three printed lines - repo, branch, worktree, status path - where you can find them again.
-2. Add the task to `{{.BacklogFile}}` under In flight, with the crew id, the repo, the branch, and one line of what it is for.
-   You still write this file yourself; `mate backlog {{.ProjectName}}` (section 3) is read-only and only ever tells you what its table says, never writes a line of it for you.
+2. Put the task under In flight with `{{.MatevBin}} backlog add {{.ProjectName}} <id> --section "In flight" --text "<repo>, <branch>: <one line of what it is for>"`, or `backlog move` when it was Queued.
+   `backlog add`, `move` and `done` are the only way you write `{{.BacklogFile}}`; the one section you edit by hand is `## Held for the captain` (section 13).
 3. Run `{{.MatevBin}} peek {{.ProjectName}} <id>` once, to confirm the Crew is processing its brief rather than sitting on a dialog or a dead harness.
 4. Write the captain one line saying the work has started, and end your turn, in either mode.
-   Do not supervise, do not run `state` or `peek` again, and never wait for the Crew inside the turn; section 10's "Ending the turn" says why and how you hear from it.
+   Do not supervise it or wait for it; section 10's "Ending the turn" says how you hear from it.
 
 Never spawn a ship for work that overlaps an in-flight Crew's files; queue it instead (section 5). A scout overlaps nothing.
 

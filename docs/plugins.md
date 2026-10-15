@@ -33,6 +33,29 @@ instances:
     key: t                   # optional shortcut on every console project row
 ```
 
+## A tracker plugin
+
+An instance whose entry has a `tracker:` block is the workspace's task
+tracker (CON-77). That is mate's one hook into a tracker, and it is the
+captain's, not the package's: the binary cannot call the MCP server the Mate
+logs in to, so what it reads goes through a local command.
+
+```yaml
+instances:
+  linear-work:
+    path: /path/to/linear-plugin
+    tracker:
+      read: [linear-axi, issue, view, "{id}"]   # optional; runs in the package root
+```
+
+With the block, `mate backlog add|move|done --tracker <tracker-id>` keeps only
+the pointer line `- <crew-id>: <tracker-id>` in `backlog.md`, and `mate recall`
+part 4 runs `read` once per In flight pointer (`{id}` replaced, or the id
+appended; 3 s each, 10 s in all, 20 pointers at most) and prints the first
+line of its stdout, or `unknown to the tracker` on a non-zero exit. Without
+`read`, recall says the pointers were not cross-checked. `doctor` looks the
+command up the way it looks up a stdio server's.
+
 ## Install a local package in four steps
 
 ```sh

@@ -6,15 +6,42 @@
 //	  "rules": [
 //	    {"when": "<a kind of task, in words>",
 //	     "use": {"harness": "claude", "model": "haiku", "effort": "low"},
-//	     "why": "<optional rationale>"}
+//	     "why": "<optional rationale>",
+//	     "budget": 2000000}
 //	  ],
 //	  "default": {"harness": "codex", "model": "gpt-5.5", "effort": "medium"},
-//	  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"}
+//	  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"},
+//	  "review_small": {"harness": "claude", "model": "haiku", "effort": "low"},
+//	  "review_small_max_lines": 50,
+//	  "review_budget": 3000000,
+//	  "rotate": ["claude", "claude", "claude", "codex", "pi"]
 //	}
 //
 // `review` is mate's addition to firstmate's schema: the profile `mate
 // review` launches a reviewer with when the Mate names no model or effort,
 // so a review is not sized like the change it reviews (CON-68).
+//
+// `review_small` and `review_small_max_lines` are mate's too (CON-74): the
+// profile `mate review` takes instead of `review` when the change is small -
+// `git diff --stat` of the reviewed range adds up to at most
+// `review_small_max_lines` changed lines (DefaultReviewSmallMaxLines, 50,
+// when the table names none) and none of the changed files looks like code
+// (IsCodePath). A table without `review_small` reviews every change on
+// `review`.
+//
+// `budget` and `review_budget` are mate's too (CON-76): the token budget a
+// task of that rule's kind is sized at, which the Mate passes to `mate crew
+// spawn --budget` and the observer checks the crew's spend against (half
+// of it without a hand-back, and all of it). Both are optional; a rule
+// without one leaves the crew on the project's `budget:` block, if any.
+//
+// `rotate` is mate's as well (CON-77): a round-robin of harnesses the
+// captain wants spawns to take turns on, at table level or per rule (the
+// rule's wins for a task of its kind). Each spawn that takes the harness
+// the rotation names next records `rotation_slot=` in its meta, and `mate
+// crew dispatch` reads those to say which harness is next (Rotation.Next).
+// It is a suggestion the Mate reads, never a gate: the captain's explicit
+// `--harness` wins and leaves the position where it was.
 //
 // `use`, `default` and `review` take one profile or an array of alternatives. The
 // rules are natural language: the Mate matches a task to a rule with its
@@ -32,6 +59,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
@@ -68,6 +96,12 @@ type Rule struct {
 	When string
 	Use  []Profile
 	Why  string
+	// Budget is the token budget a task of this kind is sized at, 0 when
+	// the rule names none (the project's `budget:` then applies).
+	Budget int64
+	// Rotate is the rule's own harness rotation, nil when it has none and
+	// the table's applies.
+	Rotate Rotation
 }
 
 // Table is a loaded, checked dispatch table. Path is empty and BuiltIn true
@@ -80,7 +114,115 @@ type Table struct {
 	// Review is the reviewer profile of `mate review`; empty when the
 	// table names none.
 	Review []Profile
+	// ReviewBudget is the token budget a review is sized at, 0 when the
+	// table names none.
+	ReviewBudget int64
+	// ReviewSmall is the reviewer profile of a small change (CON-74);
+	// empty when the table names none, in which case Review serves every
+	// change.
+	ReviewSmall []Profile
+	// ReviewSmallMaxLines is the most changed lines a change may have and
+	// still be small: the table's `review_small_max_lines`, else
+	// DefaultReviewSmallMaxLines.
+	ReviewSmallMaxLines int
+	// Rotate is the table's harness rotation, nil when it names none.
+	Rotate Rotation
 }
+
+// Rotation is a round-robin of harnesses: position 1 is the first entry,
+// and after the last the first comes round again. Entries may repeat
+// (three turns of claude, then one of codex).
+type Rotation []harness.Kind
+
+// String lists the rotation the way `crew dispatch` prints it.
+func (r Rotation) String() string {
+	names := make([]string, len(r))
+	for i, k := range r {
+		names[i] = string(k)
+	}
+	return strings.Join(names, ", ")
+}
+
+// Equal reports whether two rotations name the same harnesses in the same
+// order.
+func (r Rotation) Equal(o Rotation) bool {
+	if len(r) != len(o) {
+		return false
+	}
+	for i := range r {
+		if r[i] != o[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Step is the rotation's next turn: the harness, its position in the
+// rotation (1..n) and the slot a spawn taking it records. Slot is the
+// running count of turns the project has taken, so position is
+// (Slot-1) mod n + 1 and a spawn that records it leaves the next read at
+// the position after.
+type Step struct {
+	Harness  harness.Kind
+	Position int
+	Slot     int
+}
+
+// Next is the turn after consumed slots have been taken, skipping every
+// harness in skip (a harness a perishable lesson says fails to start: the
+// Mate passes `--skip`). skipped lists the harnesses skipped over, once
+// each, in order; ok is false when every entry of the rotation is skipped.
+// A skipped turn is passed over, not deferred: the spawn that takes the
+// step records its slot, and the skipped positions never come back for
+// their turn, because the rotation is a share of turns, not a queue.
+func (r Rotation) Next(consumed int, skip []harness.Kind) (step Step, skipped []harness.Kind, ok bool) {
+	n := len(r)
+	if n == 0 || consumed < 0 {
+		return Step{}, nil, false
+	}
+	slot := consumed + 1
+	for i := 0; i < n; i++ {
+		pos := (slot-1)%n + 1
+		k := r[pos-1]
+		if !slices.Contains(skip, k) {
+			return Step{Harness: k, Position: pos, Slot: slot}, skipped, true
+		}
+		if !slices.Contains(skipped, k) {
+			skipped = append(skipped, k)
+		}
+		slot++
+	}
+	return Step{}, skipped, false
+}
+
+// Rotations are the rotations in force, each once: every rule's own, in
+// rule order, then the table's. A spawn that names no rule consumes the
+// first whose next harness it took.
+func (t Table) Rotations() []Rotation {
+	var out []Rotation
+	add := func(r Rotation) {
+		if r == nil {
+			return
+		}
+		for _, have := range out {
+			if have.Equal(r) {
+				return
+			}
+		}
+		out = append(out, r)
+	}
+	for _, rule := range t.Rules {
+		add(rule.Rotate)
+	}
+	add(t.Rotate)
+	return out
+}
+
+// DefaultReviewSmallMaxLines is the small-change threshold of a table that
+// names no `review_small_max_lines`: a change of at most this many lines
+// (insertions plus deletions over every file) with no code file in it is
+// reviewed on `review_small`.
+const DefaultReviewSmallMaxLines = 50
 
 // Path is the table's path in a workspace whose `.mate/` directory is dir.
 func Path(mateDir string) string { return filepath.Join(mateDir, FileName) }
@@ -111,15 +253,21 @@ type rawProfile struct {
 }
 
 type rawRule struct {
-	When string          `json:"when"`
-	Use  json.RawMessage `json:"use"`
-	Why  string          `json:"why"`
+	When   string          `json:"when"`
+	Use    json.RawMessage `json:"use"`
+	Why    string          `json:"why"`
+	Budget *int64          `json:"budget"`
+	Rotate json.RawMessage `json:"rotate"`
 }
 
 type rawTable struct {
-	Rules   []rawRule       `json:"rules"`
-	Default json.RawMessage `json:"default"`
-	Review  json.RawMessage `json:"review"`
+	Rules               []rawRule       `json:"rules"`
+	Default             json.RawMessage `json:"default"`
+	Review              json.RawMessage `json:"review"`
+	ReviewBudget        *int64          `json:"review_budget"`
+	ReviewSmall         json.RawMessage `json:"review_small"`
+	ReviewSmallMaxLines *int            `json:"review_small_max_lines"`
+	Rotate              json.RawMessage `json:"rotate"`
 }
 
 func parse(raw []byte, harnesses harness.Registry) (Table, error) {
@@ -140,7 +288,15 @@ func parse(raw []byte, harnesses harness.Registry) (Table, error) {
 		if err != nil {
 			return Table{}, err
 		}
-		t.Rules = append(t.Rules, Rule{When: strings.TrimSpace(r.When), Use: use, Why: strings.TrimSpace(r.Why)})
+		budget, err := checkBudget(r.Budget, where)
+		if err != nil {
+			return Table{}, err
+		}
+		rotate, err := checkRotation(r.Rotate, where, harnesses)
+		if err != nil {
+			return Table{}, err
+		}
+		t.Rules = append(t.Rules, Rule{When: strings.TrimSpace(r.When), Use: use, Why: strings.TrimSpace(r.Why), Budget: budget, Rotate: rotate})
 	}
 	if len(rt.Default) > 0 && string(rt.Default) != "null" {
 		def, err := profiles(rt.Default, "default", harnesses)
@@ -156,10 +312,72 @@ func parse(raw []byte, harnesses harness.Registry) (Table, error) {
 		}
 		t.Review = review
 	}
+	reviewBudget, err := checkBudget(rt.ReviewBudget, "review_budget")
+	if err != nil {
+		return Table{}, err
+	}
+	t.ReviewBudget = reviewBudget
+	if len(rt.ReviewSmall) > 0 && string(rt.ReviewSmall) != "null" {
+		small, err := profiles(rt.ReviewSmall, "review_small", harnesses)
+		if err != nil {
+			return Table{}, err
+		}
+		t.ReviewSmall = small
+	}
+	t.ReviewSmallMaxLines = DefaultReviewSmallMaxLines
+	if rt.ReviewSmallMaxLines != nil {
+		if *rt.ReviewSmallMaxLines <= 0 {
+			return Table{}, fmt.Errorf("`review_small_max_lines` must be a positive number of lines, not %d", *rt.ReviewSmallMaxLines)
+		}
+		t.ReviewSmallMaxLines = *rt.ReviewSmallMaxLines
+	}
+	rotate, err := checkRotation(rt.Rotate, "rotate", harnesses)
+	if err != nil {
+		return Table{}, err
+	}
+	t.Rotate = rotate
 	if len(t.Rules) == 0 && len(t.Default) == 0 {
 		return Table{}, errors.New("no rules and no default")
 	}
 	return t, nil
+}
+
+// checkBudget reads an optional `budget`: absent is 0 (none), and a value
+// must be a positive whole number of tokens - a zero or negative budget is
+// a typo, not a way to say none, and is refused like any other bad field.
+func checkBudget(raw *int64, where string) (int64, error) {
+	if raw == nil {
+		return 0, nil
+	}
+	if *raw <= 0 {
+		return 0, fmt.Errorf("%s: `budget` must be a positive number of tokens, not %d", where, *raw)
+	}
+	return *raw, nil
+}
+
+// checkRotation reads an optional `rotate`: absent (or null) is nil, and a
+// value must be a non-empty array of registered harness kinds. An empty
+// array is a typo, not a way to say none.
+func checkRotation(raw json.RawMessage, where string, harnesses harness.Registry) (Rotation, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var names []string
+	if err := strictUnmarshal(raw, &names); err != nil {
+		return nil, fmt.Errorf("%s: `rotate` must be an array of harness names: %v", where, err)
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("%s: `rotate` is an empty array", where)
+	}
+	out := make(Rotation, 0, len(names))
+	for i, name := range names {
+		kind, err := harnesses.Parse(name)
+		if err != nil {
+			return nil, fmt.Errorf("%s: `rotate` entry %d: %v", where, i+1, err)
+		}
+		out = append(out, kind)
+	}
+	return out, nil
 }
 
 // profiles reads one profile object or a non-empty array of them.

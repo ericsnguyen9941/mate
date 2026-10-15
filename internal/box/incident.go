@@ -1,6 +1,7 @@
 package box
 
 import (
+	"strings"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -18,10 +19,53 @@ const (
 	// IncidentWedged is a send that could not be verified into a pane for
 	// too long.
 	IncidentWedged IncidentKind = "wedged"
-	// IncidentBudget is a token/usage budget signal (post-MVP producer, the
-	// type exists now so box does not need to change shape later).
+	// IncidentBudget is a token/usage budget signal: the observer's budget
+	// check (internal/timeline.CheckBudgets) files one when a crew's spend
+	// crosses its budget, and one earlier, at half of it, when the crew has
+	// not handed back yet (CON-76). Both carry this kind; the half one is
+	// told apart by BudgetHalfPrefix on its text.
 	IncidentBudget IncidentKind = "budget"
+	// IncidentNoTurn is a crew that has been working (or has only just
+	// been spawned) for longer than the observer's no-turn threshold while
+	// the token ledger records no turn for it (CON-74): a reviewer that
+	// never got past a sign-in screen, a harness that launched and did
+	// nothing. The observer's ledger check
+	// (internal/timeline.CheckNoTurn) files it once per crew and resolves
+	// it when the ledger shows a turn. Like `budget` it is an inbox item,
+	// never a `blocked` state: the crew has not stopped talking, it never
+	// started, and `mate crew list` keeps saying so.
+	IncidentNoTurn IncidentKind = "no_turn"
+	// IncidentContextHigh is a crew still working on a context larger than
+	// the workspace's `crew.context_high` (CON-73): the observer's context
+	// check (internal/timeline.CheckBudgets) files one, once per crew, so
+	// the Mate opens a fresh session at the crew's next hand-back instead
+	// of running a fix round in a bloated one. Like `budget` it is an
+	// inbox item, never a state; unlike `budget` it is resolved once the
+	// crew's latest context is back under the threshold (a new session)
+	// or the crew is closed.
+	IncidentContextHigh IncidentKind = "context_high"
 )
+
+// BudgetHalfPrefix opens the text of a `budget` incident the observer filed
+// at half the crew's budget rather than at the budget itself (CON-76: a
+// crew that has spent half of what its task was sized at without a
+// hand-back is worth a look before it spends the rest). The threshold
+// lives in the text, not in a kind of its own, so incidents.log keeps the
+// four kinds docs/mvp.md section 4b names and every reader that treats
+// `budget` as an inbox item rather than a state keeps doing so.
+const BudgetHalfPrefix = "50%: "
+
+// BudgetThreshold is the percentage of its budget a `budget` incident was
+// filed at - 50 when the text carries BudgetHalfPrefix, 100 otherwise -
+// and the text with that prefix removed. It is the one place the prefix is
+// read, so the digest, `mate wake`, the console and the dashboard agree
+// on which incident is "over budget" and which is "half the budget".
+func BudgetThreshold(text string) (percent int, rest string) {
+	if rest, ok := strings.CutPrefix(text, BudgetHalfPrefix); ok {
+		return 50, rest
+	}
+	return 100, text
+}
 
 // Incident is one observer finding for a crew. The observer (internal/watch,
 // task 18) is the only writer of `incidents.log`; this package only reads
@@ -121,9 +165,10 @@ func OpenIncidents(v View, crew string) []Incident {
 // BlockingIncidents is OpenIncidents narrowed to the two kinds that make a
 // crew `blocked` (mvp.md section 4b, decision 2026-09-20): `stale` and
 // `runtime_lost` - a crew that has stopped being able to speak for itself.
-// `budget` (and `wedged`, which is never filed under a real crew) are
-// deliberately excluded: going over budget does not mean the crew stopped
-// talking, so it must stay an inbox item, not a state that displaces
+// `budget`, `no_turn` (and `wedged`, which is never filed under a real
+// crew) are deliberately excluded: going over budget, or never having
+// taken a turn, does not mean the crew stopped talking, so each stays an
+// inbox item, not a state that displaces
 // `working`/`needs-decision`/`wait-mate`.
 func BlockingIncidents(v View, crew string) []Incident {
 	var out []Incident

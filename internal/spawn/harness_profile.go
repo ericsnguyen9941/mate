@@ -20,6 +20,7 @@ func captureCrewHarnessProfile(ctx context.Context, w *store.Workspace, deps Dep
 	p := store.HarnessProfile{CapturedAt: at.UTC().Format(time.RFC3339Nano), Source: "launch",
 		Repo: plan.repoCfg.Name, Harness: string(plan.kind), MateVersion: config.Version,
 		RequestedModel: plan.model, RequestedEffort: string(plan.effort), EffortOmitted: launch.EffortOmitted(),
+		TaskSize:  plan.size.String(),
 		Documents: []store.ProfileDocument{},
 	}
 	git := deps.git()

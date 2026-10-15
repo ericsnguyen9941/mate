@@ -42,6 +42,7 @@ Every command below is run with the binary's absolute path, `{{.MatevBin}}`, fro
   ```
 
   Run the whole pass, write the receipt, and end your turn; the restart follows, and whatever you did not write is gone.
+- The same line ends with `then run {{.MatevBin}} checkpoint {{.ProjectName}} <nonce>` when the app refreshes your context instead of restarting you: the whole pass, then exactly that command, then end your turn; the fresh session starts with `recall` only after its receipt.
 - `mate memory check {{.ProjectName}}` reports over budget or a stale entry: the whole pass.
 - `crew stop` printed its `record:` line and the task produced a correction you sent the Crew after its brief: the sweep and routing below for that task only, then `memory check`.
 
@@ -87,6 +88,7 @@ Decay advances only when a pass runs.
 
 1. Run `{{.MatevBin}} memory check {{.ProjectName}}` before considering a write.
    Record its budget line and every problem and warning it prints.
+   This run and step 10's are the only two in a pass: it is not a linter to rerun after every edit of `memory.md`, `backlog.md` or `PROJECT.md`.
    The estimate is `ceil(bytes / 3)` per file, a conservative approximation, not a tokenizer.
 2. Read `{{.MemoryFile}}`, `{{.ProjectDoc}}` and `{{.BacklogFile}}` completely, and `{{.WorkspaceDoc}}`, which you count but never edit.
    Treat an absent file as absent, not as an invitation to manufacture content.

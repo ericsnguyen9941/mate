@@ -21,6 +21,8 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/names"
+	"github.com/nguyenngocanh94/mate/internal/plugin"
+	"github.com/nguyenngocanh94/mate/internal/process"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -158,7 +160,7 @@ func recall(ctx context.Context, w *store.Workspace, git gitx.Git, project strin
 		if err != nil {
 			return "", err
 		}
-		backlogPart, err := recallBacklog(w, project)
+		backlogPart, err := recallBacklog(ctx, w, project)
 		if err != nil {
 			return "", err
 		}
@@ -350,6 +352,13 @@ func inboxLine(w *store.Workspace, project string, e query.BoxEntry) string {
 			need = "send wedged"
 		case "budget":
 			need = "over budget"
+			if e.BudgetHalf() {
+				need = "half the budget, no hand-back"
+			}
+		case "no_turn":
+			need = "no turn yet"
+		case "context_high":
+			need = "context high"
 		default:
 			need = "incident " + e.Verb
 		}
@@ -453,9 +462,10 @@ func headingsOnly(text string) bool {
 	return true
 }
 
-// recallBacklog is part 4: backlog.md without its Done section, and the
-// In flight ids that do not match the live table.
-func recallBacklog(w *store.Workspace, project string) (recallPart, error) {
+// recallBacklog is part 4: backlog.md without its Done section, the In
+// flight ids that do not match the live table, and, when the project has a
+// tracker plugin, what the tracker says about each In flight pointer.
+func recallBacklog(ctx context.Context, w *store.Workspace, project string) (recallPart, error) {
 	const title = "backlog.md, without Done"
 	path := w.BacklogFile(project)
 	data, err := os.ReadFile(path)
@@ -511,7 +521,141 @@ func recallBacklog(w *store.Workspace, project string) (recallPart, error) {
 	if len(stale) == 0 && len(missing) == 0 {
 		body.WriteString("In flight matches the open crews in part 1.\n")
 	}
+	body.WriteString(recallTracker(ctx, w, project, kept, inFlight))
 	return recallPart{4, title, body.String()}, nil
+}
+
+// Bounds on the tracker cross-check: it runs at session start, inside the
+// SessionStart hook's own cap, so it must end whether or not the tracker
+// answers.
+const (
+	trackerReadEach  = 3 * time.Second
+	trackerReadTotal = 10 * time.Second
+	trackerReadMax   = 20
+)
+
+// trackerPointer is the structural match of an In flight pointer line,
+// `- <crew-id>: <tracker-id>` and nothing else on the line.
+var trackerPointer = regexp.MustCompile(`^- (` + names.CrewPattern + `): (\S+)$`)
+
+// inFlightPointers maps each In flight pointer line's crew id to its
+// tracker id, in file order.
+func inFlightPointers(text string) (ids []string, pointers map[string]string) {
+	pointers = map[string]string{}
+	section := ""
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimRight(line, "\r")
+		if strings.HasPrefix(trimmed, "## ") {
+			section = strings.TrimSpace(strings.TrimPrefix(trimmed, "## "))
+		} else if strings.HasPrefix(trimmed, "# ") {
+			section = ""
+		}
+		if section != memory.BacklogInFlight {
+			continue
+		}
+		if m := trackerPointer.FindStringSubmatch(trimmed); m != nil {
+			ids = append(ids, m[1])
+			pointers[m[1]] = m[2]
+		}
+	}
+	return ids, pointers
+}
+
+// recallTracker is part 4's tracker cross-check (CON-77): nothing when the
+// project has no tracker plugin; otherwise one line per In flight pointer
+// with what the tracker's read command says about its id, the In flight
+// entries that are not pointers (content backlog.md should no longer
+// hold), and one line instead when the plugin has no read command.
+func recallTracker(ctx context.Context, w *store.Workspace, project, backlog string, inFlight []string) string {
+	cfg, err := plugin.ReadConfig(w.Root())
+	if err != nil {
+		return fmt.Sprintf("tracker: %s unreadable (%v); In flight was not cross-checked\n", plugin.ConfigFile, err)
+	}
+	in, ok := cfg.TrackerFor(project)
+	if !ok {
+		return ""
+	}
+	ids, pointers := inFlightPointers(backlog)
+	var b strings.Builder
+	var plain []string
+	for _, id := range inFlight {
+		if _, ok := pointers[id]; !ok {
+			plain = append(plain, id)
+		}
+	}
+	if len(plain) > 0 {
+		fmt.Fprintf(&b, "In flight entries that are not a `- <id>: <tracker-id>` pointer, with %s holding the tasks: %s\n", in.ID, strings.Join(plain, ", "))
+	}
+	if len(in.Tracker.Read) == 0 {
+		fmt.Fprintf(&b, "tracker %s: no read command (tracker.read in %s), so %d In flight pointer(s) were not cross-checked\n", in.ID, plugin.ConfigFile, len(ids))
+		return b.String()
+	}
+	if len(ids) == 0 {
+		fmt.Fprintf(&b, "tracker %s: no In flight pointers to cross-check\n", in.ID)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "tracker %s (%s):\n", in.ID, in.Tracker.Read[0])
+	ctx, cancel := context.WithTimeout(ctx, trackerReadTotal)
+	defer cancel()
+	for i, id := range ids {
+		if i == trackerReadMax {
+			fmt.Fprintf(&b, "- %d more pointer(s) not read; the cross-check stops at %d\n", len(ids)-i, trackerReadMax)
+			break
+		}
+		fmt.Fprintf(&b, "- %s: %s · %s\n", id, pointers[id], trackerRead(ctx, trackerRunner, in, pointers[id]))
+	}
+	return b.String()
+}
+
+// trackerRunner runs the tracker's read command; a test may replace it.
+var trackerRunner process.Runner = process.ExecRunner{}
+
+// trackerRead runs the instance's read command for one tracker id and
+// returns the one line part 4 prints: the first line of its stdout, or why
+// there is none. It never fails the digest.
+func trackerRead(ctx context.Context, runner process.Runner, in plugin.Instance, trackerID string) string {
+	argv := make([]string, 0, len(in.Tracker.Read)+1)
+	substituted := false
+	for _, a := range in.Tracker.Read {
+		if strings.Contains(a, "{id}") {
+			substituted = true
+		}
+		argv = append(argv, strings.ReplaceAll(a, "{id}", trackerID))
+	}
+	if !substituted {
+		argv = append(argv, trackerID)
+	}
+	ctx, cancel := context.WithTimeout(ctx, trackerReadEach)
+	defer cancel()
+	res, err := runner.Run(ctx, process.Spec{Name: argv[0], Args: argv[1:], Dir: in.Path})
+	if err != nil {
+		return fmt.Sprintf("unreadable: %v", err)
+	}
+	if res.ExitCode != 0 {
+		line := firstLine(string(res.Stderr))
+		if line == "" {
+			line = firstLine(string(res.Stdout))
+		}
+		if line == "" {
+			return fmt.Sprintf("unknown to the tracker (exit %d)", res.ExitCode)
+		}
+		return fmt.Sprintf("unknown to the tracker (exit %d: %s)", res.ExitCode, recallClip(line, 160))
+	}
+	line := firstLine(string(res.Stdout))
+	if line == "" {
+		return "(no output)"
+	}
+	return recallClip(line, 160)
+}
+
+// firstLine is the first non-blank line of s, trimmed.
+func firstLine(s string) string {
+	for _, l := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(l); t != "" {
+			return t
+		}
+	}
+	return ""
 }
 
 // inFlightID is the structural match of an In flight entry: `- <id>` where

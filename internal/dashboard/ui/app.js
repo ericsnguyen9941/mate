@@ -54,13 +54,19 @@
 
   // The inbox's one phrase per row, the same words internal/ui/console's
   // boxNeedPhrase picks. The inbox shows the need, not the text.
+  function itemText(item) { return typeof item.text === "string" ? item.text : ""; }
   function needPhrase(item) {
     if (item.kind === "incident") {
       switch (item.verb) {
         case "stale": return "stuck, quiet too long";
         case "runtime_lost": return "agent gone";
         case "wedged": return "send wedged";
-        case "budget": return "over budget";
+        // internal/box.BudgetHalfPrefix marks the half-budget incident (CON-76).
+        case "budget": return (itemText(item)).indexOf("50%: ") === 0 ? "half the budget, no hand-back" : "over budget";
+        // internal/box.IncidentNoTurn (CON-74): launched, no turn in the ledger.
+        case "no_turn": return "no turn yet";
+        // CON-73: a working crew whose context passed crew.context_high.
+        case "context_high": return "context high";
         default: return "incident " + (item.verb || "");
       }
     }
@@ -1149,6 +1155,7 @@
     if (ledger.closed) {
       var close = ledger.close_state || "";
       info = close === "finished" ? { word: "done", glyph: "✓", tone: "good" }
+        : close === "reviewed" ? { word: "reviewed", glyph: "✓", tone: "good" }
         : close === "failed" ? { word: "failed", glyph: "×", tone: "critical" }
         : { word: close ? close.replace(/[_-]/g, " ") : "closed", glyph: "■", tone: "muted" };
     } else info = stateInfo(ledger.state);
@@ -1256,37 +1263,66 @@
     ]);
   }
 
+  // Cache read is the conversation re-read on every call, 95-99% of a
+  // long task's tokens; work is what the call added - input, cache write
+  // and output. The band shows both per type (CON-75), and a mixed stage
+  // is grouped by what it mixed, so "Mixed activity" is not one bucket.
+  function stepCache(s) { return Number(s.tokens && s.tokens.cache_read) || 0; }
+  function mixedKey(parts) {
+    var kinds = (parts || []).filter(function (k) { return k && k !== "mixed"; }).sort();
+    return kinds.length ? "mixed:" + kinds.join("+") : "mixed";
+  }
+  function mixedLabel(key) {
+    var parts = key.slice("mixed:".length).split("+");
+    return "Mixed: " + parts.map(kindLabel).join(" + ");
+  }
+
   function effortBand(p, stages) {
-    var sums = {}, extra = [];
-    var total = { calls: 0, tools: 0, tokens: 0 };
+    var sums = {}, extra = [], mixedKeys = [];
+    var total = { calls: 0, tools: 0, tokens: 0, cache: 0 };
     stages.forEach(function (st) {
       var kind = st.step.kind || "unknown";
-      if (!sums[kind]) {
-        sums[kind] = { calls: 0, tools: 0, tokens: 0 };
-        if (EFFORT_ORDER.indexOf(kind) === -1) extra.push(kind);
+      var key = kind === "mixed" ? mixedKey(st.step.parts) : kind;
+      if (!sums[key]) {
+        sums[key] = { calls: 0, tools: 0, tokens: 0, cache: 0 };
+        if (kind === "mixed") mixedKeys.push(key);
+        else if (EFFORT_ORDER.indexOf(kind) === -1) extra.push(kind);
       }
-      var t = stepTokens(st.step);
-      sums[kind].calls += st.step.model_calls || 0; sums[kind].tools += st.step.executions || 0; sums[kind].tokens += t;
-      total.calls += st.step.model_calls || 0; total.tools += st.step.executions || 0; total.tokens += t;
+      var t = stepTokens(st.step), c = stepCache(st.step);
+      sums[key].calls += st.step.model_calls || 0; sums[key].tools += st.step.executions || 0; sums[key].tokens += t; sums[key].cache += c;
+      total.calls += st.step.model_calls || 0; total.tools += st.step.executions || 0; total.tokens += t; total.cache += c;
     });
     function share(tokens) { return total.tokens > 0 && tokens > 0 ? fmtPct(100 * tokens / total.tokens) : "–"; }
-    function bar(tokens, kind) {
-      return el("span", { class: "sc-track", role: "cell", "aria-hidden": "true" },
-        [total.tokens > 0 && tokens > 0 ? el("i", { "data-kind": kind, style: "width:" + (100 * tokens / total.tokens).toFixed(1) + "%" }) : null]);
+    // The bar is the type's share of all tokens, work solid and cache read
+    // faded, so a type that is mostly re-reading looks like it.
+    function bar(row, kind) {
+      var work = row.tokens - row.cache;
+      return el("span", { class: "sc-track", role: "cell", "aria-hidden": "true" }, [
+        total.tokens > 0 && work > 0 ? el("i", { "data-kind": kind, style: "width:" + (100 * work / total.tokens).toFixed(1) + "%" }) : null,
+        total.tokens > 0 && row.cache > 0 ? el("i", { class: "sc-cache", "data-kind": kind, style: "width:" + (100 * row.cache / total.tokens).toFixed(1) + "%" }) : null
+      ]);
     }
     // Kinds the vocabulary does not know go just before the two the
-    // classifier could not name.
-    var order = EFFORT_ORDER.slice(0, -2).concat(extra, EFFORT_ORDER.slice(-2));
-    var rows = order.map(function (kind) {
-      var row = sums[kind];
+    // classifier could not name; mixed is one row per combination it saw,
+    // or one empty row when it saw none.
+    mixedKeys.sort();
+    var order = EFFORT_ORDER.slice(0, -2).concat(extra, mixedKeys.length ? mixedKeys : ["mixed"], EFFORT_ORDER.slice(-1));
+    var rows = order.map(function (key) {
+      var row = sums[key];
       var empty = !row;
-      row = row || { calls: 0, tools: 0, tokens: 0 };
-      return el("div", { class: "sc-row sc-effort", role: "row", "data-effort": kind, "data-empty": empty ? "true" : null }, [
-        el("span", { class: "sc-what", role: "cell" }, [kindSwatch(kind), el("span", { text: kindLabel(kind) })]),
+      row = row || { calls: 0, tools: 0, tokens: 0, cache: 0 };
+      var mixed = key.indexOf("mixed") === 0;
+      var kind = mixed ? "mixed" : key;
+      var label = key.indexOf("mixed:") === 0 ? mixedLabel(key) : kindLabel(kind);
+      return el("div", { class: "sc-row sc-effort", role: "row", "data-effort": kind, "data-empty": empty ? "true" : null,
+        "data-parts": key.indexOf("mixed:") === 0 ? key.slice("mixed:".length) : null }, [
+        el("span", { class: "sc-what", role: "cell" }, [kindSwatch(kind), el("span", { text: label })]),
         el("span", { class: "sc-num", role: "cell", text: dashed(row.calls) }),
         el("span", { class: "sc-num", role: "cell", text: dashed(row.tools) }),
         el("span", { class: "sc-num", role: "cell", text: dashedTokens(row.tokens) }),
-        bar(row.tokens, kind),
+        el("span", { class: "sc-num", role: "cell", text: dashedTokens(row.cache) }),
+        el("span", { class: "sc-num", role: "cell", text: dashedTokens(row.tokens - row.cache) }),
+        bar(row, kind),
         el("span", { class: "sc-num", role: "cell", text: share(row.tokens) })
       ]);
     });
@@ -1295,16 +1331,19 @@
       el("span", { class: "sc-num", role: "cell", text: dashed(total.calls) }),
       el("span", { class: "sc-num", role: "cell", text: dashed(total.tools) }),
       el("span", { class: "sc-num", role: "cell", text: dashedTokens(total.tokens) }),
+      el("span", { class: "sc-num", role: "cell", text: dashedTokens(total.cache) }),
+      el("span", { class: "sc-num", role: "cell", text: dashedTokens(total.tokens - total.cache) }),
       el("span", { role: "cell", "aria-hidden": "true" }),
       el("span", { class: "sc-num", role: "cell", text: total.tokens > 0 ? "100%" : "–" })
     ]));
     var band = el("div", { class: "sc-band", "data-band": "effort" }, [
-      bandHead("Where the effort went", "by work type"),
+      bandHead("Where the effort went", "by work type · cache read apart from work"),
       el("div", { class: "sc-table sc-efforts", role: "table", "aria-label": "Effort by work type" }, [
-        el("div", { class: "sc-row sc-th", role: "row" }, ["Type", "Mdl", "Tool", "Tokens", "", "Share"].map(function (h, i) {
-          return el("span", { role: "columnheader", class: i > 0 && i !== 4 ? "sc-num" : null, text: h });
+        el("div", { class: "sc-row sc-th", role: "row" }, ["Type", "Mdl", "Tool", "Tokens", "Cache read", "Work", "", "Share"].map(function (h, i) {
+          return el("span", { role: "columnheader", class: i > 0 && i !== 6 ? "sc-num" : null, text: h });
         }))
-      ].concat(rows))
+      ].concat(rows)),
+      el("p", { class: "coverage-note", text: "Cache read is the conversation re-read on each call; Work is input, cache write and output - what the call added. The bar draws work solid and cache read faded. A mixed row names the types its calls mixed; no token is split among them." })
     ]);
     // A prompt recorded before steps existed leaves calls outside any stage;
     // say how many rather than let the totals disagree silently.

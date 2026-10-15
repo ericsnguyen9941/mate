@@ -165,6 +165,15 @@ type Task struct {
 	// "pending" while there is none. A reviewer is closed `finished` or
 	// `failed` like any crew; this is what it concluded.
 	Review string `json:"review,omitempty"`
+	// Reviews are the reviewers `mate review` started for this task (crew
+	// meta reviews=, or the reviewer's review.meta naming this crew), and
+	// ReviewOf the task a reviewer reviewed (CON-75).
+	Reviews  []string `json:"reviews,omitempty"`
+	ReviewOf string   `json:"review_of,omitempty"`
+	// TokensWithReviews is Tokens.Total plus every reviewer's total: what
+	// the task cost with its reviews. Equal to Tokens.Total for a task with
+	// none, and the reviewer's own total for a reviewer row.
+	TokensWithReviews int64 `json:"tokens_with_reviews"`
 	// FailedReason is crew meta's failed_reason=, written when a spawn never
 	// came up. A crew closed with `crew stop --discard` is `failed` too and
 	// has none, which is how a page tells a broken start from work thrown
@@ -241,22 +250,25 @@ type MateActivity struct {
 
 // Turn is one model call.
 type Turn struct {
-	ID             string   `json:"id"`
-	SessionID      string   `json:"-"`
-	HarnessTurnRef string   `json:"-"`
-	Ordinal        int64    `json:"ordinal"`
-	StartedAt      string   `json:"started_at,omitempty"`
-	EndedAt        string   `json:"ended_at,omitempty"`
-	DurationMs     int64    `json:"duration_ms"`
-	TriggerEventID int64    `json:"trigger_event_id,omitempty"`
-	TriggerKind    string   `json:"trigger_kind,omitempty"`
-	Outcome        string   `json:"outcome,omitempty"`
-	Model          string   `json:"model,omitempty"`
-	Tokens         Tokens   `json:"tokens"`
-	ContextAfter   int64    `json:"context_tokens_after"`
-	ContextPct     *float64 `json:"context_pct"`
-	ToolCount      int64    `json:"tool_count"`
-	Ref            Ref      `json:"ref"`
+	ID             string `json:"id"`
+	SessionID      string `json:"-"`
+	HarnessTurnRef string `json:"-"`
+	Ordinal        int64  `json:"ordinal"`
+	StartedAt      string `json:"started_at,omitempty"`
+	EndedAt        string `json:"ended_at,omitempty"`
+	DurationMs     int64  `json:"duration_ms"`
+	TriggerEventID int64  `json:"trigger_event_id,omitempty"`
+	TriggerKind    string `json:"trigger_kind,omitempty"`
+	Outcome        string `json:"outcome,omitempty"`
+	Model          string `json:"model,omitempty"`
+	// Effort is the reasoning effort the turn ran at: the harness's own
+	// record when it keeps one, else the launch profile (CON-75).
+	Effort       string   `json:"effort,omitempty"`
+	Tokens       Tokens   `json:"tokens"`
+	ContextAfter int64    `json:"context_tokens_after"`
+	ContextPct   *float64 `json:"context_pct"`
+	ToolCount    int64    `json:"tool_count"`
+	Ref          Ref      `json:"ref"`
 }
 
 // StatusLine is one line the crew wrote to `crews/<id>.status`, as the
@@ -275,7 +287,11 @@ type StatusLine struct {
 // WaitedMs is null while it is still waiting, which is not the same as
 // having waited zero.
 type Question struct {
-	ID              string `json:"id"`
+	ID string `json:"id"`
+	// Kind is "decision" (a needs-decision line) or "handback" (a wait-mate
+	// line the Mate or the captain then answered). The task page lists
+	// decisions; both feed the decision_wait findings and WAITED.
+	Kind            string `json:"kind"`
 	AskedEventID    int64  `json:"asked_event_id"`
 	AskedAt         string `json:"asked_at"`
 	Text            string `json:"text"`

@@ -379,6 +379,42 @@ func (g Git) Diff(ctx context.Context, dir, base, branch string, stat bool) (str
 	return g.run(ctx, dir, append(args, base+"..."+branch)...)
 }
 
+// NumstatEntry is one line of `git diff --numstat`: a changed path and how
+// many lines it gained and lost. Binary files, which git reports as `-`,
+// count no lines.
+type NumstatEntry struct {
+	Path       string
+	Insertions int
+	Deletions  int
+}
+
+// DiffNumstat is `git -C dir diff --numstat <base>...<branch>`, read-only,
+// with the same three-dot range as Diff and for the same reason: the change
+// measured is the branch's own. It is what sizes a review (CON-74): the
+// lines are summed and each path is asked whether it looks like code.
+func (g Git) DiffNumstat(ctx context.Context, dir, base, branch string) ([]NumstatEntry, error) {
+	out, err := g.run(ctx, dir, "diff", "--numstat", base+"..."+branch)
+	if err != nil {
+		return nil, err
+	}
+	var entries []NumstatEntry
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		fields := strings.SplitN(line, "\t", 3)
+		if len(fields) != 3 {
+			continue
+		}
+		e := NumstatEntry{Path: fields[2]}
+		if n, err := strconv.Atoi(fields[0]); err == nil {
+			e.Insertions = n
+		}
+		if n, err := strconv.Atoi(fields[1]); err == nil {
+			e.Deletions = n
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
 // LogOneline is `git -C dir log --oneline <base>..<branch>`: the commits the
 // branch carries that base does not, newest first, one line each.
 //

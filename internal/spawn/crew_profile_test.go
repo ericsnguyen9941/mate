@@ -11,6 +11,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/harness/codex"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // A crew is launched with the harness, model and effort the Mate chose, and
@@ -87,5 +88,58 @@ func TestSpawnCrewWithoutAProfileRecordsNone(t *testing.T) {
 	}
 	if _, ok := meta[spawn.MetaEffort]; ok {
 		t.Fatalf("meta carries effort= with no effort chosen: %v", meta)
+	}
+}
+
+// A crew is recorded with the token budget the Mate passed (the dispatch
+// rule's, CON-76), and the record names it as `budget=`.
+func TestSpawnCrewRecordsTheBudgetItWasGiven(t *testing.T) {
+	w := crewWorkspace(t, "shop")
+	deps := fakeDeps(t, runtime.NewFake())
+	res, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k3", Harness: codex.KindCodex, Budget: 1_500_000,
+		BriefFile: briefFile(t, w, brieftest.Ship("Add a healthcheck endpoint.\n")),
+	})
+	if err != nil {
+		t.Fatalf("SpawnCrew: %v", err)
+	}
+	meta, _ := w.ReadCrewMeta("shop", "k3")
+	if meta[spawn.MetaBudget] != "1500000" || res.Budget != 1_500_000 {
+		t.Fatalf("budget meta = %q, result %d; want 1500000 recorded", meta[spawn.MetaBudget], res.Budget)
+	}
+}
+
+// With no --budget the project's `budget.crew_tokens` is what the crew is
+// held to, and the record copies that number so it says what applied even
+// if project.yaml changes later; a project with no budget records none.
+func TestSpawnCrewFallsBackToTheProjectsBudget(t *testing.T) {
+	w := crewWorkspace(t, "shop")
+	deps := fakeDeps(t, runtime.NewFake())
+	if _, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k3", BriefFile: briefFile(t, w, brieftest.Ship("Add a healthcheck endpoint.\n")),
+	}); err != nil {
+		t.Fatalf("SpawnCrew: %v", err)
+	}
+	meta, _ := w.ReadCrewMeta("shop", "k3")
+	if _, ok := meta[spawn.MetaBudget]; ok {
+		t.Fatalf("meta carries budget= with no budget anywhere: %v", meta)
+	}
+
+	cfg, err := w.LoadProject("shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Budget = &store.BudgetConfig{CrewTokens: 4_000_000}
+	if err := w.SaveProject("shop", cfg); err != nil {
+		t.Fatalf("SaveProject: %v", err)
+	}
+	if _, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k4", BriefFile: briefFile(t, w, brieftest.Ship("Add a healthcheck endpoint.\n")),
+	}); err != nil {
+		t.Fatalf("SpawnCrew: %v", err)
+	}
+	meta, _ = w.ReadCrewMeta("shop", "k4")
+	if meta[spawn.MetaBudget] != "4000000" {
+		t.Fatalf("budget meta = %q, want the project's 4000000", meta[spawn.MetaBudget])
 	}
 }

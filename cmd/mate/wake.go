@@ -155,11 +155,14 @@ func wake(ctx context.Context, w *store.Workspace, git gitx.Git, project string,
 }
 
 // wakeItems is a digest's items in the order a Mate works them: blocked
-// first, then questions, then hand-backs, then budgets, each kind oldest
-// first as Gather gave them.
+// first (a crew that never took a turn, CON-74, is in that group: it is as
+// unable to speak for itself), then questions, then hand-backs, then
+// budgets, then context-high items (CON-73: nothing to do until the
+// crew's next hand-back), each kind oldest first as Gather gave them.
 func wakeItems(items []autopilot.Item) []autopilot.Item {
 	rank := map[autopilot.ItemKind]int{
-		autopilot.ItemBlocked: 0, autopilot.ItemNeedsDecision: 1, autopilot.ItemWaitMate: 2, autopilot.ItemBudget: 3,
+		autopilot.ItemBlocked: 0, autopilot.ItemNoTurn: 0, autopilot.ItemNeedsDecision: 1, autopilot.ItemWaitMate: 2, autopilot.ItemBudget: 3,
+		autopilot.ItemContextHigh: 4,
 	}
 	out := append([]autopilot.Item(nil), items...)
 	sort.SliceStable(out, func(i, j int) bool { return rank[out[i].Kind] < rank[out[j].Kind] })
@@ -173,8 +176,31 @@ func writeWakeItem(ctx context.Context, out *strings.Builder, w *store.Workspace
 		kind := dashIfEmpty(string(it.IncidentKind))
 		fmt.Fprintf(out, "blocked %s: %s, open for %s - %s\n", crew, kind, formatAge(it.QuietFor), it.Text)
 		fmt.Fprintf(out, "  next: mate state, then mate peek, then stuck-crew-recovery\n")
+	case autopilot.ItemNoTurn:
+		// The observer's text is "no turn in the ledger <d> after launch".
+		// The crew is not blocked, it never started: look once, and
+		// relaunch it if the pane shows nothing or a sign-in screen.
+		fmt.Fprintf(out, "no turn %s: %s, open for %s\n", crew, it.Text, formatAge(it.QuietFor))
+		fmt.Fprintf(out, "  next: mate peek %s; if the pane is empty or at a sign-in screen, mate crew relaunch %s\n", crew, crew)
 	case autopilot.ItemBudget:
+		// The observer's text is "<used> tokens of <budget> tokens"; the
+		// half-budget one (CON-76) carries box.BudgetHalfPrefix and the
+		// reason it was filed. The next lines are the issue's handling:
+		// at half, one look, and a line if the Crew is looping or
+		// polling; at the budget, the captain decides.
+		if percent, rest := box.BudgetThreshold(it.Text); percent == 50 {
+			fmt.Fprintf(out, "budget 50%% %s: %s\n", crew, rest)
+			fmt.Fprintf(out, "  next: mate peek %s once; if it is looping or polling, send it one line\n", crew)
+			return
+		}
 		fmt.Fprintf(out, "over budget %s: %s\n", crew, it.Text)
+		fmt.Fprintf(out, "  next: tell the captain; the Crew keeps running until someone stops it\n")
+	case autopilot.ItemContextHigh:
+		// CON-73: the crew is working on a bloated context. Nothing is
+		// cut mid-turn; the fix round goes into a fresh session, which
+		// `mate send` opens by itself once the crew has handed back.
+		fmt.Fprintf(out, "context high %s: %s\n", crew, it.Text)
+		fmt.Fprintf(out, "  next: do not cut it mid-turn; at its next hand-back open a fresh session - mate send does that for a resting crew, or mate crew relaunch %s %s --note \"<what it already tried>\"\n", project, crew)
 	case autopilot.ItemNeedsDecision:
 		fmt.Fprintf(out, "needs-decision %s: %s\n", crew, it.Text)
 	case autopilot.ItemWaitMate:

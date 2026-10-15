@@ -18,23 +18,28 @@ import (
 type HarnessProfile struct {
 	// SnapshotPath locates the specific preserved source when read. It is
 	// not part of the persisted profile or its configuration fingerprint.
-	SnapshotPath    string            `json:"-"`
-	Version         int               `json:"version"`
-	CapturedAt      string            `json:"captured_at"`
-	Source          string            `json:"source"`
-	Project         string            `json:"project"`
-	Crew            string            `json:"crew"`
-	Repo            string            `json:"repo"`
-	Harness         string            `json:"harness"`
-	MateVersion     string            `json:"mate_version,omitempty"`
-	RequestedModel  string            `json:"requested_model,omitempty"`
-	RequestedEffort string            `json:"requested_effort,omitempty"`
-	EffortOmitted   bool              `json:"effort_omitted"`
-	RepoCommit      string            `json:"repo_commit,omitempty"`
-	RepoDirty       *bool             `json:"repo_dirty"`
-	GitError        string            `json:"git_error,omitempty"`
-	Documents       []ProfileDocument `json:"documents"`
-	Fingerprint     string            `json:"fingerprint"`
+	SnapshotPath    string `json:"-"`
+	Version         int    `json:"version"`
+	CapturedAt      string `json:"captured_at"`
+	Source          string `json:"source"`
+	Project         string `json:"project"`
+	Crew            string `json:"crew"`
+	Repo            string `json:"repo"`
+	Harness         string `json:"harness"`
+	MateVersion     string `json:"mate_version,omitempty"`
+	RequestedModel  string `json:"requested_model,omitempty"`
+	RequestedEffort string `json:"requested_effort,omitempty"`
+	EffortOmitted   bool   `json:"effort_omitted"`
+	// TaskSize is the `--size` the crew was spawned with (brief.Size). It
+	// is a task attribute like the brief text, so it stays out of the
+	// configuration fingerprint; CON-70 reads it to pick tools and skills
+	// per task kind.
+	TaskSize    string            `json:"task_size,omitempty"`
+	RepoCommit  string            `json:"repo_commit,omitempty"`
+	RepoDirty   *bool             `json:"repo_dirty"`
+	GitError    string            `json:"git_error,omitempty"`
+	Documents   []ProfileDocument `json:"documents"`
+	Fingerprint string            `json:"fingerprint"`
 }
 
 type ProfileDocument struct {

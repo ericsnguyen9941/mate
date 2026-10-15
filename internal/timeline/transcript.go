@@ -127,10 +127,11 @@ func (p *pass) usageTurns(loc Located, sessionRow string, tb harness.TranscriptB
 	results := resultsByCall(tb)
 	for ordinal, t := range tb.UsageTurns {
 		turnID := turnRowID(sessionRow, t.SourceRef)
+		profile := p.turnProfile(loc.ActorID, t.Model)
 		p.b.turn(pendingTurn{
 			ID: turnID, ActorID: loc.ActorID, SessionID: sessionRow, Ordinal: ordinal,
 			StartedAt: t.StartedAt, EndedAt: t.EndedAt,
-			Outcome: t.Outcome, Model: t.Model, HarnessTurnRef: t.HarnessTurnRef,
+			Outcome: t.Outcome, Model: profile.Model, Effort: profile.Effort, HarnessTurnRef: t.HarnessTurnRef,
 			Input: t.Usage.Input, CacheRead: t.Usage.CacheRead, CacheWrite: t.Usage.CacheWrite,
 			Output: t.Usage.Output, Thinking: t.Usage.Reasoning,
 			ContextAfter: t.ContextTokens, ToolCount: len(t.Calls),
@@ -144,7 +145,8 @@ func (p *pass) usageTurns(loc Located, sessionRow string, tb harness.TranscriptB
 			RefPath: loc.Path, RefOffset: t.Offset,
 		})
 		p.turnEvents(loc, turnID, t.StartedAt, t.EndedAt, map[string]any{
-			"model":                t.Model,
+			"model":                profile.Model,
+			"effort":               profile.Effort,
 			"harness_turn":         t.HarnessTurnRef,
 			"outcome":              t.Outcome,
 			"tool_count":           len(t.Calls),

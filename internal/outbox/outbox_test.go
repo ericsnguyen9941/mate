@@ -559,3 +559,27 @@ func TestADeliveryReadsThePaneThroughTheObserver(t *testing.T) {
 		t.Fatalf("outbox = %+v, want the refusal to quote the observer", items)
 	}
 }
+
+// A digest whose words repeat one already delivered is still typed: the
+// sent.log check that stops a dead sender's line being typed twice only
+// looks past the offset the item was queued at, so an earlier identical
+// line - acknowledged or not - never swallows a new one (CON-75).
+func TestARepeatedDigestTextIsTypedAgain(t *testing.T) {
+	f := newFixture(t)
+	s := f.sender()
+	f.rt.SetReadOutput(f.handle, claudeScreen(""))
+	f.assign(s, "crews/k3.status@0", resolveLine)
+	f.drain(s)
+	if typed := f.typed(); len(typed) != 1 {
+		t.Fatalf("typed %#v, want the first line once", typed)
+	}
+
+	f.assign(s, "crews/k3.status@40", resolveLine)
+	got, err := s.Attempt(context.Background(), project)
+	if err != nil {
+		t.Fatalf("Attempt: %v", err)
+	}
+	if !got.Delivered || len(f.typed()) != 2 {
+		t.Fatalf("attempt = %+v, typed %#v; want the repeated line typed a second time", got, f.typed())
+	}
+}

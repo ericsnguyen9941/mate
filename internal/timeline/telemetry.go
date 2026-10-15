@@ -233,6 +233,12 @@ func (p *pass) ingestTelemetry(ctx context.Context, src harness.TranscriptSource
 		return err
 	}
 	state, offset, parseError = up.State, up.Offset, up.Error
+	if state.Model != "" || state.Effort != "" {
+		if p.telemetryProfile == nil {
+			p.telemetryProfile = map[string]actorProfile{}
+		}
+		p.telemetryProfile[loc.ActorID] = actorProfile{Model: state.Model, Effort: state.Effort}
+	}
 	facts = append(facts, up.Facts...)
 	if tb.Malformed != nil {
 		if parseError != "" {

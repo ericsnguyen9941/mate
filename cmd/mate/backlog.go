@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/memory"
+	"github.com/nguyenngocanh94/mate/internal/plugin"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -180,18 +182,41 @@ func formatAge(d time.Duration) string {
 	}
 }
 
+// cmdBacklogEdit implements `mate backlog add|move|done <project> <id>
+// [--section <section>] [--text <text>] [--tracker <id>]`.
+//
+// `--tracker <id>` (CON-77) is for a project whose tasks live in a tracker
+// plugin (the `tracker:` block of an instance in .mate/plugins.yaml): the
+// entry written, or the one moved, becomes the one pointer line
+// `- <crew-id>: <tracker-id>`, under `## In flight` unless --section says
+// otherwise, and no content is copied - the tracker holds it. Without
+// --tracker nothing changes: `## Held for the captain` and `## Queued`
+// entries without a tracker id are written as they always were. A project
+// with no tracker plugin refuses --tracker, so a pointer never points at
+// nothing.
 func cmdBacklogEdit(args []string, stdout, stderr io.Writer) error {
 	action := args[0]
 	fs := flag.NewFlagSet("backlog "+action, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	workspace := fs.String("workspace", "", "workspace directory")
-	section := fs.String("section", memory.BacklogQueued, "In flight, Held for the captain, Queued, or Done")
+	section := fs.String("section", "", "In flight, Held for the captain, Queued, or Done (default: Queued; In flight with --tracker)")
 	text := fs.String("text", "", "one complete entry; preserve captain questions verbatim")
+	tracker := fs.String("tracker", "", "the tracker's own id for this task (such as HVN-12); the entry becomes the pointer `- <id>: <tracker-id>`; needs a tracker plugin")
 	if err := fs.Parse(reorderArgs(fs, args[1:])); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return newUsageError("usage: mate backlog " + action + " <project> <id> [--section <section>] [--text <text>] [--workspace <dir>]")
+		return newUsageError("usage: mate backlog " + action + " <project> <id> [--section <section>] [--text <text>] [--tracker <tracker-id>] [--workspace <dir>]")
+	}
+	trackerID := strings.TrimSpace(*tracker)
+	if *tracker != "" && (trackerID == "" || strings.ContainsAny(trackerID, " \t\r\n")) {
+		return newUsageError("mate backlog " + action + ": --tracker wants one tracker id without spaces, such as HVN-12")
+	}
+	if *section == "" {
+		*section = memory.BacklogQueued
+		if trackerID != "" {
+			*section = memory.BacklogInFlight
+		}
 	}
 	if action == "done" {
 		*section = memory.BacklogDone
@@ -203,9 +228,36 @@ func cmdBacklogEdit(args []string, stdout, stderr io.Writer) error {
 	if err := requireProject(w, fs.Arg(0)); err != nil {
 		return err
 	}
-	if err := w.EditBacklog(fs.Arg(0), action, fs.Arg(1), *section, *text); err != nil {
+	if trackerID == "" {
+		if err := w.EditBacklog(fs.Arg(0), action, fs.Arg(1), *section, *text); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "backlog %s: %s → %s\n", action, fs.Arg(1), *section)
+		return nil
+	}
+	in, err := projectTracker(w, fs.Arg(0))
+	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "backlog %s: %s → %s\n", action, fs.Arg(1), *section)
+	if err := w.EditBacklogEntry(fs.Arg(0), action, fs.Arg(1), *section, trackerID, true); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "backlog %s: %s → %s (pointer to %s in %s)\n", action, fs.Arg(1), *section, trackerID, in.ID)
 	return nil
+}
+
+// projectTracker is the tracker plugin instance of project, read from
+// .mate/plugins.yaml without loading any package. No tracker is a usage
+// error naming the block to add: --tracker is a claim that the tracker
+// holds the task, and nothing here can make that true.
+func projectTracker(w *store.Workspace, project string) (plugin.Instance, error) {
+	cfg, err := plugin.ReadConfig(w.Root())
+	if err != nil {
+		return plugin.Instance{}, err
+	}
+	in, ok := cfg.TrackerFor(project)
+	if !ok {
+		return plugin.Instance{}, newUsageErrorf("mate backlog: project %s has no tracker plugin; --tracker needs a `tracker:` block on the plugin instance in %s (docs/plugins.md)", project, filepath.Join(w.Root(), plugin.ConfigFile))
+	}
+	return in, nil
 }

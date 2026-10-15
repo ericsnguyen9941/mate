@@ -237,6 +237,29 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 		}
 		out[i].Review = s.reviewVerdict(project, out[i].Crew)
 	}
+	reviewersOf, reviewOf, err := s.ws.ReviewLinks(project)
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int, len(out))
+	for i, t := range out {
+		index[t.Crew] = i
+	}
+	for i := range out {
+		t := &out[i]
+		t.TokensWithReviews = t.Tokens.Total
+		if task, ok := reviewOf[t.Crew]; ok {
+			if _, known := index[task]; known {
+				t.ReviewOf = task
+			}
+		}
+		t.Reviews = reviewersOf[t.Crew]
+		for _, reviewer := range t.Reviews {
+			if j, ok := index[reviewer]; ok {
+				t.TokensWithReviews += out[j].Tokens.Total
+			}
+		}
+	}
 	return out, nil
 }
 
@@ -278,7 +301,7 @@ func (s *Server) turns(ctx context.Context, actorID string) ([]Turn, error) {
 	rows, err := s.db.SQL().QueryContext(ctx, `
 		SELECT u.id, u.session_id, u.harness_turn_ref, u.ordinal,
 		       u.started_at, u.ended_at, u.trigger_event_id, e.kind,
-		       u.outcome, u.model, u.input_tokens, u.cache_read_tokens, u.cache_write_tokens,
+		       u.outcome, u.model, u.effort, u.input_tokens, u.cache_read_tokens, u.cache_write_tokens,
 		       u.output_tokens, u.thinking_tokens, u.context_tokens_after, u.tool_count,
 		       u.ref_path, u.ref_offset,
 		       CASE WHEN p.context_window > 0
@@ -296,19 +319,19 @@ func (s *Server) turns(ctx context.Context, actorID string) ([]Turn, error) {
 	out := []Turn{}
 	for rows.Next() {
 		var t Turn
-		var startedAt, endedAt, triggerKind, outcome, model sql.NullString
+		var startedAt, endedAt, triggerKind, outcome, model, effort sql.NullString
 		var trigger sql.NullInt64
 		var pct sql.NullFloat64
 		if err := rows.Scan(&t.ID, &t.SessionID, &t.HarnessTurnRef, &t.Ordinal,
 			&startedAt, &endedAt, &trigger, &triggerKind,
-			&outcome, &model, &t.Tokens.Input, &t.Tokens.CacheRead, &t.Tokens.CacheWrite,
+			&outcome, &model, &effort, &t.Tokens.Input, &t.Tokens.CacheRead, &t.Tokens.CacheWrite,
 			&t.Tokens.Output, &t.Tokens.Thinking, &t.ContextAfter, &t.ToolCount,
 			&t.Ref.Path, &t.Ref.Offset, &pct); err != nil {
 			return nil, err
 		}
 		t.StartedAt, t.EndedAt = startedAt.String, endedAt.String
 		t.TriggerEventID, t.TriggerKind = trigger.Int64, triggerKind.String
-		t.Outcome, t.Model = outcome.String, model.String
+		t.Outcome, t.Model, t.Effort = outcome.String, model.String, effort.String
 		t.Tokens.Total = t.Tokens.Input + t.Tokens.CacheRead + t.Tokens.CacheWrite + t.Tokens.Output
 		t.DurationMs = spanMs(t.StartedAt, t.EndedAt)
 		t.ContextPct = nullFloat(pct)
@@ -431,7 +454,7 @@ func (s *Server) statusLines(ctx context.Context, actorID string) ([]StatusLine,
 // were ever trimmed.
 func (s *Server) questions(ctx context.Context, actorID string) ([]Question, error) {
 	rows, err := s.db.SQL().QueryContext(ctx, `
-		SELECT q.id, q.asked_event_id, q.asked_at, q.text, q.answered_event_id, q.answered_at,
+		SELECT q.id, q.kind, q.asked_event_id, q.asked_at, q.text, q.answered_event_id, q.answered_at,
 		       a.name, m.text, e.payload, q.waited_ms
 		  FROM question q
 		  LEFT JOIN actor a ON a.id = q.answered_by_actor_id
@@ -448,7 +471,7 @@ func (s *Server) questions(ctx context.Context, actorID string) ([]Question, err
 		var q Question
 		var answeredEvent, waited sql.NullInt64
 		var answeredAt, answeredBy, answer, payload sql.NullString
-		if err := rows.Scan(&q.ID, &q.AskedEventID, &q.AskedAt, &q.Text,
+		if err := rows.Scan(&q.ID, &q.Kind, &q.AskedEventID, &q.AskedAt, &q.Text,
 			&answeredEvent, &answeredAt, &answeredBy, &answer, &payload, &waited); err != nil {
 			return nil, err
 		}

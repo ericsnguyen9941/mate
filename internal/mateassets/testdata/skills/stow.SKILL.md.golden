@@ -21,6 +21,7 @@ Every command below is run with the binary's absolute path, `/usr/local/bin/mate
   ```
 
   Run the whole pass, write the receipt, and end your turn; the restart follows, and whatever you did not write is gone.
+- The same line ends with `then run /usr/local/bin/mate checkpoint shop <nonce>` when the app refreshes your context instead of restarting you: the whole pass, then exactly that command, then end your turn; the fresh session starts with `recall` only after its receipt.
 - `mate memory check shop` reports over budget or a stale entry: the whole pass.
 - `crew stop` printed its `record:` line and the task produced a correction you sent the Crew after its brief: the sweep and routing below for that task only, then `memory check`.
 
@@ -66,6 +67,7 @@ Decay advances only when a pass runs.
 
 1. Run `/usr/local/bin/mate memory check shop` before considering a write.
    Record its budget line and every problem and warning it prints.
+   This run and step 10's are the only two in a pass: it is not a linter to rerun after every edit of `memory.md`, `backlog.md` or `PROJECT.md`.
    The estimate is `ceil(bytes / 3)` per file, a conservative approximation, not a tokenizer.
 2. Read `/ws/.mate/projects/shop/mate/memory.md`, `/ws/.mate/projects/shop/PROJECT.md` and `/ws/.mate/projects/shop/mate/backlog.md` completely, and `/ws/.mate/WORKSPACE.md`, which you count but never edit.
    Treat an absent file as absent, not as an invitation to manufacture content.

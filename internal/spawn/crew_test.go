@@ -135,19 +135,22 @@ func TestSpawnCrewCreatesWorktreeBriefAndMeta(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		spawn.MetaTask:       "Add a healthcheck endpoint.",
-		spawn.MetaHarness:    "codex",
-		spawn.MetaAgent:      "crew-k3",
-		spawn.MetaPane:       res.Pane,
-		spawn.MetaTab:        res.Tab,
-		spawn.MetaWorkspace:  res.Workspace,
-		spawn.MetaSession:    w.Session(),
-		spawn.MetaWorktree:   ".worktrees/shop-k3",
-		spawn.MetaBranch:     "mate/k3",
-		spawn.MetaKind:       "ship",
-		spawn.MetaDelivery:   "local",
-		store.MetaRepo:       "shop",
-		spawn.MetaSessionID:  "",
+		spawn.MetaTask:      "Add a healthcheck endpoint.",
+		spawn.MetaHarness:   "codex",
+		spawn.MetaAgent:     "crew-k3",
+		spawn.MetaPane:      res.Pane,
+		spawn.MetaTab:       res.Tab,
+		spawn.MetaWorkspace: res.Workspace,
+		spawn.MetaSession:   w.Session(),
+		spawn.MetaWorktree:  ".worktrees/shop-k3",
+		spawn.MetaBranch:    "mate/k3",
+		spawn.MetaKind:      "ship",
+		spawn.MetaDelivery:  "local",
+		spawn.MetaSize:      "medium",
+		store.MetaRepo:      "shop",
+		spawn.MetaSessionID: "",
+		// The first session (CON-73); a relaunch counts the next.
+		spawn.MetaSessions:   "1",
 		spawn.MetaTranscript: "",
 		spawn.MetaStartedAt:  "2026-09-17T10:00:00Z",
 		spawn.MetaLaunchedAt: "2026-09-17T10:00:00Z",
@@ -1010,6 +1013,55 @@ func TestSpawnCrewDeliversLocallyByDefault(t *testing.T) {
 	}
 }
 
+// `--size` (CON-72) picks the hand-back shape the brief asks for, and is
+// recorded in the meta, the result and the harness profile; an unknown size
+// is refused before anything exists.
+func TestSpawnCrewSizeShapesTheHandback(t *testing.T) {
+	for _, tc := range []struct {
+		size, wantMeta, wantBrief string
+	}{
+		{"", "medium", "within 120 lines in all"},
+		{"medium", "medium", "At most 10 lines: what a later Crew"},
+		{"small", "small", "within 30 lines in all"},
+		{"large", "large", "Required, and written in full, never `none`"},
+	} {
+		t.Run("size "+tc.wantMeta, func(t *testing.T) {
+			w := crewWorkspace(t, "shop")
+			res, err := spawn.SpawnCrew(context.Background(), w, fakeDeps(t, runtime.NewFake()), spawn.SpawnCrewRequest{
+				Project: "shop", Crew: "k3", BriefText: brieftest.Ship("work"), Size: tc.size,
+			})
+			if err != nil {
+				t.Fatalf("SpawnCrew: %v", err)
+			}
+			if string(res.Size) != tc.wantMeta {
+				t.Errorf("result size = %q, want %q", res.Size, tc.wantMeta)
+			}
+			if meta, _ := w.ReadCrewMeta("shop", "k3"); meta[spawn.MetaSize] != tc.wantMeta {
+				t.Errorf("meta size = %q, want %q", meta[spawn.MetaSize], tc.wantMeta)
+			}
+			if p, err := w.ReadCrewHarnessProfile("shop", "k3"); err != nil || p == nil || p.TaskSize != tc.wantMeta {
+				t.Errorf("harness profile task_size = %+v, %v; want %q", p, err, tc.wantMeta)
+			}
+			brief, _ := os.ReadFile(w.CrewBrief("shop", "k3"))
+			if !strings.Contains(string(brief), tc.wantBrief) {
+				t.Errorf("brief.md does not carry %q:\n%s", tc.wantBrief, brief)
+			}
+		})
+	}
+	t.Run("unknown size", func(t *testing.T) {
+		w := crewWorkspace(t, "shop")
+		_, err := spawn.SpawnCrew(context.Background(), w, fakeDeps(t, runtime.NewFake()), spawn.SpawnCrewRequest{
+			Project: "shop", Crew: "k3", BriefText: brieftest.Ship("work"), Size: "huge",
+		})
+		if err == nil || !strings.Contains(err.Error(), "--size wants small, medium or large") {
+			t.Fatalf("err = %v, want the size choices", err)
+		}
+		if meta, _ := w.ReadCrewMeta("shop", "k3"); len(meta) != 0 {
+			t.Fatalf("a refused spawn left a meta: %v", meta)
+		}
+	})
+}
+
 // `--deliver pr` is refused before anything exists when the repo cannot
 // carry a pull request, a scout asks for one, or the value is unknown.
 func TestSpawnCrewDeliverPRRefusals(t *testing.T) {
@@ -1105,6 +1157,90 @@ func TestStopCrewTakesAMergedPullRequestAsLanded(t *testing.T) {
 			}
 			if _, statErr := os.Stat(res.Worktree); !os.IsNotExist(statErr) {
 				t.Fatal("the worktree was not removed")
+			}
+		})
+	}
+}
+
+// A spawn that takes the rotation's turn records `rotation_slot=` (CON-77),
+// and `crew stop` keeps it: the rotation goes on counting after a crew is
+// closed. A spawn given no slot records none.
+func TestSpawnCrewRecordsTheRotationSlotAndStopKeepsIt(t *testing.T) {
+	w := crewWorkspace(t, "shop")
+	deps := fakeDeps(t, runtime.NewFake())
+	if _, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k3", BriefText: brieftest.Ship("work"), RotationSlot: 4,
+	}); err != nil {
+		t.Fatalf("SpawnCrew: %v", err)
+	}
+	if meta, _ := w.ReadCrewMeta("shop", "k3"); meta[spawn.MetaRotationSlot] != "4" {
+		t.Fatalf("meta rotation_slot = %q, want 4", meta[spawn.MetaRotationSlot])
+	}
+	if _, err := spawn.StopCrew(context.Background(), w, deps, "shop", "k3", false); err != nil {
+		t.Fatalf("StopCrew: %v", err)
+	}
+	meta, _ := w.ReadCrewMeta("shop", "k3")
+	if meta[spawn.MetaRotationSlot] != "4" || meta[spawn.MetaState] != spawn.CrewStateFinished {
+		t.Fatalf("meta after stop = %v, want rotation_slot=4 kept and state=finished", meta)
+	}
+
+	if _, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+		Project: "shop", Crew: "k4", BriefText: brieftest.Ship("work"),
+	}); err != nil {
+		t.Fatalf("SpawnCrew k4: %v", err)
+	}
+	if meta, _ := w.ReadCrewMeta("shop", "k4"); meta[spawn.MetaRotationSlot] != "" {
+		t.Fatalf("a spawn with no slot recorded rotation_slot=%q", meta[spawn.MetaRotationSlot])
+	}
+}
+
+// A reviewer whose report carries a Verdict delivered its work, however it
+// is stopped: `crew stop --discard` of its scratch worktree closes it as
+// `reviewed` with the verdict in the meta, not as `failed` (CON-75). The
+// same reviewer stopped before it wrote a Verdict is still a discard.
+func TestStopCrewDiscardOfADeliveredReviewerIsReviewed(t *testing.T) {
+	for _, tc := range []struct {
+		name, report, wantState, wantVerdict string
+	}{
+		{"verdict delivered", "## Summary\nfine\n\n## Verdict\nchanges-requested\n", spawn.CrewStateReviewed, "changes-requested"},
+		{"no verdict yet", "## Summary\nstill reading\n", spawn.CrewStateFailed, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := crewWorkspace(t, "shop")
+			rt := runtime.NewFake()
+			deps := fakeDeps(t, rt)
+			res, err := spawn.SpawnCrew(context.Background(), w, deps, spawn.SpawnCrewRequest{
+				Project: "shop", Crew: "rev1", BriefText: brieftest.Scout("review k3", "does it pass?"), Scout: true,
+			})
+			if err != nil {
+				t.Fatalf("SpawnCrew: %v", err)
+			}
+			commitInWorktree(t, res.Worktree, "scratch.txt", "review notes\n")
+			if err := store.WriteMeta(w.CrewReviewMeta("shop", "rev1"), map[string]string{"crew": "k3", "head": "abc"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(w.CrewReport("shop", "rev1"), []byte(tc.report), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			stopped, err := spawn.StopCrew(context.Background(), w, deps, "shop", "rev1", true)
+			if err != nil {
+				t.Fatalf("StopCrew --discard: %v", err)
+			}
+			if stopped.Teardown != spawn.TeardownDiscarded || stopped.State != tc.wantState {
+				t.Fatalf("stop = teardown %q state %q, want discarded and %s", stopped.Teardown, stopped.State, tc.wantState)
+			}
+			meta, err := w.ReadCrewMeta("shop", "rev1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta[spawn.MetaState] != tc.wantState || meta[crewstate.MetaVerdict] != tc.wantVerdict {
+				t.Fatalf("meta = %v, want state=%s verdict=%q", meta, tc.wantState, tc.wantVerdict)
+			}
+			// A second stop reports the recorded outcome and changes nothing.
+			again, err := spawn.StopCrew(context.Background(), w, deps, "shop", "rev1", true)
+			if err != nil || !again.AlreadyClosed || again.State != tc.wantState {
+				t.Fatalf("second stop = %+v, %v; want already closed as %s", again, err, tc.wantState)
 			}
 		})
 	}

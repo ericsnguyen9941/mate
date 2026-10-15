@@ -116,6 +116,12 @@ func fixedScoutBriefParams() BriefParams {
 // `--deliver pr` (docs/mvp.md M19).
 func fixedPRBriefParams() BriefParams { return withPR(fixedBriefParams()) }
 
+// withSize is the brief of a ship the Mate spawned with `--size` (CON-72).
+func withSize(p BriefParams, size brief.Size) BriefParams {
+	p.Size = size
+	return p
+}
+
 func compareGolden(t *testing.T, path string, got []byte) {
 	t.Helper()
 	if *update {
@@ -146,9 +152,11 @@ func TestRenderAgentsGolden(t *testing.T) {
 
 func TestRenderBriefGolden(t *testing.T) {
 	for name, p := range map[string]BriefParams{
-		"brief-ship.md.golden":    fixedBriefParams(),
-		"brief-scout.md.golden":   fixedScoutBriefParams(),
-		"brief-ship-pr.md.golden": fixedPRBriefParams(),
+		"brief-ship.md.golden":       fixedBriefParams(),
+		"brief-scout.md.golden":      fixedScoutBriefParams(),
+		"brief-ship-pr.md.golden":    fixedPRBriefParams(),
+		"brief-ship-small.md.golden": withSize(fixedBriefParams(), brief.SizeSmall),
+		"brief-ship-large.md.golden": withSize(fixedBriefParams(), brief.SizeLarge),
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := RenderBrief(p)
@@ -167,20 +175,82 @@ func TestRenderBriefGolden(t *testing.T) {
 func TestRenderedBriefPassesTheCheck(t *testing.T) {
 	for kind, p := range map[brief.Kind]BriefParams{brief.Ship: fixedBriefParams(), brief.Scout: fixedScoutBriefParams()} {
 		for _, p := range []BriefParams{p, withPR(p)} {
-			got, err := RenderBrief(p)
-			if err != nil {
-				t.Fatal(err)
+			for _, size := range append([]brief.Size{""}, brief.Sizes...) {
+				p := withSize(p, size)
+				got, err := RenderBrief(p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.HasPrefix(string(got), brief.RoleHeading+"\n") {
+					t.Fatalf("%s brief does not open with the role heading %q", kind, brief.RoleHeading)
+				}
+				if ps := brief.CheckFile(string(got), kind); len(ps) != 0 {
+					t.Fatalf("rendered %s %q brief fails its own check: %v", kind, size, ps)
+				}
+				task, ok := brief.ExtractTask(string(got))
+				if !ok || strings.TrimSpace(task) != p.Task {
+					t.Fatalf("rendered %s brief's # Task is not the task verbatim:\n%s", kind, task)
+				}
 			}
-			if !strings.HasPrefix(string(got), brief.RoleHeading+"\n") {
-				t.Fatalf("%s brief does not open with the role heading %q", kind, brief.RoleHeading)
+		}
+	}
+}
+
+// TestRenderBriefSizes pins what `--size` changes (CON-72): the size picks
+// a ship's hand-back shape and evidence level, an empty size is medium, and
+// a scout's report is the same at every size.
+func TestRenderBriefSizes(t *testing.T) {
+	render := func(p BriefParams) string {
+		t.Helper()
+		got, err := RenderBrief(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(got)
+	}
+	medium := render(fixedBriefParams())
+	if got := render(withSize(fixedBriefParams(), brief.SizeMedium)); got != medium {
+		t.Errorf("an empty size does not render as medium")
+	}
+	small := render(withSize(fixedBriefParams(), brief.SizeSmall))
+	large := render(withSize(fixedBriefParams(), brief.SizeLarge))
+	for _, want := range []string{"within 30 lines in all", "Do not run a baseline", "At most 3 lines", "the two or three lines of its output that prove the result"} {
+		if !strings.Contains(small, want) {
+			t.Errorf("small brief lacks %q", want)
+		}
+		for name, other := range map[string]string{"medium": medium, "large": large} {
+			if strings.Contains(other, want) {
+				t.Errorf("%s brief carries small-only %q", name, want)
 			}
-			if ps := brief.CheckFile(string(got), kind); len(ps) != 0 {
-				t.Fatalf("rendered %s brief fails its own check: %v", kind, ps)
+		}
+	}
+	for _, want := range []string{"within 120 lines in all", "the few lines of its output that prove the result"} {
+		for name, text := range map[string]string{"medium": medium, "large": large} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s brief lacks %q", name, want)
 			}
-			task, ok := brief.ExtractTask(string(got))
-			if !ok || strings.TrimSpace(task) != p.Task {
-				t.Fatalf("rendered %s brief's # Task is not the task verbatim:\n%s", kind, task)
+		}
+		if strings.Contains(small, want) {
+			t.Errorf("small brief carries %q", want)
+		}
+	}
+	if !strings.Contains(medium, "At most 10 lines: what a later Crew") {
+		t.Errorf("medium brief lacks the 10-line ## For the next crew")
+	}
+	for _, want := range []string{"Required, and written in full, never `none`", "at most 20 lines"} {
+		if !strings.Contains(large, want) {
+			t.Errorf("large brief lacks %q", want)
+		}
+		for name, other := range map[string]string{"small": small, "medium": medium} {
+			if strings.Contains(other, want) {
+				t.Errorf("%s brief carries large-only %q", name, want)
 			}
+		}
+	}
+	scout := render(fixedScoutBriefParams())
+	for _, size := range brief.Sizes {
+		if got := render(withSize(fixedScoutBriefParams(), size)); got != scout {
+			t.Errorf("a %s scout brief differs from the plain scout brief", size)
 		}
 	}
 }

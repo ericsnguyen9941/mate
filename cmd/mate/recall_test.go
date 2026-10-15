@@ -407,3 +407,42 @@ func TestRecallPartPrintsOnlyThoseParts(t *testing.T) {
 		t.Error("--live with --part was accepted")
 	}
 }
+
+// With a tracker plugin, part 4 reads each In flight pointer through the
+// plugin's read command and names the entries that are not pointers; with
+// a tracker that has no read command it says so instead. The part order
+// is unchanged.
+func TestRecallCrossChecksInFlightWithTheTracker(t *testing.T) {
+	w, now, _ := recallFixture(t)
+	writeFixture(t, w.BacklogFile("shop"), "# Backlog\n\n## In flight\n- k2: HVN-12\n- k3: HVN-99\n- k4 ship the button\n\n## Held for the captain\n\n## Queued\n\n## Done\n")
+	trackerPlugin(t, w, true)
+	out := recallText(t, w, now, recallOptions{})
+	mustOrder(t, out,
+		"== 4. backlog.md, without Done ==",
+		"Open crews in part 1 with no `- <id>` line under In flight: k1, k6",
+		"In flight entries that are not a `- <id>: <tracker-id>` pointer, with tracker-work holding the tasks: k4\n",
+		"tracker tracker-work (./read.sh):\n",
+		"- k2: HVN-12 · HVN-12 In Progress: fix the flaky test\n",
+		"- k3: HVN-99 · unknown to the tracker (exit 1: not found: HVN-99)\n",
+		"== 5. memory.md ==",
+	)
+	if strings.Contains(out, "second line") {
+		t.Fatalf("more than the first line of the tracker's answer was printed:\n%s", out)
+	}
+
+	trackerPlugin(t, w, false)
+	out = recallText(t, w, now, recallOptions{})
+	mustOrder(t, out,
+		"== 4. backlog.md, without Done ==",
+		"tracker tracker-work: no read command (tracker.read in .mate/plugins.yaml), so 2 In flight pointer(s) were not cross-checked\n",
+		"== 5. memory.md ==",
+	)
+
+	// Without a tracker plugin part 4 says nothing about trackers.
+	if err := os.Remove(filepath.Join(w.Root(), ".mate", "plugins.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if out = recallText(t, w, now, recallOptions{}); strings.Contains(out, "tracker") {
+		t.Fatalf("a project without a tracker plugin mentions one:\n%s", out)
+	}
+}

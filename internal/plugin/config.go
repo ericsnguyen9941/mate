@@ -37,6 +37,38 @@ type Instance struct {
 	Workspace *Binding
 	// Projects is the legacy project-scoped configuration.
 	Projects map[string]Binding
+	// Tracker is set when the instance is the workspace's task tracker
+	// (CON-77): `mate backlog --tracker` then keeps only a pointer to the
+	// tracker's own id, and `mate recall` cross-checks those pointers
+	// through Tracker.Read when there is one.
+	Tracker *Tracker
+}
+
+// Tracker is an instance's `tracker:` block in plugins.yaml, the one hook
+// mate itself has into a task tracker. It is the captain's, not the
+// package's, because reading a tracker from the binary needs a local
+// command (a CLI, a script) rather than the MCP server the Mate logs in
+// to. Read is that command's argv, or nil when the captain gave none: the
+// block alone still says "this project's tasks live in the tracker".
+type Tracker struct {
+	// Read prints what the tracker knows about one id: its argv, with
+	// `{id}` replaced by the id in any argument, or the id appended when no
+	// argument carries `{id}`. Exit 0 and a first line of stdout is the
+	// answer; a non-zero exit is "unknown to the tracker". It runs in the
+	// package root.
+	Read []string
+}
+
+// TrackerFor is the tracker instance project receives: the first enabled
+// instance bound to it whose plugins.yaml entry has a `tracker:` block.
+func (c Config) TrackerFor(project string) (Instance, bool) {
+	for _, in := range c.Instances {
+		if _, ok := in.BindingFor(project); !ok || !in.Enabled || in.Tracker == nil {
+			continue
+		}
+		return in, true
+	}
+	return Instance{}, false
 }
 
 // Binding holds workspace configuration or a legacy project override.
@@ -60,6 +92,11 @@ type rawInstance struct {
 	Config   map[string]string      `yaml:"config"`
 	Key      string                 `yaml:"key"`
 	Projects map[string]*rawBinding `yaml:"projects"`
+	Tracker  *rawTracker            `yaml:"tracker"`
+}
+
+type rawTracker struct {
+	Read []string `yaml:"read"`
 }
 
 type rawBinding struct {
@@ -143,6 +180,12 @@ func parseConfig(root, file string, data []byte, packages bool, only string) (Co
 			return Config{}, fail(id, "", "path is required")
 		}
 		in := Instance{ID: id, Path: ri.Path, Enabled: ri.Enabled == nil || *ri.Enabled, Projects: map[string]Binding{}}
+		if ri.Tracker != nil {
+			if len(ri.Tracker.Read) > 0 && strings.TrimSpace(ri.Tracker.Read[0]) == "" {
+				return Config{}, fail(id, "", "tracker.read: the command name is empty")
+			}
+			in.Tracker = &Tracker{Read: append([]string(nil), ri.Tracker.Read...)}
+		}
 		if !filepath.IsAbs(in.Path) {
 			in.Path = filepath.Join(root, in.Path)
 		}

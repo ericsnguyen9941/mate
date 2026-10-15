@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/hook"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -307,7 +308,7 @@ func TestTheQuestionIsLinkedToTheAnswerWithThePositiveWaitBetweenThem(t *testing
 	var waited int64
 	if err := f.db.SQL().QueryRow(
 		`SELECT text, asked_at, answered_at, answered_by_actor_id, waited_ms
-		   FROM question WHERE crew_actor_id = ?`, f.crewActor()).
+		   FROM question WHERE crew_actor_id = ? AND kind = 'decision'`, f.crewActor()).
 		Scan(&text, &askedAt, &answeredAt, &answeredBy, &waited); err != nil {
 		t.Fatalf("read the question: %v", err)
 	}
@@ -1003,4 +1004,73 @@ func (f *fixture) goneAt(t *testing.T, actorID string) string {
 		t.Fatal(err)
 	}
 	return gone.String
+}
+
+// A hand-back waits for the next line the crew gets, and a holding reply
+// does not end a wait (CON-75). Replays ui-evidence-harness 2026-10-13: the
+// Mate's "hold on, the captain has to create the key" is not the answer;
+// the line 126 minutes later is, because the crew wrote nothing in between.
+func TestAHandBackWaitsAndAHoldingReplyDoesNotEndTheWait(t *testing.T) {
+	f := newFixture(t)
+	f.ingest(t)
+
+	var id, askedAt string
+	if err := f.db.SQL().QueryRow(
+		`SELECT id, asked_at FROM question WHERE crew_actor_id = ? AND kind = 'handback' AND answered_at IS NULL`,
+		f.crewActor()).Scan(&id, &askedAt); err != nil {
+		t.Fatalf("the crew's wait-mate line is an open hand-back wait: %v", err)
+	}
+	if n := f.count(t, `SELECT question_count FROM task WHERE crew_actor_id = ?`, f.crewActor()); n != 1 {
+		t.Fatalf("question_count = %d; a hand-back is not a question the crew asked", n)
+	}
+	handedBack := db.ParseTime(askedAt)
+	// sent.log writes whole seconds, so the lines are dated on the second.
+	hold := handedBack.Truncate(time.Second).Add(10 * time.Minute)
+	real := hold.Add(130 * time.Minute)
+	crew := store.CrewTarget(fixtureCrew)
+
+	send := func(at time.Time, text string) {
+		t.Helper()
+		if err := f.ws.AppendSent(fixtureProject, store.SentEntry{Time: at, Source: store.SourceMate, Target: crew, Text: text}); err != nil {
+			t.Fatalf("AppendSent: %v", err)
+		}
+	}
+	waited := func() (string, int64, string) {
+		t.Helper()
+		var answeredAt, answer string
+		var ms int64
+		if err := f.db.SQL().QueryRow(
+			`SELECT q.answered_at, q.waited_ms, COALESCE(m.text, '') FROM question q
+			   LEFT JOIN message m ON m.event_id = q.answered_event_id WHERE q.id = ?`, id).
+			Scan(&answeredAt, &ms, &answer); err != nil {
+			t.Fatalf("read the hand-back: %v", err)
+		}
+		return answeredAt, ms, answer
+	}
+
+	send(hold, "Noted; the captain is looking at it, hold on.")
+	f.ingest(t)
+	if at, ms, _ := waited(); at != db.FormatTime(hold) || ms != hold.Sub(handedBack).Milliseconds() {
+		t.Fatalf("after the holding line: answered %s waited %dms, want %s and %s", at, ms, db.FormatTime(hold), hold.Sub(handedBack))
+	}
+
+	send(real, "The captain says: merge it.")
+	f.ingest(t)
+	if at, ms, answer := waited(); at != db.FormatTime(real) || ms != real.Sub(handedBack).Milliseconds() || answer != "The captain says: merge it." {
+		t.Fatalf("after the real answer: answered %s waited %dms by %q; the crew wrote nothing after the holding line, so the wait runs to the real answer", at, ms, answer)
+	}
+
+	// The crew acts on it; a later line is a new instruction, not an answer.
+	if err := f.ws.AppendStatus(fixtureProject, fixtureCrew, "working: merging"); err != nil {
+		t.Fatal(err)
+	}
+	send(time.Now().Add(time.Hour), "Also tag the release.")
+	f.ingest(t)
+	if at, _, _ := waited(); at != db.FormatTime(real) {
+		t.Fatalf("a line after the crew spoke moved the answer to %s", at)
+	}
+	want := int64(86721) + real.Sub(handedBack).Milliseconds()
+	if n := f.count(t, `SELECT waited_ms FROM v_task_ledger WHERE crew_actor_id = ?`, f.crewActor()); int64(n) != want {
+		t.Fatalf("ledger waited_ms = %d, want the decision's 86721 plus the hand-back's %d", n, want-86721)
+	}
 }

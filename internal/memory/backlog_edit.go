@@ -11,6 +11,15 @@ import (
 // EditBacklog edits one identified entry, preserving its complete multiline
 // body and all unrelated text. Done overflow is returned for archival first.
 func EditBacklog(text, action, id, destination, note string) (string, string, error) {
+	return EditBacklogEntry(text, action, id, destination, note, false)
+}
+
+// EditBacklogEntry is EditBacklog with one more choice: with rewrite, a
+// move or done replaces the entry's whole body with the one line
+// `- <id>: <note>` instead of carrying it unchanged. That is the pointer
+// line a project with a tracker plugin keeps (CON-77): the tracker holds
+// the content, backlog.md only says which tracker id a crew is on.
+func EditBacklogEntry(text, action, id, destination, note string, rewrite bool) (string, string, error) {
 	if !slices.Contains(BacklogSections, destination) {
 		return "", "", fmt.Errorf("unknown backlog section %q", destination)
 	}
@@ -54,7 +63,14 @@ func EditBacklog(text, action, id, destination, note string) (string, string, er
 		if start < 0 {
 			return "", "", fmt.Errorf("backlog id %s not found", id)
 		}
-		entry = append([]string(nil), lines[start:end]...)
+		if rewrite {
+			if strings.TrimSpace(note) == "" || strings.ContainsAny(note, "\r\n") {
+				return "", "", fmt.Errorf("backlog %s needs one nonempty line of text to rewrite the entry with", action)
+			}
+			entry = []string{"- " + id + ": " + note}
+		} else {
+			entry = append([]string(nil), lines[start:end]...)
+		}
 		lines = append(lines[:start:start], lines[end:]...)
 	default:
 		return "", "", fmt.Errorf("unknown backlog action %q", action)

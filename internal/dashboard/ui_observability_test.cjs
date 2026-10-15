@@ -650,10 +650,14 @@ test("the effort table is summed from the stages and its total matches the heade
   const card = app.view.querySelector(".steps-card");
   const header = card.querySelectorAll(".sc-big").map(node => node.textContent);
   const total = cells(keyed(card, "data-effort", "total"));
-  assert.deepEqual(total, ["Total", "3", "3", header[0], "", "100%"]);
+  // 1120 tokens, 900 of them the context re-read (cache), 220 added (work).
+  assert.deepEqual(total, ["Total", "3", "3", header[0], "900", "220", "", "100%"]);
   assert.equal(total[1], header[1], "model calls agree with the header");
-  assert.deepEqual(cells(keyed(card, "data-effort", "instructions")), ["Read instructions", "1", "1", "310", "", "27.7%"]);
-  assert.deepEqual(cells(keyed(card, "data-effort", "response")), ["Respond", "1", "–", "390", "", "34.8%"]);
+  assert.deepEqual(cells(keyed(card, "data-effort", "instructions")), ["Read instructions", "1", "1", "310", "200", "110", "", "27.7%"]);
+  assert.deepEqual(cells(keyed(card, "data-effort", "response")), ["Respond", "1", "–", "390", "300", "90", "", "34.8%"]);
+  const track = keyed(card, "data-effort", "response").querySelector(".sc-track");
+  assert.equal(track.children.length, 2, "work solid and cache read faded");
+  assert.equal(track.children[1].getAttribute("class"), "sc-cache");
   assert.equal(card.querySelectorAll(".coverage-note").filter(note => /not in a recorded stage/.test(note.textContent)).length, 0);
 });
 
@@ -664,9 +668,24 @@ test("every work type is listed in a fixed order, a type with no call with dashe
     ["research", "write_code", "edit_code", "test", "review", "coordination", "wait", "instructions", "response", "mixed", "unknown"]);
   const write = rows[1];
   assert.equal(write.getAttribute("data-empty"), "true");
-  assert.deepEqual(cells(write), ["Write code / files", "–", "–", "–", "", "–"]);
+  assert.deepEqual(cells(write), ["Write code / files", "–", "–", "–", "–", "–", "", "–"]);
   assert.equal(write.querySelector(".sc-track").children.length, 0, "an empty track");
   assert.equal(rows[9].getAttribute("data-empty"), null, "mixed has a call here");
+  // A mixed row says what it mixed rather than hiding it under one word.
+  assert.equal(rows[9].getAttribute("data-parts"), "research+test");
+  assert.equal(cells(rows[9])[0], "Mixed: Research / inspect + Run tests / build");
+});
+
+test("mixed activity is one row per combination of types it mixed", async () => {
+  const body = stepsFixture();
+  body.performance.prompt_turns[0].overview.steps.push(
+    step("mixed", "Mixed activity", ["call-4"], 1, tokens(5, 100), { parts: ["edit_code", "test"] }),
+    step("mixed", "Mixed activity", ["call-5"], 1, tokens(5, 100), { parts: ["research", "test"] }));
+  const app = await boot(body);
+  const rows = app.view.querySelector(".steps-card").querySelectorAll(".sc-effort").filter(row => row.getAttribute("data-effort") === "mixed");
+  assert.deepEqual(rows.map(row => row.getAttribute("data-parts")), ["edit_code+test", "research+test"]);
+  assert.deepEqual(cells(rows[0]).slice(0, 6), ["Mixed: Edit code / files + Run tests / build", "1", "1", "115", "100", "15"]);
+  assert.deepEqual(cells(rows[1]).slice(0, 6), ["Mixed: Research / inspect + Run tests / build", "2", "3", "535", "500", "35"]);
 });
 
 test("stages are numbered continuously across prompts with a separator per later prompt", async () => {

@@ -39,6 +39,22 @@ type ProjectConfig struct {
 	Budget *BudgetConfig `yaml:"budget,omitempty"`
 }
 
+// MetaBudget is the crew `.meta` key holding the crew's own token budget
+// (CON-76): the dispatch rule's budget `mate crew spawn --budget` recorded,
+// else a copy of the project's crew_tokens at spawn. The observer's budget
+// check reads it before the project's block. It lives here, beside
+// MetaRepo, because both the writer (internal/spawn) and the reader
+// (internal/timeline) already import this package.
+const MetaBudget = "budget"
+
+// MetaFollowups is the crew `.meta` key `mate merge --followups` writes
+// (CON-74): where the findings a passing review left standing were
+// recorded before the merge - a `backlog:<text>` line under the project's
+// `## Queued`, or a tracker issue id such as `HVN-12`. It is the record a
+// reader of the closed crew (`mate usage`, the Office) can show for "what
+// happened to the reviewer's findings".
+const MetaFollowups = "followups"
+
 // BudgetConfig is `project.yaml`'s `budget:` block. Every field is optional
 // and a zero value means "no limit on this dimension" - hand-editing the
 // file to add one line is the whole interface for the MVP; `project add

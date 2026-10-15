@@ -33,6 +33,8 @@ import "strings"
 //	finished        the Mate or the user, through `crew stop` (`.meta`)
 //	failed          the Mate or the user through `crew stop --discard`, or
 //	                the app when a spawn failed (`.meta`)
+//	reviewed        the app, through `crew stop` of a reviewer whose report
+//	                carries a Verdict (`.meta`, with verdict=)
 //
 // There is no `reserved`, `stopped`, `parked`, `done` or `unknown`: a state
 // nobody owns is a state nobody can be held to.
@@ -46,12 +48,20 @@ const (
 	StateBlocked       State = "blocked"
 	StateFinished      State = "finished"
 	StateFailed        State = "failed"
+	// StateReviewed is the final state of a reviewer (a crew with
+	// review.meta) that handed back a report with a `## Verdict` before it
+	// was stopped - however it was stopped. A `crew stop --discard` of such
+	// a reviewer throws away a scratch worktree, not the review, so it is
+	// not a failure (CON-75); the verdict itself is in `.meta` verdict=.
+	StateReviewed State = "reviewed"
 )
 
 // Closed reports whether the state is terminal: the task is over and the
 // crew is no longer work in flight. Closed crews leave the console tree,
 // the inbox and `crew list` (mvp.md section 4b).
-func (s State) Closed() bool { return s == StateFinished || s == StateFailed }
+func (s State) Closed() bool {
+	return s == StateFinished || s == StateFailed || s == StateReviewed
+}
 
 func (s State) String() string { return string(s) }
 
@@ -75,8 +85,13 @@ const (
 // writes them under the same names.
 const (
 	// MetaState is the state key only the app writes: spawned at spawn,
-	// finished or failed at `crew stop`, failed when a spawn fails.
+	// finished, reviewed or failed at `crew stop`, failed when a spawn
+	// fails.
 	MetaState = "state"
+	// MetaVerdict is the reviewer's Verdict (pass, changes-requested or
+	// incomplete), written beside state=reviewed so the ledger can say
+	// what the review concluded without reading the report again.
+	MetaVerdict = "verdict"
 	// MetaStoppedAt is the pre-4b record of a closed crew. A meta with a
 	// stopped_at and no state= was written before the state key existed and
 	// reads as finished.
@@ -139,8 +154,8 @@ type Declaration struct {
 // Declare resolves the displayed state in the fixed order of mvp.md
 // section 4b:
 //
-//  1. `.meta` carries state=finished or state=failed: that, and nothing
-//     later can override it - a closed crew stays closed.
+//  1. `.meta` carries state=finished, state=reviewed or state=failed:
+//     that, and nothing later can override it - a closed crew stays closed.
 //  2. Backward compatibility: `.meta` carries stopped_at= and no state=.
 //     Only `crew stop` ever wrote that key, so the crew is finished.
 //  3. The observer has an open incident: blocked.
@@ -155,6 +170,8 @@ func Declare(d Declaration) State {
 		return StateFinished
 	case StateFailed:
 		return StateFailed
+	case StateReviewed:
+		return StateReviewed
 	}
 	if strings.TrimSpace(d.Meta[MetaState]) == "" && strings.TrimSpace(d.Meta[MetaStoppedAt]) != "" {
 		return StateFinished

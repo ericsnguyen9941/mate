@@ -163,6 +163,14 @@ func doctorInstance(in Instance, projects []string, cfg Config, opts DoctorOptio
 			add(in.ID, "mcp command "+m.MCP.Command[0], err, path)
 		}
 	}
+	if in.Tracker != nil {
+		if len(in.Tracker.Read) == 0 {
+			add(in.ID, "tracker", nil, "no read command; recall cannot cross-check In flight")
+		} else {
+			path, err := findCommand(in.Tracker.Read[0], in.Path, lookPath)
+			add(in.ID, "tracker read "+in.Tracker.Read[0], err, path)
+		}
+	}
 
 	for _, project := range projects {
 		b, _ := in.BindingFor(project)

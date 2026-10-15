@@ -302,6 +302,17 @@ type pass struct {
 	// statusClock dates the status lines: a crew's own shell commands,
 	// keyed by actor, with the command text as written in the transcript.
 	statusClock map[string][]datedCommand
+	// telemetryProfile is the model and effort the harness's telemetry
+	// state names for an actor's session, read before its turns are
+	// recorded; usageTurns falls back to it, then to the actor's `.meta`.
+	telemetryProfile map[string]actorProfile
+	// statusTimes are the status lines this pass dated, keyed by actor, so
+	// a `sent.log` line read in the same pass can tell whether the crew
+	// spoke between two of the Mate's lines (reanswer).
+	statusTimes map[string][]time.Time
+	// lastAnswered is the newest answer this pass recorded per crew, for
+	// the same question.
+	lastAnswered map[string]*pendingQuestion
 	// commitSightings are the commits an actor's transcript shows it making,
 	// keyed by actor. They matter because a branch is short-lived: `mate
 	// merge` deletes it, and a crew that commits seconds before the merge can
@@ -336,4 +347,49 @@ func (p *pass) readCursor(ctx context.Context, path string) (int64, error) {
 		return 0, err
 	}
 	return offset, nil
+}
+
+// actorProfile is a model and a reasoning effort, as a harness or a
+// launch recorded them.
+type actorProfile struct {
+	Model, Effort string
+}
+
+// metaProfile is the launch profile `.meta` keeps for an actor (`model=`,
+// `effort=`, written by crew spawn and mate start), the fallback for a
+// turn whose transcript names no model or no effort.
+func (p *pass) metaProfile(actorID string) actorProfile {
+	if p.mate.Present && p.mate.ActorID == actorID {
+		return actorProfile{Model: p.mate.Meta[MetaModel], Effort: p.mate.Meta[MetaEffort]}
+	}
+	for _, c := range p.crews {
+		if c.ActorID == actorID {
+			return actorProfile{Model: c.Meta[MetaModel], Effort: c.Meta[MetaEffort]}
+		}
+	}
+	return actorProfile{}
+}
+
+// turnProfile is the model and effort a turn is recorded with: the
+// transcript's own model first, then what the harness's telemetry state
+// says, then the launch profile. Effort has no transcript source on
+// Claude, so there it is always the launch profile (CON-75).
+func (p *pass) turnProfile(actorID, transcriptModel string) actorProfile {
+	out := actorProfile{Model: transcriptModel}
+	tel := p.telemetryProfile[actorID]
+	meta := p.metaProfile(actorID)
+	if out.Model == "" {
+		out.Model = firstNonEmpty(tel.Model, meta.Model)
+	}
+	out.Effort = firstNonEmpty(tel.Effort, meta.Effort)
+	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

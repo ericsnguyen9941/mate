@@ -1,6 +1,9 @@
 package store
 
-import "path/filepath"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 // Names of the directories and files of docs/mvp.md section 3. They are here
 // so no other package spells them.
@@ -216,6 +219,14 @@ func (w *Workspace) CrewReport(project, crew string) string {
 // outlives the Crew.
 func (w *Workspace) CrewHandback(project, crew string) string {
 	return filepath.Join(w.CrewDir(project, crew), handbackFileName)
+}
+
+// CrewSessionInput is `projects/<project>/crews/<crew>/session-<n>.md`: the
+// opening input of the crew's n-th session (CON-73), composed by a fresh
+// relaunch out of the brief, the last hand-back, the Mate's message and
+// the diff since the last review. Like the hand-back it outlives the Crew.
+func (w *Workspace) CrewSessionInput(project, crew string, n int) string {
+	return filepath.Join(w.CrewDir(project, crew), fmt.Sprintf("session-%d.md", n))
 }
 
 // WorktreesDir is `<root>/.worktrees`.

@@ -97,7 +97,7 @@ MATE_CALLER=crew
 
 == files the launch created or changed ==
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3.meta mode=-rw-r--r-- bytes=339 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3.meta mode=-rw-r--r-- bytes=362 ---
 agent=crew-k3
 branch=mate/k3
 delivery=local
@@ -108,6 +108,8 @@ pane=w1:p2
 repo=shop
 session={{HERDR_SESSION}}
 session_id=11111111-2222-3333-4444-555555555555
+sessions=1
+size=medium
 started_at=2026-09-17T10:00:00Z
 state=spawned
 tab=w1:t2
@@ -121,11 +123,11 @@ worktree=.worktrees/shop-k3
 (empty)
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3.status ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/brief.md mode=-rw-r--r-- bytes=8541 ---
-(rendered asset) sha256=fdd3bea9bd2b15f1bcd9e7238165e8f3122a8f82d096959af4867451719a996f
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/brief.md mode=-rw-r--r-- bytes=8977 ---
+(rendered asset) sha256=6b363b5171ad9c1ae55401fcb60b37f5325711bb7fe370f058cd698d316ba9be
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/brief.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json mode=-rw------- bytes=2179 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json mode=-rw------- bytes=2204 ---
 {
   "version": 1,
   "captured_at": "2026-09-17T10:00:00Z",
@@ -136,6 +138,7 @@ worktree=.worktrees/shop-k3
   "harness": "claude",
   "mate_version": "dev",
   "effort_omitted": false,
+  "task_size": "medium",
   "repo_commit": "{{HEAD}}",
   "repo_dirty": false,
   "documents": [
@@ -199,12 +202,12 @@ worktree=.worktrees/shop-k3
     {
       "path": "embedded:crew/brief.md.tmpl",
       "role": "crew_prompt_template",
-      "sha256": "98a9bc0170ffad9176dcd5aa07a9711b0cf92269d157ca099d24a0c0b07e567b",
-      "bytes": 12766,
+      "sha256": "6de313e2a43bd44b8af15ffca15c433742448a373ab14c287ed1c7ededdd293f",
+      "bytes": 14981,
       "state": "configured"
     }
   ],
-  "fingerprint": "d084eacb929c494f63ec87caef6c727ae4558f37d18dc3ba26f35c615512af98"
+  "fingerprint": "8e753a35f43cde44ba732dcf73e1535298ee2e62e00bda5d9e06980d64760c1b"
 }
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json ---
 

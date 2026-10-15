@@ -105,7 +105,7 @@ func TestBriefAppendAppendsAndTellsTheCrew(t *testing.T) {
 	rt.OnSendKeys = func(h runtime.AgentHandle, keys []string) { rt.SetReadOutput(h, codexBusyScreen) }
 
 	at := time.Date(2026, 9, 24, 9, 30, 0, 0, time.UTC)
-	got, err := briefAppend(context.Background(), w, deps, "shop", "k3", "Cả trang liên hệ nữa.\n", store.SourceMate, at)
+	got, err := briefAppend(context.Background(), w, deps, "shop", "k3", "Cả trang liên hệ nữa.\n", store.SourceMate, at, false)
 	if err != nil {
 		t.Fatalf("briefAppend: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestBriefAppendRefusesAStoppedCrewWithoutChangingTheBrief(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := briefAppend(context.Background(), w, deps, "shop", "k3", "more", store.SourceMate, time.Now())
+	got, err := briefAppend(context.Background(), w, deps, "shop", "k3", "more", store.SourceMate, time.Now(), false)
 	if err == nil || got.Appended {
 		t.Fatalf("appended to a stopped crew: %+v, %v", got, err)
 	}
@@ -165,7 +165,7 @@ func TestBriefAppendKeepsTheWordsWhenTheSendIsRefused(t *testing.T) {
 	res := spawnFakeCrew(t, w, deps, "shop", "k3")
 	rt.SetReadOutput(runtime.AgentHandle{Session: runtime.SessionHandle{Name: res.Session}, Name: res.Agent}, codexBusyScreen)
 
-	got, err := briefAppend(context.Background(), w, deps, "shop", "k3", "more", store.SourceMate, time.Now())
+	got, err := briefAppend(context.Background(), w, deps, "shop", "k3", "more", store.SourceMate, time.Now(), false)
 	if err == nil {
 		t.Fatal("a busy crew accepted the line")
 	}
@@ -228,5 +228,76 @@ func TestProjectFactsCLI(t *testing.T) {
 	}
 	if strings.Contains(got, "secret-module-name") {
 		t.Fatalf("facts printed a file's content:\n%s", got)
+	}
+}
+
+// A crew that has handed back gets its appended words through a fresh
+// session (CON-73): the brief is appended, the pane is not typed into, and
+// the session input's third part is the words.
+func TestBriefAppendOnARestingCrewOpensAFreshSession(t *testing.T) {
+	w := liveCrewWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeSpawnDeps(t, rt)
+	res := restingShip(t, w, deps, "pr-open: https://github.com/x/shop/pull/7")
+	typed := false
+	rt.OnSendText = func(runtime.AgentHandle, string) { typed = true }
+	rec := &promptRecorder{Fake: rt}
+	deps.Runtime = rec
+
+	at := time.Date(2026, 10, 15, 9, 30, 0, 0, time.UTC)
+	got, err := briefAppend(context.Background(), w, deps, "shop", "k3", "Also the contact page.\n", store.SourceMate, at, false)
+	if err != nil {
+		t.Fatalf("briefAppend: %v", err)
+	}
+	if !got.Appended || got.Fresh == nil || got.Verb != "pr-open" {
+		t.Fatalf("result = %+v, want appended with a fresh session for a pr-open crew", got)
+	}
+	if typed {
+		t.Fatal("the resting pane was typed into")
+	}
+	brief, _ := os.ReadFile(w.CrewBrief("shop", "k3"))
+	if !strings.Contains(string(brief), "Also the contact page.") {
+		t.Fatalf("brief was not appended:\n%s", brief)
+	}
+	input, err := os.ReadFile(got.Fresh.InputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i, j := strings.Index(string(input), "# Part 3: the Mate's message\n\nAlso the contact page."), strings.Index(string(input), "# Part 4"); i < 0 || j < i {
+		t.Fatalf("session input's third part is not the appended words:\n%s", input)
+	}
+	// The appended brief is the first part, words included.
+	if i, j := strings.Index(string(input), "Also the contact page."), strings.Index(string(input), "# Part 2"); i < 0 || i > j {
+		t.Fatalf("session input's first part is not the appended brief:\n%s", input)
+	}
+	if res.Pane == got.Fresh.Pane || len(rec.prompts) != 1 || !strings.Contains(rec.prompts[0], got.Fresh.InputPath) {
+		t.Fatalf("fresh pane %q (was %q), prompts %q", got.Fresh.Pane, res.Pane, rec.prompts)
+	}
+}
+
+// --fresh forces a fresh session on a crew still working; without it the
+// working crew gets the plain line.
+func TestBriefAppendFreshOnAWorkingCrew(t *testing.T) {
+	w := liveCrewWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeSpawnDeps(t, rt)
+	res := spawnFakeCrew(t, w, deps, "shop", "k3")
+	if err := w.AppendStatus("shop", "k3", "working: on it"); err != nil {
+		t.Fatal(err)
+	}
+	rec := &promptRecorder{Fake: rt}
+	deps.Runtime = rec
+
+	got, err := briefAppend(context.Background(), w, deps, "shop", "k3", "Change of plan: ship it as a draft.", store.SourceMate, time.Now(), true)
+	if err != nil {
+		t.Fatalf("briefAppend --fresh: %v", err)
+	}
+	if got.Fresh == nil || got.Verb != "spec change" || got.Fresh.Pane == res.Pane {
+		t.Fatalf("result = %+v, want a fresh session for a spec change", got)
+	}
+	var out bytes.Buffer
+	writeFreshSessionReport(&out, "shop", "k3", got.Verb, store.SourceUser, *got.Fresh)
+	if first := strings.SplitN(out.String(), "\n", 2)[0]; first != "fresh session 2 for shop/k3: it had handed back (spec change), so the message opens a new session instead of typing into the old one" {
+		t.Fatalf("first line = %q", first)
 	}
 }

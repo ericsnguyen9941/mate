@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -184,15 +185,25 @@ func TestCrewDispatchWithoutATableShowsTheBuiltIn(t *testing.T) {
 		"crew dispatch: built-in",
 		filepath.Join(".mate", "crew-dispatch.json"),
 		"rule 1: A ship that is a small change",
-		"use --harness claude --model sonnet --effort medium",
-		"or  --harness codex --model gpt-6-luna --effort medium",
-		"default: --harness codex --model gpt-6-luna --effort high",
+		// A rule's budget (CON-76) is on each profile line, so the Mate
+		// copies a whole line of flags.
+		"use --harness claude --model sonnet --effort medium --budget 2000000\n",
+		"or  --harness codex --model gpt-6-luna --effort medium --budget 2000000\n",
+		"use --harness claude --model sonnet --effort high --budget 8000000\n",
+		"use --harness claude --model opus --effort high --budget 20000000\n",
+		"default: --harness codex --model gpt-6-luna --effort high\n",
 		"rule 6: A review of another Crew's branch whose own task was a large change",
-		"review (what `mate review` uses when you pass no --model or --effort): --harness claude --model sonnet --effort medium",
+		"review (what `mate review` uses when you pass no --model or --effort): --harness claude --model sonnet --effort medium --budget 3000000\n",
+		"  or  --harness codex --model gpt-6-luna --effort medium --budget 3000000\n",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}
+	}
+	// A rule without a budget prints none: the light scout runs on the
+	// project's budget, if any.
+	if strings.Contains(out.String(), "use --harness claude --model sonnet --effort medium --budget 2000000\n  or  --harness codex --model gpt-6-luna --effort medium --budget 2000000\n  why A narrow question") {
+		t.Errorf("the light scout printed a budget it does not have:\n%s", out.String())
 	}
 	out.Reset()
 	if err := run([]string{"crew", "dispatch", "--example"}, &out, &errw); err != nil {
@@ -310,18 +321,22 @@ func TestAReviewWithoutAProfileTakesTheReviewProfile(t *testing.T) {
 		req, want   spawn.SpawnCrewRequest
 		noted       bool
 	}{
+		// The built-in table's review_budget (3M, CON-76) rides along with
+		// its profile, and with a profile the Mate named too.
 		{"default harness", "", spawn.SpawnCrewRequest{},
-			spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium}, true},
+			spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium, Budget: 3_000_000}, true},
 		{"named harness", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude},
-			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium}, true},
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium, Budget: 3_000_000}, true},
 		{"explicit large-change reviewer", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium},
-			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium}, false},
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium, Budget: 3_000_000}, false},
+		{"named budget kept", "", spawn.SpawnCrewRequest{Budget: 1_000_000},
+			spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium, Budget: 1_000_000}, true},
 		{"no review profile", sampleTable, spawn.SpawnCrewRequest{},
 			spawn.SpawnCrewRequest{}, false},
 		{"no review profile for the default harness", claudeReviewTable, spawn.SpawnCrewRequest{},
 			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium}, true},
 	} {
-		got, note, err := applyReviewDispatch(dispatchWorkspace(t, tc.table), tc.req)
+		got, note, err := applyReviewDispatch(dispatchWorkspace(t, tc.table), tc.req, nil)
 		if err != nil || got != tc.want {
 			t.Fatalf("%s: got %+v err %v, want %+v", tc.name, got, err, tc.want)
 		}
@@ -333,9 +348,217 @@ func TestAReviewWithoutAProfileTakesTheReviewProfile(t *testing.T) {
 			t.Fatalf("%s: note %q does not say the harness changed", tc.name, note)
 		}
 	}
-	_, _, err := applyReviewDispatch(dispatchWorkspace(t, `{"rules": [{"when": "x", "use": {"harness": "codex", "effort": "max"}}]}`), spawn.SpawnCrewRequest{Model: "opus"})
+	_, _, err := applyReviewDispatch(dispatchWorkspace(t, `{"rules": [{"when": "x", "use": {"harness": "codex", "effort": "max"}}]}`), spawn.SpawnCrewRequest{Model: "opus"}, nil)
 	var ue *usageError
 	if !errors.Is(err, dispatch.ErrInvalid) || !errors.As(err, &ue) {
 		t.Fatalf("malformed table: err = %v, want the table's own refusal, exit 2", err)
+	}
+}
+
+// rotationTable is a table with the captain's rotation (CON-77): three
+// turns of claude, then codex, then pi; rule 1 has a rotation of its own.
+const rotationTable = `{
+  "rules": [
+    {"when": "a small change", "use": {"harness": "claude", "model": "sonnet"}, "rotate": ["claude", "codex"]},
+    {"when": "anything else", "use": {"harness": "codex"}}
+  ],
+  "default": {"harness": "codex"},
+  "rotate": ["claude", "claude", "claude", "codex", "pi"]
+}`
+
+// rotationWorkspace is dispatchWorkspace with a project "shop" whose crews
+// carry the given rotation slots (a closed one among them, since the
+// rotation counts on after `crew stop`).
+func rotationWorkspace(t *testing.T, table string, slots ...int) *store.Workspace {
+	t.Helper()
+	w := dispatchWorkspace(t, table)
+	repo := filepath.Join(w.ProjectHome("shop"), "shop")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repo)
+	if err := w.AddProject("shop", store.ProjectConfig{Repos: []store.RepoConfig{{Path: repo, DefaultBranch: "main"}}}); err != nil {
+		t.Fatal(err)
+	}
+	for i, slot := range slots {
+		id := "k" + strconv.Itoa(i+1)
+		meta := map[string]string{"harness": "claude", "branch": "mate/" + id, "task": "t", spawn.MetaRotationSlot: strconv.Itoa(slot)}
+		if i == 0 {
+			meta["state"] = "finished"
+		}
+		if err := w.WriteCrewMeta("shop", id, meta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A crew with no slot: a spawn the captain steered off the rotation.
+	if err := w.WriteCrewMeta("shop", "steered", map[string]string{"harness": "pi", "branch": "mate/steered", "task": "t"}); err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+// `crew dispatch <project>` prints each rotation in force and the harness
+// it names next, read from the slots the project's spawns recorded; `--skip`
+// passes over a harness and says so.
+func TestCrewDispatchPrintsTheNextInRotation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		slots []int
+		args  []string
+		want  []string
+	}{
+		{"no prior slot", nil, nil, []string{
+			"  rotation: claude, codex\n  next in rotation: claude (position 1/2)\n",
+			"\nrotation: claude, claude, claude, codex, pi\nnext in rotation: claude (position 1/5)\n",
+		}},
+		{"one prior slot", []int{1}, nil, []string{
+			"  next in rotation: codex (position 2/2)\n",
+			"\nrotation: claude, claude, claude, codex, pi\nnext in rotation: claude (position 2/5)\n",
+		}},
+		{"four prior slots", []int{1, 2, 3, 4}, nil, []string{
+			"  next in rotation: claude (position 1/2)\n",
+			"\nrotation: claude, claude, claude, codex, pi\nnext in rotation: pi (position 5/5)\n",
+		}},
+		{"skip", []int{1, 2, 3}, []string{"--skip", "codex"}, []string{
+			"  rotation: claude, codex\n  skipped codex: --skip\n  next in rotation: claude (position 1/2)\n",
+			"\nrotation: claude, claude, claude, codex, pi\nskipped codex: --skip\nnext in rotation: pi (position 5/5)\n",
+		}},
+		{"everything skipped", []int{1}, []string{"--skip", "codex", "--skip", "claude", "--skip", "pi"}, []string{
+			"\nrotation: claude, claude, claude, codex, pi\nskipped claude: --skip\nskipped codex: --skip\nskipped pi: --skip\nnext in rotation: none (every harness in the rotation is skipped)\n",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := rotationWorkspace(t, rotationTable, tc.slots...)
+			var out, errw bytes.Buffer
+			args := append([]string{"crew", "dispatch", "shop", "--workspace", w.Root()}, tc.args...)
+			if err := run(args, &out, &errw); err != nil {
+				t.Fatalf("crew dispatch: %v\n%s", err, errw.String())
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output lacks %q:\n%s", want, out.String())
+				}
+			}
+			// The rotation lines come after the rules and profiles, before quota.
+			if i, j := strings.Index(out.String(), "\nrotation: claude, claude"), strings.Index(out.String(), "\nquota"); i < 0 || j < i {
+				t.Errorf("the table rotation is not between the profiles and the quota block:\n%s", out.String())
+			}
+		})
+	}
+
+	// Without a project there is no position to read, and the table still prints.
+	w := rotationWorkspace(t, rotationTable, 1, 2)
+	var out, errw bytes.Buffer
+	if err := run([]string{"crew", "dispatch", "--workspace", w.Root()}, &out, &errw); err != nil {
+		t.Fatalf("crew dispatch without a project: %v", err)
+	}
+	if !strings.Contains(out.String(), "rotation: claude, claude, claude, codex, pi\nnext in rotation: unknown; pass the project (mate crew dispatch <project>)") || !strings.Contains(out.String(), "rule 2:") {
+		t.Fatalf("output = %s", out.String())
+	}
+
+	// A table without a rotation prints no rotation line; an unknown
+	// --skip or an unknown project is refused.
+	out.Reset()
+	if err := run([]string{"crew", "dispatch", "shop", "--workspace", rotationWorkspace(t, "").Root()}, &out, &errw); err != nil || strings.Contains(out.String(), "rotation") {
+		t.Fatalf("built-in table: err %v, output = %s", err, out.String())
+	}
+	var ue *usageError
+	if err := run([]string{"crew", "dispatch", "shop", "--skip", "gemini", "--workspace", w.Root()}, &out, &errw); !errors.As(err, &ue) {
+		t.Fatalf("--skip gemini: err = %v, want a usage error", err)
+	}
+	if err := run([]string{"crew", "dispatch", "nope", "--workspace", w.Root()}, &out, &errw); err == nil {
+		t.Fatal("an unknown project was accepted")
+	}
+}
+
+// A spawn takes the rotation's turn when its harness is the one named
+// next, recording the slot after the ones taken (through the skipped
+// turns with --skip); any other harness takes no turn and the note says
+// so. A table without a rotation has nothing to record.
+func TestApplyRotationConsumesOnlyTheNextHarness(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		slots    []int
+		kind     harness.Kind
+		skip     []harness.Kind
+		wantSlot int
+		wantNote string
+	}{
+		{"first turn", nil, claude.KindClaude, nil, 1, ""},
+		{"fourth turn is codex", []int{1, 2, 3}, codex.KindCodex, nil, 4, ""},
+		{"the rule's rotation counts too", []int{1}, codex.KindCodex, nil, 2, ""},
+		{"captain's words win", []int{1, 2, 3}, "pi", nil, 0, "rotation not advanced: harness pi is not the rotation's next, codex is next (position 2/2); the captain's words win"},
+		{"skip passes over codex", []int{1, 2, 3}, "pi", []harness.Kind{codex.KindCodex}, 5, ""},
+		{"everything skipped", []int{1}, "pi", []harness.Kind{claude.KindClaude, codex.KindCodex, "pi"}, 0, "rotation not advanced: harness pi is not the rotation's next, every harness in it is skipped; the captain's words win"},
+		{"no harness takes the default", []int{1, 2, 3}, "", nil, 4, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := rotationWorkspace(t, rotationTable, tc.slots...)
+			slot, note, err := applyRotation(w, "shop", tc.kind, tc.skip)
+			if err != nil || slot != tc.wantSlot || note != tc.wantNote {
+				t.Fatalf("applyRotation = %d %q %v; want %d %q", slot, note, err, tc.wantSlot, tc.wantNote)
+			}
+		})
+	}
+	slot, note, err := applyRotation(rotationWorkspace(t, "", 1), "shop", "pi", nil)
+	if err != nil || slot != 0 || note != "" {
+		t.Fatalf("built-in table: %d %q %v; want nothing", slot, note, err)
+	}
+}
+
+// A review of a small change - at most the table's review_small_max_lines
+// changed lines, no code file - takes the table's review_small profile
+// (CON-74); a change with a code file in it, or over the threshold, or
+// one that was not measured, takes the review profile; the Mate's own
+// --model/--effort win over both; a table with no review_small reviews
+// every change on review.
+func TestASmallChangeTakesTheReviewSmallProfile(t *testing.T) {
+	docs := &reviewStat{Lines: 12, Files: 2}
+	code := &reviewStat{Lines: 12, Files: 2, Code: []string{"cmd/mate/main.go"}}
+	big := &reviewStat{Lines: 51, Files: 1}
+	small := spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortLow, Budget: 3_000_000}
+	full := spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium, Budget: 3_000_000}
+	for _, tc := range []struct {
+		name, table string
+		req         spawn.SpawnCrewRequest
+		stat        *reviewStat
+		want        spawn.SpawnCrewRequest
+		note        string
+	}{
+		{"docs under the threshold", "", spawn.SpawnCrewRequest{}, docs, small, "the change is small (12 line(s) in 2 file(s), no code, at most 50 lines), so used the built-in dispatch table's review_small profile: --harness codex --model gpt-6-luna --effort low"},
+		{"code under the threshold", "", spawn.SpawnCrewRequest{}, code, full, "used the built-in dispatch table's review profile"},
+		{"docs over the threshold", "", spawn.SpawnCrewRequest{}, big, full, "used the built-in dispatch table's review profile"},
+		{"not measured", "", spawn.SpawnCrewRequest{}, nil, full, "used the built-in dispatch table's review profile"},
+		{"named harness", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude}, docs,
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "haiku", Effort: harness.EffortLow, Budget: 3_000_000}, "review_small profile: --harness claude --model haiku --effort low"},
+		{"the Mate's own profile wins", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortHigh}, docs,
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortHigh, Budget: 3_000_000}, ""},
+		{"no review_small in the table", claudeReviewTable, spawn.SpawnCrewRequest{}, docs,
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium}, "no review profile for the default harness codex; used --harness claude"},
+	} {
+		got, note, err := applyReviewDispatch(dispatchWorkspace(t, tc.table), tc.req, tc.stat)
+		if err != nil || got != tc.want {
+			t.Fatalf("%s: got %+v err %v, want %+v", tc.name, got, err, tc.want)
+		}
+		if !strings.Contains(note, tc.note) {
+			t.Fatalf("%s: note %q lacks %q", tc.name, note, tc.note)
+		}
+	}
+}
+
+// `crew dispatch` prints the review_small profile and its threshold next
+// to the review profile, so the Mate sees both.
+func TestCrewDispatchPrintsTheReviewSmallProfile(t *testing.T) {
+	w := dispatchWorkspace(t, "")
+	var out, errw bytes.Buffer
+	if err := run([]string{"crew", "dispatch", "--workspace", w.Root()}, &out, &errw); err != nil {
+		t.Fatalf("crew dispatch: %v", err)
+	}
+	want := "review (what `mate review` uses when you pass no --model or --effort): --harness claude --model sonnet --effort medium --budget 3000000\n" +
+		"  or  --harness codex --model gpt-6-luna --effort medium --budget 3000000\n\n" +
+		"review_small (what `mate review` uses instead when the change is at most 50 lines and touches no code file): --harness claude --model haiku --effort low --budget 3000000\n" +
+		"  or  --harness codex --model gpt-6-luna --effort low --budget 3000000\n"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("output lacks %q:\n%s", want, out.String())
 	}
 }

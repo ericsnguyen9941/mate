@@ -654,3 +654,31 @@ func TestTaskSaysWhyASpawnFailed(t *testing.T) {
 		t.Fatalf("failed_reason = %q", got.Tasks[0].FailedReason)
 	}
 }
+
+// The project page names a task's reviewers and its tokens with them
+// (CON-75), from the task's reviews= and the reviewer's review.meta alike.
+func TestProjectPageRollsReviewersIntoTheTask(t *testing.T) {
+	f := newFixture(t)
+	if err := f.ws.WriteCrewMeta(fixtureProject, "rev", map[string]string{"task": "Review " + fixtureCrew, "state": "spawned"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteMeta(f.ws.CrewReviewMeta(fixtureProject, "rev"), map[string]string{"crew": fixtureCrew, "head": "abc"}); err != nil {
+		t.Fatal(err)
+	}
+	var got ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
+	var task Task
+	for _, tk := range got.Tasks {
+		if tk.Crew == fixtureCrew {
+			task = tk
+		}
+	}
+	if len(task.Reviews) != 1 || task.Reviews[0] != "rev" {
+		t.Fatalf("reviews = %v, want [rev]", task.Reviews)
+	}
+	// The reviewer has no ledger row in this corpus, so the roll-up is the
+	// task's own total, never less.
+	if task.TokensWithReviews != task.Tokens.Total || task.ReviewOf != "" {
+		t.Fatalf("tokens_with_reviews = %d (total %d), review_of = %q", task.TokensWithReviews, task.Tokens.Total, task.ReviewOf)
+	}
+}

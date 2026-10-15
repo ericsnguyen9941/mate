@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/box"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -105,6 +106,37 @@ func TestWakePrintsWhatToActOnInOrder(t *testing.T) {
 	}
 }
 
+// A budget incident is printed with the tokens used and the threshold it
+// was filed at (CON-76): "budget 50%" for the half one, with what to do
+// next, and "over budget" for the full one; both after the hand-backs.
+func TestWakePrintsBudgetIncidentsWithTheirThreshold(t *testing.T) {
+	w := wakeFixture(t)
+	for crew, text := range map[string]string{
+		"busy-k5": box.BudgetHalfPrefix + "1.1M tokens of 2M tokens, no hand-back yet",
+		"ask-k4":  "2.3M tokens of 2M tokens",
+	} {
+		if err := w.AppendIncident("shop", store.IncidentEntry{
+			Time: time.Date(2026, 10, 14, 21, 0, 0, 0, time.UTC), Crew: crew,
+			Kind: string(box.IncidentBudget), State: store.IncidentOpen, Text: text,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	text := runWake(t, w)
+	for _, want := range []string{
+		"== 1. To act on (4) ==\n",
+		"budget 50% busy-k5: 1.1M tokens of 2M tokens, no hand-back yet\n  next: mate peek busy-k5 once; if it is looping or polling, send it one line\n",
+		"over budget ask-k4: 2.3M tokens of 2M tokens\n  next: tell the captain",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("wake lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Index(text, "budget 50% busy-k5") < strings.Index(text, "wait-mate k3") {
+		t.Errorf("a budget item must come after the hand-backs:\n%s", text)
+	}
+}
+
 // Part 2 shows only what is new since the last wake; part 1 keeps an item
 // until it is dealt with, however many wakes have shown it.
 func TestWakeShowsOnlyNewStatusButKeepsOpenItems(t *testing.T) {
@@ -169,5 +201,29 @@ func TestMarkdownSectionStopsAtTheNextHeadingAndBounds(t *testing.T) {
 	}
 	if got := markdownSection(text, "Missing", 10); got != "" {
 		t.Errorf("missing section = %q", got)
+	}
+}
+
+// A `no_turn` incident (CON-74) is listed with the blocked items, before
+// the questions, with the one next step: peek, and relaunch if the pane
+// never got going.
+func TestWakePrintsANoTurnIncidentWithTheBlocked(t *testing.T) {
+	w := wakeFixture(t)
+	if err := w.AppendIncident("shop", store.IncidentEntry{
+		Time: time.Date(2026, 10, 14, 21, 54, 0, 0, time.UTC), Crew: "busy-k5",
+		Kind: string(box.IncidentNoTurn), State: store.IncidentOpen, Text: "no turn in the ledger 6m0s after launch",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	text := runWake(t, w)
+	want := "no turn busy-k5: no turn in the ledger 6m0s after launch, open for 6m\n  next: mate peek busy-k5; if the pane is empty or at a sign-in screen, mate crew relaunch busy-k5\n"
+	if !strings.Contains(text, want) {
+		t.Fatalf("wake lacks %q:\n%s", want, text)
+	}
+	if strings.Index(text, "no turn busy-k5") > strings.Index(text, "needs-decision ask-k4") {
+		t.Errorf("a no-turn item must come with the blocked ones, before the questions:\n%s", text)
+	}
+	if !strings.Contains(text, "busy-k5 working · codex · running the test suite\n") {
+		t.Errorf("a no-turn item changed the crew's state:\n%s", text)
 	}
 }

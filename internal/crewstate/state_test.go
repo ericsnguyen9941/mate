@@ -45,6 +45,15 @@ func TestDeclare(t *testing.T) {
 			want: crewstate.StateFailed,
 		},
 		{
+			name: "meta state=reviewed wins over everything",
+			in: crewstate.Declaration{
+				Meta:         map[string]string{"state": "reviewed", "verdict": "pass"},
+				OpenIncident: true,
+				LastVerb:     crewstate.VerbWaitMate,
+			},
+			want: crewstate.StateReviewed,
+		},
+		{
 			name: "stopped_at without state= reads as finished",
 			in:   crewstate.Declaration{Meta: map[string]string{"stopped_at": "2026-09-18T10:00:00Z"}},
 			want: crewstate.StateFinished,
@@ -110,7 +119,7 @@ func TestDeclare(t *testing.T) {
 }
 
 func TestStateClosed(t *testing.T) {
-	closed := []crewstate.State{crewstate.StateFinished, crewstate.StateFailed}
+	closed := []crewstate.State{crewstate.StateFinished, crewstate.StateFailed, crewstate.StateReviewed}
 	open := []crewstate.State{
 		crewstate.StateSpawned, crewstate.StateWorking,
 		crewstate.StateNeedsDecision, crewstate.StateWaitMate, crewstate.StateBlocked,

@@ -73,6 +73,10 @@ func TestLoadRefusesAMalformedTable(t *testing.T) {
 		"flag-like model":    `{"rules": [{"when": "x", "use": {"harness": "codex", "model": "-c"}}]}`,
 		"unknown field":      `{"rules": [{"when": "x", "use": {"harness": "codex", "modle": "gpt-5.5"}}]}`,
 		"empty table":        `{}`,
+		"zero budget":        `{"rules": [{"when": "x", "use": {"harness": "codex"}, "budget": 0}]}`,
+		"negative budget":    `{"rules": [{"when": "x", "use": {"harness": "codex"}, "budget": -5}]}`,
+		"budget as a string": `{"rules": [{"when": "x", "use": {"harness": "codex"}, "budget": "2M"}]}`,
+		"bad review budget":  `{"default": {"harness": "codex"}, "review_budget": 0}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, _, err := Load(writeTable(t, body), catalog.Default())
@@ -83,6 +87,39 @@ func TestLoadRefusesAMalformedTable(t *testing.T) {
 				t.Fatalf("the error does not name the file: %v", err)
 			}
 		})
+	}
+}
+
+// A rule may carry a token budget (CON-76), and so may the review line as
+// `review_budget`; a rule without one reads as 0, which spawn and the
+// observer take as "the project's budget, if any".
+func TestLoadReadsAnOptionalBudgetPerRule(t *testing.T) {
+	p := writeTable(t, `{
+  "rules": [
+    {"when": "a small change", "use": {"harness": "claude", "model": "sonnet"}, "budget": 2000000},
+    {"when": "anything else", "use": {"harness": "codex"}}
+  ],
+  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"},
+  "review_budget": 3000000
+}`)
+	tbl, ok, err := Load(p, catalog.Default())
+	if err != nil || !ok {
+		t.Fatalf("Load: ok=%v err=%v", ok, err)
+	}
+	if got := tbl.Rules[0].Budget; got != 2_000_000 {
+		t.Fatalf("rule 1 budget = %d, want 2000000", got)
+	}
+	if got := tbl.Rules[1].Budget; got != 0 {
+		t.Fatalf("rule 2 budget = %d, want 0 (none named)", got)
+	}
+	if tbl.ReviewBudget != 3_000_000 {
+		t.Fatalf("review budget = %d, want 3000000", tbl.ReviewBudget)
+	}
+
+	// A table that names no review_budget has none.
+	tbl, _, err = Load(writeTable(t, `{"default": {"harness": "codex"}}`), catalog.Default())
+	if err != nil || tbl.ReviewBudget != 0 {
+		t.Fatalf("table without review_budget: %d %v", tbl.ReviewBudget, err)
 	}
 }
 
@@ -135,6 +172,16 @@ func TestTheBuiltInTableIsTheCaptains(t *testing.T) {
 	}
 	if got := strings.Join(flags(tbl.Review), "|"); got != "--harness claude --model sonnet --effort medium|--harness codex --model gpt-6-luna --effort medium" {
 		t.Errorf("review = %s, want sonnet and luna at medium", got)
+	}
+	// The captain's suggested budgets (CON-76): the three ship rules and
+	// the review line; the scouts and the large-change review name none.
+	for i, budget := range []int64{2_000_000, 8_000_000, 20_000_000, 0, 0, 0} {
+		if tbl.Rules[i].Budget != budget {
+			t.Errorf("rule %d budget = %d, want %d", i+1, tbl.Rules[i].Budget, budget)
+		}
+	}
+	if tbl.ReviewBudget != 3_000_000 {
+		t.Errorf("review budget = %d, want 3000000", tbl.ReviewBudget)
 	}
 }
 
@@ -238,5 +285,143 @@ func TestDefaultForPrefersTheWorkspaceHarness(t *testing.T) {
 	}
 	if _, ok := (Table{}).DefaultFor("codex"); ok {
 		t.Error("a table with no default returned one")
+	}
+}
+
+// A table may carry a harness rotation (CON-77) at table level or per
+// rule; the rule's is its own, and a rule without one reads as nil so the
+// table's applies. Entries must be registered harnesses.
+func TestLoadReadsAnOptionalRotation(t *testing.T) {
+	p := writeTable(t, `{
+  "rules": [
+    {"when": "a small change", "use": {"harness": "claude", "model": "sonnet"}, "rotate": ["claude", "codex"]},
+    {"when": "anything else", "use": {"harness": "codex"}}
+  ],
+  "default": {"harness": "codex"},
+  "rotate": ["Claude", "claude", "claude", "codex", "pi"]
+}`)
+	tbl, ok, err := Load(p, catalog.Default())
+	if err != nil || !ok {
+		t.Fatalf("Load: ok=%v err=%v", ok, err)
+	}
+	if got := tbl.Rotate.String(); got != "claude, claude, claude, codex, pi" {
+		t.Fatalf("table rotation = %q", got)
+	}
+	if got := tbl.Rules[0].Rotate.String(); got != "claude, codex" {
+		t.Fatalf("rule 1 rotation = %q", got)
+	}
+	if tbl.Rules[1].Rotate != nil {
+		t.Fatalf("rule 2 rotation = %v, want none", tbl.Rules[1].Rotate)
+	}
+	if rs := tbl.Rotations(); len(rs) != 2 || rs[0].String() != "claude, codex" || rs[1].String() != "claude, claude, claude, codex, pi" {
+		t.Fatalf("rotations in force = %v", rs)
+	}
+
+	for name, body := range map[string]string{
+		"empty rotation":   `{"default": {"harness": "codex"}, "rotate": []}`,
+		"unknown harness":  `{"default": {"harness": "codex"}, "rotate": ["claude", "gemini"]}`,
+		"not an array":     `{"default": {"harness": "codex"}, "rotate": "claude"}`,
+		"rule unknown":     `{"rules": [{"when": "x", "use": {"harness": "codex"}, "rotate": ["gemini"]}]}`,
+		"rule empty array": `{"rules": [{"when": "x", "use": {"harness": "codex"}, "rotate": []}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := Load(writeTable(t, body), catalog.Default())
+			if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "rotate") {
+				t.Fatalf("Load accepted a bad rotation, or did not name `rotate`: %v", err)
+			}
+		})
+	}
+	// The built-in table has no rotation: the captain opts in.
+	if tbl, err := builtIn(catalog.Default()); err != nil || tbl.Rotate != nil || len(tbl.Rotations()) != 0 {
+		t.Fatalf("built-in rotation = %v, %v; want none", tbl.Rotate, err)
+	}
+}
+
+// Next walks the rotation from the slots already taken, and `--skip`
+// passes over a harness without deferring its turn.
+func TestRotationNext(t *testing.T) {
+	r := Rotation{claude.KindClaude, claude.KindClaude, claude.KindClaude, codex.KindCodex, "pi"}
+	for _, tc := range []struct {
+		consumed int
+		skip     []harness.Kind
+		want     Step
+		skipped  string
+		ok       bool
+	}{
+		{0, nil, Step{claude.KindClaude, 1, 1}, "", true},
+		{1, nil, Step{claude.KindClaude, 2, 2}, "", true},
+		{3, nil, Step{codex.KindCodex, 4, 4}, "", true},
+		{4, nil, Step{"pi", 5, 5}, "", true},
+		{5, nil, Step{claude.KindClaude, 1, 6}, "", true},
+		{3, []harness.Kind{codex.KindCodex}, Step{"pi", 5, 5}, "codex", true},
+		{0, []harness.Kind{claude.KindClaude}, Step{codex.KindCodex, 4, 4}, "claude", true},
+		{4, []harness.Kind{"pi", claude.KindClaude}, Step{codex.KindCodex, 4, 9}, "pi, claude", true},
+		{0, []harness.Kind{claude.KindClaude, codex.KindCodex, "pi"}, Step{}, "claude, codex, pi", false},
+	} {
+		step, skipped, ok := r.Next(tc.consumed, tc.skip)
+		if ok != tc.ok || step != tc.want || Rotation(skipped).String() != tc.skipped {
+			t.Errorf("Next(%d, %v) = %+v skipped %q ok %v; want %+v %q %v", tc.consumed, tc.skip, step, Rotation(skipped).String(), ok, tc.want, tc.skipped, tc.ok)
+		}
+	}
+	if _, _, ok := Rotation(nil).Next(0, nil); ok {
+		t.Fatal("an empty rotation has a next")
+	}
+}
+
+// A `review_small` profile and its threshold are read like `review` and
+// checked like every profile (CON-74); a table may name neither, and then
+// the threshold is the default and the small profile is absent.
+func TestReviewSmallIsReadAndChecked(t *testing.T) {
+	tbl, _, err := Load(writeTable(t, `{"default": {"harness": "codex"}, "review_small": {"harness": "claude", "model": "haiku", "effort": "low"}, "review_small_max_lines": 20}`), catalog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tbl.ReviewSmall) != 1 || tbl.ReviewSmall[0].Flags() != "--harness claude --model haiku --effort low" || tbl.ReviewSmallMaxLines != 20 {
+		t.Fatalf("review_small = %+v, max lines %d", tbl.ReviewSmall, tbl.ReviewSmallMaxLines)
+	}
+	for name, body := range map[string]string{
+		"unknown harness": `{"default": {"harness": "codex"}, "review_small": {"harness": "nope"}}`,
+		"zero threshold":  `{"default": {"harness": "codex"}, "review_small_max_lines": 0}`,
+		"string":          `{"default": {"harness": "codex"}, "review_small_max_lines": "50"}`,
+	} {
+		if _, _, err := Load(writeTable(t, body), catalog.Default()); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+		}
+	}
+	none, _, err := Load(writeTable(t, `{"default": {"harness": "codex"}}`), catalog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := none.ReviewSmallFor("codex", false); ok || none.ReviewSmallMaxLines != DefaultReviewSmallMaxLines {
+		t.Errorf("a table with no review_small: profile %v, max lines %d", ok, none.ReviewSmallMaxLines)
+	}
+	// The built-in table reviews a small change on the lightest profile of
+	// each harness, under the default threshold.
+	builtin, _ := Resolve(t.TempDir(), catalog.Default())
+	if p, ok := builtin.ReviewSmallFor("codex", true); !ok || p.Flags() != "--harness codex --model gpt-6-luna --effort low" {
+		t.Errorf("built-in review_small for codex = %+v %v", p, ok)
+	}
+	if p, ok := builtin.ReviewSmallFor("pi", false); !ok || p.Flags() != "--harness claude --model haiku --effort low" {
+		t.Errorf("built-in review_small for an unlisted default harness = %+v %v", p, ok)
+	}
+	if builtin.ReviewSmallMaxLines != 50 {
+		t.Errorf("built-in review_small_max_lines = %d, want 50", builtin.ReviewSmallMaxLines)
+	}
+}
+
+// IsCodePath is the conservative list the small-change rule relies on:
+// languages, shell and build files are code; prose, data, configuration
+// and markup are not.
+func TestIsCodePath(t *testing.T) {
+	for path, want := range map[string]bool{
+		"cmd/mate/main.go": true, "web/app.js": true, "lib/x.rb": true, "scripts/run.sh": true, "Makefile": true,
+		"deploy/Dockerfile": true, "go.mod": true, "db/schema.sql": true, "src/App.tsx": true,
+		"README.md": false, "docs/mvp.md": false, "config.yaml": false, "package.json": false,
+		"site/index.html": false, "site/style.css": false, "LICENSE": false, "data.csv": false,
+		"assets/mate/skills/x/SKILL.md.tmpl": false,
+	} {
+		if got := IsCodePath(path); got != want {
+			t.Errorf("IsCodePath(%q) = %v, want %v", path, got, want)
+		}
 	}
 }

@@ -180,6 +180,20 @@ func TestLineRendersTheBudgetItemShape(t *testing.T) {
 	}
 }
 
+// The half-budget incident (CON-76) renders as "budget 50%", never as
+// "over budget": the crew has spent half of what its rule sized it at and
+// has not handed back, which is not a crossing.
+func TestLineRendersTheHalfBudgetItemShape(t *testing.T) {
+	items := []autopilot.Item{
+		{Kind: autopilot.ItemBudget, Crew: "k9", Text: box.BudgetHalfPrefix + "1.1M tokens of 2M tokens, no hand-back yet"},
+	}
+	want := `digest: 1 item(s) — k9 budget 50%: 1.1M tokens of 2M tokens, no hand-back yet — ` +
+		`status files under /w/.mate/projects/shop/crews; act per AGENTS.md section 10`
+	if got := autopilot.Line(items, "/w/.mate/projects/shop/crews"); got != want {
+		t.Fatalf("Line =\n%s\nwant\n%s", got, want)
+	}
+}
+
 // A crew line is arbitrary text: it can be long, it can hold newlines
 // somebody echoed in, and it can hold the quote character the digest uses to
 // delimit it. All three have to come out as one quoted line of bounded
@@ -247,4 +261,29 @@ func between(t *testing.T, s, open, close string) string {
 		t.Fatalf("%q has no %q", s, close)
 	}
 	return out
+}
+
+// A line the crew writes twice is two lines. The second `pr-open` is past
+// the cursor the first one moved, so it is gathered again whatever its
+// words: nothing in the digest path compares text, and a Mate that handled
+// the first one still has to hear about the second (CON-75,
+// ui-evidence-harness 2026-10-13).
+func TestGatherDigestsARepeatedLinePastTheCursor(t *testing.T) {
+	f := newFixture(t)
+	f.status("k3", "pr-open: https://github.com/o/r/pull/27")
+	first := autopilot.Gather(f.view(), nil, f.clock.Now())
+	if len(first) != 1 || first[0].Kind != autopilot.ItemWaitMate {
+		t.Fatalf("gathered %+v, want the pr-open as a hand-back", first)
+	}
+	cursor := autopilot.Advance(nil, first)
+
+	f.status("k3", "working: force-pushed after review")
+	f.status("k3", "pr-open: https://github.com/o/r/pull/27")
+	again := autopilot.Gather(f.view(), cursor, f.clock.Now())
+	if len(again) != 1 || again[0].Kind != autopilot.ItemWaitMate || again[0].Offset <= first[0].Offset {
+		t.Fatalf("gathered %+v after the repeat, want the second pr-open at a later offset", again)
+	}
+	if autopilot.Key(again) == autopilot.Key(first) {
+		t.Fatal("the two digests share a key; the outbox would treat the second as the first")
+	}
 }
