@@ -97,22 +97,13 @@ func contextRefresh(ctx context.Context, w *store.Workspace, deps spawn.Deps, pr
 	}
 	// Busy/pending is a deferral, not a failed stow: do not spend the retry
 	// cooldown before an LLM request was even possible. Stow rechecks this.
-	h, kind, err := spawn.MateHandle(ctx, w, deps, project)
+	composer, err := mateComposer(ctx, w, deps, project)
 	if err != nil {
 		if automatic {
 			return false, nil
 		}
 		return false, err
 	}
-	screens, err := screenOf(deps, kind)
-	if err != nil {
-		return false, err
-	}
-	screen, err := deps.Runtime.ReadAgentStyled(ctx, h, screens.ReadSource(), send.DefaultLines)
-	if err != nil {
-		return false, err
-	}
-	composer := send.ClassifyComposer(screens, screen)
 	if composer.State != send.StateEmpty {
 		if automatic {
 			return false, nil
@@ -264,4 +255,35 @@ func refreshQuiet(w *store.Workspace, project string, now time.Time) (bool, erro
 		}
 	}
 	return !answered.IsZero() && !answered.Before(asked) && now.Sub(answered) >= store.QuietAfter, nil
+}
+
+// mateComposer is the Mate's composer: read from its pane, or, for a
+// headless Mate (CON-78), as its host states it.
+func mateComposer(ctx context.Context, w *store.Workspace, deps spawn.Deps, project string) (send.Classification, error) {
+	if host, ok := spawn.HostClient(w, project); ok {
+		st, err := host.State(ctx)
+		if err != nil {
+			return send.Classification{}, err
+		}
+		switch {
+		case st.Draft != "":
+			return send.Classification{State: send.StatePending, Pending: st.Draft}, nil
+		case st.Busy || st.Queued > 0:
+			return send.Classification{State: send.StateBusy}, nil
+		}
+		return send.Classification{State: send.StateEmpty}, nil
+	}
+	h, kind, err := spawn.MateHandle(ctx, w, deps, project)
+	if err != nil {
+		return send.Classification{}, err
+	}
+	screens, err := screenOf(deps, kind)
+	if err != nil {
+		return send.Classification{}, err
+	}
+	screen, err := deps.Runtime.ReadAgentStyled(ctx, h, screens.ReadSource(), send.DefaultLines)
+	if err != nil {
+		return send.Classification{}, err
+	}
+	return send.ClassifyComposer(screens, screen), nil
 }

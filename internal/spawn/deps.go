@@ -57,6 +57,16 @@ const (
 	// `budget.crew_tokens`, written only when one of them is set. The
 	// observer's budget check reads it before the project's block.
 	MetaBudget = store.MetaBudget
+	// MetaMode is ModeHeadless for a Mate that runs as a headless host
+	// (CON-78). Absent means the harness's TUI runs in the pane. A stop
+	// keeps it, so a restart comes back in the same mode.
+	MetaMode = store.MetaMateMode
+)
+
+// Mate modes (StartRequest.Mode, MetaMode).
+const (
+	ModePane     = "pane"
+	ModeHeadless = store.MateModeHeadless
 )
 
 // AgentNamePrefix is the first half of a Mate's live Herdr agent name; the
@@ -102,6 +112,9 @@ const (
 type Deps struct {
 	// Runtime is the Herdr adapter. Tests pass runtime.NewFake().
 	Runtime runtime.Adapter
+	// HostStopWait bounds how long a stop lets a headless Mate finish its
+	// turn; zero means HostStopWait.
+	HostStopWait time.Duration
 	// Harnesses are the harnesses a start may launch and a stop may meet.
 	// The zero Registry holds none, so every start is refused; cmd/mate
 	// passes catalog.Default().

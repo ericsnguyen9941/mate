@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nguyenngocanh94/mate/internal/harness/claude"
+	"github.com/nguyenngocanh94/mate/internal/harness"
 )
 
 // Sources of a turn.
@@ -201,7 +201,7 @@ func (h *Host) start(source, text string) error {
 }
 
 func (h *Host) wait(run *Run, item *Item) {
-	reply := run.Wait(func(ev claude.StreamEvent) {
+	reply := run.Wait(func(ev harness.TurnEvent) {
 		for _, t := range ev.Tools {
 			h.mu.Lock()
 			state := h.stateLocked()

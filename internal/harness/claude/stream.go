@@ -5,6 +5,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/nguyenngocanh94/mate/internal/harness"
 )
 
 // A headless Mate turn is one `claude -p --output-format stream-json
@@ -130,4 +132,28 @@ func SessionOpened(cwd, sessionID string) bool {
 	}
 	fi, err := os.Stat(ClaudeTranscriptPath(root, cwd, sessionID))
 	return err == nil && !fi.IsDir()
+}
+
+// TurnArgs implements harness.HeadlessTurns.
+func (Claude) TurnArgs(launch []string, sessionID string, opened bool) []string {
+	return TurnArgs(launch, sessionID, opened)
+}
+
+// LaunchSessionID implements harness.HeadlessTurns.
+func (Claude) LaunchSessionID(launch []string) string { return LaunchSessionID(launch) }
+
+// SessionOpened implements harness.HeadlessTurns.
+func (Claude) SessionOpened(cwd, sessionID string) bool { return SessionOpened(cwd, sessionID) }
+
+// ParseTurnEvent implements harness.HeadlessTurns.
+func (Claude) ParseTurnEvent(line []byte) (harness.TurnEvent, bool) {
+	ev, ok := ParseStreamLine(line)
+	if !ok {
+		return harness.TurnEvent{}, false
+	}
+	out := harness.TurnEvent{Tools: ev.Tools}
+	if ev.Result() {
+		out.Final, out.Text, out.SessionID, out.IsError = true, ev.Text, ev.SessionID, ev.IsError
+	}
+	return out, true
 }

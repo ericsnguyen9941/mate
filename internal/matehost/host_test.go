@@ -2,6 +2,7 @@ package matehost
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/nguyenngocanh94/mate/internal/harness"
 )
 
 // fakeClaude answers like `claude -p --output-format stream-json`: it echoes
@@ -26,6 +29,54 @@ case "$prompt" in *slow*) sleep 2;; esac
 case "$prompt" in *quiet*) reply='—';; *) reply="re: $prompt";; esac
 printf '{"type":"result","subtype":"success","result":"%s","session_id":"s1","is_error":false}\n' "$reply"
 `
+
+// streamTurns is a HeadlessTurns over the fake's stream-json lines.
+type streamTurns struct{}
+
+func (streamTurns) TurnArgs(launch []string, id string, opened bool) []string {
+	var out []string
+	for i := 0; i < len(launch); i++ {
+		if launch[i] == "--session-id" || launch[i] == "--resume" {
+			i++
+			continue
+		}
+		out = append(out, launch[i])
+	}
+	flag := "--session-id"
+	if opened {
+		flag = "--resume"
+	}
+	return append(out, flag, id, "-p", "--output-format", "stream-json", "--verbose")
+}
+
+func (streamTurns) LaunchSessionID([]string) string   { return "" }
+func (streamTurns) SessionOpened(string, string) bool { return false }
+
+func (streamTurns) ParseTurnEvent(line []byte) (harness.TurnEvent, bool) {
+	var l struct {
+		Type    string `json:"type"`
+		Result  string `json:"result"`
+		IsError bool   `json:"is_error"`
+		Message struct {
+			Content []struct {
+				Type, Name string
+			} `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &l) != nil || l.Type == "" {
+		return harness.TurnEvent{}, false
+	}
+	var ev harness.TurnEvent
+	for _, c := range l.Message.Content {
+		if c.Type == "tool_use" {
+			ev.Tools = append(ev.Tools, c.Name)
+		}
+	}
+	if l.Type == "result" {
+		ev.Final, ev.Text, ev.IsError = true, l.Result, l.IsError
+	}
+	return ev, true
+}
 
 func fileLock(path string) LockFunc {
 	return func() (func(), bool, error) {
@@ -63,6 +114,7 @@ func newFixture(t *testing.T) *fixture {
 	f := &fixture{dir: dir, opened: map[string]bool{}}
 	runner := &Runner{
 		Launch: Launch{Project: "p", Program: prog, Args: []string{"--model", "opus", "--session-id", "s1"}, Dir: dir, SessionID: "s1"},
+		Turns:  streamTurns{},
 		Lock:   fileLock(filepath.Join(dir, ".turn.lock")),
 		Opened: func(_, id string) bool {
 			f.mu.Lock()
@@ -293,9 +345,9 @@ func TestSocketRoundTrip(t *testing.T) {
 
 func TestTurnEnvDropsNestedSessionAndAddsLaunchEnv(t *testing.T) {
 	env := turnEnv([]string{"PATH=/bin", "CLAUDECODE=1", "GONE=x", "MATE_PROJECT_ID=old"},
-		Launch{Env: []string{"MATE_PROJECT_ID=p"}, UnsetEnv: []string{"GONE"}})
+		Launch{Env: []string{"MATE_PROJECT_ID=p"}, UnsetEnv: []string{"GONE"}}, 3)
 	got := strings.Join(env, " ")
-	if got != "PATH=/bin MATE_PROJECT_ID=p "+EnvHostTurn+"=1" {
+	if got != "PATH=/bin MATE_PROJECT_ID=p "+EnvHostTurn+"=3" {
 		t.Fatalf("env = %q", got)
 	}
 }

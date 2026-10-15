@@ -452,7 +452,7 @@ func stopCrewAgentForRelaunch(ctx context.Context, w *store.Workspace, deps Deps
 		// How the old agent ended is not part of a relaunch's report: it
 		// is replaced either way, and nothing reads its transcript as
 		// finished.
-		if _, err := stopLiveAgent(ctx, deps, handle); err != nil {
+		if _, err := stopLiveAgent(ctx, deps, handle, false, ""); err != nil {
 			return false, err
 		}
 		stopped = true

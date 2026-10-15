@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -37,10 +38,23 @@ const (
 // SocketPath is the control socket of the Mate in mateDir.
 func SocketPath(mateDir string) string { return filepath.Join(mateDir, SocketName) }
 
-// EnvHostTurn is set on every turn a host runs. The SessionStart hook reads
-// it: a resumed turn needs no live-state digest, because the Mate already
-// has the conversation, and printing one would add it to every message.
+// EnvHostTurn is set on every turn a host runs, to the turn's number in
+// that host (1 for its first). Claude runs SessionStart on every resumed
+// `-p` turn (docs/evidence/headless-mate-probe-2026-10-15.md); the hook
+// prints the live-state digest only on a host's first turn, because later
+// ones already have it in the conversation (QuietSessionStart).
 const EnvHostTurn = "MATE_HOST_TURN"
+
+// QuietSessionStart reports whether a SessionStart hook with this source,
+// running under this EnvHostTurn value, should print nothing: a resumed
+// turn after a host's first.
+func QuietSessionStart(source, hostTurn string) bool {
+	if source != "resume" {
+		return false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(hostTurn))
+	return err == nil && n > 1
+}
 
 // Launch is one headless Mate's harness launch, as StartMate prepared it:
 // the same program, args and environment a pane launch would use. The host

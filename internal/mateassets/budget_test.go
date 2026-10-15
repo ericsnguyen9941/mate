@@ -24,7 +24,16 @@ const (
 )
 
 func TestRenderedManualFitsCodexProjectDocBudget(t *testing.T) {
-	out, err := Render(fixedParams())
+	for _, headless := range []bool{false, true} {
+		p := fixedParams()
+		p.Headless = headless
+		checkManualBudget(t, p)
+	}
+}
+
+func checkManualBudget(t *testing.T, p Params) {
+	t.Helper()
+	out, err := Render(p)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}

@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/screen"
@@ -498,6 +499,9 @@ func (s *Sender) deliver(ctx context.Context, project string, item store.OutboxI
 }
 
 func (s *Sender) deliverWithin(ctx context.Context, project string, item store.OutboxItem) (send.Report, error) {
+	if s.ws.MateHeadless(project) {
+		return s.deliverHeadless(ctx, project, item)
+	}
 	handle, kind, err := s.deps.Handle(ctx, project)
 	if err != nil {
 		return send.Report{}, err
@@ -514,6 +518,26 @@ func (s *Sender) deliverWithin(ctx context.Context, project string, item store.O
 		deps.Sleep = s.deps.sleep
 	}
 	return send.Send(ctx, deps, handle, kind, item.Text, send.Options{Marker: true})
+}
+
+// deliverHeadless hands the line to a headless Mate's host (CON-78). The
+// host refuses it while a turn runs or the captain has messages waiting,
+// which is the same refusal a busy composer gives: the item stays queued.
+// The marker goes with it, so the Mate's prompt hook records it as the
+// app's line exactly as it does for a typed one.
+func (s *Sender) deliverHeadless(ctx context.Context, project string, item store.OutboxItem) (send.Report, error) {
+	if s.withdrawn(project, item) {
+		return send.Report{}, errWithdrawn
+	}
+	meta, err := s.ws.ReadMateMeta(project)
+	if err != nil {
+		return send.Report{}, err
+	}
+	text := send.Marker + item.Text
+	if err := matehost.Dial(s.ws.MateDir(project)).Deliver(ctx, text); err != nil {
+		return send.Report{}, err
+	}
+	return send.Report{Agent: meta["agent"], Text: text, Typed: true}, nil
 }
 
 // recorded looks for the item's own line in sent.log after it was queued.
