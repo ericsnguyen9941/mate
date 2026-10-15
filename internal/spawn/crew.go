@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -122,6 +123,12 @@ type SpawnCrewRequest struct {
 	// it) or crewstate.DeliveryPR. A scout delivers a report and takes only
 	// local.
 	Delivery string
+	// Budget is the crew's token budget (`--budget`, CON-76): the dispatch
+	// rule's `budget` the Mate matched the task to. 0 means none was
+	// passed, and the project's `budget.crew_tokens` applies, if any. A
+	// later `--size` (CON-72) may imply one when the Mate passes no
+	// --budget; nothing here infers it.
+	Budget int64
 	// Size is how big the task is (`--size`, brief.ParseSize): small,
 	// medium or large; empty means medium. It picks the hand-back shape and
 	// evidence level the brief template asks of a ship (CON-72). A scout's
@@ -140,13 +147,15 @@ type CrewResult struct {
 	// EffortOmitted is true when Effort was recorded but left out of the
 	// launch because the harness does not take it.
 	EffortOmitted bool
-	Task          string
-	Agent         string
-	Session       string
-	Workspace     string
-	Tab           string
-	Pane          string
-	SessionID     string
+	// Budget is the token budget recorded as `budget=`, 0 when none.
+	Budget    int64
+	Task      string
+	Agent     string
+	Session   string
+	Workspace string
+	Tab       string
+	Pane      string
+	SessionID string
 	// Repo is the name of the project repo the crew works in.
 	Repo   string
 	Branch string
@@ -319,6 +328,7 @@ func SpawnCrew(ctx context.Context, w *store.Workspace, deps Deps, req SpawnCrew
 		repoCfg:          repoCfg,
 		delivery:         delivery,
 		autocompact:      w.CrewAutocompact(),
+		budget:           spawnBudget(req, cfg),
 	})
 	if err != nil {
 		saga.compensate(ctx)
@@ -421,6 +431,23 @@ type crewPlan struct {
 	// autocompact is the workspace's compaction threshold for the Crew
 	// (store.Workspace.CrewAutocompact); 0 is none.
 	autocompact int
+	// budget is the token budget recorded as `budget=`; 0 is none.
+	budget int64
+}
+
+// spawnBudget is the budget a crew is recorded with: the one the request
+// carries (the dispatch rule's, passed as `--budget`), else the project's
+// `budget.crew_tokens`, else none. The project's number is copied into the
+// meta rather than left implicit so the record of a crew says what it was
+// held to even if project.yaml changes while it runs.
+func spawnBudget(req SpawnCrewRequest, cfg store.ProjectConfig) int64 {
+	if req.Budget > 0 {
+		return req.Budget
+	}
+	if cfg.Budget != nil && cfg.Budget.CrewTokens > 0 {
+		return cfg.Budget.CrewTokens
+	}
+	return 0
 }
 
 // spawnInWorktree is everything a failure has to compensate for: the brief,
@@ -553,6 +580,9 @@ func spawnInWorktree(ctx context.Context, w *store.Workspace, deps Deps, saga *c
 	if plan.effort != "" {
 		meta[MetaEffort] = string(plan.effort)
 	}
+	if plan.budget > 0 {
+		meta[MetaBudget] = strconv.FormatInt(plan.budget, 10)
+	}
 	if err := w.WriteCrewMeta(plan.project, plan.crew, meta); err != nil {
 		return CrewResult{}, err
 	}
@@ -560,6 +590,7 @@ func spawnInWorktree(ctx context.Context, w *store.Workspace, deps Deps, saga *c
 		Project:         plan.project,
 		Crew:            plan.crew,
 		Harness:         plan.kind,
+		Budget:          plan.budget,
 		Model:           plan.model,
 		Effort:          plan.effort,
 		EffortOmitted:   launch.EffortOmitted(),
