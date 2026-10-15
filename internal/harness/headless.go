@@ -20,11 +20,41 @@ type HeadlessTurns interface {
 // TurnEvent is one line of a headless run's output, reduced to what a host
 // shows while the run goes and keeps when it ends.
 type TurnEvent struct {
-	// Tools are the tools the agent called in this event, in order.
-	Tools []string
-	// Final marks the run's result; Text, SessionID and IsError are its.
+	// Delta is reply text streamed since the previous event.
+	Delta string
+	// Said is a whole message's text, for a run that streams none.
+	Said string
+	// Calls are the tools the agent called in this event, in order.
+	Calls []ToolCall
+	// Results are the calls this event reports finished.
+	Results []ToolResult
+	// Context is the context, in tokens, of the request this event
+	// answers; zero when the event does not say.
+	Context int
+	// Final marks the run's result; Text, SessionID, IsError, DurationMS
+	// and Tokens are its.
 	Final     bool
 	Text      string
 	SessionID string
 	IsError   bool
+	// DurationMS is the run's own measure of how long it took.
+	DurationMS int64
+	// Tokens are the run's tokens that were not cache reads: new input,
+	// cache writes and output.
+	Tokens int
+}
+
+// ToolCall is one tool the agent called.
+type ToolCall struct {
+	ID   string
+	Name string
+	// Detail is the one line that says what the call does: a command, a
+	// file, a pattern. Empty when the input names none.
+	Detail string
+}
+
+// ToolResult is the end of one call.
+type ToolResult struct {
+	ID      string
+	IsError bool
 }

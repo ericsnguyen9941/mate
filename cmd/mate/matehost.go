@@ -12,10 +12,14 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/matehost"
+	"github.com/nguyenngocanh94/mate/internal/spawn"
 )
 
 // hostHistory is how many items a host shows again when it starts.
 const hostHistory = 200
+
+// newsPoll is how often the host looks for news the Mate wrote.
+const newsPoll = 700 * time.Millisecond
 
 // cmdMateHost implements `mate mate host <project>` (CON-78): the program a
 // headless Mate's pane runs. spawn.StartMate starts it there; run by hand
@@ -65,7 +69,7 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 		Turns:  turns,
 		Lock:   func() (func(), bool, error) { return w.TryMateLock(project, matehost.TurnLock) },
 	}
-	opts := matehost.Options{History: matehost.HistoryPath(mateDir)}
+	opts := matehost.Options{History: matehost.HistoryPath(mateDir), News: matehost.NewsPath(mateDir)}
 	reporter, inHerdr := matehost.NewHerdrReporter(launch.Agent)
 	if inHerdr {
 		opts.Reporter = reporter
@@ -74,7 +78,22 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	p := matehost.Program(matehost.NewModel(host, project, matehost.History(opts.History, hostHistory)))
+	cfg := matehost.Config{
+		Project: project,
+		Model:   launchFlag(launch.Args, "--model"),
+		Crews: func() (int, error) {
+			crews, err := spawn.ListCrews(w, project)
+			open := 0
+			for _, c := range crews {
+				if !c.Closed {
+					open++
+				}
+			}
+			return open, err
+		},
+	}
+	p := matehost.Program(matehost.NewModel(host, cfg, matehost.History(opts.History, hostHistory)))
+	go host.WatchNews(ctx, newsPoll)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- host.Serve(ctx, matehost.SocketPath(mateDir), func() { p.Quit() }) }()
 	if inHerdr {
@@ -107,6 +126,16 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 	case <-time.After(2 * time.Second):
 	}
 	return runErr
+}
+
+// launchFlag is the value after flag in a launch's args, or "".
+func launchFlag(args []string, flag string) string {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }
 
 func waitSocket(ctx context.Context, mateDir string) error {

@@ -140,3 +140,21 @@ func Silent(reply string) bool {
 	r := strings.TrimSpace(reply)
 	return r == "—" || r == "-"
 }
+
+// Summary is an app line in one line for the captain: a digest's items
+// without its count and its instructions (autopilot.Line), anything else
+// without its marker and label.
+func Summary(text string) string {
+	text = strings.TrimSpace(strings.TrimPrefix(text, Marker))
+	label := Label(text)
+	if label != "mate" {
+		text = strings.TrimSpace(strings.TrimPrefix(text, label+":"))
+	}
+	if label == "digest" {
+		parts := strings.Split(text, " — ")
+		if len(parts) >= 3 {
+			text = strings.Join(parts[1:len(parts)-1], " — ")
+		}
+	}
+	return strings.Join(strings.Fields(text), " ")
+}

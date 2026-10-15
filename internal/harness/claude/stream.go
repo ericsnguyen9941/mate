@@ -26,8 +26,21 @@ type StreamEvent struct {
 	// Text is an assistant event's text blocks joined, or a result event's
 	// `result`.
 	Text string
+	// Delta is a stream_event's text_delta (--include-partial-messages).
+	Delta string
 	// Tools are the names of an assistant event's tool_use blocks, in order.
 	Tools []string
+	// Calls are an assistant event's tool_use blocks, in order.
+	Calls []harness.ToolCall
+	// Results are a user event's tool_result blocks.
+	Results []harness.ToolResult
+	// Context is an assistant event's request context in tokens: new
+	// input, cache writes and cache reads.
+	Context int
+	// Tokens is a result event's tokens other than cache reads.
+	Tokens int
+	// DurationMS is a result event's `duration_ms`.
+	DurationMS int64
 	// SessionID is the event's `session_id`.
 	SessionID string
 	// IsError is a result event's `is_error`.
@@ -39,18 +52,39 @@ type StreamEvent struct {
 // Result reports whether the event ends the run.
 func (e StreamEvent) Result() bool { return e.Type == "result" }
 
+type streamUsage struct {
+	Input      int `json:"input_tokens"`
+	CacheWrite int `json:"cache_creation_input_tokens"`
+	CacheRead  int `json:"cache_read_input_tokens"`
+	Output     int `json:"output_tokens"`
+}
+
 type streamLine struct {
-	Type        string `json:"type"`
-	Subtype     string `json:"subtype"`
-	SessionID   string `json:"session_id"`
-	Result      string `json:"result"`
-	IsError     bool   `json:"is_error"`
-	ErrorStatus int    `json:"error_status"`
-	Message     struct {
-		Content []struct {
+	Type        string       `json:"type"`
+	Subtype     string       `json:"subtype"`
+	SessionID   string       `json:"session_id"`
+	Result      string       `json:"result"`
+	IsError     bool         `json:"is_error"`
+	ErrorStatus int          `json:"error_status"`
+	DurationMS  int64        `json:"duration_ms"`
+	Usage       *streamUsage `json:"usage"`
+	Event       struct {
+		Type  string `json:"type"`
+		Delta struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
-			Name string `json:"name"`
+		} `json:"delta"`
+	} `json:"event"`
+	Message struct {
+		Usage   *streamUsage `json:"usage"`
+		Content []struct {
+			Type      string          `json:"type"`
+			Text      string          `json:"text"`
+			ID        string          `json:"id"`
+			Name      string          `json:"name"`
+			Input     json.RawMessage `json:"input"`
+			ToolUseID string          `json:"tool_use_id"`
+			IsError   bool            `json:"is_error"`
 		} `json:"content"`
 	} `json:"message"`
 }
@@ -65,7 +99,14 @@ func ParseStreamLine(line []byte) (StreamEvent, bool) {
 	ev := StreamEvent{Type: l.Type, Subtype: l.Subtype, SessionID: l.SessionID, IsError: l.IsError, RetryStatus: l.ErrorStatus}
 	switch l.Type {
 	case "result":
-		ev.Text = l.Result
+		ev.Text, ev.DurationMS = l.Result, l.DurationMS
+		if u := l.Usage; u != nil {
+			ev.Tokens = u.Input + u.CacheWrite + u.Output
+		}
+	case "stream_event":
+		if l.Event.Type == "content_block_delta" && l.Event.Delta.Type == "text_delta" {
+			ev.Delta = l.Event.Delta.Text
+		}
 	case "assistant":
 		var parts []string
 		for _, c := range l.Message.Content {
@@ -76,15 +117,40 @@ func ParseStreamLine(line []byte) (StreamEvent, bool) {
 				}
 			case "tool_use":
 				ev.Tools = append(ev.Tools, c.Name)
+				ev.Calls = append(ev.Calls, harness.ToolCall{ID: c.ID, Name: c.Name, Detail: toolDetail(c.Name, c.Input)})
 			}
 		}
 		ev.Text = strings.Join(parts, "\n")
+		if u := l.Message.Usage; u != nil {
+			ev.Context = u.Input + u.CacheWrite + u.CacheRead
+		}
+	case "user":
+		for _, c := range l.Message.Content {
+			if c.Type == "tool_result" {
+				ev.Results = append(ev.Results, harness.ToolResult{ID: c.ToolUseID, IsError: c.IsError})
+			}
+		}
 	}
 	return ev, true
 }
 
+// toolDetail is the one line of a tool call's input that says what it does.
+func toolDetail(name string, input json.RawMessage) string {
+	var in map[string]any
+	if json.Unmarshal(input, &in) != nil {
+		return ""
+	}
+	for _, key := range []string{"command", "file_path", "path", "pattern", "skill", "url", "query", "description"} {
+		if v, ok := in[key].(string); ok && strings.TrimSpace(v) != "" {
+			line, _, _ := strings.Cut(strings.TrimSpace(v), "\n")
+			return line
+		}
+	}
+	return ""
+}
+
 // StreamTurnFlags are what turns a Mate launch into one headless turn.
-var StreamTurnFlags = []string{"-p", "--output-format", "stream-json", "--verbose"}
+var StreamTurnFlags = []string{"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 
 // TurnArgs is a headless Mate turn's argv after the program: the Mate's
 // launch args (Claude.Build) with its session flag replaced, then
@@ -151,9 +217,13 @@ func (Claude) ParseTurnEvent(line []byte) (harness.TurnEvent, bool) {
 	if !ok {
 		return harness.TurnEvent{}, false
 	}
-	out := harness.TurnEvent{Tools: ev.Tools}
+	out := harness.TurnEvent{Delta: ev.Delta, Calls: ev.Calls, Results: ev.Results, Context: ev.Context}
+	if ev.Type == "assistant" {
+		out.Said = ev.Text
+	}
 	if ev.Result() {
 		out.Final, out.Text, out.SessionID, out.IsError = true, ev.Text, ev.SessionID, ev.IsError
+		out.DurationMS, out.Tokens = ev.DurationMS, ev.Tokens
 	}
 	return out, true
 }

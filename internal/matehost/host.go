@@ -2,8 +2,10 @@ package matehost
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +35,30 @@ type Item struct {
 	Interrupted bool   `json:"interrupted,omitempty"`
 	Error       string `json:"error,omitempty"`
 	Done        bool   `json:"done,omitempty"`
+	// Tools are the tools the turn called, in order.
+	Tools []ToolRecord `json:"tools,omitempty"`
+	// MS is how long the turn took; Tokens its tokens other than cache
+	// reads; Context the context of its last request, in tokens.
+	MS      int64 `json:"ms,omitempty"`
+	Tokens  int   `json:"tokens,omitempty"`
+	Context int   `json:"context,omitempty"`
+	// News is the news the item belongs to: the one a captain message
+	// answers, or the one an app line's turn opened. Such an item shows in
+	// its news, not in the chat.
+	News int `json:"news,omitempty"`
+}
+
+// ToolRecord is one tool a turn called.
+type ToolRecord struct {
+	ID      string    `json:"-"`
+	Name    string    `json:"name"`
+	Detail  string    `json:"detail,omitempty"`
+	Started time.Time `json:"-"`
+	// MS is how long the call took; Done and Error say how it ended. A
+	// call that never ended was cut off with its turn.
+	MS    int64 `json:"ms,omitempty"`
+	Done  bool  `json:"done,omitempty"`
+	Error bool  `json:"error,omitempty"`
 }
 
 // Visible reports whether the REPL shows the item's reply.
@@ -52,12 +78,17 @@ type State struct {
 
 // Event is what the host tells its REPL.
 type Event struct {
-	// Item is set when a turn starts (Done false) or ends (Done true).
+	// Item is the turn as it stands: set when it starts, as it streams
+	// text and calls tools (Done false), and when it ends (Done true).
 	Item *Item
-	// Tool is set while a turn runs: the tool the Mate just called.
-	Tool string
-	// Queued is set when a captain message was queued behind a turn.
-	Queued string
+	// Queue are the captain messages waiting, oldest first.
+	Queue []string
+	// DraftCleared is set when the console dropped the captain's draft.
+	DraftCleared bool
+	// News is every news, oldest first.
+	News []News
+	// Note is something the REPL should tell the captain.
+	Note string
 	// State is the host's state after the event.
 	State State
 }
@@ -80,7 +111,10 @@ type Host struct {
 	run      *Run
 	cur      *Item
 	started  time.Time
-	queue    []string
+	queue    []message
+	newsPath string
+	news     []News
+	newsSeen time.Time
 	draft    string
 	stopping bool
 	idle     chan struct{}
@@ -89,14 +123,16 @@ type Host struct {
 // Options configure a Host.
 type Options struct {
 	// History is the file items are appended to; empty keeps none.
-	History  string
+	History string
+	// News is the news log (NewsPath); empty keeps none.
+	News     string
 	Reporter Reporter
 	Now      func() time.Time
 }
 
 // New makes a host for runner.
 func New(runner *Runner, opts Options) *Host {
-	h := &Host{runner: runner, history: opts.History, reporter: opts.Reporter, now: opts.Now, idle: make(chan struct{})}
+	h := &Host{runner: runner, history: opts.History, newsPath: opts.News, reporter: opts.Reporter, now: opts.Now, idle: make(chan struct{})}
 	if h.now == nil {
 		h.now = time.Now
 	}
@@ -120,35 +156,73 @@ var (
 	ErrQueued   = errors.New("the captain has messages waiting")
 )
 
+// message is one turn to run: what the captain or the app said, the prompt
+// the Mate is given for it, and the news it belongs to.
+type message struct {
+	Source, Text, Prompt string
+	News                 int
+}
+
 // Submit is a captain message: it runs now, or after the turn in flight.
 func (h *Host) Submit(text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
 	}
+	h.submit(message{Source: SourceCaptain, Text: text, Prompt: text})
+}
+
+// AnswerNews is the captain answering news id: a turn that tells the Mate
+// which news it answers, shown in that news, run now or queued like any
+// captain message.
+func (h *Host) AnswerNews(id int, text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	if h.newsPath == "" {
+		return ErrNoNews
+	}
+	var n News
+	err := withNewsLog(h.newsPath, func(list []News, f *os.File) error {
+		var ok bool
+		if n, ok = findNews(list, id); !ok {
+			return fmt.Errorf("%w: #%d", ErrNoNews, id)
+		}
+		return writeNewsEvent(f, newsEvent{At: h.now(), Op: opAnswer, ID: id, Text: text})
+	})
+	if err != nil {
+		return err
+	}
+	h.RefreshNews()
+	h.submit(message{Source: SourceCaptain, Text: text, Prompt: newsAnswerPrompt(n, text), News: id})
+	return nil
+}
+
+func (h *Host) submit(msg message) {
 	h.mu.Lock()
 	if h.stopping {
 		h.mu.Unlock()
 		return
 	}
 	if h.run != nil || len(h.queue) > 0 {
-		h.queue = append(h.queue, text)
-		ev := Event{Queued: text, State: h.stateLocked()}
+		h.queue = append(h.queue, msg)
+		ev := h.eventLocked(nil)
 		h.mu.Unlock()
 		h.emit(ev)
 		return
 	}
 	h.mu.Unlock()
-	if err := h.start(SourceCaptain, text); errors.Is(err, ErrBusy) {
+	if err := h.start(msg); errors.Is(err, ErrBusy) {
 		// Another process holds the turn lock: wait in the queue and retry.
 		h.mu.Lock()
-		h.queue = append([]string{text}, h.queue...)
-		ev := Event{Queued: text, State: h.stateLocked()}
+		h.queue = append([]message{msg}, h.queue...)
+		ev := h.eventLocked(nil)
 		h.mu.Unlock()
 		h.emit(ev)
 		go h.retryQueue()
 	} else if err != nil {
-		h.finishWithError(SourceCaptain, text, err)
+		h.finishWithError(msg, err)
 	}
 }
 
@@ -169,30 +243,29 @@ func (h *Host) Deliver(text string) error {
 		return ErrQueued
 	}
 	h.mu.Unlock()
-	return h.start(SourceApp, text)
+	return h.start(message{Source: SourceApp, Text: text, Prompt: text})
 }
 
 // start runs one turn. Only one start can win: run is checked again under
 // the lock it is set under.
-func (h *Host) start(source, text string) error {
+func (h *Host) start(msg message) error {
 	h.mu.Lock()
 	if h.run != nil {
 		h.mu.Unlock()
 		return ErrBusy
 	}
-	run, err := h.runner.Start(text)
+	run, err := h.runner.Start(msg.Prompt)
 	if err != nil {
 		h.mu.Unlock()
 		return err
 	}
-	item := &Item{At: h.now(), Source: source, Text: text}
-	if source == SourceApp {
-		item.Label = Label(text)
+	item := &Item{At: h.now(), Source: msg.Source, Text: msg.Text, News: msg.News}
+	if msg.Source == SourceApp {
+		item.Label = Label(msg.Text)
 	}
 	h.run, h.cur, h.started = run, item, item.At
 	h.idle = make(chan struct{})
-	snapshot := *item
-	ev := Event{Item: &snapshot, State: h.stateLocked()}
+	ev := h.eventLocked(item)
 	h.mu.Unlock()
 	h.report("working")
 	h.emit(ev)
@@ -201,15 +274,34 @@ func (h *Host) start(source, text string) error {
 }
 
 func (h *Host) wait(run *Run, item *Item) {
+	streamed := false
 	reply := run.Wait(func(ev harness.TurnEvent) {
-		for _, t := range ev.Tools {
-			h.mu.Lock()
-			state := h.stateLocked()
-			h.mu.Unlock()
-			h.emit(Event{Tool: t, State: state})
+		h.mu.Lock()
+		changed := h.progressLocked(item, ev, &streamed)
+		var out Event
+		if changed {
+			out = h.eventLocked(item)
+		}
+		h.mu.Unlock()
+		if changed {
+			h.emit(out)
 		}
 	})
-	item.Reply = strings.TrimSpace(reply.Text)
+	h.mu.Lock()
+	if text := strings.TrimSpace(reply.Text); text != "" || reply.Err == nil && !reply.Interrupted {
+		item.Reply = text
+	} else {
+		// No result: keep what streamed, so an interrupted turn shows
+		// how far it got.
+		item.Reply = strings.TrimSpace(item.Reply)
+	}
+	if reply.DurationMS > 0 {
+		item.MS = reply.DurationMS
+	} else {
+		item.MS = h.now().Sub(item.At).Milliseconds()
+	}
+	item.Tokens = reply.Tokens
+	h.mu.Unlock()
 	item.Interrupted = reply.Interrupted
 	item.Silent = item.Source == SourceApp && Silent(item.Reply) && reply.Err == nil
 	if reply.Err != nil {
@@ -218,32 +310,55 @@ func (h *Host) wait(run *Run, item *Item) {
 		item.Error = item.Reply
 	}
 	item.Done = true
+	h.settleNews(item)
 	h.appendHistory(*item)
 
 	h.mu.Lock()
 	h.run, h.cur = nil, nil
-	var next string
+	var next *message
 	if len(h.queue) > 0 && !h.stopping {
-		next, h.queue = h.queue[0], h.queue[1:]
+		next, h.queue = &h.queue[0], h.queue[1:]
 	}
 	close(h.idle)
-	done := *item
-	ev := Event{Item: &done, State: h.stateLocked()}
+	ev := h.eventLocked(item)
 	h.mu.Unlock()
-	if next == "" {
+	if next == nil {
 		h.report("idle")
 	}
 	h.emit(ev)
-	if next != "" {
-		if err := h.start(SourceCaptain, next); errors.Is(err, ErrBusy) {
+	if next != nil {
+		if err := h.start(*next); errors.Is(err, ErrBusy) {
 			h.mu.Lock()
-			h.queue = append([]string{next}, h.queue...)
+			h.queue = append([]message{*next}, h.queue...)
 			h.mu.Unlock()
 			go h.retryQueue()
 		} else if err != nil {
-			h.finishWithError(SourceCaptain, next, err)
+			h.finishWithError(*next, err)
 		}
 	}
+}
+
+// settleNews ties a finished turn to its news. An app line whose turn
+// opened news belongs to the first it opened, so its reply shows there and
+// not in the chat; a failed answer leaves its news waiting on the captain
+// again.
+func (h *Host) settleNews(item *Item) {
+	if h.newsPath == "" {
+		return
+	}
+	switch {
+	case item.News != 0 && (item.Error != "" || item.Interrupted):
+		_ = newsOp(h.newsPath, newsEvent{At: h.now(), Op: opFailed, ID: item.News}, true)
+	case item.Source == SourceApp:
+		list, _ := LoadNews(h.newsPath)
+		for _, n := range list {
+			if !n.OpenedAt.Before(item.At) {
+				item.News = n.ID
+				break
+			}
+		}
+	}
+	h.RefreshNews()
 }
 
 // retryQueue starts the queue's head once the turn lock is free again; it
@@ -259,25 +374,26 @@ func (h *Host) retryQueue() {
 		next := h.queue[0]
 		h.queue = h.queue[1:]
 		h.mu.Unlock()
-		switch err := h.start(SourceCaptain, next); {
+		switch err := h.start(next); {
 		case err == nil:
 			return
 		case errors.Is(err, ErrBusy):
 			h.mu.Lock()
-			h.queue = append([]string{next}, h.queue...)
+			h.queue = append([]message{next}, h.queue...)
 			h.mu.Unlock()
 		default:
-			h.finishWithError(SourceCaptain, next, err)
+			h.finishWithError(next, err)
 			return
 		}
 	}
 }
 
-func (h *Host) finishWithError(source, text string, err error) {
-	item := Item{At: h.now(), Source: source, Text: text, Error: err.Error(), Done: true}
+func (h *Host) finishWithError(msg message, err error) {
+	item := Item{At: h.now(), Source: msg.Source, Text: msg.Text, News: msg.News, Error: err.Error(), Done: true}
+	h.settleNews(&item)
 	h.appendHistory(item)
 	h.mu.Lock()
-	ev := Event{Item: &item, State: h.stateLocked()}
+	ev := h.eventLocked(&item)
 	h.mu.Unlock()
 	h.emit(ev)
 }
@@ -305,9 +421,32 @@ func (h *Host) SetDraft(text string) {
 func (h *Host) ClearDraft() {
 	h.mu.Lock()
 	h.draft = ""
-	ev := Event{State: h.stateLocked()}
+	ev := h.eventLocked(nil)
+	ev.DraftCleared = true
 	h.mu.Unlock()
 	h.emit(ev)
+}
+
+// TakeLast removes the newest queued captain message and returns it, for
+// the captain to edit or drop.
+func (h *Host) TakeLast() (string, bool) {
+	h.mu.Lock()
+	if len(h.queue) == 0 {
+		h.mu.Unlock()
+		return "", false
+	}
+	last := h.queue[len(h.queue)-1]
+	if last.News != 0 {
+		// An answer to a news is not taken back into the chat's composer.
+		h.mu.Unlock()
+		return "", false
+	}
+	text := last.Text
+	h.queue = h.queue[:len(h.queue)-1]
+	ev := h.eventLocked(nil)
+	h.mu.Unlock()
+	h.emit(ev)
+	return text, true
 }
 
 // State is the host's state now.
@@ -333,7 +472,7 @@ func (h *Host) Stop(wait time.Duration, force bool) (killed bool) {
 	h.stopping = true
 	h.queue = nil
 	run, idle := h.run, h.idle
-	ev := Event{State: h.stateLocked()}
+	ev := h.eventLocked(nil)
 	h.mu.Unlock()
 	h.emit(ev)
 	if run == nil {
@@ -349,6 +488,140 @@ func (h *Host) Stop(wait time.Duration, force bool) (killed bool) {
 	run.Kill()
 	<-idle
 	return true
+}
+
+// progressLocked folds one run event into the running item and reports
+// whether it changed anything the REPL shows. A run that streams text
+// (Delta) is shown as it streams; one that does not shows each message's
+// text (Said) as it arrives.
+func (h *Host) progressLocked(item *Item, ev harness.TurnEvent, streamed *bool) bool {
+	changed := false
+	if ev.Delta != "" {
+		*streamed = true
+		item.Reply += ev.Delta
+		changed = true
+	} else if ev.Said != "" && !*streamed {
+		if item.Reply != "" {
+			item.Reply += "\n\n"
+		}
+		item.Reply += ev.Said
+		changed = true
+	}
+	if ev.Context > 0 {
+		item.Context = ev.Context
+	}
+	for _, c := range ev.Calls {
+		if *streamed && item.Reply != "" && !strings.HasSuffix(item.Reply, "\n\n") {
+			// Text after a tool is a new paragraph.
+			item.Reply = strings.TrimRight(item.Reply, "\n") + "\n\n"
+		}
+		item.Tools = append(item.Tools, ToolRecord{ID: c.ID, Name: c.Name, Detail: c.Detail, Started: h.now()})
+		changed = true
+	}
+	for _, r := range ev.Results {
+		for i := range item.Tools {
+			if t := &item.Tools[i]; t.ID != "" && t.ID == r.ID && !t.Done {
+				t.Done, t.Error, t.MS = true, r.IsError, h.now().Sub(t.Started).Milliseconds()
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+// eventLocked is an event carrying a copy of item (which may be nil), the
+// queue and the state.
+func (h *Host) eventLocked(item *Item) Event {
+	ev := Event{State: h.stateLocked(), News: h.news}
+	for _, q := range h.queue {
+		text := q.Text
+		if q.News != 0 {
+			text = fmt.Sprintf("#%d · %s", q.News, text)
+		}
+		ev.Queue = append(ev.Queue, text)
+	}
+	if item != nil {
+		cp := *item
+		cp.Tools = append([]ToolRecord(nil), item.Tools...)
+		ev.Item = &cp
+	}
+	return ev
+}
+
+// RefreshNews reads the news log again and tells the REPL when it changed.
+func (h *Host) RefreshNews() {
+	if h.newsPath == "" {
+		return
+	}
+	fi, err := os.Stat(h.newsPath)
+	if err != nil {
+		return
+	}
+	list, err := LoadNews(h.newsPath)
+	if err != nil {
+		return
+	}
+	h.mu.Lock()
+	h.news, h.newsSeen = list, fi.ModTime()
+	ev := h.eventLocked(nil)
+	h.mu.Unlock()
+	h.emit(ev)
+}
+
+// WatchNews reads the news log whenever it changes - the Mate writes it
+// with `mate news` - until ctx ends.
+func (h *Host) WatchNews(ctx context.Context, every time.Duration) {
+	h.RefreshNews()
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		fi, err := os.Stat(h.newsPath)
+		h.mu.Lock()
+		seen := h.newsSeen
+		h.mu.Unlock()
+		if err == nil && !fi.ModTime().Equal(seen) {
+			h.RefreshNews()
+		}
+	}
+}
+
+// SeenNews marks a news the captain has opened: it no longer reads as new.
+func (h *Host) SeenNews(id int) {
+	if h.newsPath == "" {
+		return
+	}
+	if n, ok := findNews(h.newsSnapshot(), id); ok && n.Status == NewsNew {
+		_ = newsOp(h.newsPath, newsEvent{At: h.now(), Op: opSeen, ID: id}, false)
+		h.RefreshNews()
+	}
+}
+
+// ArchiveNews takes a closed news out of the list.
+func (h *Host) ArchiveNews(id int) {
+	if h.newsPath == "" {
+		return
+	}
+	_ = newsOp(h.newsPath, newsEvent{At: h.now(), Op: opArchive, ID: id}, true)
+	h.RefreshNews()
+}
+
+func (h *Host) emitNote(err error) {
+	h.mu.Lock()
+	ev := h.eventLocked(nil)
+	h.mu.Unlock()
+	ev.Note = err.Error()
+	h.emit(ev)
+}
+
+func (h *Host) newsSnapshot() []News {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.news
 }
 
 func (h *Host) emit(ev Event) {

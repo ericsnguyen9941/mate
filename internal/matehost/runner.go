@@ -48,6 +48,9 @@ type Reply struct {
 	SessionID   string
 	IsError     bool
 	Interrupted bool
+	// DurationMS and Tokens are the result's (harness.TurnEvent).
+	DurationMS int64
+	Tokens     int
 	// Err is why the run produced no result: it failed to start, exited
 	// without one, or was killed.
 	Err error
@@ -183,6 +186,7 @@ func (r *Run) Wait(on func(harness.TurnEvent)) Reply {
 		if ev.Final {
 			got = true
 			reply.Text, reply.SessionID, reply.IsError = ev.Text, ev.SessionID, ev.IsError
+			reply.DurationMS, reply.Tokens = ev.DurationMS, ev.Tokens
 		}
 	}
 	_, _ = io.Copy(io.Discard, r.stdout)

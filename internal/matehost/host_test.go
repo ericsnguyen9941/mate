@@ -24,7 +24,8 @@ echo "$*" >> "$(dirname "$0")/argv.log"
 echo "$prompt" >> "$(dirname "$0")/prompts.log"
 case "$prompt" in *crash*) echo "boom" >&2; exit 3;; esac
 echo '{"type":"system","subtype":"init","session_id":"s1"}'
-echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}'
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash"}]}}'
+echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1"}]}}'
 case "$prompt" in *slow*) sleep 2;; esac
 case "$prompt" in *quiet*) reply='—';; *) reply="re: $prompt";; esac
 printf '{"type":"result","subtype":"success","result":"%s","session_id":"s1","is_error":false}\n' "$reply"
@@ -59,7 +60,8 @@ func (streamTurns) ParseTurnEvent(line []byte) (harness.TurnEvent, bool) {
 		IsError bool   `json:"is_error"`
 		Message struct {
 			Content []struct {
-				Type, Name string
+				Type, Name, ID string
+				ToolUseID      string `json:"tool_use_id"`
 			} `json:"content"`
 		} `json:"message"`
 	}
@@ -68,8 +70,11 @@ func (streamTurns) ParseTurnEvent(line []byte) (harness.TurnEvent, bool) {
 	}
 	var ev harness.TurnEvent
 	for _, c := range l.Message.Content {
-		if c.Type == "tool_use" {
-			ev.Tools = append(ev.Tools, c.Name)
+		switch c.Type {
+		case "tool_use":
+			ev.Calls = append(ev.Calls, harness.ToolCall{ID: c.ID, Name: c.Name})
+		case "tool_result":
+			ev.Results = append(ev.Results, harness.ToolResult{ID: c.ToolUseID})
 		}
 	}
 	if l.Type == "result" {
@@ -123,7 +128,7 @@ func newFixture(t *testing.T) *fixture {
 		},
 		Grace: 200 * time.Millisecond,
 	}
-	f.host = New(runner, Options{History: filepath.Join(dir, HistoryName)})
+	f.host = New(runner, Options{History: filepath.Join(dir, HistoryName), News: filepath.Join(dir, NewsName)})
 	f.host.Subscribe(func(ev Event) {
 		f.mu.Lock()
 		f.events = append(f.events, ev)
@@ -377,4 +382,44 @@ func waitBusy(t *testing.T, h *Host) {
 	}
 	// Let the fake reach its sleep, so the prompt is on disk.
 	time.Sleep(300 * time.Millisecond)
+}
+
+func TestSummary(t *testing.T) {
+	for in, want := range map[string]string{
+		Marker + "digest: 2 item(s) — e1 budget 50%: 10M of 20M · e2 blocked: stuck, quiet for 5m — status files under /x/crews; act per AGENTS.md section 10": "e1 budget 50%: 10M of 20M · e2 blocked: stuck, quiet for 5m",
+		Marker + `resolve: e1 asked: "why"  — read /x`: `e1 asked: "why" — read /x`,
+		"plain words": "plain words",
+	} {
+		if got := Summary(in); got != want {
+			t.Errorf("Summary(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A turn's tools reach the REPL while it runs and are kept, ended, in its
+// item and the history.
+func TestHostRecordsTools(t *testing.T) {
+	f := newFixture(t)
+	f.host.Submit("xin chào")
+	items := f.done(t, 1)
+	if tools := items[0].Tools; len(tools) != 1 || tools[0].Name != "Bash" || !tools[0].Done || tools[0].Error {
+		t.Fatalf("tools = %+v", tools)
+	}
+	if items[0].MS <= 0 {
+		t.Errorf("ms = %d", items[0].MS)
+	}
+	running := false
+	f.mu.Lock()
+	for _, ev := range f.events {
+		if ev.Item != nil && !ev.Item.Done && len(ev.Item.Tools) == 1 {
+			running = true
+		}
+	}
+	f.mu.Unlock()
+	if !running {
+		t.Error("no event showed the running turn's tool")
+	}
+	if got := History(HistoryPath(f.dir), 0); len(got) != 1 || len(got[0].Tools) != 1 {
+		t.Errorf("history = %+v", got)
+	}
 }
