@@ -336,7 +336,7 @@ func TestAReviewWithoutAProfileTakesTheReviewProfile(t *testing.T) {
 		{"no review profile for the default harness", claudeReviewTable, spawn.SpawnCrewRequest{},
 			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium}, true},
 	} {
-		got, note, err := applyReviewDispatch(dispatchWorkspace(t, tc.table), tc.req)
+		got, note, err := applyReviewDispatch(dispatchWorkspace(t, tc.table), tc.req, nil)
 		if err != nil || got != tc.want {
 			t.Fatalf("%s: got %+v err %v, want %+v", tc.name, got, err, tc.want)
 		}
@@ -348,7 +348,7 @@ func TestAReviewWithoutAProfileTakesTheReviewProfile(t *testing.T) {
 			t.Fatalf("%s: note %q does not say the harness changed", tc.name, note)
 		}
 	}
-	_, _, err := applyReviewDispatch(dispatchWorkspace(t, `{"rules": [{"when": "x", "use": {"harness": "codex", "effort": "max"}}]}`), spawn.SpawnCrewRequest{Model: "opus"})
+	_, _, err := applyReviewDispatch(dispatchWorkspace(t, `{"rules": [{"when": "x", "use": {"harness": "codex", "effort": "max"}}]}`), spawn.SpawnCrewRequest{Model: "opus"}, nil)
 	var ue *usageError
 	if !errors.Is(err, dispatch.ErrInvalid) || !errors.As(err, &ue) {
 		t.Fatalf("malformed table: err = %v, want the table's own refusal, exit 2", err)
@@ -503,5 +503,62 @@ func TestApplyRotationConsumesOnlyTheNextHarness(t *testing.T) {
 	slot, note, err := applyRotation(rotationWorkspace(t, "", 1), "shop", "pi", nil)
 	if err != nil || slot != 0 || note != "" {
 		t.Fatalf("built-in table: %d %q %v; want nothing", slot, note, err)
+	}
+}
+
+// A review of a small change - at most the table's review_small_max_lines
+// changed lines, no code file - takes the table's review_small profile
+// (CON-74); a change with a code file in it, or over the threshold, or
+// one that was not measured, takes the review profile; the Mate's own
+// --model/--effort win over both; a table with no review_small reviews
+// every change on review.
+func TestASmallChangeTakesTheReviewSmallProfile(t *testing.T) {
+	docs := &reviewStat{Lines: 12, Files: 2}
+	code := &reviewStat{Lines: 12, Files: 2, Code: []string{"cmd/mate/main.go"}}
+	big := &reviewStat{Lines: 51, Files: 1}
+	small := spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortLow, Budget: 3_000_000}
+	full := spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium, Budget: 3_000_000}
+	for _, tc := range []struct {
+		name, table string
+		req         spawn.SpawnCrewRequest
+		stat        *reviewStat
+		want        spawn.SpawnCrewRequest
+		note        string
+	}{
+		{"docs under the threshold", "", spawn.SpawnCrewRequest{}, docs, small, "the change is small (12 line(s) in 2 file(s), no code, at most 50 lines), so used the built-in dispatch table's review_small profile: --harness codex --model gpt-6-luna --effort low"},
+		{"code under the threshold", "", spawn.SpawnCrewRequest{}, code, full, "used the built-in dispatch table's review profile"},
+		{"docs over the threshold", "", spawn.SpawnCrewRequest{}, big, full, "used the built-in dispatch table's review profile"},
+		{"not measured", "", spawn.SpawnCrewRequest{}, nil, full, "used the built-in dispatch table's review profile"},
+		{"named harness", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude}, docs,
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "haiku", Effort: harness.EffortLow, Budget: 3_000_000}, "review_small profile: --harness claude --model haiku --effort low"},
+		{"the Mate's own profile wins", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortHigh}, docs,
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortHigh, Budget: 3_000_000}, ""},
+		{"no review_small in the table", claudeReviewTable, spawn.SpawnCrewRequest{}, docs,
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium}, "no review profile for the default harness codex; used --harness claude"},
+	} {
+		got, note, err := applyReviewDispatch(dispatchWorkspace(t, tc.table), tc.req, tc.stat)
+		if err != nil || got != tc.want {
+			t.Fatalf("%s: got %+v err %v, want %+v", tc.name, got, err, tc.want)
+		}
+		if !strings.Contains(note, tc.note) {
+			t.Fatalf("%s: note %q lacks %q", tc.name, note, tc.note)
+		}
+	}
+}
+
+// `crew dispatch` prints the review_small profile and its threshold next
+// to the review profile, so the Mate sees both.
+func TestCrewDispatchPrintsTheReviewSmallProfile(t *testing.T) {
+	w := dispatchWorkspace(t, "")
+	var out, errw bytes.Buffer
+	if err := run([]string{"crew", "dispatch", "--workspace", w.Root()}, &out, &errw); err != nil {
+		t.Fatalf("crew dispatch: %v", err)
+	}
+	want := "review (what `mate review` uses when you pass no --model or --effort): --harness claude --model sonnet --effort medium --budget 3000000\n" +
+		"  or  --harness codex --model gpt-6-luna --effort medium --budget 3000000\n\n" +
+		"review_small (what `mate review` uses instead when the change is at most 50 lines and touches no code file): --harness claude --model haiku --effort low --budget 3000000\n" +
+		"  or  --harness codex --model gpt-6-luna --effort low --budget 3000000\n"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("output lacks %q:\n%s", want, out.String())
 	}
 }

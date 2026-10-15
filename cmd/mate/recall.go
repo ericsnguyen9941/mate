@@ -355,6 +355,8 @@ func inboxLine(w *store.Workspace, project string, e query.BoxEntry) string {
 			if e.BudgetHalf() {
 				need = "half the budget, no hand-back"
 			}
+		case "no_turn":
+			need = "no turn yet"
 		default:
 			need = "incident " + e.Verb
 		}

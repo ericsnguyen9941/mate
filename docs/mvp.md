@@ -175,7 +175,7 @@ Quy tắc:
 - Spawn thất bại (dialog không nhận ra, agent không lên, trust không qua) ghi `state=failed` và lý do vào `.meta` ngay tại chỗ, không để lại thư mục mồ côi ở `spawned`.
 
 `incidents.log` là file append-only, tab-separated, mỗi dòng `RFC3339 \t crew \t kind \t open|resolved \t text`.
-Kind: `stale` (status và pane không đổi quá ngưỡng mà composer không bận, và trạng thái pane không phải `busy` hay `busy_background`: hết lượt nhưng còn shell/monitor chạy nền, sửa 2026-10-13), `runtime_lost` (Herdr không còn agent), `wedged` (gửi vào pane không kiểm chứng được quá lâu), `budget` (sau MVP).
+Kind: `stale` (status và pane không đổi quá ngưỡng mà composer không bận, và trạng thái pane không phải `busy` hay `busy_background`: hết lượt nhưng còn shell/monitor chạy nền, sửa 2026-10-13), `runtime_lost` (Herdr không còn agent), `wedged` (gửi vào pane không kiểm chứng được quá lâu), `budget` (sau MVP), `no_turn` (crew `working` hoặc mới spawn quá 5 phút mà ledger không ghi lượt nào; gỡ khi có lượt đầu; chỉ vào inbox, không đổi trạng thái; CON-74, 2026-10-15).
 Một incident đang mở khi dòng cuối của cặp (crew, kind) là `open`.
 Chỉ observer ghi file này; `box.Load` đọc nó và gộp vào view cùng `.status` và `sent.log`.
 Observer sống trong tiến trình console: đóng console thì không ai canh crew và không có `blocked` mới; chấp nhận cho MVP.

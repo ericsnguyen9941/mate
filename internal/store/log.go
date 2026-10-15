@@ -249,8 +249,8 @@ type IncidentEntry struct {
 	// Crew is the crew the incident is about, empty only for an incident
 	// nothing could attribute to one.
 	Crew string
-	// Kind is the trouble detected: `stale`, `runtime_lost`, and later
-	// `wedged` and `budget`.
+	// Kind is the trouble detected: `stale`, `runtime_lost`, `wedged`,
+	// `budget` and `no_turn`.
 	Kind string
 	// State is IncidentOpen or IncidentResolved.
 	State string

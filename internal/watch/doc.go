@@ -31,6 +31,12 @@
 //   - `runtime_lost`: Herdr answered that it does not have that agent, and
 //     no `crew stop` of it is in flight or has closed it.
 //
+// Two more are filed through this package's seams at the end of a poll by
+// the timeline's ledger checks (internal/timeline): `budget`, a crew past
+// its token budget, and `no_turn` (CON-74), a working crew launched more
+// than Deps.NoTurnAfter ago with no turn in the ledger - resolved when a
+// turn appears. Neither makes a crew `blocked`.
+//
 // An incident still open on a crew that has since closed is resolved: the
 // crew is not watched any more, so nothing else would clear it.
 //

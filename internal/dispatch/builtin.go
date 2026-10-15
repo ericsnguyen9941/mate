@@ -31,6 +31,13 @@ import (
 // ones. The review rule is the one exception, a large change, which the
 // Mate passes as flags.
 //
+// `review_small` (CON-74) is the lightest profile on each harness - a
+// small model at low effort - because a change of a few lines of docs or
+// config does not need a mid-size reviewer reading its ~65k-token prefix
+// for every call; `mate review` takes it only when the diff is at most
+// `review_small_max_lines` (50) lines and touches no code file, and the
+// Mate's own --model/--effort still win.
+//
 // The budgets are the captain's suggestions (CON-76, 2026-10-15): 2M for a
 // small ship, 8M for a medium one, 20M for a large one and 3M for a
 // review, after a chore on hellovietnam (HVN-135) spent 5.3M with no
@@ -102,6 +109,11 @@ const BuiltInJSON = `{
     { "harness": "claude", "model": "sonnet", "effort": "medium" },
     { "harness": "codex", "model": "gpt-6-luna", "effort": "medium" }
   ],
+  "review_small": [
+    { "harness": "claude", "model": "haiku", "effort": "low" },
+    { "harness": "codex", "model": "gpt-6-luna", "effort": "low" }
+  ],
+  "review_small_max_lines": 50,
   "review_budget": 3000000
 }
 `
@@ -154,13 +166,24 @@ func (t Table) DefaultFor(kind string) (Profile, bool) {
 // workspace's default, where the first alternative answers when no profile
 // runs on it. ok is false when the table has no review profile that fits.
 func (t Table) ReviewFor(kind string, named bool) (Profile, bool) {
-	for _, p := range t.Review {
+	return pick(t.Review, kind, named)
+}
+
+// ReviewSmallFor is ReviewFor over the small-change profile (CON-74). ok
+// is false when the table has no `review_small` that fits; the caller then
+// falls back to ReviewFor.
+func (t Table) ReviewSmallFor(kind string, named bool) (Profile, bool) {
+	return pick(t.ReviewSmall, kind, named)
+}
+
+func pick(profiles []Profile, kind string, named bool) (Profile, bool) {
+	for _, p := range profiles {
 		if string(p.Harness) == kind {
 			return p, true
 		}
 	}
-	if named || len(t.Review) == 0 {
+	if named || len(profiles) == 0 {
 		return Profile{}, false
 	}
-	return t.Review[0], true
+	return profiles[0], true
 }

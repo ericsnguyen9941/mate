@@ -11,6 +11,8 @@
 //	  ],
 //	  "default": {"harness": "codex", "model": "gpt-5.5", "effort": "medium"},
 //	  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"},
+//	  "review_small": {"harness": "claude", "model": "haiku", "effort": "low"},
+//	  "review_small_max_lines": 50,
 //	  "review_budget": 3000000,
 //	  "rotate": ["claude", "claude", "claude", "codex", "pi"]
 //	}
@@ -18,6 +20,14 @@
 // `review` is mate's addition to firstmate's schema: the profile `mate
 // review` launches a reviewer with when the Mate names no model or effort,
 // so a review is not sized like the change it reviews (CON-68).
+//
+// `review_small` and `review_small_max_lines` are mate's too (CON-74): the
+// profile `mate review` takes instead of `review` when the change is small -
+// `git diff --stat` of the reviewed range adds up to at most
+// `review_small_max_lines` changed lines (DefaultReviewSmallMaxLines, 50,
+// when the table names none) and none of the changed files looks like code
+// (IsCodePath). A table without `review_small` reviews every change on
+// `review`.
 //
 // `budget` and `review_budget` are mate's too (CON-76): the token budget a
 // task of that rule's kind is sized at, which the Mate passes to `mate crew
@@ -107,6 +117,14 @@ type Table struct {
 	// ReviewBudget is the token budget a review is sized at, 0 when the
 	// table names none.
 	ReviewBudget int64
+	// ReviewSmall is the reviewer profile of a small change (CON-74);
+	// empty when the table names none, in which case Review serves every
+	// change.
+	ReviewSmall []Profile
+	// ReviewSmallMaxLines is the most changed lines a change may have and
+	// still be small: the table's `review_small_max_lines`, else
+	// DefaultReviewSmallMaxLines.
+	ReviewSmallMaxLines int
 	// Rotate is the table's harness rotation, nil when it names none.
 	Rotate Rotation
 }
@@ -200,6 +218,12 @@ func (t Table) Rotations() []Rotation {
 	return out
 }
 
+// DefaultReviewSmallMaxLines is the small-change threshold of a table that
+// names no `review_small_max_lines`: a change of at most this many lines
+// (insertions plus deletions over every file) with no code file in it is
+// reviewed on `review_small`.
+const DefaultReviewSmallMaxLines = 50
+
 // Path is the table's path in a workspace whose `.mate/` directory is dir.
 func Path(mateDir string) string { return filepath.Join(mateDir, FileName) }
 
@@ -237,11 +261,13 @@ type rawRule struct {
 }
 
 type rawTable struct {
-	Rules        []rawRule       `json:"rules"`
-	Default      json.RawMessage `json:"default"`
-	Review       json.RawMessage `json:"review"`
-	ReviewBudget *int64          `json:"review_budget"`
-	Rotate       json.RawMessage `json:"rotate"`
+	Rules               []rawRule       `json:"rules"`
+	Default             json.RawMessage `json:"default"`
+	Review              json.RawMessage `json:"review"`
+	ReviewBudget        *int64          `json:"review_budget"`
+	ReviewSmall         json.RawMessage `json:"review_small"`
+	ReviewSmallMaxLines *int            `json:"review_small_max_lines"`
+	Rotate              json.RawMessage `json:"rotate"`
 }
 
 func parse(raw []byte, harnesses harness.Registry) (Table, error) {
@@ -291,6 +317,20 @@ func parse(raw []byte, harnesses harness.Registry) (Table, error) {
 		return Table{}, err
 	}
 	t.ReviewBudget = reviewBudget
+	if len(rt.ReviewSmall) > 0 && string(rt.ReviewSmall) != "null" {
+		small, err := profiles(rt.ReviewSmall, "review_small", harnesses)
+		if err != nil {
+			return Table{}, err
+		}
+		t.ReviewSmall = small
+	}
+	t.ReviewSmallMaxLines = DefaultReviewSmallMaxLines
+	if rt.ReviewSmallMaxLines != nil {
+		if *rt.ReviewSmallMaxLines <= 0 {
+			return Table{}, fmt.Errorf("`review_small_max_lines` must be a positive number of lines, not %d", *rt.ReviewSmallMaxLines)
+		}
+		t.ReviewSmallMaxLines = *rt.ReviewSmallMaxLines
+	}
 	rotate, err := checkRotation(rt.Rotate, "rotate", harnesses)
 	if err != nil {
 		return Table{}, err

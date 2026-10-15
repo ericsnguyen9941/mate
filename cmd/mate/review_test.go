@@ -318,3 +318,60 @@ func TestReviewSinceRefusesWhatItCannotScope(t *testing.T) {
 		}
 	})
 }
+
+// reviewDiffStat measures the range the reviewer will read with git's
+// numstat (CON-74): a two-line README change is small, one that touches a
+// Go file is not, and neither is one over the threshold; a --since review
+// measures only the change since the commit the prior review saw.
+func TestReviewDiffStatSizesTheChange(t *testing.T) {
+	f := newDiffFixture(t)
+	commitInWorktree(t, f.worktree, "README.md", "shop\nmore\n", "add a line")
+	dir := filepath.Dir(f.w.CrewBrief("shop", "k3"))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"brief.md", "handback.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("contract"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stat := func(scope *reviewScope) *reviewStat {
+		t.Helper()
+		fp, err := reviewFingerprint(context.Background(), f.w, gitx.New(), "shop", "k3")
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, err := reviewDiffStat(context.Background(), f.w, gitx.New(), "shop", "k3", fp, scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	if st := stat(nil); st.Lines != 1 || st.Files != 1 || len(st.Code) != 0 || !st.small(50) || st.String() != "1 line(s) in 1 file(s), no code" {
+		t.Fatalf("docs change: %+v (%s)", st, st)
+	}
+	first, err := gitx.New().HeadCommit(context.Background(), f.worktree, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitInWorktree(t, f.worktree, "main.go", "package main\n", "add code")
+	st := stat(nil)
+	if st.Lines != 2 || st.Files != 2 || strings.Join(st.Code, ",") != "main.go" || st.small(50) || st.String() != "2 line(s) in 2 file(s), code in main.go" {
+		t.Fatalf("code change: %+v (%s)", st, st)
+	}
+	// Scoped to the change since the first commit: only main.go.
+	if st := stat(&reviewScope{Reviewed: first}); st.Lines != 1 || st.Files != 1 || st.small(50) {
+		t.Fatalf("scoped change: %+v", st)
+	}
+	commitInWorktree(t, f.worktree, "NOTES.md", strings.Repeat("a line\n", 60), "long notes")
+	if st := stat(&reviewScope{Reviewed: first}); st.Lines != 61 || len(st.Code) != 1 || st.small(50) {
+		t.Fatalf("scoped change with notes: %+v", st)
+	}
+	if st := (&reviewStat{Lines: 60, Files: 1}); st.small(50) || !st.small(60) {
+		t.Fatalf("threshold: %+v", st)
+	}
+	var none *reviewStat
+	if none.small(50) {
+		t.Fatal("an unmeasured change counted as small")
+	}
+}

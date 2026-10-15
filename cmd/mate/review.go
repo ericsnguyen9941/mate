@@ -89,9 +89,15 @@ func cmdReview(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
-	// The table is read before anything is written, so a malformed one
-	// leaves no review record behind.
-	profile, note, err := applyReviewDispatch(w, spawn.SpawnCrewRequest{Harness: h, Model: m, Effort: e, Budget: *budget})
+	// The change is measured before the table is read: a small one takes
+	// the table's review_small profile (CON-74). The table is read before
+	// anything is written, so a malformed one leaves no review record
+	// behind.
+	stat, err := reviewDiffStat(ctx, w, gitx.New(), project, crew, fp, scope)
+	if err != nil {
+		return err
+	}
+	profile, note, err := applyReviewDispatch(w, spawn.SpawnCrewRequest{Harness: h, Model: m, Effort: e, Budget: *budget}, stat)
 	if err != nil {
 		return err
 	}
@@ -212,6 +218,33 @@ func reviewSince(ctx context.Context, w *store.Workspace, g gitx.Git, project, c
 		Findings:    store.ReviewFindings(string(data)),
 		PriorReport: fmt.Sprintf("%x", sha256.Sum256(data)),
 	}, nil
+}
+
+// reviewDiffStat measures the change the reviewer will read: the crew's
+// branch against its base, or against the commit the prior review saw for
+// a --since review, since that is the diff the scoped brief asks for.
+func reviewDiffStat(ctx context.Context, w *store.Workspace, g gitx.Git, project, crew string, fp map[string]string, scope *reviewScope) (*reviewStat, error) {
+	meta, err := w.ReadCrewMeta(project, crew)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := w.LoadProject(project)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := cfg.CrewRepo(meta)
+	if err != nil {
+		return nil, err
+	}
+	base := fp["base"]
+	if scope != nil {
+		base = scope.Reviewed
+	}
+	entries, err := g.DiffNumstat(ctx, w.RepoDir(repo.Path), base, fp["head"])
+	if err != nil {
+		return nil, err
+	}
+	return newReviewStat(entries), nil
 }
 
 func reviewRecordPath(w *store.Workspace, project, reviewer string) (string, error) {

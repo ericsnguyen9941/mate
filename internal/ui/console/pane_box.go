@@ -249,6 +249,8 @@ func boxNeedPhrase(e query.BoxEntry) string {
 			return "half the budget, no hand-back"
 		}
 		return "over budget"
+	case "no_turn":
+		return "no turn yet"
 	}
 	return e.Verb
 }

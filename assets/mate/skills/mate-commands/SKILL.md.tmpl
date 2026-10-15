@@ -42,7 +42,7 @@ Without `--scout` it is a ship, and a `## Deliverable` is refused.
 `--harness`, `--model` and `--effort` are the Crew's launch profile; section 7 and the `crew-dispatch` skill say how to choose them.
 Without `--harness` the Crew runs the table's `default` profile on the workspace default harness, which is Codex, with a note on stderr; `--model` or `--effort` without `--harness` is refused (exit 2), because a model name belongs to one harness.
 An effort the harness does not take (Codex has no `max`) is recorded and left out of the launch, with a note on stderr.
-`crew dispatch` prints the dispatch table in force: each rule's condition and its profiles as the exact flags to pass, then each harness's quota as quota-axi reads it and the harness that quota favours (the `crew-dispatch` skill says how to use it).
+`crew dispatch` prints the dispatch table in force: each rule's condition and its profiles as the exact flags to pass, then the `review` and `review_small` profiles `mate review` falls back on, then each harness's quota as quota-axi reads it and the harness that quota favours (the `crew-dispatch` skill says how to use it).
 That is `{{.WorkspaceRoot}}/.mate/crew-dispatch.json` when the captain has written one, which replaces the built-in table whole, and the built-in table otherwise; `crew dispatch --example` prints the built-in table as JSON for the captain to copy and edit.
 A malformed table refuses every spawn (exit 2, the reason on stderr) until the captain fixes it, and is never replaced by the built-in one; tell the captain what it says.
 The table may carry a harness rotation, `"rotate": ["claude", "claude", "claude", "codex", "pi"]`, at table level or on a rule (the rule's wins for a task of its kind); the built-in table has none, the captain opts in.
@@ -213,12 +213,13 @@ Anything longer goes in a file and you send the Crew a line naming that file's a
 ### Delivery
 
 ```text
-mate merge <project> <crew> --review <review-id> [--workspace <dir>]
+mate merge <project> <crew> --review <review-id> [--followups backlog:<text>|<TRACKER-id>] [--workspace <dir>]
 mate pr watch <project> <crew> <pull-request-url> [--workspace <dir>]
 ```
 
 `mate merge` is the whole of delivery, and it closes the Crew afterwards, which is the one place a Crew reaches `finished` without `crew stop` being typed.
 You run it with `--review <review-id>`: the independent review that passed (section 9), pinned to the commit the reviewer saw. Without it your merge is refused; `Merge` in the console is the captain's own and needs none.
+A review can pass and still leave material findings standing (items under its `## Findings`, or a prior finding it marks open). Those do not block the merge, but they must be recorded somewhere first, or nobody follows them up: with such a review the merge is refused and prints them (`merge refused: review <r> passed but left N finding(s) standing; ...`) until you pass `--followups` naming where you recorded them - `backlog:<text>` for a line you added under `## Queued` of the backlog (`mate backlog add`; the text must be part of that line) or a tracker issue id like `HVN-12` when the captain's tracker holds it. The reference is checked to exist and recorded as `followups=` in the Crew's meta, and the merge prints `followups: <ref> (recorded as followups= in ...)`. A review with no findings needs none.
 What it does follows the Crew's delivery, chosen at spawn (`delivery` in its meta):
 
 - **local**: it fast-forwards the default branch of the Crew's repo onto the Crew's branch, in that repo's own checkout. It only ever fast-forwards and takes no flag that would make it do anything else.
@@ -243,6 +244,7 @@ Each refusal of `mate merge` starts with `merge refused:` and changes nothing - 
 
 - `the Mate merges only reviewed work; ...` - you ran it without `--review`. Run `mate review` first, and merge once it passes.
 - `review is stale; ...` - the branch, the pull request or the contract moved after the review. Review again.
+- `review <r> passed but left N finding(s) standing; ...` - record the findings (backlog `## Queued` or the tracker) and merge again with `--followups`.
 - `... has N uncommitted file(s) ...` naming the Crew's worktree - it still holds work that is not in the branch. Send the Crew one line to commit or drop it; never merge around it, because what would land is not what you reviewed.
 - `needs-rebase: ...` (local) - `<default>` moved on since the Crew branched, so the branch is no longer a fast-forward. This is a result of the command and never a state of the Crew: send the Crew one line telling it to rebase onto `<default>` and hand back, then merge again after its next `wait-mate`.
 - `branch ... is not ahead of <default>: nothing to merge` (local) - the Crew committed nothing. That is a scout, or a ship that did not do its job; report it as such.
@@ -294,11 +296,12 @@ It measures the branch, not the worktree, so it still answers after a Crew has b
 A leading `note:` line warns you that the Crew's worktree holds uncommitted files: the patch is only what was committed, so that note is the difference between what you are reading and what the Crew has done.
 
 ```text
-mate review <project> <crew> --id <reviewer> [--since <prior-reviewer>] [--harness <kind>] [--model <model>] [--effort <effort>] [--workspace <dir>]
+mate review <project> <crew> --id <reviewer> [--since <prior-reviewer>] [--harness <kind>] [--model <model>] [--effort <effort>] [--budget <tokens>] [--workspace <dir>]
 mate review <project> <crew> --check <reviewer> [--workspace <dir>]
 ```
 
 `mate review` starts an independent reviewer: a scout Crew briefed to read the full committed change and hand back a report whose `## Verdict` is `pass`, `changes-requested` or `incomplete`, with its material findings under `## Findings`, one list item each. The record it writes pins the branch's commit, base, brief and hand-back; `--check` refuses when any of them moved.
+Without `--model` and `--effort` the reviewer's profile comes from the dispatch table by the size of the change: `mate review` measures `git diff --numstat` over the range the reviewer will read, and a change of at most the table's `review_small_max_lines` (50 by default) changed lines that touches no code file (by extension: languages, shell, build files; not `.md`, `.json`, `.yaml`, `.css`, `.html`) takes the table's `review_small` profile, any other change the `review` profile; the `note:` line says which and why (`the change is small (12 line(s) in 2 file(s), no code), ...`). `crew dispatch` prints both profiles. Your own `--harness`, `--model` or `--effort` always win, so a small diff you judge weighty still gets the reviewer you name.
 `--since <prior-reviewer>` is the second review of the same Crew after it fixed what the first one found. The new reviewer is briefed with `git diff <commit the prior review saw>...<head>` and the prior report's findings as a numbered checklist (F1, F2, ...); it re-verifies only the acceptance criteria those findings touch and reruns a gate only when the diff touches that gate's files or commands, so it costs a fraction of a full review. Its report answers under `## Prior findings`, one item per finding starting with `F<n> closed` or `F<n> open` and the evidence. `--check` on it passes only when the prior review has a verdict and every prior finding is marked closed; an open or unmarked one is `incomplete`, named. `--since` refuses a reviewer with no record, one that reviewed another Crew, one whose report has no verdict yet, a branch still at the commit it saw (use `--check` on it instead) and a branch rewritten past that commit (review in full). The record still carries the new head, so `mate merge --review` pins what this reviewer saw.
 
 ### Memory
@@ -369,7 +372,7 @@ mate wake <project> [--peek] [--workspace <dir>]
 ```
 
 `wake` is the one read when an app event wakes you (`event-handling`, "Acting on a digest").
-It prints three parts: 1, every open item in the order you act on it - `blocked`, `needs-decision` with the question in full, `wait-mate` with its branch's commit count and diff summary, its hand-back or report path with that file's `## For the next crew` section, and the reviews recorded for it (a review's own hand-back is its verdict); 2, the status lines written since your last `wake`; 3, every open Crew with its state, profile and last note.
+It prints three parts: 1, every open item in the order you act on it - `blocked` and `no turn` (a Crew launched minutes ago with no turn in the ledger yet: peek it, and relaunch it if the pane is empty or at a sign-in screen), `needs-decision` with the question in full, `wait-mate` with its branch's commit count and diff summary, its hand-back or report path with that file's `## For the next crew` section, and the reviews recorded for it (a review's own hand-back is its verdict); 2, the status lines written since your last `wake`; 3, every open Crew with its state, profile and last note.
 Part 1 lists an item until it is dealt with, however many wakes showed it; part 2 moves on with every run but `--peek`, which prints the same wake and leaves its lines for your next one (the way to look without taking them).
 It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a `blocked` Crew.
 
@@ -378,7 +381,7 @@ It asks Herdr nothing: `mate state` and `mate peek` are still how you look at a 
 
 - `mate diff <project> <crew>` prints the commit list and stat by default. `--full` prints the complete patch; `--stat` remains accepted.
 - `mate report <project> <crew> --summary` prints only `## Summary`, at most 6000 characters. Missing or oversized summaries are errors, never a silent full-report fallback. `--full` explicitly reads everything.
-- `mate review <project> <crew> --id <reviewer> [--harness <kind>] [--model <model> --effort <effort>]` starts a separate scout; end your turn. Without `--model` and `--effort` the reviewer runs the dispatch table's review profile (`crew-dispatch` section 9). After the Crew fixes a review's findings, `--since <that-reviewer>` on the new review scopes it to the change since the commit that review saw and to closing its findings (section Review above). `mate review <project> <crew> --check <reviewer>` validates the unchanged SHA, base, brief, hand-back and passing report, and for a `--since` review that every prior finding is marked closed. `mate merge <project> <crew> --review <reviewer>` repeats that validation and merges the reviewed SHA.
+- `mate review <project> <crew> --id <reviewer> [--harness <kind>] [--model <model> --effort <effort>]` starts a separate scout; end your turn. Without `--model` and `--effort` the reviewer runs the dispatch table's review profile, or its `review_small` profile for a diff of at most 50 lines with no code file (`crew-dispatch` section 9; section Review above). `mate merge --review` on a passing review that left findings standing also wants `--followups` naming where they were recorded (section Delivery). After the Crew fixes a review's findings, `--since <that-reviewer>` on the new review scopes it to the change since the commit that review saw and to closing its findings (section Review above). `mate review <project> <crew> --check <reviewer>` validates the unchanged SHA, base, brief, hand-back and passing report, and for a `--since` review that every prior finding is marked closed. `mate merge <project> <crew> --review <reviewer>` repeats that validation and merges the reviewed SHA.
 - `mate backlog add <project> <id> --section "Held for the captain" --text '<verbatim obligation>'` adds an entry. Use `In flight`, `Held for the captain`, `Queued` or `Done` for the section.
 - `mate backlog move <project> <id> --section "In flight"` moves the complete entry unchanged. `mate backlog done <project> <id>` moves it to Done and archives overflow beyond 10 entries. Duplicate or missing ids are errors. Use these commands instead of writing Python to edit backlog.
 - When the project has a tracker plugin, a task the tracker holds is only a pointer in `{{.BacklogFile}}`: `mate backlog add <project> <crew-id> --tracker <tracker-id>` writes the one line `- <crew-id>: <tracker-id>` under `In flight` (another `--section` if you say so), and `move` or `done` with `--tracker <tracker-id>` rewrites the entry to that line; no content is copied, the tracker has it. Without `--tracker` nothing changes, so `Held for the captain` and `Queued` entries the tracker does not hold are written as before. A project with no tracker plugin refuses `--tracker`.
