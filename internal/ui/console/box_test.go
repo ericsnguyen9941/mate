@@ -197,6 +197,8 @@ func TestBoxNeedNamesTheNeed(t *testing.T) {
 		{query.BoxEntry{Kind: query.BoxIncident, Verb: "runtime_lost"}, "agent gone"},
 		{query.BoxEntry{Kind: query.BoxIncident, Verb: "wedged"}, "wedged"},
 		{query.BoxEntry{Kind: query.BoxIncident, Verb: "budget"}, "over budget"},
+		{query.BoxEntry{Kind: query.BoxIncident, Verb: "budget", Text: "2.3M tokens of 2M tokens"}, "over budget"},
+		{query.BoxEntry{Kind: query.BoxIncident, Verb: "budget", Text: "50%: 1.1M tokens of 2M tokens, no hand-back yet"}, "half the budget, no hand-back"},
 		{query.BoxEntry{Kind: query.BoxIncident, Verb: "novel"}, "novel"},
 	} {
 		if got := boxNeed(tc.e); got != tc.want {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/dispatch"
@@ -168,7 +169,7 @@ func writeDispatchTable(out io.Writer, t dispatch.Table) {
 	}
 	for i, r := range t.Rules {
 		fmt.Fprintf(out, "\nrule %d: %s\n", i+1, r.When)
-		writeProfiles(out, r.Use)
+		writeProfiles(out, r.Use, r.Budget)
 		if r.Why != "" {
 			fmt.Fprintf(out, "  why %s\n", r.Why)
 		}
@@ -180,11 +181,23 @@ func writeDispatchTable(out io.Writer, t dispatch.Table) {
 		}
 	}
 	if len(t.Review) > 0 {
-		fmt.Fprintf(out, "\nreview (what `mate review` uses when you pass no --model or --effort): %s\n", t.Review[0].Flags())
+		fmt.Fprintf(out, "\nreview (what `mate review` uses when you pass no --model or --effort): %s\n", profileFlags(t.Review[0], t.ReviewBudget))
 		for _, p := range t.Review[1:] {
-			fmt.Fprintf(out, "  or  %s\n", p.Flags())
+			fmt.Fprintf(out, "  or  %s\n", profileFlags(p, t.ReviewBudget))
 		}
 	}
+}
+
+// profileFlags is the profile as spawn flags, with the rule's budget on
+// the same line (`--budget 2000000`) when the rule names one, so the Mate
+// copies a whole line and the crew is held to the size its rule gave it
+// (CON-76). A rule without a budget prints none: the project's `budget:`
+// block, if any, then applies on its own.
+func profileFlags(p dispatch.Profile, budget int64) string {
+	if budget <= 0 {
+		return p.Flags()
+	}
+	return p.Flags() + " --budget " + strconv.FormatInt(budget, 10)
 }
 
 // applyReviewDispatch is `mate review`'s gate on the table, as
@@ -192,7 +205,9 @@ func writeDispatchTable(out io.Writer, t dispatch.Table) {
 // named a model or an effort keeps its profile as given. One that named
 // neither gets the table's review profile, on the harness it named or else
 // the workspace's default, and note says so; a table with no review
-// profile for that harness leaves the request as it was.
+// profile for that harness leaves the request as it was. Whatever the
+// profile, a review that named no --budget is held to the table's
+// `review_budget` when there is one (CON-76).
 func applyReviewDispatch(w *store.Workspace, req spawn.SpawnCrewRequest) (spawn.SpawnCrewRequest, string, error) {
 	t, err := dispatch.Resolve(w.StateDir(), harnesses)
 	if errors.Is(err, dispatch.ErrInvalid) {
@@ -200,6 +215,9 @@ func applyReviewDispatch(w *store.Workspace, req spawn.SpawnCrewRequest) (spawn.
 	}
 	if err != nil {
 		return req, "", err
+	}
+	if req.Budget == 0 {
+		req.Budget = t.ReviewBudget
 	}
 	if req.Model != "" || req.Effort != "" {
 		return req, "", nil
@@ -226,12 +244,12 @@ func applyReviewDispatch(w *store.Workspace, req spawn.SpawnCrewRequest) (spawn.
 	return req, note, nil
 }
 
-func writeProfiles(out io.Writer, ps []dispatch.Profile) {
+func writeProfiles(out io.Writer, ps []dispatch.Profile, budget int64) {
 	for i, p := range ps {
 		lead := "  use "
 		if i > 0 {
 			lead = "  or  "
 		}
-		fmt.Fprintf(out, "%s%s\n", lead, p.Flags())
+		fmt.Fprintf(out, "%s%s\n", lead, profileFlags(p, budget))
 	}
 }

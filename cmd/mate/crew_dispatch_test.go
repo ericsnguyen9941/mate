@@ -184,15 +184,25 @@ func TestCrewDispatchWithoutATableShowsTheBuiltIn(t *testing.T) {
 		"crew dispatch: built-in",
 		filepath.Join(".mate", "crew-dispatch.json"),
 		"rule 1: A ship that is a small change",
-		"use --harness claude --model sonnet --effort medium",
-		"or  --harness codex --model gpt-6-luna --effort medium",
-		"default: --harness codex --model gpt-6-luna --effort high",
+		// A rule's budget (CON-76) is on each profile line, so the Mate
+		// copies a whole line of flags.
+		"use --harness claude --model sonnet --effort medium --budget 2000000\n",
+		"or  --harness codex --model gpt-6-luna --effort medium --budget 2000000\n",
+		"use --harness claude --model sonnet --effort high --budget 8000000\n",
+		"use --harness claude --model opus --effort high --budget 20000000\n",
+		"default: --harness codex --model gpt-6-luna --effort high\n",
 		"rule 6: A review of another Crew's branch whose own task was a large change",
-		"review (what `mate review` uses when you pass no --model or --effort): --harness claude --model sonnet --effort medium",
+		"review (what `mate review` uses when you pass no --model or --effort): --harness claude --model sonnet --effort medium --budget 3000000\n",
+		"  or  --harness codex --model gpt-6-luna --effort medium --budget 3000000\n",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}
+	}
+	// A rule without a budget prints none: the light scout runs on the
+	// project's budget, if any.
+	if strings.Contains(out.String(), "use --harness claude --model sonnet --effort medium --budget 2000000\n  or  --harness codex --model gpt-6-luna --effort medium --budget 2000000\n  why A narrow question") {
+		t.Errorf("the light scout printed a budget it does not have:\n%s", out.String())
 	}
 	out.Reset()
 	if err := run([]string{"crew", "dispatch", "--example"}, &out, &errw); err != nil {
@@ -310,12 +320,16 @@ func TestAReviewWithoutAProfileTakesTheReviewProfile(t *testing.T) {
 		req, want   spawn.SpawnCrewRequest
 		noted       bool
 	}{
+		// The built-in table's review_budget (3M, CON-76) rides along with
+		// its profile, and with a profile the Mate named too.
 		{"default harness", "", spawn.SpawnCrewRequest{},
-			spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium}, true},
+			spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium, Budget: 3_000_000}, true},
 		{"named harness", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude},
-			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium}, true},
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "sonnet", Effort: harness.EffortMedium, Budget: 3_000_000}, true},
 		{"explicit large-change reviewer", "", spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium},
-			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium}, false},
+			spawn.SpawnCrewRequest{Harness: claude.KindClaude, Model: "opus", Effort: harness.EffortMedium, Budget: 3_000_000}, false},
+		{"named budget kept", "", spawn.SpawnCrewRequest{Budget: 1_000_000},
+			spawn.SpawnCrewRequest{Harness: codex.KindCodex, Model: "gpt-6-luna", Effort: harness.EffortMedium, Budget: 1_000_000}, true},
 		{"no review profile", sampleTable, spawn.SpawnCrewRequest{},
 			spawn.SpawnCrewRequest{}, false},
 		{"no review profile for the default harness", claudeReviewTable, spawn.SpawnCrewRequest{},

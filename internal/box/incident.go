@@ -1,6 +1,7 @@
 package box
 
 import (
+	"strings"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -18,10 +19,34 @@ const (
 	// IncidentWedged is a send that could not be verified into a pane for
 	// too long.
 	IncidentWedged IncidentKind = "wedged"
-	// IncidentBudget is a token/usage budget signal (post-MVP producer, the
-	// type exists now so box does not need to change shape later).
+	// IncidentBudget is a token/usage budget signal: the observer's budget
+	// check (internal/timeline.CheckBudgets) files one when a crew's spend
+	// crosses its budget, and one earlier, at half of it, when the crew has
+	// not handed back yet (CON-76). Both carry this kind; the half one is
+	// told apart by BudgetHalfPrefix on its text.
 	IncidentBudget IncidentKind = "budget"
 )
+
+// BudgetHalfPrefix opens the text of a `budget` incident the observer filed
+// at half the crew's budget rather than at the budget itself (CON-76: a
+// crew that has spent half of what its task was sized at without a
+// hand-back is worth a look before it spends the rest). The threshold
+// lives in the text, not in a kind of its own, so incidents.log keeps the
+// four kinds docs/mvp.md section 4b names and every reader that treats
+// `budget` as an inbox item rather than a state keeps doing so.
+const BudgetHalfPrefix = "50%: "
+
+// BudgetThreshold is the percentage of its budget a `budget` incident was
+// filed at - 50 when the text carries BudgetHalfPrefix, 100 otherwise -
+// and the text with that prefix removed. It is the one place the prefix is
+// read, so the digest, `mate wake`, the console and the dashboard agree
+// on which incident is "over budget" and which is "half the budget".
+func BudgetThreshold(text string) (percent int, rest string) {
+	if rest, ok := strings.CutPrefix(text, BudgetHalfPrefix); ok {
+		return 50, rest
+	}
+	return 100, text
+}
 
 // Incident is one observer finding for a crew. The observer (internal/watch,
 // task 18) is the only writer of `incidents.log`; this package only reads

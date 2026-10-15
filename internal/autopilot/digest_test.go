@@ -180,6 +180,20 @@ func TestLineRendersTheBudgetItemShape(t *testing.T) {
 	}
 }
 
+// The half-budget incident (CON-76) renders as "budget 50%", never as
+// "over budget": the crew has spent half of what its rule sized it at and
+// has not handed back, which is not a crossing.
+func TestLineRendersTheHalfBudgetItemShape(t *testing.T) {
+	items := []autopilot.Item{
+		{Kind: autopilot.ItemBudget, Crew: "k9", Text: box.BudgetHalfPrefix + "1.1M tokens of 2M tokens, no hand-back yet"},
+	}
+	want := `digest: 1 item(s) — k9 budget 50%: 1.1M tokens of 2M tokens, no hand-back yet — ` +
+		`status files under /w/.mate/projects/shop/crews; act per AGENTS.md section 10`
+	if got := autopilot.Line(items, "/w/.mate/projects/shop/crews"); got != want {
+		t.Fatalf("Line =\n%s\nwant\n%s", got, want)
+	}
+}
+
 // A crew line is arbitrary text: it can be long, it can hold newlines
 // somebody echoed in, and it can hold the quote character the digest uses to
 // delimit it. All three have to come out as one quoted line of bounded

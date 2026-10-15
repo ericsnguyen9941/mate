@@ -54,13 +54,15 @@
 
   // The inbox's one phrase per row, the same words internal/ui/console's
   // boxNeedPhrase picks. The inbox shows the need, not the text.
+  function itemText(item) { return typeof item.text === "string" ? item.text : ""; }
   function needPhrase(item) {
     if (item.kind === "incident") {
       switch (item.verb) {
         case "stale": return "stuck, quiet too long";
         case "runtime_lost": return "agent gone";
         case "wedged": return "send wedged";
-        case "budget": return "over budget";
+        // internal/box.BudgetHalfPrefix marks the half-budget incident (CON-76).
+        case "budget": return (itemText(item)).indexOf("50%: ") === 0 ? "half the budget, no hand-back" : "over budget";
         default: return "incident " + (item.verb || "");
       }
     }

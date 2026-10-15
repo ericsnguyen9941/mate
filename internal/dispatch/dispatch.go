@@ -6,15 +6,23 @@
 //	  "rules": [
 //	    {"when": "<a kind of task, in words>",
 //	     "use": {"harness": "claude", "model": "haiku", "effort": "low"},
-//	     "why": "<optional rationale>"}
+//	     "why": "<optional rationale>",
+//	     "budget": 2000000}
 //	  ],
 //	  "default": {"harness": "codex", "model": "gpt-5.5", "effort": "medium"},
-//	  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"}
+//	  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"},
+//	  "review_budget": 3000000
 //	}
 //
 // `review` is mate's addition to firstmate's schema: the profile `mate
 // review` launches a reviewer with when the Mate names no model or effort,
 // so a review is not sized like the change it reviews (CON-68).
+//
+// `budget` and `review_budget` are mate's too (CON-76): the token budget a
+// task of that rule's kind is sized at, which the Mate passes to `mate crew
+// spawn --budget` and the observer checks the crew's spend against (half
+// of it without a hand-back, and all of it). Both are optional; a rule
+// without one leaves the crew on the project's `budget:` block, if any.
 //
 // `use`, `default` and `review` take one profile or an array of alternatives. The
 // rules are natural language: the Mate matches a task to a rule with its
@@ -68,6 +76,9 @@ type Rule struct {
 	When string
 	Use  []Profile
 	Why  string
+	// Budget is the token budget a task of this kind is sized at, 0 when
+	// the rule names none (the project's `budget:` then applies).
+	Budget int64
 }
 
 // Table is a loaded, checked dispatch table. Path is empty and BuiltIn true
@@ -80,6 +91,9 @@ type Table struct {
 	// Review is the reviewer profile of `mate review`; empty when the
 	// table names none.
 	Review []Profile
+	// ReviewBudget is the token budget a review is sized at, 0 when the
+	// table names none.
+	ReviewBudget int64
 }
 
 // Path is the table's path in a workspace whose `.mate/` directory is dir.
@@ -111,15 +125,17 @@ type rawProfile struct {
 }
 
 type rawRule struct {
-	When string          `json:"when"`
-	Use  json.RawMessage `json:"use"`
-	Why  string          `json:"why"`
+	When   string          `json:"when"`
+	Use    json.RawMessage `json:"use"`
+	Why    string          `json:"why"`
+	Budget *int64          `json:"budget"`
 }
 
 type rawTable struct {
-	Rules   []rawRule       `json:"rules"`
-	Default json.RawMessage `json:"default"`
-	Review  json.RawMessage `json:"review"`
+	Rules        []rawRule       `json:"rules"`
+	Default      json.RawMessage `json:"default"`
+	Review       json.RawMessage `json:"review"`
+	ReviewBudget *int64          `json:"review_budget"`
 }
 
 func parse(raw []byte, harnesses harness.Registry) (Table, error) {
@@ -140,7 +156,11 @@ func parse(raw []byte, harnesses harness.Registry) (Table, error) {
 		if err != nil {
 			return Table{}, err
 		}
-		t.Rules = append(t.Rules, Rule{When: strings.TrimSpace(r.When), Use: use, Why: strings.TrimSpace(r.Why)})
+		budget, err := checkBudget(r.Budget, where)
+		if err != nil {
+			return Table{}, err
+		}
+		t.Rules = append(t.Rules, Rule{When: strings.TrimSpace(r.When), Use: use, Why: strings.TrimSpace(r.Why), Budget: budget})
 	}
 	if len(rt.Default) > 0 && string(rt.Default) != "null" {
 		def, err := profiles(rt.Default, "default", harnesses)
@@ -156,10 +176,28 @@ func parse(raw []byte, harnesses harness.Registry) (Table, error) {
 		}
 		t.Review = review
 	}
+	reviewBudget, err := checkBudget(rt.ReviewBudget, "review_budget")
+	if err != nil {
+		return Table{}, err
+	}
+	t.ReviewBudget = reviewBudget
 	if len(t.Rules) == 0 && len(t.Default) == 0 {
 		return Table{}, errors.New("no rules and no default")
 	}
 	return t, nil
+}
+
+// checkBudget reads an optional `budget`: absent is 0 (none), and a value
+// must be a positive whole number of tokens - a zero or negative budget is
+// a typo, not a way to say none, and is refused like any other bad field.
+func checkBudget(raw *int64, where string) (int64, error) {
+	if raw == nil {
+		return 0, nil
+	}
+	if *raw <= 0 {
+		return 0, fmt.Errorf("%s: `budget` must be a positive number of tokens, not %d", where, *raw)
+	}
+	return *raw, nil
 }
 
 // profiles reads one profile object or a non-empty array of them.

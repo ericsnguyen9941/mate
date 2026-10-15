@@ -73,6 +73,10 @@ func TestLoadRefusesAMalformedTable(t *testing.T) {
 		"flag-like model":    `{"rules": [{"when": "x", "use": {"harness": "codex", "model": "-c"}}]}`,
 		"unknown field":      `{"rules": [{"when": "x", "use": {"harness": "codex", "modle": "gpt-5.5"}}]}`,
 		"empty table":        `{}`,
+		"zero budget":        `{"rules": [{"when": "x", "use": {"harness": "codex"}, "budget": 0}]}`,
+		"negative budget":    `{"rules": [{"when": "x", "use": {"harness": "codex"}, "budget": -5}]}`,
+		"budget as a string": `{"rules": [{"when": "x", "use": {"harness": "codex"}, "budget": "2M"}]}`,
+		"bad review budget":  `{"default": {"harness": "codex"}, "review_budget": 0}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, _, err := Load(writeTable(t, body), catalog.Default())
@@ -83,6 +87,39 @@ func TestLoadRefusesAMalformedTable(t *testing.T) {
 				t.Fatalf("the error does not name the file: %v", err)
 			}
 		})
+	}
+}
+
+// A rule may carry a token budget (CON-76), and so may the review line as
+// `review_budget`; a rule without one reads as 0, which spawn and the
+// observer take as "the project's budget, if any".
+func TestLoadReadsAnOptionalBudgetPerRule(t *testing.T) {
+	p := writeTable(t, `{
+  "rules": [
+    {"when": "a small change", "use": {"harness": "claude", "model": "sonnet"}, "budget": 2000000},
+    {"when": "anything else", "use": {"harness": "codex"}}
+  ],
+  "review": {"harness": "claude", "model": "sonnet", "effort": "medium"},
+  "review_budget": 3000000
+}`)
+	tbl, ok, err := Load(p, catalog.Default())
+	if err != nil || !ok {
+		t.Fatalf("Load: ok=%v err=%v", ok, err)
+	}
+	if got := tbl.Rules[0].Budget; got != 2_000_000 {
+		t.Fatalf("rule 1 budget = %d, want 2000000", got)
+	}
+	if got := tbl.Rules[1].Budget; got != 0 {
+		t.Fatalf("rule 2 budget = %d, want 0 (none named)", got)
+	}
+	if tbl.ReviewBudget != 3_000_000 {
+		t.Fatalf("review budget = %d, want 3000000", tbl.ReviewBudget)
+	}
+
+	// A table that names no review_budget has none.
+	tbl, _, err = Load(writeTable(t, `{"default": {"harness": "codex"}}`), catalog.Default())
+	if err != nil || tbl.ReviewBudget != 0 {
+		t.Fatalf("table without review_budget: %d %v", tbl.ReviewBudget, err)
 	}
 }
 
@@ -135,6 +172,16 @@ func TestTheBuiltInTableIsTheCaptains(t *testing.T) {
 	}
 	if got := strings.Join(flags(tbl.Review), "|"); got != "--harness claude --model sonnet --effort medium|--harness codex --model gpt-6-luna --effort medium" {
 		t.Errorf("review = %s, want sonnet and luna at medium", got)
+	}
+	// The captain's suggested budgets (CON-76): the three ship rules and
+	// the review line; the scouts and the large-change review name none.
+	for i, budget := range []int64{2_000_000, 8_000_000, 20_000_000, 0, 0, 0} {
+		if tbl.Rules[i].Budget != budget {
+			t.Errorf("rule %d budget = %d, want %d", i+1, tbl.Rules[i].Budget, budget)
+		}
+	}
+	if tbl.ReviewBudget != 3_000_000 {
+		t.Errorf("review budget = %d, want 3000000", tbl.ReviewBudget)
 	}
 }
 

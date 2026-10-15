@@ -30,6 +30,13 @@ import (
 // 39 calls and 149M cache-read tokens against 16 calls and 46M for 27 Sonnet
 // ones. The review rule is the one exception, a large change, which the
 // Mate passes as flags.
+//
+// The budgets are the captain's suggestions (CON-76, 2026-10-15): 2M for a
+// small ship, 8M for a medium one, 20M for a large one and 3M for a
+// review, after a chore on hellovietnam (HVN-135) spent 5.3M with no
+// warning because the project's one `budget:` fitted neither its small
+// tasks nor its large ones. The scout rules and the large-change review
+// name none, so they fall back to the project's budget.
 const BuiltInJSON = `{
   "rules": [
     {
@@ -39,7 +46,8 @@ const BuiltInJSON = `{
         { "harness": "codex", "model": "gpt-6-luna", "effort": "medium" },
         { "harness": "pi", "model": "deepseek/deepseek-flash", "effort": "high" }
       ],
-      "why": "A mid-size model at medium effort is enough when the change is narrow and the outcome is clear."
+      "why": "A mid-size model at medium effort is enough when the change is narrow and the outcome is clear.",
+      "budget": 2000000
     },
     {
       "when": "A ship that is a medium change: a feature or fix across several files, with some design choices but a contained blast radius.",
@@ -49,7 +57,8 @@ const BuiltInJSON = `{
         { "harness": "claude", "model": "opus", "effort": "medium" },
         { "harness": "codex", "model": "gpt-5.6-terra", "effort": "medium" }
       ],
-      "why": "Either a mid-size model thinking harder or a large model at medium effort; pick the less loaded."
+      "why": "Either a mid-size model thinking harder or a large model at medium effort; pick the less loaded.",
+      "budget": 8000000
     },
     {
       "when": "A ship that is a large change: a big task, a cross-cutting refactor, a migration, or anything whose mistakes would reach many callers, users or data.",
@@ -57,7 +66,8 @@ const BuiltInJSON = `{
         { "harness": "claude", "model": "opus", "effort": "high" },
         { "harness": "codex", "model": "gpt-5.6-terra", "effort": "high" }
       ],
-      "why": "Wide impact needs the strongest coding profile."
+      "why": "Wide impact needs the strongest coding profile.",
+      "budget": 20000000
     },
     {
       "when": "A scout that combines reading code with outside research, such as docs, libraries or prior art, to reach a recommendation.",
@@ -91,7 +101,8 @@ const BuiltInJSON = `{
   "review": [
     { "harness": "claude", "model": "sonnet", "effort": "medium" },
     { "harness": "codex", "model": "gpt-6-luna", "effort": "medium" }
-  ]
+  ],
+  "review_budget": 3000000
 }
 `
 

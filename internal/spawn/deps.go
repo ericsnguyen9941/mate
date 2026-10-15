@@ -52,6 +52,11 @@ const (
 	// it was requested, and left out of the launch.
 	MetaModel  = "model"
 	MetaEffort = "effort"
+	// MetaBudget is the crew's token budget (CON-76): the dispatch rule's
+	// `budget` the Mate passed as `--budget`, else the project's
+	// `budget.crew_tokens`, written only when one of them is set. The
+	// observer's budget check reads it before the project's block.
+	MetaBudget = store.MetaBudget
 )
 
 // AgentNamePrefix is the first half of a Mate's live Herdr agent name; the
