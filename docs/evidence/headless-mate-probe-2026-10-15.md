@@ -16,6 +16,21 @@ Throwaway session `hlprobe`, workspace `w1`, tab `w1:t2`, pane `w1:p2`.
 
 Conclusion: the host reports itself from inside its pane and is renamed to the Mate's agent name. Liveness (`query.ReadLiveness`), `InspectAgent` and `agent attach` then work unchanged, and a dead host is not listed.
 
+## Probe 1b: the label, and release-agent (after the first live run)
+
+`TestLiveHeadlessMate` first failed its stop: the host exited, and Herdr still listed `mate-shop`. Lab session `fm-lab-headless`, a script that reports, renames, sleeps 3 s and exits, `agent list` read every 2 s from 6 s after:
+
+| `--agent` label | `pane release-agent` before exit | listed after exit |
+| --- | --- | --- |
+| `claude` | none | yes, `idle`, still at 24 s |
+| `claude` | yes | yes, `idle`, still at 12 s |
+| `mate-host` | none | no |
+| `mate-host` | yes | no |
+
+`herdr pane release-agent --source mate --agent <label> <pane>` exits 2 with `unknown option: mate` in both rows.
+
+Conclusion: the host reports as `mate-host`, a label Herdr has no detection for, and does not call `release-agent`.
+
 ## Probe 2: Claude hooks under `claude -p`
 
 Settings file holding the three Mate hook events (each appends its stdin payload to a log), plus the captain's `env` (proxy). Flags: `-p --setting-sources project --settings <file> --model haiku --output-format stream-json --verbose --dangerously-skip-permissions`, nested-session variables unset, prompt on stdin.

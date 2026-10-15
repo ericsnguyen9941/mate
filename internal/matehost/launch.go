@@ -63,8 +63,8 @@ type Launch struct {
 	Project string `json:"project"`
 	// Agent is the Herdr agent name the host takes in its pane.
 	Agent string `json:"agent"`
-	// Kind is the label the host reports itself under (the harness kind).
-	Kind      string   `json:"kind"`
+	// Harness is the harness kind whose HeadlessTurns runs each message.
+	Harness   string   `json:"harness"`
 	Program   string   `json:"program"`
 	Args      []string `json:"args"`
 	Dir       string   `json:"dir"`
@@ -77,6 +77,8 @@ func (l Launch) valid() error {
 	switch {
 	case l.Project == "":
 		return errors.New("matehost: the launch names no project")
+	case l.Harness == "":
+		return errors.New("matehost: the launch names no harness")
 	case l.Program == "":
 		return errors.New("matehost: the launch names no program")
 	case l.Dir == "":

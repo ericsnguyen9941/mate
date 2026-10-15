@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness/claude"
 	"github.com/nguyenngocanh94/mate/internal/matehost"
@@ -71,6 +72,16 @@ func TestStartMateHeadlessRunsTheHostAndRecordsTheMode(t *testing.T) {
 	w := shortWorkspace(t, "shop")
 	rt := runtime.NewFake()
 	deps := fakeDeps(t, rt)
+	// The played host leaves after it answers its stop, as the real one
+	// exits; the stop's wait for that has to take real time.
+	deps.Sleep = func(ctx context.Context, d time.Duration) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(d):
+			return nil
+		}
+	}
 	playHost(t, w, rt, "shop")
 
 	res, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Mode: spawn.ModeHeadless})

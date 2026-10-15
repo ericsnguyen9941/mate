@@ -13,6 +13,12 @@ import (
 // HerdrSource is the --source the host reports its lifecycle under.
 const HerdrSource = "mate"
 
+// HerdrLabel is the --agent label the host reports itself under. It is not
+// a harness Herdr knows: reported as `claude`, the pane stayed listed after
+// the host exited, and as an unknown label it was gone at once (measured
+// 2026-10-15, Herdr 0.9.3).
+const HerdrLabel = "mate-host"
+
 // HerdrReporter makes the host a named Herdr agent from inside its own pane
 // and keeps its state current. Measured 2026-10-15 (docs/evidence/
 // headless-mate-probe-2026-10-15.md): `pane report-agent` from the process
@@ -23,7 +29,6 @@ const HerdrSource = "mate"
 type HerdrReporter struct {
 	Binary string
 	Pane   string
-	Kind   string
 	Agent  string
 
 	mu      sync.Mutex
@@ -34,7 +39,7 @@ type HerdrReporter struct {
 // NewHerdrReporter reads the pane from the environment Herdr gives every
 // pane. ok is false outside Herdr: a host run by hand in a plain terminal
 // reports nothing.
-func NewHerdrReporter(kind, agent string) (*HerdrReporter, bool) {
+func NewHerdrReporter(agent string) (*HerdrReporter, bool) {
 	pane := os.Getenv("HERDR_PANE_ID")
 	if pane == "" {
 		return nil, false
@@ -43,7 +48,7 @@ func NewHerdrReporter(kind, agent string) (*HerdrReporter, bool) {
 	if bin == "" {
 		bin = "herdr"
 	}
-	return &HerdrReporter{Binary: bin, Pane: pane, Kind: kind, Agent: agent}, true
+	return &HerdrReporter{Binary: bin, Pane: pane, Agent: agent}, true
 }
 
 func (r *HerdrReporter) run(args ...string) error {
@@ -60,7 +65,7 @@ func (r *HerdrReporter) run(args ...string) error {
 func (r *HerdrReporter) Register() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if err := r.run("pane", "report-agent", "--source", HerdrSource, "--agent", r.Kind, "--state", "idle", r.Pane); err != nil {
+	if err := r.run("pane", "report-agent", "--source", HerdrSource, "--agent", HerdrLabel, "--state", "idle", r.Pane); err != nil {
 		return err
 	}
 	if r.Agent == "" {
@@ -79,7 +84,7 @@ func (r *HerdrReporter) Report(state string) {
 		go func() {
 			for s := range r.pending {
 				r.mu.Lock()
-				_ = r.run("pane", "report-agent", "--source", HerdrSource, "--agent", r.Kind, "--state", s, r.Pane)
+				_ = r.run("pane", "report-agent", "--source", HerdrSource, "--agent", HerdrLabel, "--state", s, r.Pane)
 				r.mu.Unlock()
 			}
 		}()
@@ -95,11 +100,4 @@ func (r *HerdrReporter) Report(state string) {
 		default:
 		}
 	}
-}
-
-// Release gives the pane's lifecycle back to Herdr as the host exits.
-func (r *HerdrReporter) Release() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	_ = r.run("pane", "release-agent", "--source", HerdrSource, "--agent", r.Kind, r.Pane)
 }

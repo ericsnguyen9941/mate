@@ -73,6 +73,9 @@ func TestLiveHeadlessMate(t *testing.T) {
 		ReadinessTimeout: 90 * time.Second,
 		StartTimeout:     60 * time.Second,
 	}
+	marker := filepath.Join(configHome, "mate", "session-owners", session)
+	_ = os.Remove(marker)
+	t.Cleanup(func() { _ = os.Remove(marker) })
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 

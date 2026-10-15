@@ -113,7 +113,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	f := &fixture{dir: dir, opened: map[string]bool{}}
 	runner := &Runner{
-		Launch: Launch{Project: "p", Program: prog, Args: []string{"--model", "opus", "--session-id", "s1"}, Dir: dir, SessionID: "s1"},
+		Launch: Launch{Project: "p", Harness: "fake", Program: prog, Args: []string{"--model", "opus", "--session-id", "s1"}, Dir: dir, SessionID: "s1"},
 		Turns:  streamTurns{},
 		Lock:   fileLock(filepath.Join(dir, ".turn.lock")),
 		Opened: func(_, id string) bool {

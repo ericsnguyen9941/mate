@@ -52,7 +52,7 @@ func headlessFixture(t *testing.T, lockFree bool) (*fixture, string) {
 		t.Fatal(err)
 	}
 	runner := &matehost.Runner{
-		Launch: matehost.Launch{Project: project, Program: prog, Dir: mateDir, SessionID: "s"},
+		Launch: matehost.Launch{Project: project, Harness: "claude", Program: prog, Dir: mateDir, SessionID: "s"},
 		Turns:  claude.Claude{},
 		Lock:   func() (func(), bool, error) { return func() {}, lockFree, nil },
 		Opened: func(string, string) bool { return false },

@@ -52,13 +52,13 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("mate mate host: %w (start it with `mate mate start %s`, which prepares the launch)", err, project)
 	}
-	profile, err := harnesses.Lookup(harness.Kind(launch.Kind))
+	profile, err := harnesses.Lookup(harness.Kind(launch.Harness))
 	if err != nil {
 		return err
 	}
 	turns, ok := profile.(harness.HeadlessTurns)
 	if !ok {
-		return fmt.Errorf("mate mate host: the %s harness cannot run a headless Mate", launch.Kind)
+		return fmt.Errorf("mate mate host: the %s harness cannot run a headless Mate", launch.Harness)
 	}
 	runner := &matehost.Runner{
 		Launch: launch,
@@ -66,7 +66,7 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 		Lock:   func() (func(), bool, error) { return w.TryMateLock(project, matehost.TurnLock) },
 	}
 	opts := matehost.Options{History: matehost.HistoryPath(mateDir)}
-	reporter, inHerdr := matehost.NewHerdrReporter(launch.Kind, launch.Agent)
+	reporter, inHerdr := matehost.NewHerdrReporter(launch.Agent)
 	if inHerdr {
 		opts.Reporter = reporter
 	}
@@ -87,7 +87,6 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 				}
 			}
 		}()
-		defer reporter.Release()
 	}
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGHUP)

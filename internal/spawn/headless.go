@@ -73,7 +73,7 @@ func startHostInTab(ctx context.Context, w *store.Workspace, deps Deps, project 
 	hostLaunch := matehost.Launch{
 		Project:   project,
 		Agent:     reservation.Name(),
-		Kind:      launch.Kind(),
+		Harness:   string(profile.Kind()),
 		Program:   launch.Kind(),
 		Args:      launch.Args(),
 		Dir:       mateDir,
