@@ -28,6 +28,17 @@ func (m Model) onMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !wheel && !press {
 		return m, nil
 	}
+	if press && m.shownMsg != nil {
+		m.shownMsg = nil
+		return m.relayout(), nil
+	}
+	if press && ev.Y == p.statusRow() && m.sheetOpen() == sheetNone {
+		// A click on the status line shows it in full: it is cut to one row.
+		if msg := m.footerMessage(); msg.text != "" {
+			m.shownMsg = &msg
+			return m.relayout(), nil
+		}
+	}
 	sl, ok := slotAt(p, ev.Y)
 	if !ok {
 		return m, nil
