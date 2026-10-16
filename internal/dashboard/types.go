@@ -389,3 +389,39 @@ type ErrorResponse struct {
 	Error  string `json:"error"`
 	Reason string `json:"reason,omitempty"`
 }
+
+// BoardResponse is GET /api/board: the Office's whiteboard (CON-84). Dates
+// are local calendar days, oldest first, in Zone; Total is every project
+// summed, one entry per date, as is each project's Days.
+type BoardResponse struct {
+	envelope
+	Days     int            `json:"days"`
+	Zone     string         `json:"zone"`
+	Dates    []string       `json:"dates"`
+	Total    []BoardDay     `json:"total"`
+	Projects []BoardProject `json:"projects"`
+}
+
+// BoardProject is one project's days. Error says why its tasks could not
+// be read; its tokens and incidents are still counted.
+type BoardProject struct {
+	Name  string     `json:"name"`
+	Days  []BoardDay `json:"days"`
+	Error string     `json:"error,omitempty"`
+}
+
+// BoardDay is one local day. Tokens are the turns started that day, Mate's
+// and crews' (MateTokens and CrewTokens split Tokens.Total). Spawned counts
+// tasks by role, Closed closed ships and scouts by final state, Reviews
+// closed reviewers by verdict, Incidents opened incidents by kind. No cost:
+// the board measures in tokens.
+type BoardDay struct {
+	Date       string         `json:"date"`
+	Tokens     Tokens         `json:"tokens"`
+	MateTokens int64          `json:"mate_tokens"`
+	CrewTokens int64          `json:"crew_tokens"`
+	Spawned    map[string]int `json:"spawned"`
+	Closed     map[string]int `json:"closed"`
+	Reviews    map[string]int `json:"reviews"`
+	Incidents  map[string]int `json:"incidents"`
+}

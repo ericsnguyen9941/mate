@@ -154,6 +154,7 @@ async function boot(opts = {}) {
         body = (fx.plugins || {})[project] || { project, apps: [] };
       }
       else if (p === "/api/now") body = fx.now;
+      else if (p === "/api/board") body = boardBody(Number(u.searchParams.get("days")));
       else if ((m = /^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/.exec(p))) body = fx.tasks[m[1] + "/" + m[2]] || taskBody(fx, m[1], m[2]);
       else if ((m = /^\/api\/projects\/([^/]+)\/mate$/.exec(p))) body = fx.mates[m[1]] || { project: m[1], exchanges: [] };
       else if ((m = /^\/api\/projects\/([^/]+)$/.exec(p))) body = fx.projects[m[1]];
@@ -181,6 +182,31 @@ function taskBody(fx, project, crew) {
   const t = fx.projects[project].tasks.find(x => x.crew === crew);
   return { project, crew, ledger: t, turns: [], status_lines: [], questions: [], branch: { name: t.branch, exists: true },
     performance: { skills: [], segments: [], prompt_turns: [] } };
+}
+
+// boardBody is /api/board for the fixture's day (2026-10-03, +07:00): shop
+// works every day, docs-site only today, and the total is their sum.
+function boardBody(days) {
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) dates.push(new Date(Date.UTC(2026, 9, 3 - i)).toISOString().slice(0, 10));
+  const day = (date, o) => Object.assign({ date, tokens: { input: 0, cache_read: 0, cache_write: 0, output: 0, thinking: 0, total: 0 },
+    mate_tokens: 0, crew_tokens: 0, spawned: {}, closed: {}, reviews: {}, incidents: {} }, o);
+  const toks = n => ({ input: 0, cache_read: n, cache_write: 0, output: 0, thinking: 0, total: n });
+  const shop = dates.map((date, i) => i === days - 1
+    ? day(date, { tokens: toks(3000000), mate_tokens: 1000000, crew_tokens: 2000000, spawned: { ship: 2, review: 1 },
+        closed: { finished: 3, discarded: 1 }, reviews: { pass: 1, "changes-requested": 2 }, incidents: { stale: 1, budget: 2 } })
+    : day(date, { tokens: toks(2000000), mate_tokens: 500000, crew_tokens: 1500000, spawned: { ship: 1 },
+        closed: { finished: 2 }, reviews: { "changes-requested": 1 }, incidents: { stale: 1 } }));
+  const docs = dates.map((date, i) => i === days - 1
+    ? day(date, { tokens: toks(500000), crew_tokens: 500000, spawned: { scout: 1 }, closed: { didnt_start: 1 } })
+    : day(date));
+  const total = dates.map((date, i) => {
+    const a = shop[i], b = docs[i], sum = (x, y) => { const o = Object.assign({}, x); for (const k in y) o[k] = (o[k] || 0) + y[k]; return o; };
+    return day(date, { tokens: toks(a.tokens.total + b.tokens.total), mate_tokens: a.mate_tokens + b.mate_tokens, crew_tokens: a.crew_tokens + b.crew_tokens,
+      spawned: sum(a.spawned, b.spawned), closed: sum(a.closed, b.closed), reviews: sum(a.reviews, b.reviews), incidents: sum(a.incidents, b.incidents) });
+  });
+  return { generated_at: "2026-10-03T14:32:07.000000000Z", last_event_id: 1, days, zone: "+07:00", dates, total,
+    projects: [{ name: "shop", days: shop }, { name: "docs-site", days: docs }, { name: "infra", days: dates.map(d => day(d)) }] };
 }
 
 const byKey = (root, key) => root.querySelector(`[data-key="${key}"]`);
@@ -594,6 +620,63 @@ test("the page only ever GETs its own origin", async () => {
     assert.ok(r.url.startsWith("/api/"), r.url + " is not this origin's API");
     assert.equal(r.method || "GET", "GET", r.url + " is not a GET");
   }
+});
+
+
+// ------------------------------------------------------------ the daily board
+
+const kpi = (d, label) => d.querySelectorAll(".bk").find(n => n.querySelector(".bkl").text === label);
+
+test("the whiteboard in the hallway opens the daily board for the whole workspace", async () => {
+  const app = await boot();
+  await app.click(app.root.querySelector(".hall .dbd"));
+  assert.equal(app.hash(), "#board");
+  const d = app.drawer();
+  assert.equal(d.querySelector("h2").text, "Daily board");
+  assert.ok(d.classes.includes("drawer-cabinet"), "the board is wide");
+  assert.match(d.querySelector(".role").text, /workspace · by day/);
+  assert.match(d.querySelector(".dstate").text, /last 14 days.*days in \+07:00/);
+  assert.ok(app.requests.some(r => r.url === "/api/board?days=14"));
+  assert.equal(d.querySelectorAll("tbody tr").length, 14);
+  assert.equal(d.querySelector("tbody tr th").text, "Today", "newest first");
+});
+
+test("today is set against the average of the days before it, in tokens and counts", async () => {
+  const app = await boot({ hash: "#board" });
+  const d = app.drawer();
+  assert.match(kpi(d, "Tokens").text, /3\.5M.*avg 2M · \+75%/);
+  assert.ok(kpi(d, "Tokens").querySelector(".bkd").classes.includes("down"), "more tokens is not good news");
+  assert.match(kpi(d, "Done").text, /3.*avg 2\.0 · \+50%/);
+  assert.ok(kpi(d, "Done").querySelector(".bkd").classes.includes("up"));
+  assert.deepEqual([kpi(d, "Dropped").querySelector("b").text, kpi(d, "Dropped").querySelector(".bkd").text], ["2", "avg 0.0"]);
+  assert.match(kpi(d, "Rework").text, /2.*avg 1\.0 · \+100%/);
+  assert.deepEqual([kpi(d, "Over budget").querySelector("b").text, kpi(d, "Over budget").querySelector(".bkd").text], ["2", "avg 0.0"]);
+  assert.match(kpi(d, "Incidents").getAttribute("title"), /2 over budget, 1 stale/);
+  assert.match(kpi(d, "Opened").getAttribute("title"), /1 review, 1 scout, 2 ship/);
+  assert.doesNotMatch(d.text, /\$|USD|cost/i, "the board counts tokens, not money");
+  assert.doesNotMatch(d.querySelector("thead").text, /merged/i, "the timeline does not see every merge");
+});
+
+test("the board's range and project buttons re-read and narrow it", async () => {
+  const app = await boot({ hash: "#board" });
+  const rangeBtn = n => app.drawer().querySelectorAll(".bseg button").find(b => b.text === n);
+  await app.click(rangeBtn("7 days"));
+  assert.ok(app.requests.some(r => r.url === "/api/board?days=7"));
+  assert.match(app.drawer().querySelector(".dstate").text, /last 7 days/);
+  assert.equal(app.drawer().querySelectorAll("tbody tr").length, 7);
+  await app.click(rangeBtn("docs-site"));
+  const d = app.drawer();
+  assert.match(d.querySelector(".role").text, /docs-site · by day/);
+  assert.match(kpi(d, "Tokens").text, /500k.*avg 0/);
+  assert.match(kpi(d, "Dropped").getAttribute("title"), /1 didn't start/);
+  const today = d.querySelector("tbody tr");
+  assert.deepEqual(today.children.map(c => c.text), ["Today", "500k", "1", "0", "1", "0", "0", "0", "0"]);
+});
+
+test("on a phone the hallway has the board too", async () => {
+  const app = await boot({ phone: true });
+  await app.click(app.root.querySelector(".mhall .dbm"));
+  assert.equal(app.drawer().querySelector("h2").text, "Daily board");
 });
 
 // ------------------------------------------------------------ phone
