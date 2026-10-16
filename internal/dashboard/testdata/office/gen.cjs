@@ -14,7 +14,7 @@ function task(o) {
     crew: "", text: "", branch: "mate/" + o.crew, state: "", since: "", target: "", detail: "",
     closed: false, spawned_at: at(2 * h), age_ms: 2 * h, turns: 10, tokens: tokens(0, 0, 0, 0), cost: null,
     last_model: "", context_tokens_last: 0, context_pct: null, question_count: 0, handback_count: 0,
-    waited_ms: 0, tool_count: 0, harness: "claude"
+    waited_ms: 0, tool_count: 0, harness: "claude", role: "ship"
   }, o);
 }
 

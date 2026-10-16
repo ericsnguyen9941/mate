@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/db"
+	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
@@ -633,6 +634,42 @@ func TestTaskCarriesAReviewersVerdict(t *testing.T) {
 			f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
 			if got.Tasks[0].Review != c.review {
 				t.Fatalf("review = %q, want %q", got.Tasks[0].Review, c.review)
+			}
+		})
+	}
+}
+
+func TestTaskSaysItsRole(t *testing.T) {
+	for _, c := range []struct {
+		name, kind string
+		reviewer   bool
+		role       string
+	}{
+		{name: "ship", role: "ship"},
+		{name: "scout", kind: "scout", role: "scout"},
+		{name: "reviewer", reviewer: true, role: "review"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			if c.kind != "" {
+				meta, err := f.ws.ReadCrewMeta(fixtureProject, fixtureCrew)
+				if err != nil {
+					t.Fatal(err)
+				}
+				meta[spawn.MetaKind] = c.kind
+				if err := f.ws.WriteCrewMeta(fixtureProject, fixtureCrew, meta); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.reviewer {
+				if err := store.WriteMeta(f.ws.CrewReviewMeta(fixtureProject, fixtureCrew), map[string]string{"head": "abc"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var got ProjectResponse
+			f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
+			if got.Tasks[0].Role != c.role {
+				t.Fatalf("role = %q, want %q", got.Tasks[0].Role, c.role)
 			}
 		})
 	}

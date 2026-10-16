@@ -125,6 +125,8 @@ The UI shows newest exchanges first and reveals older ones in batches of 20.
 `failed_reason` is crew meta's `failed_reason=`, written when a spawn never came up; a crew closed with `crew stop --discard` is `failed` with none. A reviewer that delivered its Verdict is closed `reviewed` instead (CON-75).
 `reviews` names the reviewers `mate review` started for the task (crew meta `reviews=`, or a reviewer's `review.meta` naming the crew); `review_of` is the task a reviewer row reviewed; `tokens_with_reviews` is `tokens.total` plus every reviewer's total, so a task's cost with its reviews is one number (CON-75). The Office's cabinet peek reads it.
 
+`role` is what the task was for: `review` for a reviewer crew (it has `review.meta`), `scout` for a scout (crew meta `kind=scout`, or a brief with `## Deliverable` for a crew spawned before `kind` was recorded), else `ship`.
+
 `inbox` is `box.Inbox` flattened through `query.LoadBox`, oldest first, the same rows in the same order the console's rail draws.
 A failed box read leaves `inbox` empty and puts the reason in `inbox_error` rather than failing the page.
 
@@ -662,5 +664,7 @@ A `failed` task with a `failed_reason` is `didn't start`, the one red final stat
 Otherwise a reviewer shows its `review` however it was closed: `approved` (pass), `changes requested`, `review incomplete`, or `no verdict`.
 Then a task the timeline saw merged is `merged`, a `failed` task is `discarded`, because closing with `--discard` is a decision rather than a fault, and any other `close_state` is shown as it is, `finished` for most.
 A row shows its final state as a glyph only, one per state, with the word and why as its tooltip and accessible name, because the column is too narrow for `changes requested`; the summary above the table names each glyph with its count.
+
+Each cabinet row, and each task in the cabinet's peek, starts with a glyph for its `role`: code brackets for a ship (coding), a compass for a scout, a checked clipboard for a review; its tooltip names the role, and a review names the task it reviewed. A row without `role` shows the unknown glyph rather than passing for a ship.
 
 The Office filing cabinet includes a `Harness / model / effort` column. Harness comes from the recorded actor, model prefers `last_model` (observed) and falls back to `model` (requested launch setting), and `effort` is the requested launch setting retained in crew meta. These optional fields are omitted when unavailable; the cabinet displays `?` rather than guessing defaults. Requested effort is not proof of runtime effort. The cabinet is wider on desktop and its table scrolls horizontally on narrow screens.

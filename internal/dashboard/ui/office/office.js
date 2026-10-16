@@ -55,6 +55,9 @@
     moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
     arrowR: "M5 12h14M13 6l6 6-6 6",
     usage: "M4 20V11M10 20V4M16 20v-7M22 20H2",
+    ship: "M16 18l6-6-6-6M8 6l-6 6 6 6",
+    scout: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM15.5 8.5l-2 5-5 2 2-5z",
+    reviewer: "M9 3h6v3H9zM9 4.5H6a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1h-3M9 14l2 2 4-4",
     cabinet: "M5 3h14a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM4 9h16M4 15h16M10 6h4M10 12h4M10 18h4"
   };
 
@@ -618,6 +621,21 @@
     return { word: "closed", tone: "t-gone", icon: "done" };
   }
 
+  // What a task was for (Task.role): a change to a repo, an investigation
+  // that leaves a report, or a review of another task. A row older than
+  // the field reads as unknown rather than as a ship.
+  var ROLES = {
+    ship: { word: "coding", icon: "ship", why: "a change to the repo" },
+    scout: { word: "scout", icon: "scout", why: "an investigation; it leaves a report and commits nothing" },
+    review: { word: "review", icon: "reviewer", why: "a review of another task" }
+  };
+
+  function roleMark(t) {
+    var r = ROLES[t.role] || { word: "role unknown", icon: "unknown", why: "" };
+    var label = r.word + (t.role === "review" && t.review_of ? " of " + t.review_of : r.why ? ": " + r.why : "");
+    return el("span", { class: "rl tip rl-" + (ROLES[t.role] ? t.role : "unknown"), "data-tip": label, role: "img", "aria-label": label }, icon(r.icon));
+  }
+
   // A cabinet row's final state is its glyph alone: the column is narrow
   // and "changes requested" does not fit it. Every final state has its own
   // glyph, the summary above the table names each one, and the word and why
@@ -972,7 +990,7 @@
       closed.length ? closed.slice(0, 3).map(function (t) {
         var f = finalState(t);
         return el("span", { class: "pk" }, [
-          el("span", { class: "tn", text: t.crew }),
+          el("span", { class: "tk" }, [roleMark(t), el("span", { class: "tn", text: t.crew })]),
           el("span", { class: "pk-s " + f.tone, text: f.word }),
           el("span", { class: "tok", text: age(closedAt(t)) + " ago · " + tokensWithReviews(t) })
         ]);
@@ -1423,7 +1441,7 @@
         el("ul", { class: "tl" }, g.items.map(function (t) {
           var f = finalState(t);
           return el("li", { class: "tr", title: t.text || null }, [
-            el("span", { class: "tn", text: t.crew }),
+            el("span", { class: "tk" }, [roleMark(t), el("span", { class: "tn", text: t.crew })]),
             el("span", { class: "ta", "aria-label": "Harness / model / effort" }, [
               el("b", { text: harnessInfo(t.harness).name }),
               el("span", { class: "mono", text: t.last_model || t.model || "model ?",

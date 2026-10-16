@@ -385,6 +385,26 @@ test("the cabinet says what a review concluded and tells a start that never came
   assert.ok(!app.drawer().text.includes("failed"), "no row reads failed");
 });
 
+test("every cabinet row and the cabinet's peek show what the task was for", async () => {
+  const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "testdata/office/busy.json"), "utf8"));
+  const closed = fx.projects.shop.tasks.filter(t => t.closed);
+  Object.assign(closed[0], { role: "ship" });
+  Object.assign(closed[1], { role: "scout" });
+  Object.assign(closed[2], { role: "review", review_of: "login-flow", review: "pass" });
+  delete closed[3].role;
+  const app = await boot({ fixture: fx, hash: "#cabinet/shop" });
+  const rows = Object.fromEntries(app.drawer().querySelectorAll(".tr").map(r => [r.querySelector(".tn").text, r]));
+  const label = crew => rows[crew].querySelector(".rl").getAttribute("aria-label");
+  assert.match(label("login-flow"), /^coding/);
+  assert.match(label("search-facets"), /^scout/);
+  assert.equal(label("order-email"), "review of login-flow");
+  assert.equal(label("healthcheck"), "role unknown", "a row without a role is not taken for a ship");
+  const glyphs = Object.keys(rows).map(crew => rows[crew].querySelector(".rl path").getAttribute("d"));
+  assert.equal(new Set(glyphs).size, glyphs.length, "each role has its own glyph");
+  const peek = roomOf(app.root, "shop").querySelector(".cab .peek");
+  assert.deepEqual(peek.querySelectorAll(".pk .rl").map(r => r.getAttribute("aria-label").split(/[: ]/)[0]), ["coding", "scout", "review"]);
+});
+
 test("pressing a summary state shows only its tasks, pressing it again shows them all", async () => {
   const app = await boot({ hash: "#cabinet/shop" });
   const crews = () => app.drawer().querySelectorAll(".tn").map(n => n.text);
