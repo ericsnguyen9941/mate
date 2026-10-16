@@ -1382,5 +1382,285 @@
     }
    ]
   }
+ },
+ "news": {
+  "generated_at": "2026-10-03T14:32:07.000000000Z",
+  "last_event_id": 900,
+  "projects": [
+   {
+    "project": "shop",
+    "logged": true,
+    "news": [
+     {
+      "id": 4,
+      "title": "Primary button colour",
+      "context": [
+       "ui-polish asked twice",
+       "<img src=x onerror=alert(1)>"
+      ],
+      "options": [
+       {
+        "key": "a",
+        "text": "brand blue",
+        "recommended": true
+       },
+       {
+        "key": "b",
+        "text": "darker blue"
+       }
+      ],
+      "status": "new",
+      "opened_at": "2026-10-03T14:30:07.000000000Z",
+      "at": "2026-10-03T14:30:07.000000000Z",
+      "notes": [],
+      "crew": "ui-polish",
+      "kind": "decision",
+      "question": "Brand blue or the darker one?"
+     },
+     {
+      "id": 3,
+      "title": "Staging DB password",
+      "context": [],
+      "options": [],
+      "status": "waiting",
+      "opened_at": "2026-10-03T14:02:07.000000000Z",
+      "at": "2026-10-03T14:02:07.000000000Z",
+      "notes": [],
+      "crew": "db-migrate",
+      "kind": "key",
+      "seen_at": "2026-10-03T14:12:07.000000000Z",
+      "question": "Where is the staging password?"
+     },
+     {
+      "id": 2,
+      "title": "PR #41 ready",
+      "context": [],
+      "options": [],
+      "status": "working",
+      "opened_at": "2026-10-03T12:32:07.000000000Z",
+      "at": "2026-10-03T13:52:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-10-03T12:52:07.000000000Z",
+        "text": "CI is green"
+       }
+      ],
+      "crew": "api-fix",
+      "kind": "review",
+      "seen_at": "2026-10-03T13:02:07.000000000Z",
+      "answer": "[a] merge it",
+      "answered_at": "2026-10-03T13:52:07.000000000Z"
+     },
+     {
+      "id": 1,
+      "title": "Login tests flaky",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-10-01T14:32:07.000000000Z",
+      "at": "2026-10-02T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-10-02T14:32:07.000000000Z",
+        "text": "PR #38 merged"
+       }
+      ],
+      "crew": "login-flow",
+      "kind": "failure",
+      "seen_at": "2026-10-01T15:32:07.000000000Z",
+      "answer": "skip them",
+      "answered_at": "2026-10-01T15:32:07.000000000Z",
+      "archived": true
+     }
+    ]
+   },
+   {
+    "project": "docs-site",
+    "logged": true,
+    "news": [
+     {
+      "id": 11,
+      "title": "Old note 11",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-19T14:32:07.000000000Z",
+      "at": "2026-09-20T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-20T14:32:07.000000000Z",
+        "text": "closed 11"
+       }
+      ],
+      "seen_at": "2026-09-19T15:32:07.000000000Z"
+     },
+     {
+      "id": 10,
+      "title": "Old note 10",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-20T14:32:07.000000000Z",
+      "at": "2026-09-21T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-21T14:32:07.000000000Z",
+        "text": "closed 10"
+       }
+      ],
+      "seen_at": "2026-09-20T15:32:07.000000000Z"
+     },
+     {
+      "id": 9,
+      "title": "Old note 9",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-21T14:32:07.000000000Z",
+      "at": "2026-09-22T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-22T14:32:07.000000000Z",
+        "text": "closed 9"
+       }
+      ],
+      "seen_at": "2026-09-21T15:32:07.000000000Z"
+     },
+     {
+      "id": 8,
+      "title": "Old note 8",
+      "context": [],
+      "options": [],
+      "status": "dropped",
+      "opened_at": "2026-09-22T14:32:07.000000000Z",
+      "at": "2026-09-23T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-23T14:32:07.000000000Z",
+        "text": "closed 8"
+       }
+      ],
+      "seen_at": "2026-09-22T15:32:07.000000000Z"
+     },
+     {
+      "id": 7,
+      "title": "Old note 7",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-23T14:32:07.000000000Z",
+      "at": "2026-09-24T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-24T14:32:07.000000000Z",
+        "text": "closed 7"
+       }
+      ],
+      "seen_at": "2026-09-23T15:32:07.000000000Z"
+     },
+     {
+      "id": 6,
+      "title": "Old note 6",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-24T14:32:07.000000000Z",
+      "at": "2026-09-25T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-25T14:32:07.000000000Z",
+        "text": "closed 6"
+       }
+      ],
+      "seen_at": "2026-09-24T15:32:07.000000000Z"
+     },
+     {
+      "id": 5,
+      "title": "Old note 5",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-25T14:32:07.000000000Z",
+      "at": "2026-09-26T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-26T14:32:07.000000000Z",
+        "text": "closed 5"
+       }
+      ],
+      "seen_at": "2026-09-25T15:32:07.000000000Z"
+     },
+     {
+      "id": 4,
+      "title": "Old note 4",
+      "context": [],
+      "options": [],
+      "status": "dropped",
+      "opened_at": "2026-09-26T14:32:07.000000000Z",
+      "at": "2026-09-27T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-27T14:32:07.000000000Z",
+        "text": "closed 4"
+       }
+      ],
+      "seen_at": "2026-09-26T15:32:07.000000000Z"
+     },
+     {
+      "id": 3,
+      "title": "Old note 3",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-27T14:32:07.000000000Z",
+      "at": "2026-09-28T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-28T14:32:07.000000000Z",
+        "text": "closed 3"
+       }
+      ],
+      "seen_at": "2026-09-27T15:32:07.000000000Z"
+     },
+     {
+      "id": 2,
+      "title": "Old note 2",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-28T14:32:07.000000000Z",
+      "at": "2026-09-29T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-29T14:32:07.000000000Z",
+        "text": "closed 2"
+       }
+      ],
+      "seen_at": "2026-09-28T15:32:07.000000000Z"
+     },
+     {
+      "id": 1,
+      "title": "Old note 1",
+      "context": [],
+      "options": [],
+      "status": "done",
+      "opened_at": "2026-09-29T14:32:07.000000000Z",
+      "at": "2026-09-30T14:32:07.000000000Z",
+      "notes": [
+       {
+        "at": "2026-09-30T14:32:07.000000000Z",
+        "text": "closed 1"
+       }
+      ],
+      "seen_at": "2026-09-29T15:32:07.000000000Z"
+     }
+    ]
+   },
+   {
+    "project": "infra",
+    "logged": false,
+    "news": []
+   }
+  ]
  }
 }

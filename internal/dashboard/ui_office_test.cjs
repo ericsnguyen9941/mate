@@ -154,6 +154,7 @@ async function boot(opts = {}) {
         body = (fx.plugins || {})[project] || { project, apps: [] };
       }
       else if (p === "/api/now") body = fx.now;
+      else if (p === "/api/news") body = fx.news || { projects: [] };
       else if (p === "/api/board") body = boardBody(Number(u.searchParams.get("days")));
       else if (p === "/api/board/day") body = boardDayBody(u.searchParams.get("date"));
       else if ((m = /^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/.exec(p))) body = fx.tasks[m[1] + "/" + m[2]] || taskBody(fx, m[1], m[2]);
@@ -595,6 +596,102 @@ test("Escape, the close button and a click on the floor close the drawer", async
   assert.ok(!app.drawer().hasAttribute("hidden"));
   await app.click(app.root.querySelector("#floor"));
   assert.ok(app.drawer().hasAttribute("hidden"), "clicking the floor closes it");
+});
+
+// ------------------------------------------------------------ the captain's news
+
+const newsRows = (sec) => sec.querySelectorAll("button.nw");
+const newsSec = (d, label) => d.querySelector(`section[aria-label="${label}"]`);
+const kvOf = (n) => { const o = {}; const dt = n.querySelectorAll("dt"), dd = n.querySelectorAll("dd"); dt.forEach((t, i) => { o[t.text] = dd[i].text; }); return o; };
+const newsRow = (d, title) => d.querySelectorAll("button.nw").find(b => b.querySelector(".nwt b").text === title);
+
+test("the captain's desk says how much news is unread and opens the news from every Mate", async () => {
+  const app = await boot();
+  const desk = app.root.querySelector(".cap");
+  assert.match(desk.text, /1 question waiting.*1 news unread/);
+  await app.click(desk);
+  assert.equal(app.hash(), "#captain");
+  const d = app.drawer();
+  assert.ok(!d.hasAttribute("hidden"));
+  assert.equal(d.querySelector("h2").text, "News from the Mates");
+  assert.match(d.querySelector(".dstate").text, /1 unread, 1 to answer/);
+
+  // What the captain owes comes first, newest first, each with where it
+  // stands; what the Mate is on next; closed news below, the latest ten.
+  const waiting = newsSec(d, "Waiting on you");
+  assert.deepEqual(newsRows(waiting).map(b => b.querySelector(".nwt b").text), ["Primary button colour", "Staging DB password"]);
+  assert.match(newsRows(waiting)[0].text, /shop · ui-polish · #4 · unread/);
+  assert.ok(newsRows(waiting)[0].classes.includes("unread"));
+  assert.match(newsRows(waiting)[1].text, /#3 · read, not answered/);
+  assert.match(newsRows(newsSec(d, "The Mate is on it"))[0].text, /PR #41 ready.*answered, Mate on it/);
+  const earlier = newsSec(d, "Earlier");
+  const old = newsRows(earlier);
+  assert.equal(old.length, 10, "the latest ten closed news");
+  assert.match(old[0].text, /Login tests flaky.*shop · login-flow · #1 · closed/);
+  assert.ok(old.some(b => /Old note 8.*dropped/.test(b.text)));
+  await app.click(earlier.querySelector(".news-more"));
+  assert.equal(newsRows(newsSec(app.drawer(), "Earlier")).length, 12, "Show all lists every closed news");
+  assert.match(app.drawer().text, /Read-only/);
+});
+
+test("a news opens into its question, options, when it was read and answered, and the Mate's updates", async () => {
+  const app = await boot({ hash: "#captain" });
+  await app.click(newsRow(app.drawer(), "Primary button colour"));
+  let body = app.drawer().querySelector(".nli.open .nwb");
+  assert.match(body.text, /Brand blue or the darker one\?/);
+  assert.deepEqual(body.querySelectorAll(".nopt li").map(li => li.text), ["a brand blue recommended", "b darker blue"]);
+  let kv = kvOf(body);
+  assert.equal(kv.Status, "unread");
+  assert.equal(kv.Read, "not yet");
+  assert.equal(kv.Answered, "not yet");
+  assert.equal(app.root.querySelectorAll("img").length, 0, "the Mate's context stays text");
+  assert.match(body.text, /<img src=x onerror=alert\(1\)>/);
+
+  await app.click(newsRow(app.drawer(), "PR #41 ready"));
+  body = app.drawer().querySelectorAll(".nli.open .nwb")[1];
+  kv = kvOf(body);
+  assert.equal(kv.Status, "answered, Mate on it");
+  assert.match(kv.Read, /^Oct 3 .* · 1h ago$/);
+  assert.match(kv.Answered, /^Oct 3 .* · 40m ago$/);
+  assert.equal(kv["Your answer"], "[a] merge it");
+  assert.match(body.querySelector(".nnotes").text, /CI is green/);
+
+  // Opening news is a view: nothing but GETs, and no seen is written.
+  for (const r of app.requests) assert.equal(r.method || "GET", "GET", r.url);
+  assert.ok(app.requests.some(r => r.url === "/api/news"));
+});
+
+test("a Mate whose news cannot be read says so and the others still show", async () => {
+  const fx = fixture();
+  fx.news.projects[1] = { project: "docs-site", logged: true, news: [], error: "permission denied" };
+  const app = await boot({ fixture: fx, hash: "#captain" });
+  const d = app.drawer();
+  assert.equal(d.querySelector(".news-err").text, "docs-site: news ?");
+  assert.equal(d.querySelector(".news-err").getAttribute("title"), "permission denied");
+  assert.equal(newsRows(newsSec(d, "Earlier")).length, 1);
+});
+
+test("when the news cannot be read the desk says news ? and the drawer says why", async () => {
+  const app = await boot({ fail: { "/api/news": "news.jsonl is locked" } });
+  assert.match(app.root.querySelector(".cap").text, /news \?/);
+  await app.click(app.root.querySelector(".cap"));
+  assert.match(app.drawer().text, /The news could not be read: news.jsonl is locked/);
+});
+
+test("with no news log anywhere the drawer says where news comes from", async () => {
+  const fx = fixture();
+  fx.news.projects = fx.news.projects.map(p => ({ project: p.project, logged: false, news: [] }));
+  const app = await boot({ fixture: fx, hash: "#captain" });
+  assert.match(app.root.querySelector(".cap").text, /no news waiting/);
+  assert.match(app.drawer().text, /No Mate has opened a news log/);
+});
+
+test("on a phone the captain's card opens the news too", async () => {
+  const app = await boot({ phone: true });
+  const card = app.root.querySelector(".mcap");
+  assert.match(card.text, /1 news unread/);
+  await app.click(card);
+  assert.equal(app.drawer().querySelector("h2").text, "News from the Mates");
 });
 
 // ------------------------------------------------------------ unknowns

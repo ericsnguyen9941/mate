@@ -147,7 +147,33 @@ const shopPlugins = Object.assign({}, env, { project: "shop", apps: [
     error: "/ws/.mate/plugins.yaml: instance notes: package path /ws/<img src=x onerror=alert(1)> is not a directory" }
 ] });
 
+// GET /api/news (CON-97): shop's Mate has one news unread, one read and
+// not answered, one answered, and one closed; docs-site's has a long
+// history of closed ones; infra's Mate never opened a news log.
+const news1 = (o) => Object.assign({ id: 0, title: "", context: [], options: [], status: "new", opened_at: "", at: "", notes: [] }, o);
+const shopNews = [
+  news1({ id: 4, crew: "ui-polish", kind: "decision", title: "Primary button colour", status: "new", opened_at: at(2 * m), at: at(2 * m),
+    context: ["ui-polish asked twice", "<img src=x onerror=alert(1)>"], question: "Brand blue or the darker one?",
+    options: [{ key: "a", text: "brand blue", recommended: true }, { key: "b", text: "darker blue" }] }),
+  news1({ id: 3, crew: "db-migrate", kind: "key", title: "Staging DB password", status: "waiting", opened_at: at(30 * m), at: at(30 * m),
+    seen_at: at(20 * m), question: "Where is the staging password?" }),
+  news1({ id: 2, crew: "api-fix", kind: "review", title: "PR #41 ready", status: "working", opened_at: at(2 * h), at: at(40 * m),
+    seen_at: at(90 * m), answer: "[a] merge it", answered_at: at(40 * m), notes: [{ at: at(100 * m), text: "CI is green" }] }),
+  news1({ id: 1, crew: "login-flow", kind: "failure", title: "Login tests flaky", status: "done", opened_at: at(2 * d), at: at(1 * d),
+    seen_at: at(2 * d - h), answer: "skip them", answered_at: at(2 * d - h), notes: [{ at: at(1 * d), text: "PR #38 merged" }], archived: true })
+];
+const docsNews = [];
+for (let i = 11; i >= 1; i--) {
+  docsNews.push(news1({ id: i, title: "Old note " + i, status: i % 4 === 0 ? "dropped" : "done", opened_at: at((i + 3) * d), at: at((i + 2) * d),
+    seen_at: at((i + 3) * d - h), notes: [{ at: at((i + 2) * d), text: "closed " + i }] }));
+}
+const newsBody = Object.assign({}, env, { projects: [
+  { project: "shop", logged: true, news: shopNews },
+  { project: "docs-site", logged: true, news: docsNews },
+  { project: "infra", logged: false, news: [] }
+] });
+
 const out = { now_ms: NOW, workspace, now: Object.assign({}, env, { now }), projects, tasks: { "shop/db-migrate": dbTask }, mates: { shop: shopMate },
-  plugins: { shop: shopPlugins } };
+  plugins: { shop: shopPlugins }, news: newsBody };
 fs.writeFileSync(process.argv[2], JSON.stringify(out, null, 1) + "\n");
 console.log("ok", process.argv[2]);

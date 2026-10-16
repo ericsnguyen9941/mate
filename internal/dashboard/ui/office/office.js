@@ -360,6 +360,9 @@
   var boardDays = storedBoardDays();
   var boardProject = "";      // "" is the whole workspace
   var boardDay = null;        // /api/board/day: {date, body} | {date, error}
+  var news = null;            // /api/news: {body} | {error}
+  var newsOpen = {};          // "<project>/<id>" -> true for each news opened up in the captain drawer
+  var newsEarlierAll = false; // the captain drawer lists every closed news, not only the latest
 
   function parseHash() {
     var h = (window.location.hash || "").replace(/^#\/?/, "");
@@ -369,6 +372,7 @@
     });
     if (parts[0] === "mate" && parts[1]) return { kind: "mate", project: parts[1] };
     if (parts[0] === "cabinet" && parts[1]) return { kind: "cab", project: parts[1] };
+    if (parts[0] === "captain") return { kind: "captain" };
     if (parts[0] === "board") return parts[1] ? { kind: "board", date: parts[1] } : { kind: "board" };
     if (parts[0] === "crew" && parts[1] && parts[2]) return { kind: "crew", project: parts[1], crew: parts[2] };
     return null;
@@ -379,6 +383,7 @@
     if (s.kind === "crew") return "crew/" + enc(s.project) + "/" + enc(s.crew);
     if (s.kind === "cab") return "cabinet/" + enc(s.project);
     if (s.kind === "board") return "board" + (s.date ? "/" + enc(s.date) : "");
+    if (s.kind === "captain") return "captain";
     return "mate/" + enc(s.project);
   }
 
@@ -441,7 +446,8 @@
         // The smallest id any of the bodies was built at: polling from it
         // can only fetch an event twice, never miss one.
         lastEventID = Math.min.apply(null, ids);
-        return loadDetail();
+        // An open captain drawer reads the news in loadDetail already.
+        return Promise.all([loadDetail(), sel && sel.kind === "captain" ? null : loadNews()]);
       });
     }).then(function () {
       if (token !== pollToken) return;
@@ -459,6 +465,7 @@
     var s = sel;
     var key = selKey(s);
     var token = ++detailToken;
+    if (s && s.kind === "captain") return loadNews();
     if (!s || s.kind === "cab") return Promise.resolve();
     if (s.kind === "board") return Promise.all([loadBoard(), s.date ? loadBoardDay(s.date) : null]);
     if (!detail || detail.key !== key) detail = { key: key, loading: true };
@@ -480,6 +487,20 @@
       }));
     }
     return Promise.all(reads);
+  }
+
+  // loadNews reads every Mate's news (GET /api/news) for the captain's desk
+  // and drawer. It never fails the page: an error is kept and shown, and
+  // the promise says whether anything changed.
+  function loadNews() {
+    var before = news ? JSON.stringify(news.body ? news.body.projects : news.error.message) : "";
+    return api("/api/news").then(function (body) {
+      news = { body: body };
+    }, function (err) {
+      news = { error: err };
+    }).then(function () {
+      return JSON.stringify(news.body ? news.body.projects : news.error.message) !== before;
+    });
   }
 
   function markLive() {
@@ -516,8 +537,13 @@
         loadDetail().then(function () { if (token === pollToken) { draw(); poll(); } });
         return;
       }
-      drawLive();
-      poll();
+      // News is a file the REPL writes, not an event: a quiet poll reads
+      // it again, and redraws only when it moved.
+      loadNews().then(function (changed) {
+        if (token !== pollToken) return;
+        if (changed) draw(); else drawLive();
+        poll();
+      });
     }, function (err) {
       if (token !== pollToken) return;
       markStale(err.reason || err.message);
@@ -817,9 +843,37 @@
     return s.n + (short ? " in the inbox" : " waiting in the inbox");
   }
 
+  // newsSummary counts every Mate's news by what the captain owes it:
+  // unread (new), read but not answered (waiting), answered and with the
+  // Mate (working). known is false until /api/news has answered.
+  function newsSummary() {
+    var s = { known: false, unread: 0, waiting: 0, working: 0, closed: 0 };
+    if (!news || !news.body) return s;
+    s.known = true;
+    (news.body.projects || []).forEach(function (p) {
+      if (p.error) s.known = false;
+      (p.news || []).forEach(function (n) {
+        if (n.status === "new") s.unread++;
+        else if (n.status === "waiting") s.waiting++;
+        else if (n.status === "working") s.working++;
+        else s.closed++;
+      });
+    });
+    return s;
+  }
+
+  function newsWords(s) {
+    if (!s.known && !s.unread && !s.waiting) return "news ?";
+    if (s.unread) return plural(s.unread, "news", "news") + " unread";
+    if (s.waiting) return plural(s.waiting, "news", "news") + " to answer";
+    return "no news waiting";
+  }
+
   function captainDesk() {
     var s = inboxSummary();
-    return el("div", { class: "cap", role: "group", "aria-label": "Captain's desk" }, [
+    var ns = newsSummary();
+    var btn = el("button", { class: "cap" + (sel && sel.kind === "captain" ? " sel" : ""), type: "button",
+      "aria-label": "Captain's desk: " + inboxWords(s) + ", " + newsWords(ns) }, [
       el("span", { class: "mart", "aria-hidden": "true" }, [
         el("span", { class: "m-chair" }), el("span", { class: "m-head" }), el("span", { class: "c-hat" }),
         el("span", { class: "m-body", style: "background:#46566B" }), el("span", { class: "m-desk" }),
@@ -827,8 +881,10 @@
         el("span", { class: "tray" }, s.n > 0 ? el("b", { text: String(s.n) }) : null),
         el("span", { class: "m-plate", text: "Captain · you" })
       ]),
-      el("span", { class: "capq" + (s.n > 0 ? "" : " none") }, [icon("ask"), inboxWords(s)])
+      el("span", { class: "capq" + (s.n > 0 ? "" : " none") }, [icon("ask"), inboxWords(s)]),
+      el("span", { class: "capq capn" + (ns.unread || ns.waiting ? "" : " none") }, [icon("mail"), newsWords(ns)])
     ]);
+    return pickable(btn, "captain");
   }
 
   function hallFigures() {
@@ -1044,16 +1100,19 @@
 
   function mobileHall() {
     var s = inboxSummary();
+    var ns = newsSummary();
     var figs = [];
     projectNames().forEach(function (n) {
       openTasks(n).forEach(function (t) { if (isAway(t.state)) figs.push(tile(n, t, true)); });
     });
     return el("section", { class: "mhall", "aria-label": "Hallway" }, [
-      el("div", { class: "mcap" }, [
+      pickable(el("button", { class: "mcap" + (sel && sel.kind === "captain" ? " sel" : ""), type: "button",
+        "aria-label": "Captain's desk: " + inboxWords(s) + ", " + newsWords(ns) }, [
         el("span", { class: "cav", "aria-hidden": "true" }, [el("span", { class: "c-b" }), el("span", { class: "c-h" }), el("span", { class: "c-hat2" })]),
         el("span", { class: "mct" }, [el("b", { text: "Captain · you" }),
-          el("span", { class: "capq" + (s.n > 0 ? "" : " none") }, [icon("ask"), inboxWords(s, true)])])
-      ]),
+          el("span", { class: "capq" + (s.n > 0 ? "" : " none") }, [icon("ask"), inboxWords(s, true)]),
+          el("span", { class: "capq capn" + (ns.unread || ns.waiting ? "" : " none") }, [icon("mail"), newsWords(ns)])])
+      ]), "captain"),
       figs.length ? el("div", { class: "mfigs" }, figs) : null,
       boardButton(true)
     ]);
@@ -1485,9 +1544,138 @@
     if (!sel) { aside.setAttribute("hidden", ""); return aside; }
     aside.appendChild(el("span", { class: "grab", "aria-hidden": "true" }));
     var nodes = sel.kind === "mate" ? mateDrawer(sel.project) : sel.kind === "crew" ? crewDrawer(sel.project, sel.crew)
-      : sel.kind === "board" ? boardDrawer() : cabinetDrawer(sel.project);
+      : sel.kind === "board" ? boardDrawer() : sel.kind === "captain" ? captainDrawer() : cabinetDrawer(sel.project);
     append(aside, nodes);
     return aside;
+  }
+
+  // ------------------------------------------------------------ the captain's news
+
+  // A news's status in the captain's words (matehost's News statuses).
+  var NEWS_STATES = {
+    "new": { word: "unread", tone: "t-wait", icon: "mail" },
+    waiting: { word: "read, not answered", tone: "t-info", icon: "read" },
+    working: { word: "answered, Mate on it", tone: "t-ok", icon: "answer" },
+    done: { word: "closed", tone: "t-gone", icon: "done" },
+    dropped: { word: "dropped", tone: "t-gone", icon: "failed" }
+  };
+  function newsState(status) {
+    return NEWS_STATES[status] || { word: status ? String(status) : "unknown", tone: "t-gone", icon: "unknown" };
+  }
+
+  var EARLIER_SHOWN = 10;
+
+  // The captain's drawer (CON-97): what the Mates sent the captain with
+  // `mate news open`, from every project, and where each stands. It is a
+  // view: a news is read and answered in its Mate's REPL, and opening one
+  // here marks nothing seen.
+  function captainDrawer() {
+    var ns = newsSummary();
+    var owed = ns.unread + ns.waiting;
+    var head = drawerHead(el("span", { class: "dav", "aria-hidden": "true" },
+      [el("span", { class: "d-head", style: "background:var(--head)" }), el("span", { class: "d-body", style: "background:#46566B" })]),
+    ["Captain · you"], "News from the Mates",
+    chip(owed ? newsState(ns.unread ? "new" : "waiting") : { word: "", tone: "t-gone", icon: "mail" },
+      ns.unread ? ns.unread + " unread" + (ns.waiting ? ", " + ns.waiting + " to answer" : "")
+        : owed ? ns.waiting + " to answer" : news && news.body ? "nothing waiting" : "news ?"), null);
+    if (!news) return [head, el("p", { class: "cab-empty", text: "loading…" })];
+    if (news.error) return [head, el("p", { class: "cab-empty err-note", text: "The news could not be read: " + (news.error.reason || news.error.message) })];
+
+    var all = [];
+    var broken = [];
+    var logged = 0;
+    (news.body.projects || []).forEach(function (p) {
+      if (p.logged) logged++;
+      if (p.error) broken.push(p);
+      (p.news || []).forEach(function (n) { all.push({ project: p.project, n: n }); });
+    });
+    all.sort(function (a, b) { return (parseAt(b.n.at) || 0) - (parseAt(a.n.at) || 0); });
+    var owedList = all.filter(function (x) { return x.n.status === "new" || x.n.status === "waiting"; });
+    var working = all.filter(function (x) { return x.n.status === "working"; });
+    var earlier = all.filter(function (x) { return x.n.status !== "new" && x.n.status !== "waiting" && x.n.status !== "working"; });
+
+    var nodes = [head];
+    broken.forEach(function (p) {
+      nodes.push(el("p", { class: "err-note news-err", text: p.project + ": news ?", title: p.error }));
+    });
+    if (!all.length) {
+      nodes.push(el("p", { class: "cab-empty", text: logged
+        ? "No Mate has sent you news yet."
+        : "No Mate has opened a news log. News comes from a headless Mate (mate news open)." }));
+    } else {
+      nodes.push(newsSection("Waiting on you", owedList, "Nothing is waiting on you."));
+      if (working.length) nodes.push(newsSection("The Mate is on it", working));
+      if (earlier.length) {
+        var shown = newsEarlierAll ? earlier : earlier.slice(0, EARLIER_SHOWN);
+        var sec = newsSection("Earlier", shown);
+        if (earlier.length > shown.length) {
+          var more = el("button", { class: "link news-more", type: "button", "data-focus": "news-more" }, "Show all " + earlier.length);
+          more.addEventListener("click", function () { newsEarlierAll = true; draw(); });
+          sec.appendChild(more);
+        }
+        nodes.push(sec);
+      }
+    }
+    nodes.push(el("p", { class: "loading-note news-ro", text: "Read-only: open and answer a news in its Mate's REPL (^T)." }));
+    return nodes;
+  }
+
+  function newsSection(title, list, empty) {
+    return el("section", { class: "ds", "aria-label": title }, [
+      el("h3", { class: "sh" }, [title + " ", el("span", { text: list.length ? String(list.length) : "" })]),
+      list.length ? el("ul", { class: "nl" }, list.map(newsRow)) : el("p", { class: "loading-note", text: empty || "" })
+    ]);
+  }
+
+  function newsRow(x) {
+    var n = x.n;
+    var key = x.project + "/" + n.id;
+    var st = newsState(n.status);
+    var open = !!newsOpen[key];
+    var meta = [x.project, n.crew || null, "#" + n.id].filter(Boolean).join(" · ");
+    var btn = el("button", { class: "nw" + (n.status === "new" ? " unread" : ""), type: "button", "aria-expanded": open ? "true" : "false",
+      "aria-label": n.title + ", " + st.word + ", " + meta, "data-focus": "news:" + key }, [
+      icoChip(st),
+      el("span", { class: "nwt" }, [el("b", { text: n.title }), el("small", { text: meta + " · " + st.word })]),
+      el("span", { class: "nwa", title: n.at || null, text: age(n.at) + " ago" })
+    ]);
+    btn.addEventListener("click", function () {
+      if (open) delete newsOpen[key]; else newsOpen[key] = true;
+      draw();
+    });
+    return el("li", { class: "nli" + (open ? " open" : "") }, [btn, open ? newsBody(n) : null]);
+  }
+
+  function when(ts) {
+    return ts ? monthDay(ts) + " " + clock(ts) + " · " + age(ts) + " ago" : null;
+  }
+
+  function newsBody(n) {
+    var st = newsState(n.status);
+    var nodes = [];
+    if (n.question) nodes.push(el("p", { class: "stl", text: n.question }));
+    if ((n.context || []).length) nodes.push(el("ul", { class: "nctx" }, n.context.map(function (c) { return el("li", { text: c }); })));
+    if ((n.options || []).length) {
+      nodes.push(el("ul", { class: "nopt" }, n.options.map(function (o) {
+        return el("li", null, [el("b", { class: "mono", text: o.key }), " " + o.text, o.recommended ? el("small", { text: " recommended" }) : null]);
+      })));
+    }
+    var kv = [
+      el("dt", { text: "Status" }), el("dd", null, chip(st)),
+      el("dt", { text: "Sent" }), el("dd", { text: when(n.opened_at) || "?" }),
+      el("dt", { text: "Read" }), el("dd", { class: n.seen_at || n.status !== "new" ? null : "gone",
+        text: n.seen_at ? when(n.seen_at) : n.status === "new" ? "not yet" : "yes" }),
+      el("dt", { text: "Answered" }), el("dd", { class: n.answered_at || n.answer ? null : "gone",
+        text: n.answered_at ? when(n.answered_at) : n.answer ? "yes" : "not yet" })
+    ];
+    if (n.answer) kv.push(el("dt", { text: "Your answer" }), el("dd", { class: "nans", text: n.answer }));
+    nodes.push(el("dl", { class: "kv nkv" }, kv));
+    if ((n.notes || []).length) {
+      nodes.push(el("ul", { class: "nnotes", "aria-label": "Updates from the Mate" }, n.notes.map(function (x) {
+        return el("li", null, [el("span", { class: "mono", title: x.at || null, text: x.at ? monthDay(x.at) + " " + clock(x.at) : "?" }), el("span", { text: x.text })]);
+      })));
+    }
+    return el("div", { class: "nwb" }, nodes);
   }
 
   // ------------------------------------------------------------ the daily board

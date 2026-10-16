@@ -73,9 +73,12 @@ type News struct {
 	OpenedAt time.Time  `json:"opened_at"`
 	At       time.Time  `json:"at"`
 	Notes    []NewsNote `json:"notes,omitempty"`
-	// Answer is the captain's last answer.
-	Answer   string `json:"answer,omitempty"`
-	Archived bool   `json:"archived,omitempty"`
+	// SeenAt is when the captain last opened the news while it was new.
+	SeenAt time.Time `json:"seen_at,omitzero"`
+	// Answer is the captain's last answer, AnsweredAt when it was given.
+	Answer     string    `json:"answer,omitempty"`
+	AnsweredAt time.Time `json:"answered_at,omitzero"`
+	Archived   bool      `json:"archived,omitempty"`
 }
 
 // Owed reports whether the news waits on the captain.
@@ -270,11 +273,11 @@ func LoadNews(path string) ([]News, error) {
 			}
 		case opSeen:
 			if n.Status == NewsNew {
-				n.Status = NewsWaiting
+				n.Status, n.SeenAt = NewsWaiting, ev.At
 			}
 			continue
 		case opAnswer:
-			n.Answer, n.Status = ev.Text, NewsWorking
+			n.Answer, n.Status, n.AnsweredAt = ev.Text, NewsWorking, ev.At
 		case opFailed:
 			if n.Status == NewsWorking {
 				n.Status = NewsWaiting
