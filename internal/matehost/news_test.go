@@ -136,10 +136,13 @@ func TestREPLNewsScreens(t *testing.T) {
 		}
 		press(tea.KeyMsg{Type: tea.KeyCtrlT})
 		list := ansi.Strip(m.View())
-		for _, want := range []string{"News", "2 chờ anh · 0 Mate xử lý · 1 xong", "CHỜ ANH", "▸ ● #4", "XONG HÔM NAY", "✓ #1"} {
+		for _, want := range []string{"News", "2 chờ anh · 0 Mate xử lý · 1 xong", "CHỜ ANH", "▸ ● #4", "✓ 1 xong hôm nay · Tab xem"} {
 			if !strings.Contains(list, want) {
 				t.Errorf("list@%d lacks %q:\n%s", w, want, list)
 			}
+		}
+		if strings.Contains(list, "✓ #1") {
+			t.Errorf("list@%d shows a closed news unfolded:\n%s", w, list)
 		}
 		wheel := func(b tea.MouseButton) {
 			next, _ := m.Update(tea.MouseMsg{Button: b, Action: tea.MouseActionPress})
@@ -223,5 +226,86 @@ func TestREPLChatNewsReference(t *testing.T) {
 	}
 	if v := ansi.Strip(m.View()); !strings.Contains(v, "✓ Đã ghi vào #3 · u hoàn tác") {
 		t.Errorf("no confirmation in the tray:\n%s", v)
+	}
+}
+
+// A closed news is out of the captain's way: folded in the list, read
+// only when opened, and the host refuses an answer that would reopen it.
+func TestREPLClosedNewsReadOnly(t *testing.T) {
+	m := newsModel(100, 30)
+	m.host = New(&Runner{}, Options{})
+	press := func(k tea.KeyMsg) {
+		next, _ := m.key(k)
+		m = next.(Model)
+	}
+	press(tea.KeyMsg{Type: tea.KeyCtrlT})
+	if got := len(m.listFlat()); got != 2 {
+		t.Fatalf("folded list selects %d news, want 2", got)
+	}
+	press(tea.KeyMsg{Type: tea.KeyTab})
+	list := ansi.Strip(m.View())
+	for _, want := range []string{"XONG HÔM NAY", "✓ #1", "x lưu trữ"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("unfolded list lacks %q:\n%s", want, list)
+		}
+	}
+	press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	if m.mode != viewNews || m.newsID != 1 {
+		t.Fatalf("3 opened mode %d news #%d", m.mode, m.newsID)
+	}
+	for _, r := range "a lại" {
+		press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	press(tea.KeyMsg{Type: tea.KeyEnter})
+	if len(m.input) != 0 || m.pending != nil {
+		t.Fatalf("a closed news took input %q, pending %+v", string(m.input), m.pending)
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "#1 đã xong · chỉ đọc") || strings.Contains(v, "Ghi thêm") {
+		t.Errorf("closed news still offers a composer:\n%s", v)
+	}
+
+	press(tea.KeyMsg{Type: tea.KeyEsc})
+	for _, r := range "#1 a" {
+		press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if m.chatNewsRef("#1 a") || m.pending != nil || !strings.Contains(m.note, "#1 đã xong") {
+		t.Fatalf("a chat reference to a closed news: pending %+v, note %q", m.pending, m.note)
+	}
+}
+
+func TestHostRefusesAnAnswerToAClosedNews(t *testing.T) {
+	f := newFixture(t)
+	path := filepath.Join(f.dir, NewsName)
+	now := time.Now()
+	if _, err := OpenNews(path, News{Title: "Vượt ngân sách"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := CloseNews(path, 1, "Crew đã trả PR", true, now); err != nil {
+		t.Fatal(err)
+	}
+	f.host.RefreshNews()
+	if err := f.host.AnswerNews(1, "cho chạy tiếp"); err == nil {
+		t.Fatal("answered a closed news")
+	}
+	list, _ := LoadNews(path)
+	if list[0].Status != NewsDropped || list[0].Answer != "" {
+		t.Fatalf("news = %+v", list[0])
+	}
+}
+
+// A news the Mate works long after the captain answered reads as not
+// closed, so the captain sees whose move it is.
+func TestREPLNewsNotClosed(t *testing.T) {
+	m := newsModel(100, 30)
+	m.news = append(m.news, News{ID: 5, Title: "HVN-53 vượt ngân sách", Status: NewsWorking, Answer: "cho chạy tiếp",
+		OpenedAt: m.now().Add(-2 * time.Hour), At: m.now().Add(-unclosedAfter)})
+	m.news = append(m.news, News{ID: 6, Title: "PR #64", Status: NewsWorking, Answer: "merge",
+		OpenedAt: m.now().Add(-time.Hour), At: m.now().Add(-time.Minute)})
+	m.mode, m.listFrom = viewList, viewChat
+	list := ansi.Strip(m.View())
+	for _, want := range []string{"Mate chưa đóng", "Mate xử lý"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("list lacks %q:\n%s", want, list)
+		}
 	}
 }

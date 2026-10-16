@@ -24,6 +24,10 @@ const (
 	undoDelay   = 5 * time.Second
 	confirmFor  = 5 * time.Second
 	listMaxRows = 12
+	// unclosedAfter is how long a news may be worked after the captain's
+	// answer before the list says the Mate has not closed it: the captain
+	// owes nothing, the Mate likely forgot `mate news close`.
+	unclosedAfter = 30 * time.Minute
 )
 
 var (
@@ -64,8 +68,8 @@ func (m Model) owed() []News {
 	return out
 }
 
-// listed are the news the list shows, in its three groups: owed, being
-// handled, closed today.
+// listed are the news of the list's three groups: owed, being handled,
+// closed today.
 func (m Model) listed() (owed, working, closed []News) {
 	today := m.now().Format("2006-01-02")
 	for _, n := range m.news {
@@ -87,9 +91,15 @@ func (m Model) listed() (owed, working, closed []News) {
 	return
 }
 
+// listFlat are the rows the list selects: the news closed today only
+// while Tab has unfolded them.
 func (m Model) listFlat() []News {
 	a, b, c := m.listed()
-	return append(append(append([]News(nil), a...), b...), c...)
+	out := append(append([]News(nil), a...), b...)
+	if m.listClosed {
+		out = append(out, c...)
+	}
+	return out
 }
 
 // --- moving between views ---
@@ -237,6 +247,9 @@ func (m Model) listKey(k tea.KeyMsg) Model {
 	switch k.Type {
 	case tea.KeyEsc:
 		m.mode = m.listFrom
+	case tea.KeyTab:
+		m.listClosed = !m.listClosed
+		m.listSel = min(m.listSel, max(0, len(m.listFlat())-1))
 	case tea.KeyUp:
 		m.listSel = max(0, m.listSel-1)
 	case tea.KeyDown:
@@ -282,6 +295,18 @@ func (m Model) newsViewKey(k tea.KeyMsg) (Model, bool) {
 	case tea.KeyPgDown:
 		m.scrollView(-max(1, m.viewRows()-2))
 		return m, true
+	}
+	if n.Closed() {
+		// A closed news is read, not answered: no composer takes the key.
+		switch k.Type {
+		case tea.KeyUp:
+			m.scrollView(1)
+		case tea.KeyDown:
+			m.scrollView(-1)
+		}
+		return m, true
+	}
+	switch k.Type {
 	case tea.KeyTab:
 		if m.focusOptions {
 			m.focusOptions = false
@@ -341,6 +366,10 @@ func (m *Model) chatNewsRef(text string) bool {
 	if !ok {
 		return false
 	}
+	if n.Closed() {
+		m.note = fmt.Sprintf("#%d đã xong nên tin này gửi cho Mate như tin thường", id)
+		return false
+	}
 	answer := strings.TrimSpace(g[2])
 	for _, o := range n.Options {
 		if strings.EqualFold(answer, o.Key) || strings.EqualFold(answer, "chọn "+o.Key) {
@@ -353,13 +382,18 @@ func (m *Model) chatNewsRef(text string) bool {
 
 // --- drawing ---
 
-func newsStatus(n News) (glyph, label string, style lipgloss.Style) {
+// newsStatus is how a news reads at now. A news worked unclosedAfter past
+// the captain's answer reads as the Mate not having closed it.
+func newsStatus(n News, now time.Time) (glyph, label string, style lipgloss.Style) {
 	switch n.Status {
 	case NewsNew:
 		return "●", "mới", styleAttention.Bold(true)
 	case NewsWaiting:
 		return "●", "chờ anh", styleAttention
 	case NewsWorking:
+		if now.Sub(n.At) >= unclosedAfter {
+			return "⠋", "Mate chưa đóng", styleAttention
+		}
 		return "⠋", "Mate xử lý", styleWorking
 	case NewsDropped:
 		return "✓", "tự đóng", styleMuted
@@ -414,7 +448,7 @@ func (m Model) tray(w int) []string {
 			n = x
 		}
 	}
-	glyph, label, style := newsStatus(n)
+	glyph, label, style := newsStatus(n, m.now())
 	text := fmt.Sprintf(" %s %s  #%d ", glyph, label, n.ID)
 	if n.Crew != "" {
 		text += n.Crew + ": "
@@ -434,13 +468,13 @@ func (m Model) listBox(w int) []string {
 	owed, working, closed := m.listed()
 	inner := w - 4
 	row := func(n News, i int) string {
-		glyph, label, style := newsStatus(n)
+		glyph, label, style := newsStatus(n, m.now())
 		mark := "  "
 		if i == m.listSel {
 			mark = "▸ "
 		}
 		ageText := age(m.now().Sub(n.At))
-		right := fmt.Sprintf("%-11s%4s", label, ageText)
+		right := fmt.Sprintf("%-14s%4s", label, ageText)
 		title := n.Title
 		if n.Crew != "" && w >= 100 {
 			title = fmt.Sprintf("%-20s %s", ansi.Truncate(n.Crew, 20, "…"), title)
@@ -470,7 +504,14 @@ func (m Model) listBox(w int) []string {
 	}
 	group("CHỜ ANH", owed)
 	group("MATE ĐANG XỬ LÝ", working)
-	group("XONG HÔM NAY", closed)
+	if m.listClosed {
+		group("XONG HÔM NAY", closed)
+	} else if len(closed) > 0 {
+		if len(body) > 0 {
+			body = append(body, "")
+		}
+		body = append(body, styleMuted.Render(fmt.Sprintf("  ✓ %d xong hôm nay · Tab xem", len(closed))))
+	}
 	if len(body) == 0 {
 		body = []string{styleMuted.Render("Chưa có news nào. Khi crew báo việc cần anh, Mate mở news ở đây.")}
 	}
@@ -483,7 +524,10 @@ func (m Model) listBox(w int) []string {
 	for _, l := range body {
 		out = append(out, styleBorder.Render("│ ")+l+strings.Repeat(" ", max(0, inner-ansi.StringWidth(l)))+styleBorder.Render(" │"))
 	}
-	hint := " ↑↓ chọn · Enter mở · 1–9 nhảy · x lưu trữ · Esc về "
+	hint := " ↑↓ chọn · Enter mở · 1–9 nhảy · Tab news xong · Esc về "
+	if m.listClosed {
+		hint = " ↑↓ chọn · Enter mở · Tab ẩn news xong · x lưu trữ · Esc về "
+	}
 	return append(out, styleBorder.Render("└─")+styleMuted.Render(hint)+styleBorder.Render(strings.Repeat("─", max(0, w-3-ansi.StringWidth(hint)))+"┘"))
 }
 
@@ -494,7 +538,7 @@ func (m Model) newsLines(w int) []string {
 	if !ok {
 		return nil
 	}
-	glyph, label, style := newsStatus(n)
+	glyph, label, style := newsStatus(n, m.now())
 	if n.Status == NewsWorking {
 		glyph = spinnerFrames[m.frame%len(spinnerFrames)]
 	}

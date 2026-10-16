@@ -190,6 +190,10 @@ func (h *Host) AnswerNews(id int, text string) error {
 		if n, ok = findNews(list, id); !ok {
 			return fmt.Errorf("%w: #%d", ErrNoNews, id)
 		}
+		if n.Closed() {
+			// An answer would open it again and spend a Mate turn closing it.
+			return fmt.Errorf("news #%d is already closed", id)
+		}
 		return writeNewsEvent(f, newsEvent{At: h.now(), Op: opAnswer, ID: id, Text: text})
 	})
 	if err != nil {
