@@ -344,6 +344,40 @@ func (g Git) IsAncestor(ctx context.Context, dir, branch, base string) (bool, er
 	return g.probe(ctx, dir, "merge-base", "--is-ancestor", branch, base)
 }
 
+// MergeBase is `git merge-base <branch> <bases...>`: the newest commit
+// branch shares with any of bases. With more than one base git answers for
+// their hypothetical merge, so a branch rebased onto origin/main while the
+// local main lags behind gets the commit it actually grew from, not the
+// older one local main points at.
+func (g Git) MergeBase(ctx context.Context, dir, branch string, bases ...string) (string, error) {
+	out, err := g.run(ctx, dir, append([]string{"merge-base", branch}, bases...)...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// BranchBase is the commit a crew branch grew from (CON-91): MergeBase of
+// branch with the default branch and, when the repository has it, with
+// origin/<default> too. Both are asked because either may be the newer: a
+// crew that rebased onto a fetched origin/main is ahead of a local main
+// nobody pulled, and a local-delivery repository's main is ahead of an
+// origin nobody pushed to. It reads the refs as they are and never fetches:
+// worktrees share the repository's refs, so the origin/<default> a crew
+// fetched in its own worktree is the one read here.
+func (g Git) BranchBase(ctx context.Context, dir, defaultBranch, branch string) (string, error) {
+	bases := []string{defaultBranch}
+	remote := "refs/remotes/origin/" + defaultBranch
+	ok, err := g.probe(ctx, dir, "show-ref", "--verify", "--quiet", remote)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		bases = append(bases, remote)
+	}
+	return g.MergeBase(ctx, dir, branch, bases...)
+}
+
 // AheadCount is the number of commits reachable from branch but not from
 // base: `git rev-list --count <base>..<branch>`. It is the number a crew
 // teardown refusal reports as "commits ahead".

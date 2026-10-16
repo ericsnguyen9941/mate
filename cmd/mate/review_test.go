@@ -31,7 +31,7 @@ func TestReviewRejectsChangedCommitOrAcceptanceContract(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if problems := brief.Check(reviewBrief(f.w, "shop", "k3", fp, nil), brief.Scout); len(problems) > 0 {
+			if problems := brief.Check(reviewBrief(f.w, "shop", "k3", fp, nil, nil), brief.Scout); len(problems) > 0 {
 				t.Fatal(problems)
 			}
 			path, err := reviewRecordPath(f.w, "shop", "review-k3")
@@ -58,7 +58,10 @@ func TestReviewRejectsChangedCommitOrAcceptanceContract(t *testing.T) {
 			case "commit":
 				commitInWorktree(t, f.worktree, "README.md", "changed again\n", "later")
 			case "base":
+				// The base is the merge base (CON-91), so it changes when
+				// the crew rebases onto a default branch that moved on.
 				commitInWorktree(t, f.repo, "new.md", "new base\n", "base changes")
+				runGitOrFatal(t, f.worktree, "rebase", "-q", "main")
 			case "brief", "handback":
 				_ = os.WriteFile(filepath.Join(dir, change+".md"), []byte("new contract"), 0644)
 			case "dirty":
@@ -79,7 +82,7 @@ func TestReviewVerdictDoesNotInferApprovalFromProse(t *testing.T) {
 			t.Fatal(text)
 		}
 	}
-	if !strings.Contains(reviewBrief(nilSafeReviewWorkspace(t), "shop", "k3", map[string]string{}, nil), "FULL committed change") {
+	if !strings.Contains(reviewBrief(nilSafeReviewWorkspace(t), "shop", "k3", map[string]string{}, nil, nil), "FULL committed change") {
 		t.Fatal("missing full review")
 	}
 }
@@ -177,7 +180,7 @@ func TestReviewSinceBriefCoversOnlyTheChangeAndListsTheFindings(t *testing.T) {
 			t.Errorf("record %s = %q, want %q", key, fp[key], want)
 		}
 	}
-	text := reviewBrief(f.w, "shop", "k3", fp, scope)
+	text := reviewBrief(f.w, "shop", "k3", fp, scope, nil)
 	if problems := brief.Check(text, brief.Scout); len(problems) > 0 {
 		t.Fatal(problems)
 	}
@@ -373,5 +376,112 @@ func TestReviewDiffStatSizesTheChange(t *testing.T) {
 	var none *reviewStat
 	if none.small(50) {
 		t.Fatal("an unmeasured change counted as small")
+	}
+}
+
+// TestReviewBaseIsTheMergeBaseWhenTheCrewRebasedOntoOrigin is CON-91 as it
+// happened in project mihu: two pull requests landed on origin/main, the
+// crew rebased its one-file change onto origin/main, and the local main was
+// never pulled. The base the review records is the commit the branch grew
+// from, the diff the brief asks for is one file, and the brief says so.
+func TestReviewBaseIsTheMergeBaseWhenTheCrewRebasedOntoOrigin(t *testing.T) {
+	f := newDiffFixture(t)
+	ctx := context.Background()
+	localMain, err := gitx.New().HeadCommit(ctx, f.repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What origin/main gained from two merged pull requests, built on a
+	// throwaway branch and published only as the remote-tracking ref.
+	runGitOrFatal(t, f.repo, "checkout", "-q", "-b", "upstream", "main")
+	commitInWorktree(t, f.repo, "pr1.md", "one\n", "merged PR 1")
+	commitInWorktree(t, f.repo, "pr2.md", "two\n", "merged PR 2")
+	runGitOrFatal(t, f.repo, "update-ref", "refs/remotes/origin/main", "upstream")
+	runGitOrFatal(t, f.repo, "checkout", "-q", "main")
+	runGitOrFatal(t, f.repo, "branch", "-q", "-D", "upstream")
+	upstream, err := gitx.New().HeadCommit(ctx, f.repo, "refs/remotes/origin/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGitOrFatal(t, f.worktree, "reset", "-q", "--hard", "refs/remotes/origin/main")
+	commitInWorktree(t, f.worktree, "README.md", "shop\nthe crew's line\n", "the crew's change")
+	dir := filepath.Dir(f.w.CrewBrief("shop", "k3"))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"brief.md", "handback.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("original acceptance evidence"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	fp, err := reviewFingerprint(ctx, f.w, gitx.New(), "shop", "k3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fp["base"] != upstream {
+		t.Fatalf("base = %s, want the merge base %s (local main is %s)", fp["base"], upstream, localMain)
+	}
+	stat, err := reviewDiffStat(ctx, f.w, gitx.New(), "shop", "k3", fp, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stat.Files != 1 || stat.Lines != 1 {
+		t.Fatalf("diff stat = %d file(s), %d line(s); want 1 and 1", stat.Files, stat.Lines)
+	}
+	text := reviewBrief(f.w, "shop", "k3", fp, nil, stat)
+	if problems := brief.Check(text, brief.Scout); len(problems) > 0 {
+		t.Fatal(problems)
+	}
+	for _, want := range []string{
+		"Base " + upstream + " is the merge base",
+		"git diff " + upstream + "..." + fp["head"] + " is 1 file(s), 1 changed line(s)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("brief lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+// TestReviewCheckRefusesABaseTheHeadDoesNotDescendFrom: a record whose base
+// is not an ancestor of its head (one written from a default branch the
+// crew never grew from) is refused by --check, whatever the verdict says.
+func TestReviewCheckRefusesABaseTheHeadDoesNotDescendFrom(t *testing.T) {
+	f := newDiffFixture(t)
+	commitInWorktree(t, f.worktree, "README.md", "review this\n", "change")
+	dir := filepath.Dir(f.w.CrewBrief("shop", "k3"))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"brief.md", "handback.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("original acceptance evidence"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recordReview(t, f, "review-k3", "## Summary\nAll criteria checked.\n## Verdict\npass\n")
+	commitInWorktree(t, f.repo, "other.md", "not the crew's\n", "unrelated work on main")
+	other, err := gitx.New().HeadCommit(context.Background(), f.repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := reviewRecordPath(f.w, "shop", "review-k3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := store.ReadMeta(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// main moving on alone does not stale the review: the diff is the same.
+	if _, _, err := checkReview(context.Background(), f.w, gitx.New(), "shop", "k3", "review-k3"); err != nil {
+		t.Fatalf("review rejected after an unrelated commit on main: %v", err)
+	}
+	rec["base"] = other
+	if err := store.WriteMeta(path, rec); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = checkReview(context.Background(), f.w, gitx.New(), "shop", "k3", "review-k3")
+	if err == nil || !strings.Contains(err.Error(), "is not an ancestor of head") {
+		t.Fatalf("check with a base off the branch's history: %v", err)
 	}
 }
