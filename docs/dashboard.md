@@ -273,6 +273,33 @@ Each day carries:
 }
 ```
 
+## 3d. `GET /api/news?project=<p>`
+
+Every news a headless Mate opened for the captain (`mate news open`, `mate/news.jsonl`, CON-78), closed ones included, for Mate Office's captain drawer (section 11, CON-97).
+Without `project` it answers for every project in workspace order; an unknown `project` is a 404 that names it.
+It folds the log through `matehost.LoadNews` on every request and is not cached: the REPL marking a news seen or the captain answering it writes the log, not an event.
+It writes nothing: reading a news here does not mark it seen.
+
+```json
+{
+  "generated_at": "…", "last_event_id": 412,
+  "projects": [
+    {"project": "shop", "logged": true, "news": [
+      {"id": 3, "crew": "buybtn", "kind": "decision", "title": "Checkout URL", "context": ["buybtn asked twice"],
+       "question": "Which page?", "options": [{"key": "a", "text": "express", "recommended": true}],
+       "status": "working", "opened_at": "…", "at": "…", "seen_at": "…", "answer": "[a] express", "answered_at": "…",
+       "notes": [{"at": "…", "text": "CI is green"}]}
+    ]},
+    {"project": "infra", "logged": false, "news": []}
+  ]
+}
+```
+
+`news` is newest move first (`at`: opened, updated, answered, closed; being seen is not a move).
+`status` is the log's: `new` (the captain has not opened it), `waiting` (opened, not answered), `working` (answered, the Mate is on it), `done`, `dropped`.
+`seen_at` is when a `new` news was last opened and `answered_at` when the last answer was given; both are absent when that never happened, or happened before the log recorded it.
+`logged` is false when the Mate has no news log, which is not the same answer as a log with nothing in it; a log that cannot be read is `logged: true` with `error` and no news.
+
 ## 4. `GET /api/projects/{project}/tasks/{crew}`
 
 Tier 3 leads with the current activity, up to three evidence-linked findings,
@@ -638,6 +665,7 @@ It holds to every rule of section 10 - same origin only, GET only, text set with
 | `#crew/<project>/<crew>` | the crew drawer: state and why, current activity, step, target, usage with a `Usage details` button, the task, a link to the admin timeline |
 | `#cabinet/<project>` | the filing cabinet: closed tasks by age, each with its final state and a `Usage details` button under it |
 | `#board` | the daily board: tokens, work done and incidents by day (section 3c) |
+| `#captain` | the captain drawer: the news every Mate sent the captain, with where each stands (section 3d) |
 
 `Usage details` is a link to `../#/p/<project>/t/<crew>/usage` (names `encodeURIComponent`-ed) that opens the admin page in a new tab (`target="_blank"`, `rel="noopener"`); the Mate has none.
 
@@ -651,7 +679,12 @@ The hallway holds a whiteboard, `Daily board`, that opens `#board`: section 3c's
 `By day` is one row per day, newest first, with a token bar split into Mate and crews and each count's breakdown as its tooltip.
 The board reads `/api/board` only while it is open, and again when an event lands.
 
-Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, and for an open drawer `/api/projects/{p}/mate` plus `/api/plugins?project=<p>`, `/api/projects/{p}/tasks/{crew}`, or `/api/board?days=<n>`.
+The captain's desk in the hallway (on a phone, the captain's card) is a button that opens `#captain`; under the inbox line it says how much news is unread or waiting for an answer.
+The drawer lists every Mate's news, newest first: `Waiting on you` (unread and read-not-answered), `The Mate is on it` (answered), and `Earlier` (closed and dropped, the latest ten with `Show all`).
+Each row names its project, crew and `#id` with a status chip; opening it shows the question, context, options, when it was sent, read and answered, the captain's answer and the Mate's updates.
+It is a view: a news is answered in its Mate's REPL, and nothing here marks one seen. A project whose log cannot be read shows `<project>: news ?` with the reason as its tooltip.
+
+Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, `/api/news` (again on every quiet poll, because news moves without an event), and for an open drawer `/api/projects/{p}/mate` plus `/api/plugins?project=<p>`, `/api/projects/{p}/tasks/{crew}`, or `/api/board?days=<n>`.
 It long-polls `/api/events` from the lowest `last_event_id` it holds (`wait=5` with a drawer open, 20 otherwise) and re-reads the floor when anyone moved.
 
 The typefaces are the design's - Geist, Geist Mono and Bricolage Grotesque - as latin WOFF2 subsets under `ui/office/fonts/`.

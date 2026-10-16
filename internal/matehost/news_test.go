@@ -66,6 +66,14 @@ func TestNewsLifecycle(t *testing.T) {
 	if n := list[0]; n.Answer != "[a] env" || len(n.Notes) != 3 || n.Notes[2].Text != "PR đã merge" {
 		t.Fatalf("news 1 = %+v", n)
 	}
+	// Seen is the first step, the last answer the fifth: re-asking does not
+	// forget either.
+	if n := list[0]; !n.SeenAt.Equal(now.Add(time.Minute)) || !n.AnsweredAt.Equal(now.Add(5*time.Minute)) {
+		t.Fatalf("news 1 seen %v, answered %v", n.SeenAt, n.AnsweredAt)
+	}
+	if n := list[1]; !n.SeenAt.IsZero() || !n.AnsweredAt.IsZero() {
+		t.Fatalf("news 2 was never seen or answered: %+v", n)
+	}
 }
 
 // The captain's answer is a turn that names the news, belongs to it, and
