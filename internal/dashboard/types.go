@@ -429,3 +429,52 @@ type BoardDay struct {
 	Reviews    map[string]int `json:"reviews"`
 	Incidents  map[string]int `json:"incidents"`
 }
+
+// BoardDayResponse is GET /api/board/day: one of the board's days opened
+// up (CON-88). Every project is in it; the page filters by project.
+// Actors are who spent tokens that day, biggest first; Tasks every task
+// opened, closed or taking turns that day; Incidents the ones opened that
+// day, oldest first. Errors names a project whose tasks could not be read.
+type BoardDayResponse struct {
+	envelope
+	Date      string            `json:"date"`
+	Zone      string            `json:"zone"`
+	Actors    []BoardActor      `json:"actors"`
+	Tasks     []BoardTask       `json:"tasks"`
+	Incidents []BoardIncident   `json:"incidents"`
+	Errors    map[string]string `json:"errors,omitempty"`
+}
+
+// BoardActor is one Mate or crew's turns started that day. Kind is
+// timeline's actor kind, mate or crew.
+type BoardActor struct {
+	Project string `json:"project"`
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Turns   int64  `json:"turns"`
+	Tokens  Tokens `json:"tokens"`
+}
+
+// BoardTask is a project page task with what it did that day: Opened
+// when it was spawned that day, ClosedToday when it closed that day, and
+// DayTurns and DayTokens its turns started that day. Its own Tokens stay
+// the task's whole life.
+type BoardTask struct {
+	Project string `json:"project"`
+	Task
+	Opened      bool   `json:"opened"`
+	ClosedToday bool   `json:"closed_today"`
+	DayTurns    int64  `json:"day_turns"`
+	DayTokens   Tokens `json:"day_tokens"`
+}
+
+// BoardIncident is one incident opened that day. Name is the crew's name,
+// or empty for the Mate; ResolvedAt is empty while it is still open.
+type BoardIncident struct {
+	Project    string `json:"project"`
+	Kind       string `json:"kind"`
+	ActorKind  string `json:"actor_kind"`
+	Name       string `json:"name"`
+	OpenedAt   string `json:"opened_at"`
+	ResolvedAt string `json:"resolved_at,omitempty"`
+}

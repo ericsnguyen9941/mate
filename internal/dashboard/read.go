@@ -21,6 +21,12 @@ type errNotFound struct{ reason string }
 
 func (e errNotFound) Error() string { return e.reason }
 
+// errBadRequest is a question the API cannot answer as asked: a 400 with
+// the reason.
+type errBadRequest struct{ reason string }
+
+func (e errBadRequest) Error() string { return e.reason }
+
 func notFound(format string, a ...any) error {
 	return errNotFound{reason: fmt.Sprintf(format, a...)}
 }
