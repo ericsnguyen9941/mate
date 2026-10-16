@@ -353,6 +353,9 @@
   var sel = parseHash();
   var lastOpener = null;
   var cabFilter = { project: "", word: "" }; // the cabinet's final-state filter, for one room
+  var board = null;           // /api/board: {days, body} | {days, error}
+  var boardDays = storedBoardDays();
+  var boardProject = "";      // "" is the whole workspace
 
   function parseHash() {
     var h = (window.location.hash || "").replace(/^#\/?/, "");
@@ -362,6 +365,7 @@
     });
     if (parts[0] === "mate" && parts[1]) return { kind: "mate", project: parts[1] };
     if (parts[0] === "cabinet" && parts[1]) return { kind: "cab", project: parts[1] };
+    if (parts[0] === "board") return { kind: "board" };
     if (parts[0] === "crew" && parts[1] && parts[2]) return { kind: "crew", project: parts[1], crew: parts[2] };
     return null;
   }
@@ -370,6 +374,7 @@
     if (!s) return "";
     if (s.kind === "crew") return "crew/" + enc(s.project) + "/" + enc(s.crew);
     if (s.kind === "cab") return "cabinet/" + enc(s.project);
+    if (s.kind === "board") return "board";
     return "mate/" + enc(s.project);
   }
 
@@ -451,6 +456,7 @@
     var key = selKey(s);
     var token = ++detailToken;
     if (!s || s.kind === "cab") return Promise.resolve();
+    if (s.kind === "board") return loadBoard();
     if (!detail || detail.key !== key) detail = { key: key, loading: true };
     var path = s.kind === "crew" ? taskPath(s.project, s.crew) : matePath(s.project);
     var reads = [api(path).then(function (body) {
@@ -487,7 +493,9 @@
   // command's clock advances before any new event is written.
   function poll() {
     var token = pollToken;
-    var watching = sel && sel.kind !== "cab";
+    // The cabinet and the board change only when an event lands, which
+    // reloads them through loadAll; nothing in them ticks between events.
+    var watching = sel && sel.kind !== "cab" && sel.kind !== "board";
     api("/api/events?since=" + enc(lastEventID) + "&wait=" + (watching ? "5" : "20")).then(function (body) {
       if (token !== pollToken) return;
       var serverID = body.last_event_id || 0;
@@ -1027,7 +1035,8 @@
         el("span", { class: "mct" }, [el("b", { text: "Captain · you" }),
           el("span", { class: "capq" + (s.n > 0 ? "" : " none") }, [icon("ask"), inboxWords(s, true)])])
       ]),
-      figs.length ? el("div", { class: "mfigs" }, figs) : null
+      figs.length ? el("div", { class: "mfigs" }, figs) : null,
+      boardButton(true)
     ]);
   }
 
@@ -1451,12 +1460,206 @@
   }
 
   function drawer() {
-    var aside = el("aside", { class: "drawer" + (sel && sel.kind === "cab" ? " drawer-cabinet" : ""), "aria-label": "Details", id: "drawer" });
+    var wide = sel && (sel.kind === "cab" || sel.kind === "board");
+    var aside = el("aside", { class: "drawer" + (wide ? " drawer-cabinet" : ""), "aria-label": "Details", id: "drawer" });
     if (!sel) { aside.setAttribute("hidden", ""); return aside; }
     aside.appendChild(el("span", { class: "grab", "aria-hidden": "true" }));
-    var nodes = sel.kind === "mate" ? mateDrawer(sel.project) : sel.kind === "crew" ? crewDrawer(sel.project, sel.crew) : cabinetDrawer(sel.project);
+    var nodes = sel.kind === "mate" ? mateDrawer(sel.project) : sel.kind === "crew" ? crewDrawer(sel.project, sel.crew)
+      : sel.kind === "board" ? boardDrawer() : cabinetDrawer(sel.project);
     append(aside, nodes);
     return aside;
+  }
+
+  // ------------------------------------------------------------ the daily board
+
+  // The whiteboard in the hallway (CON-84): /api/board, one column per
+  // local day, the workspace or one project. It counts in tokens, never in
+  // money, and has no merged column: the timeline sees only the merges
+  // mate made itself.
+  var BOARD_RANGES = [7, 14, 30];
+
+  function storedBoardDays() {
+    try {
+      var n = parseInt(window.localStorage.getItem("mate.office.boardDays"), 10);
+      if (BOARD_RANGES.indexOf(n) >= 0) return n;
+    } catch (e) { /* storage is a convenience */ }
+    return 14;
+  }
+
+  function loadBoard() {
+    var days = boardDays;
+    var token = detailToken;
+    return api("/api/board?days=" + days).then(function (body) {
+      if (token === detailToken) board = { days: days, body: body };
+    }, function (err) {
+      if (token === detailToken) board = { days: days, error: err };
+    });
+  }
+
+  function boardButton(small) {
+    var key = "board";
+    var b = el("button", { class: (small ? "dbm" : "dbd") + (selKey(sel) === key ? " sel" : ""), type: "button",
+      "aria-label": "Daily board: tokens, work and incidents by day", "data-focus": "board" }, small
+      ? [icon("usage")]
+      : [
+          el("span", { class: "db-art", "aria-hidden": "true" }, [6, 10, 7, 13, 9, 15, 11].map(function (h) {
+            return el("i", { style: "height:" + h * 2 + "px" });
+          })),
+          el("b", { text: "Daily board" }),
+          el("span", { text: "tokens · work · incidents by day" })
+        ]);
+    return pickable(b, key);
+  }
+
+  // The rows a reader compares, each a number read off one day. good says
+  // which way is better, for the arrow's colour; why is the tooltip.
+  var BOARD_METRICS = [
+    { key: "tokens", label: "Tokens", good: -1, n: function (d) { return d.tokens ? d.tokens.total : 0; }, fmt: tok,
+      why: function (d) { return "Mate " + tok(d.mate_tokens) + ", crews " + tok(d.crew_tokens); } },
+    { key: "opened", label: "Opened", good: 0, n: function (d) { return sumOf(d.spawned); },
+      why: function (d) { return countWords(d.spawned, ROLE_WORDS); } },
+    { key: "done", label: "Done", good: 1, n: function (d) { return (d.closed || {}).finished || 0; },
+      why: function () { return "ships and scouts closed finished"; } },
+    { key: "dropped", label: "Dropped", good: -1, n: function (d) { return sumOf(d.closed) - ((d.closed || {}).finished || 0); },
+      why: function (d) { return countWords(d.closed, CLOSED_WORDS, "finished"); } },
+    { key: "approved", label: "Approved", good: 1, n: function (d) { return (d.reviews || {}).pass || 0; },
+      why: function (d) { return countWords(d.reviews, VERDICT_WORDS); } },
+    { key: "rework", label: "Rework", good: -1, n: function (d) { return (d.reviews || {})["changes-requested"] || 0; },
+      why: function () { return "reviews that sent the work back (changes requested)"; } },
+    { key: "incidents", label: "Incidents", good: -1, n: function (d) { return sumOf(d.incidents); },
+      why: function (d) { return countWords(d.incidents, INCIDENT_WORDS); } },
+    { key: "budget", label: "Over budget", good: -1, n: function (d) { return (d.incidents || {}).budget || 0; },
+      why: function () { return "budget incidents: a crew or the project crossed its token budget"; } }
+  ];
+
+  var ROLE_WORDS = { ship: "ship", scout: "scout", review: "review" };
+  var CLOSED_WORDS = { finished: "finished", discarded: "discarded", didnt_start: "didn't start" };
+  var VERDICT_WORDS = { pass: "approved", "changes-requested": "changes requested", incomplete: "incomplete", no_verdict: "no verdict" };
+  var INCIDENT_WORDS = { stale: "stale", runtime_lost: "runtime lost", wedged: "wedged", budget: "over budget" };
+
+  function sumOf(m) {
+    var n = 0;
+    Object.keys(m || {}).forEach(function (k) { n += m[k]; });
+    return n;
+  }
+
+  function countWords(m, words, skip) {
+    var parts = Object.keys(m || {}).filter(function (k) { return k !== skip && m[k]; }).sort().map(function (k) {
+      return m[k] + " " + (words[k] || k.replace(/_/g, " "));
+    });
+    return parts.length ? parts.join(", ") : "none";
+  }
+
+  function boardDayLabel(date) {
+    var p = String(date).split("-");
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    if (isNaN(d.getTime())) return String(date);
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()] + " " + MONTHS[d.getMonth()] + " " + d.getDate();
+  }
+
+  // The days shown: the workspace's totals, or one project's.
+  function boardDaysOf(b) {
+    if (!boardProject) return b.total || [];
+    var p = (b.projects || []).filter(function (x) { return x.name === boardProject; })[0];
+    return p ? p.days || [] : [];
+  }
+
+  function boardDrawer() {
+    var head = drawerHead(el("span", { class: "dav dcab", "aria-hidden": "true" }, icon("usage")),
+      [boardProject || "workspace", " · by day"], "Daily board",
+      chip({ word: "", tone: "t-info", icon: "usage" }, "last " + boardDays + " days"),
+      board && board.body ? "days in " + board.body.zone : null);
+    var controls = el("section", { class: "ds bctl", "aria-label": "Board range" }, [
+      el("div", { class: "bseg", role: "group", "aria-label": "Days" }, BOARD_RANGES.map(function (n) {
+        var b = el("button", { type: "button", class: n === boardDays ? "on" : "", "aria-pressed": n === boardDays ? "true" : "false",
+          "data-focus": "board-days:" + n, text: n + " days" });
+        b.addEventListener("click", function () {
+          if (n === boardDays) return;
+          boardDays = n;
+          try { window.localStorage.setItem("mate.office.boardDays", String(n)); } catch (e) { /* convenience */ }
+          board = null;
+          draw();
+          loadBoard().then(draw);
+        });
+        return b;
+      })),
+      el("div", { class: "bseg", role: "group", "aria-label": "Project" }, [""].concat(projectNames()).map(function (n) {
+        var on = n === boardProject;
+        var b = el("button", { type: "button", class: on ? "on" : "", "aria-pressed": on ? "true" : "false",
+          "data-focus": "board-project:" + n, text: n || "All" });
+        b.addEventListener("click", function () { boardProject = n; draw(); });
+        return b;
+      }))
+    ]);
+    if (!board || board.days !== boardDays) return [head, controls, el("p", { class: "cab-empty", text: "loading…" })];
+    if (board.error) return [head, controls, el("p", { class: "cab-empty", text: "The board could not be read: " + (board.error.reason || board.error.message) })];
+    var p = boardProject ? (board.body.projects || []).filter(function (x) { return x.name === boardProject; })[0] : null;
+    var days = boardDaysOf(board.body);
+    if (!days.length) return [head, controls, el("p", { class: "cab-empty", text: "Nothing recorded for " + (boardProject || "this workspace") + "." })];
+    return [head, controls,
+      p && p.error ? el("p", { class: "room-err", text: "Tasks could not be read: " + p.error }) : null,
+      boardToday(days), boardTable(days)];
+  }
+
+  // Today against the average of the days before it in the window. Today
+  // is still going, so a lower number before evening is not news.
+  function boardToday(days) {
+    var today = days[days.length - 1];
+    var prior = days.slice(0, -1);
+    return el("section", { class: "ds", "aria-label": "Today against the average" }, [
+      el("h3", { class: "sh" }, ["Today so far", el("span", { text: "vs the average of the " + plural(prior.length, "day", "days") + " before" })]),
+      el("div", { class: "bkpi" }, BOARD_METRICS.map(function (m) {
+        var v = m.n(today);
+        var avg = null;
+        if (prior.length) {
+          var sum = 0;
+          prior.forEach(function (d) { sum += m.n(d); });
+          avg = sum / prior.length;
+        }
+        var fmt = m.fmt || String;
+        var delta = null;
+        if (avg != null && avg > 0) delta = Math.round((v - avg) / avg * 100);
+        var tone = delta == null || delta === 0 || !m.good ? "" : (delta > 0) === (m.good > 0) ? " up" : " down";
+        return el("div", { class: "bk", title: m.why(today) }, [
+          el("span", { class: "bkl", text: m.label }),
+          el("b", { text: fmt(v) }),
+          el("span", { class: "bkd" + tone, text: avg == null ? "no days before" : "avg " + (m.fmt ? m.fmt(Math.round(avg)) : avg.toFixed(1))
+            + (delta == null ? "" : " · " + (delta > 0 ? "+" : "") + delta + "%") })
+        ]);
+      }))
+    ]);
+  }
+
+  // One row per day, newest first; the token bar splits Mate from crews.
+  function boardTable(days) {
+    var max = 1;
+    days.forEach(function (d) { max = Math.max(max, d.tokens ? d.tokens.total : 0); });
+    var cols = BOARD_METRICS.slice(1);
+    return el("section", { class: "ds", "aria-label": "By day" }, [
+      el("h3", { class: "sh" }, ["By day", el("span", { class: "bleg" }, [
+        el("i", { class: "bm" }), "Mate", el("i", { class: "bc" }), "crews"])]),
+      el("div", { class: "btab" }, el("table", null, [
+        el("thead", null, el("tr", null, [el("th", { text: "Day" }), el("th", { text: "Tokens" })].concat(cols.map(function (m) {
+          return el("th", { text: m.label });
+        })))),
+        el("tbody", null, days.slice().reverse().map(function (d, i) {
+          var total = d.tokens ? d.tokens.total : 0;
+          return el("tr", { class: i === 0 ? "btoday" : "" }, [
+            el("th", { scope: "row", text: i === 0 ? "Today" : boardDayLabel(d.date), title: d.date }),
+            el("td", { class: "btok", title: BOARD_METRICS[0].why(d) }, el("div", null, [
+              el("span", { class: "bbar", "aria-hidden": "true" }, [
+                el("i", { class: "bm", style: "width:" + (d.mate_tokens / max * 100).toFixed(2) + "%" }),
+                el("i", { class: "bc", style: "width:" + (d.crew_tokens / max * 100).toFixed(2) + "%" })
+              ]),
+              el("span", { class: "mono", text: tok(total) })
+            ]))
+          ].concat(cols.map(function (m) {
+            var v = m.n(d);
+            return el("td", { class: "bn" + (v ? "" : " zero"), title: v ? m.why(d) : null, text: String(v) });
+          })));
+        }))
+      ]))
+    ]);
   }
 
   // ------------------------------------------------------------ the page
@@ -1479,7 +1682,7 @@
       f.appendChild(mobileHall());
       names.forEach(function (n, i) { f.appendChild(mobileRoom(n, i)); });
     } else {
-      f.appendChild(el("section", { class: "hall", "aria-label": "Hallway" }, [legend(), captainDesk(), hallFigures()]));
+      f.appendChild(el("section", { class: "hall", "aria-label": "Hallway" }, [legend(), captainDesk(), boardButton(false), hallFigures()]));
       f.appendChild(el("div", { class: "rooms" }, names.map(room)));
     }
     if (!names.length) f.appendChild(el("p", { class: "nothing", text: "This workspace has no projects yet." }));

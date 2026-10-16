@@ -243,6 +243,34 @@ A problem located at one instance is also in the top-level `error`, and every ro
 Those rows are read from the file without validating it, so their `name` is the instance id and they carry no `open`, `mcp` or skills.
 A valid file has no top-level `error`.
 
+## 3c. `GET /api/board?days=<n>`
+
+The Office's daily board (CON-84): one column per calendar day, oldest first, for the workspace and for each project.
+`days` defaults to 14 and is capped at 90; the board offers 7, 14 and 30.
+A day is the server clock's zone, named in `zone`, not UTC: `v_now.tokens_today` and the top bar's `Today` are a UTC day, so the two disagree in the hours the zones do.
+The response is not cached, because the window moves at midnight whether or not an event does.
+
+Each day carries:
+
+- `tokens`: the token buckets of every `turn` that started that day (`started_at`, else `ended_at`), Mate and crews alike; `mate_tokens` and `crew_tokens` split `tokens.total` by the actor's kind. The board counts in tokens only and has no cost.
+- `spawned`: tasks spawned that day by `role` (`ship`, `scout`, `review`, as in section 3).
+- `closed`: ships and scouts closed that day by final state: `finished`, `discarded` (a `failed` task with no `failed_reason`), `didnt_start` (one with), or any other `close_state` as it is. There is no `merged`: the timeline sees only the merges mate made itself, and a PR merged on GitHub is not one of them, so a merged count would read as work not landing.
+- `reviews`: reviewers closed that day by verdict: `pass`, `changes-requested`, `incomplete`, or `no_verdict` for one closed without a Verdict. The Office calls `changes-requested` rework.
+- `incidents`: incidents opened that day by `kind` (`stale`, `runtime_lost`, `wedged`, `budget`). `budget` is a crew or the project crossing its token budget. A harness running out of quota is not recorded on the timeline yet (CON-85), so the board cannot count it.
+
+`total` is every project summed. A project whose tasks could not be read carries `error`, and its tokens and incidents are still counted.
+
+```json
+{
+  "generated_at": "…", "last_event_id": 412, "days": 14, "zone": "+07:00",
+  "dates": ["2026-10-03", "…", "2026-10-16"],
+  "total": [{"date": "2026-10-16", "tokens": {"input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "thinking": 0, "total": 0},
+             "mate_tokens": 0, "crew_tokens": 0, "spawned": {"ship": 5, "review": 7}, "closed": {"finished": 6, "discarded": 1},
+             "reviews": {"pass": 5, "changes-requested": 2}, "incidents": {"budget": 7, "runtime_lost": 2}}],
+  "projects": [{"name": "shop", "days": ["…one per date…"]}]
+}
+```
+
 ## 4. `GET /api/projects/{project}/tasks/{crew}`
 
 Tier 3 leads with the current activity, up to three evidence-linked findings,
@@ -607,6 +635,7 @@ It holds to every rule of section 10 - same origin only, GET only, text set with
 | `#mate/<project>` | the Mate drawer: current activity, facing, last turn, mode, usage, the crews in the room |
 | `#crew/<project>/<crew>` | the crew drawer: state and why, current activity, step, target, usage with a `Usage details` button, the task, a link to the admin timeline |
 | `#cabinet/<project>` | the filing cabinet: closed tasks by age, each with its final state and a `Usage details` button under it |
+| `#board` | the daily board: tokens, work done and incidents by day (section 3c) |
 
 `Usage details` is a link to `../#/p/<project>/t/<crew>/usage` (names `encodeURIComponent`-ed) that opens the admin page in a new tab (`target="_blank"`, `rel="noopener"`); the Mate has none.
 
@@ -615,7 +644,12 @@ A `configuration error` shows its message as text; when any app has an MCP serve
 A project with no apps has no block, and a failed read shows `Apps: ?` while the rest of the drawer still draws.
 It is a view, not a place to manage apps: no form, button or request beyond that GET.
 
-Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, and for an open drawer `/api/projects/{p}/mate` plus `/api/plugins?project=<p>`, or `/api/projects/{p}/tasks/{crew}`.
+The hallway holds a whiteboard, `Daily board`, that opens `#board`: section 3c's numbers in a wide drawer, the whole workspace or one project, over 7, 14 or 30 days (the choice is remembered in the browser).
+`Today so far` sets today against the average of the days before it in the window - tokens, tasks opened, done, dropped (discarded and didn't start), approved reviews, rework (reviews that requested changes), incidents and over budget - with the change coloured by which way is better; today is still running, so a lower number before evening is not news.
+`By day` is one row per day, newest first, with a token bar split into Mate and crews and each count's breakdown as its tooltip.
+The board reads `/api/board` only while it is open, and again when an event lands.
+
+Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, and for an open drawer `/api/projects/{p}/mate` plus `/api/plugins?project=<p>`, `/api/projects/{p}/tasks/{crew}`, or `/api/board?days=<n>`.
 It long-polls `/api/events` from the lowest `last_event_id` it holds (`wait=5` with a drawer open, 20 otherwise) and re-reads the floor when anyone moved.
 
 The typefaces are the design's - Geist, Geist Mono and Bricolage Grotesque - as latin WOFF2 subsets under `ui/office/fonts/`.
