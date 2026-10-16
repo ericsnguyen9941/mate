@@ -1,7 +1,7 @@
 == mate usage shop
-ID      STATE    MODEL             EFFORT  TURNS  IN     CACHE-READ  CACHE-WRITE  OUT   TOTAL   TASK-TOTAL  REVIEWS  COST  CTX    CTX-AVG  CTX%  ASKED  WAITED  SPAWN→CLOSE
-mate    -        claude-fable-5-1  -       11     292    633k        38.7k        3.9k  675.8k  -           -        ?     63.8k  61.1k    32%   0      0s      -
-buybtn  spawned  gpt-5.6-terra     high    11     23.3k  209.2k      0            1.5k  234k    234k        -        ?     22.4k  21.1k    8%    0      0s      10:44:09 → open
+ID      STATE    MODEL             EFFORT  TURNS  IN     CACHE-READ  CACHE-WRITE  OUT   TOTAL   TASK-TOTAL  BUDGET  %  REVIEWS  COST  CTX    CTX-AVG  CTX%  ASKED  WAITED  SPAWN→CLOSE
+mate    -        claude-fable-5-1  -       11     292    633k        38.7k        3.9k  675.8k  -           -       -  -        ?     63.8k  61.1k    32%   0      0s      -
+buybtn  spawned  gpt-5.6-terra     high    11     23.3k  209.2k      0            1.5k  234k    234k        -       -  -        ?     22.4k  21.1k    8%    0      0s      10:44:09 → open
 total: 22 turn(s), 23.6k in, 880.8k cached, 5.4k out, 909.8k total, ? cost, 0 asked, 0s waited
 by model and effort (each task's last call):
   gpt-5.6-terra high: 1 task(s), 11.0 calls/task, 21.1k context/call

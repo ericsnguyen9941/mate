@@ -186,16 +186,25 @@ func writeWakeItem(ctx context.Context, out *strings.Builder, w *store.Workspace
 	case autopilot.ItemBudget:
 		// The observer's text is "<used> tokens of <budget> tokens"; the
 		// half-budget one (CON-76) carries box.BudgetHalfPrefix and the
-		// reason it was filed. The next lines are the issue's handling:
-		// at half, one look, and a line if the Crew is looping or
-		// polling; at the budget, the captain decides.
-		if percent, rest := box.BudgetThreshold(it.Text); percent == 50 {
+		// reason it was filed. The next lines are the handling: at half,
+		// one look, and a line if the Crew is looping or polling; at the
+		// budget the app has asked the Crew for a clean stop and the Mate
+		// decides at its hand-back; at twice it the app has stopped it
+		// (CON-94).
+		switch percent, rest := box.BudgetThreshold(it.Text); percent {
+		case 50:
 			fmt.Fprintf(out, "budget 50%% %s: %s\n", crew, rest)
 			fmt.Fprintf(out, "  next: mate peek %s once; if it is looping or polling, send it one line\n", crew)
 			return
+		case 200:
+			// CON-94: the app stopped it at twice its budget, keeping
+			// unlanded work.
+			fmt.Fprintf(out, "budget hard ceiling %s: %s\n", crew, rest)
+			fmt.Fprintf(out, "  next: skill wake, Budget; the app stopped the Crew and kept any unlanded work - extend and relaunch only with the captain, else narrow or drop it\n")
+			return
 		}
 		fmt.Fprintf(out, "over budget %s: %s\n", crew, it.Text)
-		fmt.Fprintf(out, "  next: tell the captain; the Crew keeps running until someone stops it\n")
+		fmt.Fprintf(out, "  next: skill wake, Budget; the app told the Crew to commit, hand back and stop - at its hand-back extend it once (mate crew budget %s %s --extend <tokens> --reason \"<why>\"), narrow it, or drop it\n", project, crew)
 	case autopilot.ItemContextHigh:
 		// CON-73: the crew is working on a bloated context. Nothing is
 		// cut mid-turn; the fix round goes into a fresh session, which

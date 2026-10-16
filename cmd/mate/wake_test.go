@@ -108,7 +108,8 @@ func TestWakePrintsWhatToActOnInOrder(t *testing.T) {
 
 // A budget incident is printed with the tokens used and the threshold it
 // was filed at (CON-76): "budget 50%" for the half one, with what to do
-// next, and "over budget" for the full one; both after the hand-backs.
+// next, and "over budget" for the full one with the Mate's three choices
+// (CON-94); both after the hand-backs.
 func TestWakePrintsBudgetIncidentsWithTheirThreshold(t *testing.T) {
 	w := wakeFixture(t)
 	for crew, text := range map[string]string{
@@ -126,7 +127,7 @@ func TestWakePrintsBudgetIncidentsWithTheirThreshold(t *testing.T) {
 	for _, want := range []string{
 		"== 1. To act on (4) ==\n",
 		"budget 50% busy-k5: 1.1M tokens of 2M tokens, no hand-back yet\n  next: mate peek busy-k5 once; if it is looping or polling, send it one line\n",
-		"over budget ask-k4: 2.3M tokens of 2M tokens\n  next: tell the captain",
+		"over budget ask-k4: 2.3M tokens of 2M tokens\n  next: skill wake, Budget; the app told the Crew to commit, hand back and stop - at its hand-back extend it once (mate crew budget shop ask-k4 --extend <tokens> --reason \"<why>\"), narrow it, or drop it\n",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("wake lacks %q:\n%s", want, text)
@@ -134,6 +135,27 @@ func TestWakePrintsBudgetIncidentsWithTheirThreshold(t *testing.T) {
 	}
 	if strings.Index(text, "budget 50% busy-k5") < strings.Index(text, "wait-mate k3") {
 		t.Errorf("a budget item must come after the hand-backs:\n%s", text)
+	}
+}
+
+// The hard ceiling (CON-94) reads as the crew the app stopped, not as one
+// more over-budget line.
+func TestWakePrintsTheBudgetHardCeiling(t *testing.T) {
+	w := wakeFixture(t)
+	if err := w.AppendIncident("shop", store.IncidentEntry{
+		Time: time.Date(2026, 10, 14, 21, 0, 0, 0, time.UTC), Crew: "busy-k5",
+		Kind: string(box.IncidentBudget), State: store.IncidentOpen,
+		Text: box.BudgetHardPrefix + "4.1M tokens of 2M tokens, over twice the budget; the app stops the crew",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	text := runWake(t, w)
+	want := "budget hard ceiling busy-k5: 4.1M tokens of 2M tokens, over twice the budget; the app stops the crew\n  next: skill wake, Budget; the app stopped the Crew"
+	if !strings.Contains(text, want) {
+		t.Fatalf("wake lacks %q:\n%s", want, text)
+	}
+	if strings.Contains(text, "over budget busy-k5") {
+		t.Fatalf("the hard ceiling was printed as a plain over-budget item:\n%s", text)
 	}
 }
 

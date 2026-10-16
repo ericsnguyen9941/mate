@@ -267,8 +267,8 @@ func TestUsageShowsModelAndEffortFromTheTurnOrTheLaunchProfile(t *testing.T) {
 func TestUsageRollsReviewersIntoTheirTask(t *testing.T) {
 	w := usageWorkspace(t)
 	for id, meta := range map[string]map[string]string{
-		"rev": {"harness": "claude", "task": "Review k3 at abc", "state": "spawned"},
-		"big": {"harness": "claude", "task": "unrelated", "state": "spawned"},
+		"rev": {"harness": "claude", "task": "Review k3 at abc", "state": "spawned", "budget": "3000000"},
+		"big": {"harness": "claude", "task": "unrelated", "state": "spawned", "budget": "400000"},
 		"old": {"harness": "claude", "task": "Review k3 at 000", "state": "finished"},
 	} {
 		if err := w.WriteCrewMeta("shop", id, meta); err != nil {
@@ -303,14 +303,20 @@ func TestUsageRollsReviewersIntoTheirTask(t *testing.T) {
 		return nil
 	}
 	// k3: 97.2k own + rev 11k + old 2k = 110.2k with 2 reviews.
-	if f := row("k3"); f[9] != "97.2k" || f[10] != "110.2k" || f[11] != "2" {
-		t.Fatalf("k3 row = %v, want TOTAL 97.2k, TASK-TOTAL 110.2k, REVIEWS 2", f)
+	// Columns 11 and 12 are BUDGET and % (CON-94): none of these crews has one.
+	if f := row("k3"); f[9] != "97.2k" || f[10] != "110.2k" || f[11] != "-" || f[12] != "-" || f[13] != "2" {
+		t.Fatalf("k3 row = %v, want TOTAL 97.2k, TASK-TOTAL 110.2k, no BUDGET, REVIEWS 2", f)
 	}
-	if f := row("rev"); f[10] != "-" || f[11] != "for" || f[12] != "k3" {
+	if f := row("rev"); f[10] != "-" || f[13] != "for" || f[14] != "k3" {
 		t.Fatalf("rev row = %v, want no TASK-TOTAL and 'for k3'", f)
 	}
-	if f := row("big"); f[10] != "100k" || f[11] != "-" {
-		t.Fatalf("big row = %v, want TASK-TOTAL equal to its own total and no reviews", f)
+	if f := row("big"); f[10] != "100k" || f[11] != "400k" || f[12] != "25%" || f[13] != "-" {
+		t.Fatalf("big row = %v, want TASK-TOTAL equal to its own total, 25%% of its 400k BUDGET, and no reviews", f)
+	}
+	// A reviewer's own budget= is not a pocket of its own: its tokens are
+	// in its task's TASK-TOTAL, and its row shows no BUDGET.
+	if f := row("rev"); f[11] != "-" || f[12] != "-" {
+		t.Fatalf("rev row = %v, want no BUDGET of its own", f)
 	}
 	if !strings.Contains(out, "total: 5 turn(s)") {
 		t.Fatalf("footer does not count every row once:\n%s", out)

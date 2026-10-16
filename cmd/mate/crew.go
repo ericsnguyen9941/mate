@@ -15,10 +15,10 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// cmdCrew dispatches `mate crew <spawn|list|stop|relaunch|dispatch>`.
+// cmdCrew dispatches `mate crew <spawn|list|stop|relaunch|dispatch|budget>`.
 func cmdCrew(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return newUsageError("usage: mate crew <spawn|list|stop|relaunch|dispatch> ...")
+		return newUsageError("usage: mate crew <spawn|list|stop|relaunch|dispatch|budget> ...")
 	}
 	switch args[0] {
 	case "spawn":
@@ -31,6 +31,8 @@ func cmdCrew(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return cmdCrewStop(args[1:], stdout, stderr)
 	case "relaunch", "restart":
 		return cmdCrewRelaunch(args[1:], stdout, stderr)
+	case "budget":
+		return cmdCrewBudget(args[1:], stdout, stderr)
 	default:
 		return newUsageErrorf("unknown crew subcommand %q", args[0])
 	}

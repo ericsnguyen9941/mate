@@ -157,8 +157,8 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=04809623c9d64cd49c34268bb3f84c13419738b3870d185eb2364ecce54a26c7
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-recovery/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md mode=-rw-r--r-- bytes=7845 ---
-(rendered asset) sha256=106268a49ac291de30b000d6543c9ceaf5b74dbc352906a3bba1f19860b011ca
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md mode=-rw-r--r-- bytes=8041 ---
+(rendered asset) sha256=8dd5c6962705296b6eb7fb19670e87f88cd4cbe4ec19acf65e54bfe1ae0e8dd8
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/new-task/SKILL.md mode=-rw-r--r-- bytes=13334 ---
@@ -173,12 +173,12 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=9a2ed96dd6a4a1aee8d92c12e58819d8ac9b512a3145dd6fb5c0895ec381d65f
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/stow/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/token-review/SKILL.md mode=-rw-r--r-- bytes=5365 ---
-(rendered asset) sha256=a5289418a998929d877ce7ed3852e4a3fe246f98b8d02346ef02b788e895f6f2
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/token-review/SKILL.md mode=-rw-r--r-- bytes=5525 ---
+(rendered asset) sha256=fba4206c412cec405ab309b1159d67283c7e0f3ad44592ac7369bd34eacdeb71
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/token-review/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/wake/SKILL.md mode=-rw-r--r-- bytes=5180 ---
-(rendered asset) sha256=5b43e3f5e9b3e63611b70a9d481d6187c2cb8799a2fee1d18771d877f7965670
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/wake/SKILL.md mode=-rw-r--r-- bytes=5974 ---
+(rendered asset) sha256=367266d58ca034957e074f3605825fa05532814992661cb95f65753ff1ced6d7
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/wake/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/AGENTS.md mode=-rw-r--r-- bytes=15832 ---

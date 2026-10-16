@@ -109,7 +109,8 @@ func consoleAutoPilot(ws *store.Workspace, deps spawn.Deps) *autopilot.Pilot {
 		Maintain: func(ctx context.Context, project string) (bool, error) {
 			return contextRefresh(ctx, ws, deps, project, true)
 		},
-		Sweep: func(context.Context) { prwatch.Sweep(ws, prStarter) },
+		Sweep:  func(context.Context) { prwatch.Sweep(ws, prStarter) },
+		Budget: consoleBudgetActions(ws, deps),
 	})
 }
 
