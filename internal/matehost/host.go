@@ -90,6 +90,8 @@ type Event struct {
 	News []News
 	// Note is something the REPL should tell the captain.
 	Note string
+	// Focus is a news the console asked the REPL to open.
+	Focus int
 	// State is the host's state after the event.
 	State State
 }
@@ -639,6 +641,9 @@ func (h *Host) RefreshNews() {
 // with `mate news` - until ctx ends.
 func (h *Host) WatchNews(ctx context.Context, every time.Duration) {
 	h.RefreshNews()
+	focusPath := filepath.Join(filepath.Dir(h.newsPath), NewsFocusName)
+	// A request made before this REPL started is not the captain's now.
+	asked, _ := readNewsFocus(focusPath)
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -653,6 +658,14 @@ func (h *Host) WatchNews(ctx context.Context, every time.Duration) {
 		h.mu.Unlock()
 		if err == nil && !fi.ModTime().Equal(seen) {
 			h.RefreshNews()
+		}
+		if f, ok := readNewsFocus(focusPath); ok && h.newsPath != "" && f.At.After(asked.At) {
+			asked = f
+			h.mu.Lock()
+			ev := h.eventLocked(nil)
+			h.mu.Unlock()
+			ev.Focus = f.ID
+			h.emit(ev)
 		}
 	}
 }

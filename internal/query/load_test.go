@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -537,6 +538,40 @@ func TestLoadReadsWhatTheMateHoldsForTheCaptain(t *testing.T) {
 	want := []HeldItem{{Task: "checkout-button", Date: "2026-09-24", Question: "Classic or express?"}}
 	if !got.IsKnown() || !reflect.DeepEqual(got.Value, want) {
 		t.Fatalf("Held = %+v, want %+v", got, want)
+	}
+}
+
+// A headless Mate's open news reach the snapshot from `mate/news.jsonl`,
+// newest first: Absent before the Mate opens one, a closed news gone.
+func TestLoadReadsTheMatesOpenNews(t *testing.T) {
+	ws := newWorkspace(t, "shop")
+	news := func() Field[[]NewsItem] {
+		t.Helper()
+		snap, err := Load(context.Background(), ws, testHarnesses, nil)
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		return snap.Projects[0].Mate.News
+	}
+	if got := news(); got.State != Absent {
+		t.Fatalf("News without a log = %+v, want Absent", got)
+	}
+	if err := os.MkdirAll(ws.MateDir("shop"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := matehost.NewsPath(ws.MateDir("shop"))
+	at := time.Date(2026, 10, 16, 8, 0, 0, 0, time.UTC)
+	for i, title := range []string{"Epic 1 xong", "Duyệt 12 điểm", "Vượt ngân sách"} {
+		if _, err := matehost.OpenNews(path, matehost.News{Title: title, Crew: "e1"}, at.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := matehost.CloseNews(path, 1, "ok", false, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got := news()
+	if !got.IsKnown() || len(got.Value) != 2 || got.Value[0].ID != 3 || got.Value[1].ID != 2 || !got.Value[0].Owed || got.Value[0].Crew != "e1" {
+		t.Fatalf("News = %+v, want #3 then #2, both owed", got)
 	}
 }
 

@@ -1,6 +1,7 @@
 package matehost
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -307,5 +308,62 @@ func TestREPLNewsNotClosed(t *testing.T) {
 		if !strings.Contains(list, want) {
 			t.Errorf("list lacks %q:\n%s", want, list)
 		}
+	}
+}
+
+// The console asks the REPL to open a news through news.focus: a request
+// made while the REPL runs reaches it once; one older than the REPL does
+// not.
+func TestWatchNewsPassesTheConsolesFocus(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, NewsName)
+	now := time.Now()
+	if _, err := OpenNews(path, News{Title: "Vượt ngân sách"}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := RequestNewsFocus(dir, 1, now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	h := New(&Runner{}, Options{News: path})
+	focus := make(chan int, 4)
+	h.Subscribe(func(ev Event) {
+		if ev.Focus > 0 {
+			focus <- ev.Focus
+		}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go h.WatchNews(ctx, 10*time.Millisecond)
+	select {
+	case id := <-focus:
+		t.Fatalf("a request older than the REPL opened #%d", id)
+	case <-time.After(60 * time.Millisecond):
+	}
+	if err := RequestNewsFocus(dir, 1, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case id := <-focus:
+		if id != 1 {
+			t.Fatalf("focus = #%d, want #1", id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the request never reached the REPL")
+	}
+	select {
+	case id := <-focus:
+		t.Fatalf("one request opened #%d twice", id)
+	case <-time.After(60 * time.Millisecond):
+	}
+}
+
+// A focus event opens its news in the REPL, over the list if it is open.
+func TestREPLOpensTheFocusedNews(t *testing.T) {
+	m := newsModel(100, 30)
+	m.host = New(&Runner{}, Options{})
+	m.mode, m.listFrom = viewList, viewChat
+	m.apply(Event{News: m.news, Focus: 3})
+	if m.mode != viewNews || m.newsID != 3 {
+		t.Fatalf("focus left mode %d news #%d", m.mode, m.newsID)
 	}
 }

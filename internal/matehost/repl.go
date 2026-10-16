@@ -205,6 +205,13 @@ func (m *Model) applyEvent(ev Event) {
 	if ev.DraftCleared {
 		m.setInput(nil)
 	}
+	if ev.Focus > 0 {
+		if m.mode == viewList {
+			m.mode = m.listFrom
+		}
+		m.help = false
+		m.openNews(ev.Focus)
+	}
 	it := ev.Item
 	if it == nil {
 		return

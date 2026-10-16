@@ -262,6 +262,9 @@ func (m Model) keyHints() []keyHint {
 	case paneDetail:
 		return joinHints([]keyHint{{m.g.UpDown, "field"}, {"y", "copy"}, {"esc", "list"}}, tools, []keyHint{{"enter", "show"}})
 	case paneBox:
+		if items := m.boxItems(); len(items) > 0 && items[m.boxSelection(items)].news != nil {
+			return joinHints([]keyHint{{m.g.UpDown, "move"}, {"enter", "news"}}, tools, []keyHint{{"esc", ""}})
+		}
 		return joinHints([]keyHint{{m.g.UpDown, "move"}, {"enter", "crew"}, {"a", "assign"}}, tools, []keyHint{{"esc", ""}})
 	}
 	if m.cur().kind == frameWorkspace {

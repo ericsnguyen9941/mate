@@ -1,7 +1,9 @@
 package console
 
 import (
+	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
+	"strconv"
 
 	"github.com/nguyenngocanh94/mate/internal/query"
 )
@@ -123,6 +125,10 @@ func (m Model) beginBoxActions() Model {
 // only `l` can put one under the cursor - and the refusal says so rather
 // than doing nothing.
 func (m Model) beginBoxAssign(it boxItem) (Model, tea.Cmd) {
+	if it.news != nil {
+		m.msg = errMsg("Assign refused: the Mate opened this news for you " + m.g.Dot + " Enter answers it in the Mate")
+		return m, nil
+	}
 	if !it.e.Resolvable() {
 		m.msg = errMsg("Assign refused: a " + string(it.e.Kind) + " entry holds no question " + m.g.Dot + " nothing was sent")
 		return m, nil
@@ -167,7 +173,29 @@ func (m Model) showBoxItem(it boxItem) (Model, tea.Cmd) {
 		m.msg = errMsg("Show refused: crew " + it.e.Crew + " is not in this snapshot; it was closed " + m.g.Dot + " nothing was shown")
 		return m, nil
 	}
-	return m.stageRow(r)
+	m, stage := m.stageRow(r)
+	if it.news == nil {
+		return m, stage
+	}
+	return m, tea.Batch(stage, m.openNews(it.project, it.news.ID))
+}
+
+// newsOpenedMsg is the REPL's answer to an open-news request: nil once the
+// request is written for the REPL to read.
+type newsOpenedMsg struct{ err error }
+
+// openNews asks the Project's REPL to open news id beside the box: the
+// Mate's pane shows it, and the captain answers there.
+func (m Model) openNews(project string, id int) tea.Cmd {
+	action, ctx := m.action, m.baseCtx()
+	req := ActionRequest{Action: ActionOpenNews, Target: project, TargetKind: "project", Input: strconv.Itoa(id)}
+	return func() tea.Msg {
+		if action == nil {
+			return newsOpenedMsg{err: fmt.Errorf("Console actions are not wired")}
+		}
+		_, err := action(ctx, req)
+		return newsOpenedMsg{err: err}
+	}
 }
 
 // boxItemRow is the Project row an item names.
