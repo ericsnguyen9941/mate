@@ -346,12 +346,12 @@ func TestWorkIsNamedAfterItsIssue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"`- Issue: <ID> (...)`", "`HVN-57: Add trip day warnings`"} {
+	for _, want := range []string{"`- Issue: <ID> (...)`", "`[HVN-57] Add trip day warnings`"} {
 		if !strings.Contains(string(ship), want) {
 			t.Errorf("the ship brief does not say %q", want)
 		}
 	}
-	for _, want := range []string{"`HVN-57: Wire the live trip repository`", "`Closes HVN-57`", "`Part of HVN-57`"} {
+	for _, want := range []string{"`[HVN-57] Wire the live trip repository`", "`Closes HVN-57`", "`Part of HVN-57`"} {
 		if !strings.Contains(string(pr), want) {
 			t.Errorf("the pull-request brief does not say %q", want)
 		}

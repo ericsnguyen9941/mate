@@ -69,7 +69,7 @@ task scope. Work only in the assigned scope, including when looking for
   (review findings, a bug found after review) stays on that issue.
 - Name Crews after their issue as `new-task` says (`hvn-124-login-oauth`,
   `hvn-124-f1`, `hvn-124-r1`). The Crew brief tells each Crew to put
-  `HVN-124:` before its commit subjects and pull request title, and
+  `[HVN-124]` before its commit subjects and pull request title, and
   `Closes HVN-124` or `Part of HVN-124` at the top of the PR body; Linear links
   the branch, commits and PR to the issue by that ID.
 - Put the issue ID and the acceptance criteria in the Crew brief.
