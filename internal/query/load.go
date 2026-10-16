@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/box"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -132,6 +133,7 @@ func loadProject(ws *store.Workspace, ref store.ProjectRef, live Liveness, w *wa
 
 	p.Mate = loadMate(ws, ref.Name, live, w)
 	p.Mate.Held = note(w, loadHeld(ws, ref.Name), "held", RowRef{Kind: RowMate, ID: ref.Name, Label: ref.Name})
+	p.Mate.News = note(w, loadNews(ws, ref.Name), "news", RowRef{Kind: RowMate, ID: ref.Name, Label: ref.Name})
 	// The box is read before the Crews because a Crew's state depends on
 	// it: `blocked` is an open incident in the merged view and nothing
 	// else (mvp.md section 4b).
@@ -252,6 +254,31 @@ func loadHeld(ws *store.Workspace, project string) Field[[]HeldItem] {
 			items = append(items, HeldItem{Task: e.ID, Date: e.Date, Question: e.Question})
 		}
 	}
+	return KnownField(items)
+}
+
+// loadNews reads the news a headless Mate has open from `mate/news.jsonl`,
+// newest first.
+func loadNews(ws *store.Workspace, project string) Field[[]NewsItem] {
+	path := matehost.NewsPath(ws.MateDir(project))
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return AbsentField[[]NewsItem]("this Mate has opened no news")
+		}
+		return UnknownField[[]NewsItem](readFailureReason(err))
+	}
+	list, err := matehost.LoadNews(path)
+	if err != nil {
+		return UnknownField[[]NewsItem](readFailureReason(err))
+	}
+	items := []NewsItem{}
+	for _, n := range list {
+		if n.Closed() {
+			continue
+		}
+		items = append(items, NewsItem{ID: n.ID, Crew: n.Crew, Kind: n.Kind, Title: n.Title, Question: n.Question, Owed: n.Owed(), At: n.At})
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].At.After(items[j].At) })
 	return KnownField(items)
 }
 

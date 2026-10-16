@@ -178,7 +178,7 @@ func (m Model) projectPeekFields(proj query.ProjectNode, vw int) []detailField {
 	if n := boxWaiting(proj); n > 0 {
 		out = append(out, detailField{label: "box", lines: text(fmt.Sprintf("%d waiting on you", n), tAmber)})
 	}
-	if n := len(mate.Held.Value); mate.Held.IsKnown() && n > 0 {
+	if n := len(mate.OwedNews()) + len(mate.Held.Value); n > 0 {
 		out = append(out, detailField{label: "news", lines: text(fmt.Sprintf("%d waiting on you", n), tAmber)})
 	}
 	out = append(out, detailField{label: "mode", lines: one(m.modeLine(proj))})
@@ -311,7 +311,7 @@ func (m Model) mateDetailFields(vw int) []detailField {
 		out = append(out, m.repoFields(proj, vw)...)
 		out = append(out, detailField{label: "mode", lines: one(m.modeLine(proj))})
 		out = append(out, detailField{label: "start", lines: text("s creates one", tDim)})
-		return append(out, m.newsFields(mate.Held, vw)...)
+		return append(out, m.mateNewsFields(mate, vw)...)
 	}
 	if f, ok := m.bindingField(mate.Binding, vw); ok {
 		out = append(out, f)
@@ -350,7 +350,36 @@ func (m Model) mateDetailFields(vw int) []detailField {
 	if mate.Error.IsKnown() && mate.Error.Value != "" {
 		out = append(out, detailField{label: "error", lines: wrapped(string(mate.Error.Value), tRed, vw)})
 	}
-	return append(out, m.newsFields(mate.Held, vw)...)
+	return append(out, m.mateNewsFields(mate, vw)...)
+}
+
+// mateNewsFields are a headless Mate's open news when it has any - each
+// one's title, and whether it waits on the captain or on the Mate - and
+// the questions an interactive Mate held in its backlog otherwise.
+func (m Model) mateNewsFields(mate query.MateNode, vw int) []detailField {
+	if !mate.News.IsKnown() || len(mate.News.Value) == 0 {
+		return m.newsFields(mate.Held, vw)
+	}
+	fw := vw + detailLabelWidth(nil) - detailFlushIndent
+	var out []detailField
+	for i, n := range mate.News.Value {
+		label := ""
+		if i == 0 {
+			label = "news"
+		}
+		head := gl().add(fmt.Sprintf("#%d", n.ID), tAmber)
+		if n.Owed {
+			head = head.add(" waiting on you", tAmber)
+		} else {
+			head = head.add(" the Mate works on it", tDim)
+		}
+		if since := m.since(n.At); since != "" {
+			head = head.add(" "+m.g.Dot+" "+since, tDim)
+		}
+		out = append(out, detailField{label: label, copy: n.Title, flush: true,
+			lines: append(one(head), wrapped(n.Title, tFg, fw)...)})
+	}
+	return out
 }
 
 // newsFields are the questions the Mate asked the captain and still waits

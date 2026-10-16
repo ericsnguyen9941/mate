@@ -108,6 +108,10 @@ const (
 	// back. It is dangerous only in that it stops agents, so the confirmation
 	// is a plain `y`, not a typed name.
 	ActionRemoveProject Action = "remove_project"
+	// ActionOpenNews asks a Project's headless Mate REPL to open one news
+	// (Input is its id): Enter on a news in the box. It writes only the
+	// request the REPL reads, so it has no confirmation.
+	ActionOpenNews Action = "open_news"
 	// TODO: v1 also had retry, discard and switch_harness. mate has no
 	// retry (a Crew runs once), and no discard action: throwing work away
 	// is `mate crew stop --discard`, on the captain's explicit word.

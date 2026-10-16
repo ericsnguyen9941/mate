@@ -1,6 +1,7 @@
 package console
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,10 +14,22 @@ import (
 // answers for the captain or draws a conversation. On the workspace level
 // it gathers every Project's box; on a Project, that Project's.
 
-// boxItem is one box entry and the Project it belongs to.
+// boxItem is one box entry and the Project it belongs to. A news the
+// Mate opened for the captain (news set) waits in the box beside the
+// crews: its entry is the Mate's, so it follows and shows the Mate row.
 type boxItem struct {
 	project string
 	e       query.BoxEntry
+	news    *query.NewsItem
+}
+
+// newsBoxItem is a news owed by the captain as a box item.
+func newsBoxItem(project string, n query.NewsItem) boxItem {
+	text := n.Question
+	if text == "" {
+		text = n.Title
+	}
+	return boxItem{project: project, e: query.BoxEntry{At: n.At, Crew: "mate", Attention: true, Text: text}, news: &n}
 }
 
 // boxItems are the entries the box shows: the inbox, or the whole log
@@ -35,11 +48,18 @@ func (m Model) boxItems() []boxItem {
 			out = append(out, boxItem{project: p.ProjectID, e: e})
 		}
 	}
+	collectNews := func(p query.ProjectNode) {
+		for _, n := range p.Mate.OwedNews() {
+			out = append(out, newsBoxItem(p.ProjectID, n))
+		}
+	}
 	if m.cur().kind == frameProject {
 		collect(m.currentProject())
+		collectNews(m.currentProject())
 	} else {
 		for _, p := range m.tree.Projects {
 			collect(p)
+			collectNews(p)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].e.At.After(out[j].e.At) })
@@ -151,7 +171,9 @@ func (m Model) boxTitleLine(it boxItem, selected bool, w int) (gline, boxHit) {
 	name := gl().pad(1).join(kindName(m.boxAsker(it), m.boxSubject(it)))
 	right := gl()
 	var hit boxHit
-	if suffix := boxAssignSuffix(it.e); suffix != "" {
+	if it.news != nil {
+		right = gl().add(fmt.Sprintf("news #%d", it.news.ID), tAmber).pad(2)
+	} else if suffix := boxAssignSuffix(it.e); suffix != "" {
 		right = gl().add(suffix, tDim).pad(2)
 	} else if it.e.Resolvable() {
 		right = gl().add("[", tDim).add("assign", tFg).add("]", tDim).pad(2)
@@ -173,6 +195,9 @@ func (m Model) boxAsker(it boxItem) string {
 // boxSubject names an item by its crew's task, or by the crew id when the
 // task is not in the snapshot; the Mate's own items by its Project.
 func (m Model) boxSubject(it boxItem) string {
+	if it.news != nil {
+		return oneLine(it.news.Title)
+	}
 	proj, _ := m.projectByID(it.project)
 	if it.e.Crew == "mate" || it.e.Crew == "" {
 		if it.e.Kind == query.BoxMessage {
@@ -195,13 +220,21 @@ func (m Model) boxSubject(it boxItem) string {
 // source; on a Project, the crew id.
 func (m Model) boxMetaLine(it boxItem, p framePlan) gline {
 	from := shortID(it.e.Crew, m.g)
-	if m.cur().kind == frameWorkspace || it.e.Crew == "mate" || it.e.Crew == "" {
+	if it.news != nil && it.news.Crew != "" && m.cur().kind == frameProject {
+		from = shortID(it.news.Crew, m.g)
+	} else if m.cur().kind == frameWorkspace || it.e.Crew == "mate" || it.e.Crew == "" {
 		if proj, ok := m.projectByID(it.project); ok {
 			from = proj.Name
 		}
 	}
 	l := gl().pad(5).add(from, tDim)
-	if need := boxNeed(it.e); need != "" {
+	if it.news != nil {
+		need := "waiting on you"
+		if it.news.Kind != "" {
+			need = it.news.Kind
+		}
+		l = l.add(" "+m.g.Dot+" ", tDim).add(need, tAmber)
+	} else if need := boxNeed(it.e); need != "" {
 		t := tDim
 		if it.e.Attention {
 			t = tAmber
@@ -224,6 +257,9 @@ func boxNeed(e query.BoxEntry) string {
 
 // boxAssignHint says where [assign] sends the item: to the Project's Mate.
 func (m Model) boxAssignHint(it boxItem) (gline, bool) {
+	if it.news != nil {
+		return gl().pad(5).add("Enter answers it in the Mate", tDim), true
+	}
 	if !it.e.Resolvable() || it.e.Assigned.State != "" {
 		return gline{}, false
 	}

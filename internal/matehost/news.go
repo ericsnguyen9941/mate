@@ -97,6 +97,42 @@ type newsEvent struct {
 	Text     string       `json:"text,omitempty"`
 }
 
+// NewsFocusName is where the console asks the REPL to open a news: the
+// captain pressed Enter on it in the box.
+const NewsFocusName = "news.focus"
+
+type newsFocus struct {
+	ID int       `json:"id"`
+	At time.Time `json:"at"`
+}
+
+// RequestNewsFocus asks the REPL of the Mate in mateDir to open news id.
+func RequestNewsFocus(mateDir string, id int, now time.Time) error {
+	data, err := json.Marshal(newsFocus{ID: id, At: now})
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(mateDir, NewsFocusName)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// readNewsFocus is the news the last request named, with when it was made.
+func readNewsFocus(path string) (newsFocus, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return newsFocus{}, false
+	}
+	var f newsFocus
+	if json.Unmarshal(data, &f) != nil || f.ID <= 0 {
+		return newsFocus{}, false
+	}
+	return f, true
+}
+
 // NewsPath is the news log of the Mate in mateDir.
 func NewsPath(mateDir string) string { return filepath.Join(mateDir, NewsName) }
 

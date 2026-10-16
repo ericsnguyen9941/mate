@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/autopilot"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
@@ -85,6 +88,8 @@ func consoleAction(ws *store.Workspace, deps spawn.Deps) console.ActionFunc {
 			return removeProjectAction(ctx, ws, deps, req)
 		case console.ActionMerge:
 			return mergeCrewAction(ctx, ws, deps, req)
+		case console.ActionOpenNews:
+			return openNewsAction(ws, req)
 		default:
 			return "", observability.NewError(observability.CodeUsage,
 				fmt.Sprintf("%s is not wired in this build", req.Action))
@@ -315,4 +320,22 @@ func addProjectAction(ws *store.Workspace, req console.ActionRequest) (string, e
 	}
 	added := saved.Repos[0]
 	return fmt.Sprintf("Project %s added: repo %s, default branch %s", name, added.Path, added.DefaultBranch), nil
+}
+
+// openNewsAction is Enter on a news in the box (CON-86): it asks the
+// Project's headless Mate REPL to open the news, which the console stages
+// beside it. It writes the request and nothing else.
+func openNewsAction(ws *store.Workspace, req console.ActionRequest) (string, error) {
+	id, err := strconv.Atoi(req.Input)
+	if err != nil || id <= 0 || req.Target == "" {
+		return "", observability.NewError(observability.CodeUsage,
+			fmt.Sprintf("open news needs a Project and a news id; the request named %q #%q", req.Target, req.Input))
+	}
+	if err := requireProject(ws, req.Target); err != nil {
+		return "", err
+	}
+	if err := matehost.RequestNewsFocus(ws.MateDir(req.Target), id, time.Now()); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("news #%d opened in the Mate", id), nil
 }

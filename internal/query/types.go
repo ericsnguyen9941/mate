@@ -171,6 +171,38 @@ type MateNode struct {
 	// mate.meta, because the backlog outlives a stopped Mate: Absent when
 	// the Project has no backlog yet, Known and empty when nothing is asked.
 	Held Field[[]HeldItem]
+	// News is what a headless Mate opened for the captain with `mate news
+	// open` and has not closed: `mate/news.jsonl` folded (CON-78). Absent
+	// when the Mate never opened one, Known and empty when every news is
+	// closed. Newest first.
+	News Field[[]NewsItem]
+}
+
+// NewsItem is one open news of a headless Mate.
+type NewsItem struct {
+	ID       int
+	Crew     string
+	Kind     string
+	Title    string
+	Question string
+	// Owed is whether the news waits on the captain; otherwise the Mate
+	// works on the captain's answer.
+	Owed bool
+	// At is when the news last moved: opened, updated, answered.
+	At time.Time
+}
+
+// OwedNews are the news waiting on the captain.
+func (n MateNode) OwedNews() []NewsItem {
+	var out []NewsItem
+	if n.News.IsKnown() {
+		for _, x := range n.News.Value {
+			if x.Owed {
+				out = append(out, x)
+			}
+		}
+	}
+	return out
 }
 
 // HeldItem is one open question the Mate asked the captain.
