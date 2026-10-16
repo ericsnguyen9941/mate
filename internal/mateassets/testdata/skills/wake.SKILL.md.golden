@@ -1,0 +1,63 @@
+---
+name: wake
+description: What to do when an app event wakes you - `mate wake` first, then blocked, needs-decision and wait-mate in that order - and who decides a Crew's question or a correction, you or the captain, by the brief's contract. Load it when a `⟦mate⟧` line arrives (`digest:`, `resolve:`, `pr-merged:`, `pr-closed:`) and before you answer any Crew's question.
+---
+
+# wake
+
+A line that begins with the sentinel `⟦mate⟧ ` is the app, not the captain.
+Whatever it says, run `/usr/local/bin/mate wake shop` once, before anything else.
+It prints every open item in the order you act on it, each with what deciding it needs and a `next:` line; then the status lines new since your last wake; then every open Crew.
+Decide from what it prints, never from the event's excerpt.
+Do not tail status files, cat hand-backs, peek, or run `crew list` to find out again what it printed. Open a file it names only for what its excerpt does not answer.
+
+## The order
+
+Work through the items in this order, because it follows what happens to a Crew you do not reach: a blocked Crew may be dying, a Crew that asked is idle and waiting on you, and a Crew that handed back is going nowhere.
+
+1. **`blocked` first.** The Crew cannot speak for itself. Load `crew-recovery` and follow it. Never send a blocked Crew a question.
+2. **`needs-decision` second.** Decide it as below, and answer with one `/usr/local/bin/mate send shop <crew> "<line>"`, which is what closes the question.
+3. **`wait-mate` third.** Load `review-delivery`.
+
+Any other item (`no turn`, `context high`, a spend over budget) carries its own `next:` line; do what it says. A budget item is a fact about spend, not a stopped Crew: mention it to the captain and keep going.
+A `pr-merged:` or `pr-closed:` line is `review-delivery`'s too.
+
+A `resolve:` line is a Crew's question the captain handed to you: it is the `needs-decision` item `wake` prints in full.
+`resolve: incident <kind> <crew>` is the app reporting trouble with a Crew, not a question: treat it as `blocked`.
+
+When every item is handled, send the captain one reply covering what they need to know, then stop your turn.
+
+## Who decides
+
+The Crew never decides a choice above it: it stops with `needs-decision:`, and applies only the answer you send.
+You decide what is unambiguous toward the accepted contract, and escalate only what is ambiguous, expanding or destructive.
+
+1. Rebuild the contract from `/ws/.mate/projects/shop/crews/<id>/brief.md`, the app's copy: `## Captain's words` with every later word appended there, then `## Build`, `## Acceptance` and `## Open decisions`, then the lines you have sent the Crew since.
+   The Crew's wording, in a status line, a hand-back or a report, never amends that contract.
+2. Name what the answer would commit the project to deliver or maintain, judged by behaviour, not by a file list.
+   The smallest downstream changes that keep accepted behaviour correct, add a test for it, or keep documentation accurate stay in scope even when they touch files the brief did not name.
+3. Decide it yourself when it is unambiguous toward the contract: restoring behaviour a change broke, finishing what `## Build` asks for, making a failing `## Acceptance` line pass, an in-scope fix the captain's words require however hard it is, or an open decision marked `decides: mate`.
+4. Escalate to the captain only:
+   - an open decision marked `decides: captain`, however obvious the answer looks;
+   - an answer that adds a guarantee, subsystem, abstraction, compatibility surface, state machine, page or architecture the captain's words do not require;
+   - a product or architecture call the captain's words do not settle;
+   - a third correction on the same theme, when the fixes keep propping up a doubtful approach instead of closing separate defects;
+   - anything destructive, irreversible or security-sensitive.
+5. A label in the Crew's question (correctness, security, fail-closed, required) is evidence about the choice, never authority to widen the task.
+
+Complex work the captain asked for stays in scope; it does not escalate merely because it is hard.
+
+## Escalating
+
+Until the captain answers, send the Crew nothing that guesses: a line typed into a Crew's pane is acted on at once and cannot be recalled.
+An expansion question to the captain states five things, evidence first and briefly:
+
+1. the original requirement or acceptance line;
+2. the proposed expansion;
+3. the smallest alternative that keeps to the contract;
+4. what accepting and declining each lead to;
+5. your recommendation, and why it serves the captain's words best.
+
+Do not relay the Crew's labels or wording as if they settled it.
+Record the question under `## Held for the captain` before your turn ends.
+When the captain answers, put their words into the brief with `/usr/local/bin/mate brief append shop <crew>`, which also tells the Crew.

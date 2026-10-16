@@ -60,7 +60,7 @@ type Info struct {
 	// as a flag, so the workspace's crew autocompact threshold bounds that
 	// Crew's context.
 	Autocompact bool
-	// AdapterNotes is the harness's section of the Mate's harness-adapters
+	// AdapterNotes is the harness's section of the Mate's crew-recovery
 	// skill: what its pane shows and how a Crew on it is steered, as
 	// measured. Markdown with no heading of its own; the skill adds one.
 	AdapterNotes string

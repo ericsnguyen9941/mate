@@ -21,7 +21,13 @@ var (
 // order Write lays them down. Each
 // one is `assets/mate/skills/<name>/SKILL.md.tmpl` in the embedded FS and
 // `<mate>/<SkillsDir>/<name>/SKILL.md` on disk.
-var SkillNames = []string{"harness-adapters", "crew-dispatch", "stuck-crew-recovery", "decision-authority", "diagnostic-reasoning", "stow", "mate-commands", "task-intake", "brief-writing", "crew-spawn", "review-delivery", "event-handling", "project-memory", "token-review"}
+var SkillNames = []string{"new-task", "wake", "review-delivery", "crew-recovery", "stow", "mate-commands", "token-review"}
+
+// RetiredSkillNames are built-in skills an older mate installed and this one
+// no longer does (CON-69 merged fourteen into SkillNames). Write removes
+// their directories, so a running Mate is not offered both sets; any other
+// directory beside them, a user's skill or a plugin's, is left alone.
+var RetiredSkillNames = []string{"task-intake", "brief-writing", "crew-spawn", "crew-dispatch", "event-handling", "decision-authority", "stuck-crew-recovery", "harness-adapters", "diagnostic-reasoning", "project-memory"}
 
 // skillTemplates holds one parsed template per SkillNames entry. Parsing at
 // init keeps a malformed skill a build-time failure rather than a Mate that
@@ -50,7 +56,7 @@ type Params struct {
 	Harness string
 	// Harnesses are the harnesses this binary launches, the default Crew
 	// harness first and then the rest in the registry's order, each with
-	// its section of the harness-adapters skill.
+	// its section of the crew-recovery skill.
 	Harnesses []HarnessParams
 	// SkillsDir is where the skills are written, relative to MateDir: the
 	// directory the Mate's harness discovers them in (harness.Info). The
@@ -86,7 +92,7 @@ type Params struct {
 // by the user and discovered by the harness in its own skill directory.
 func (p Params) Skills() []string { return slices.Clone(SkillNames) }
 
-// HarnessParams is one harness as the harness-adapters skill describes it.
+// HarnessParams is one harness as the crew-recovery skill describes it.
 type HarnessParams struct {
 	// Kind is the harness as `--harness` takes it.
 	Kind string

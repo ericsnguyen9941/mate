@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-// TestManualBootstrapIsRecall holds section 3 to task 37: a session start
+// TestManualBootstrapIsRecall holds the session start to task 37: a session start
 // is the `mate recall` digest, not a list of files to read one by one,
 // and the M7 onboarding-scout rule (dispatched by the Mate since M19) and
 // the after-compaction rule stay in it.
 func TestManualBootstrapIsRecall(t *testing.T) {
 	p := fixedParams()
-	sec := part(t, renderedManual(t), "## 3. Bootstrap checklist")
+	sec := part(t, renderedManual(t), "## Session start")
 	for _, want := range []string{
 		"`" + p.MatevBin + " recall shop`",
 		"SessionStart hook",
@@ -24,11 +24,11 @@ func TestManualBootstrapIsRecall(t *testing.T) {
 		"`⟦mate⟧ stow:`",
 	} {
 		if !strings.Contains(sec, want) {
-			t.Errorf("section 3 does not say %s", want)
+			t.Errorf("the session start does not say %s", want)
 		}
 	}
 	if regexp.MustCompile("(?m)^\\d+\\. Read `").MatchString(sec) {
-		t.Error("section 3 still lists files to read one by one; the digest frames them")
+		t.Error("the session start still lists files to read one by one; the digest frames them")
 	}
 }
 
@@ -36,7 +36,7 @@ func TestManualBootstrapIsRecall(t *testing.T) {
 // digest's parts in the order `mate recall` prints them
 // (cmd/mate/recall_test.go holds the command to the same order).
 func TestCommandsSkillRecallNamesEightParts(t *testing.T) {
-	rec := part(t, skillText(t, commandsSkill), "### Recall")
+	rec := part(t, skillText(t, commandsSkill), "## Recall")
 	starts := []string{"Live state", "`mate project facts`", "`/ws/.mate/projects/shop/PROJECT.md`", "`/ws/.mate/projects/shop/mate/backlog.md` without `## Done`", "`/ws/.mate/projects/shop/mate/memory.md`", "`/ws/.mate/WORKSPACE.md`", "What `memory check` says", "Only when the timeline database exists"}
 	for n, want := range starts {
 		item := regexp.MustCompile("(?m)^" + string(rune('1'+n)) + `\. (.*)$`).FindStringSubmatch(rec)

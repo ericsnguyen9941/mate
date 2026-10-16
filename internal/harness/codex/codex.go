@@ -81,7 +81,7 @@ func (Codex) Info() harness.Info {
 	}
 }
 
-// adapterNotes is Codex's section of the harness-adapters skill.
+// adapterNotes is Codex's section of the crew-recovery skill.
 //
 //go:embed adapter.md
 var adapterNotes string

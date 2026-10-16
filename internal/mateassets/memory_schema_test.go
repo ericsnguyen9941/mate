@@ -65,7 +65,7 @@ func TestMemorySkillShapeIsWhatRememberWrites(t *testing.T) {
 		fmt.Sprintf("stale %d days", memory.AgingDays),
 		fmt.Sprintf("stale after %d", memory.PerishableDays),
 		"(" + memory.ExpiresPrefix + "<condition>)",
-		fmt.Sprintf("Keep the %d most recent", memory.DoneKeep),
+		fmt.Sprintf("%d most recent", memory.DoneKeep),
 		memory.BacklogArchiveName,
 	} {
 		if !strings.Contains(sec, want) {
@@ -74,23 +74,14 @@ func TestMemorySkillShapeIsWhatRememberWrites(t *testing.T) {
 	}
 }
 
-// TestCommandsSkillDocumentsTheMemoryCommands: remember and memory check
-// are documented with what they really print and enforce, and the old
-// "append it yourself" stop-gap is gone.
-func TestCommandsSkillDocumentsTheMemoryCommands(t *testing.T) {
-	sec := skillText(t, commandsSkill)
-	for _, want := range []string{
-		`mate remember <project> --captain|--lesson [--perishable "<expiry condition>"] --source <src> "<one line>"`,
-		"mate memory check <project>",
-		fmt.Sprintf("%d estimated tokens", memory.BudgetTokens),
-		"ceil(bytes / 3)",
-		"head: <sha>",
-		fmt.Sprintf("%d or more days ago", memory.AgingDays),
-		"record: update backlog.md Done; if this task taught you anything durable, route it (skill stow)",
-		"if this correction applies to future crews, route it: memory.md Lessons or propose it for CREW.md",
-	} {
+// TestMemorySkillDocumentsRemember: remember and memory check are taught
+// with what remember really prints, and the old "append it yourself"
+// stop-gap is gone.
+func TestMemorySkillDocumentsRemember(t *testing.T) {
+	sec := skillText(t, memorySkill)
+	for _, want := range []string{"remember shop --captain", "`--lesson`", `--perishable "<condition>"`, "`--source`", "memory check shop"} {
 		if !strings.Contains(sec, want) {
-			t.Errorf("%s does not document %q", commandsSkill, want)
+			t.Errorf("%s does not document %q", memorySkill, want)
 		}
 	}
 	e, err := memory.NewEntry(memory.LessonsSection,
@@ -100,7 +91,7 @@ func TestCommandsSkillDocumentsTheMemoryCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := "under ## " + memory.LessonsSection + ": " + e.Line() + "\n"; !strings.Contains(sec, want) {
-		t.Errorf("%s's remember example is not what remember prints; want a line ending %q", commandsSkill, want)
+		t.Errorf("%s's remember example is not what remember prints; want a line ending %q", memorySkill, want)
 	}
 	for file, text := range everything(t, fixedParams()) {
 		for _, gone := range []string{"Not yet available", "lands in a later task", "you append to"} {
@@ -113,16 +104,19 @@ func TestCommandsSkillDocumentsTheMemoryCommands(t *testing.T) {
 
 // TestManualSection2RoutesEveryKindToOneOwner: A1 and A4 are in section 2.
 func TestManualSection2RoutesEveryKindToOneOwner(t *testing.T) {
-	sec := part(t, renderedManual(t), "## 2. File layout you read at bootstrap")
+	text := renderedManual(t)
+	sec := part(t, text, "## What you know and where it lives")
 	for _, want := range []string{
 		"You just learned", "is your only memory", "it is never a source",
 		"`## " + memory.CaptainSection + "`", "`## " + memory.LessonsSection + "`", "`## " + memory.BacklogHeld + "`",
-		"`## " + memory.ProjectDecisionsSection + "`", "A proposal to the captain", memory.ArchiveName, memory.BacklogArchiveName,
-		"- `stow` - ",
+		"`## " + memory.ProjectDecisionsSection + "`", "as a proposal to the captain", memory.ArchiveName, memory.BacklogArchiveName,
 	} {
 		if !strings.Contains(sec, want) {
 			t.Errorf("section 2 does not say %q", want)
 		}
+	}
+	if !strings.Contains(text, "- `stow` - ") {
+		t.Error("the manual's skill list does not name stow")
 	}
 	if strings.Contains(sec, "| Layer |") {
 		t.Error("section 2 still has the layers table A1 replaces")
@@ -131,7 +125,7 @@ func TestManualSection2RoutesEveryKindToOneOwner(t *testing.T) {
 
 // TestManualSection13RecordsHeldQuestions: A3.
 func TestManualSection13RecordsHeldQuestions(t *testing.T) {
-	sec := part(t, renderedManual(t), "## 13. Escalation and captain etiquette")
+	sec := part(t, renderedManual(t), "## Talking to the captain")
 	for _, want := range []string{"`## " + memory.BacklogHeld + "`", "exactly as you sent it", "what it waits on", "verbatim", "only then remove the line"} {
 		if !strings.Contains(sec, want) {
 			t.Errorf("section 13 does not say %q", want)

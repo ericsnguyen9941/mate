@@ -41,8 +41,15 @@ func Write(dir string, p Params) error {
 // writeSkills installs every skill of p.Skills() under dir, replacing
 // whatever is there. Skills are generated content like the manual, not the
 // Mate's own memory, so they are rewritten on every start rather than
-// preserved.
+// preserved. The directories of RetiredSkillNames go first; a user's own
+// skills and plugin-* skills are never touched here.
 func writeSkills(dir string, p Params) error {
+	root := filepath.Join(dir, filepath.FromSlash(p.SkillsDir))
+	for _, name := range RetiredSkillNames {
+		if err := removeRetiredSkill(filepath.Join(root, name)); err != nil {
+			return err
+		}
+	}
 	for _, name := range p.Skills() {
 		data, err := RenderSkill(name, p)
 		if err != nil {
@@ -57,6 +64,23 @@ func writeSkills(dir string, p Params) error {
 		}
 	}
 	return nil
+}
+
+// removeRetiredSkill removes the directory of a built-in skill an older mate
+// installed. Only a real directory is removed; a symlink a user put in its
+// place is theirs and is left, and an absent one is nothing to do.
+func removeRetiredSkill(path string) error {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	return os.RemoveAll(path)
 }
 
 // ensureFile writes header to path only if path does not already exist. An
