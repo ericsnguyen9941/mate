@@ -169,15 +169,42 @@ func EnsureSessionHook(data []byte, binary string) (out []byte, changed bool, er
 // skills - stays out.
 var CrewInheritedSettings = []string{"apiKeyHelper", "env"}
 
+// CrewDeniedTools are the built-in Claude Code tools a Crew's settings file
+// denies outright (`permissions.deny`). A bare tool name in deny takes the
+// tool out of the model's tool list, schema included, under
+// --dangerously-skip-permissions too. Measured on hellovietnam 2026-10-15
+// (CON-70): the default tool set was ~29k of a Crew's 63k baseline, Workflow
+// alone ~8k, DesignSync 3k, Monitor 3k, and no Crew there used any of these.
+// They are orchestration, scheduling, UI and session tools: a Crew is driven
+// by its Mate through the pane, so asking the user, planning modes,
+// worktrees, cron, notifications and messaging other agents are the Mate's.
+// Agent stays (a project's AGENTS.md may require a reviewer subagent), and
+// so do Bash, Read, Write, Edit, Glob, Grep, Skill, WebFetch, WebSearch,
+// TodoWrite and TaskStop. A name this Claude version does not have is
+// ignored.
+var CrewDeniedTools = []string{
+	"Workflow", "DesignSync", "Monitor",
+	"CronCreate", "CronDelete", "CronList", "ScheduleWakeup",
+	"PushNotification", "SendMessage", "ListAgents", "RemoteTrigger",
+	"AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
+	"EnterWorktree", "ExitWorktree", "NotebookEdit",
+	"Artifact", "ArtifactComments", "ArtifactData",
+	"SendFeedback", "ShareOnboardingGuide", "EndConversation",
+}
+
 // CrewClaudeSettings is the settings file a Claude Crew launches with. It
 // wires no hooks (the Mate's hooks are the Mate's) and turns auto-memory off
 // for the same reason as the Mate's: what a Crew should know is in its brief,
 // and what it learns goes back through its report and the Mate, never into a
-// per-machine directory outside the workspace. user is the captain's
+// per-machine directory outside the workspace. It denies CrewDeniedTools.
+// user is the captain's
 // settings.json, or nil when there is none; only CrewInheritedSettings are
 // taken from it.
 func CrewClaudeSettings(user []byte) ([]byte, error) {
-	settings := map[string]any{AutoMemoryKey: false}
+	settings := map[string]any{
+		AutoMemoryKey: false,
+		"permissions": map[string]any{"deny": CrewDeniedTools},
+	}
 	if len(user) > 0 {
 		var all map[string]json.RawMessage
 		if err := json.Unmarshal(user, &all); err != nil {

@@ -112,6 +112,36 @@ func TestCrewSettingsTurnAutoMemoryOffAndWireNoHooks(t *testing.T) {
 	}
 }
 
+func TestCrewSettingsDenyTheToolsACrewNeverUses(t *testing.T) {
+	data, err := CrewClaudeSettings(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings struct {
+		Permissions struct {
+			Deny []string `json:"deny"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	denied := map[string]bool{}
+	for _, tool := range settings.Permissions.Deny {
+		denied[tool] = true
+	}
+	for _, tool := range []string{"Workflow", "DesignSync", "Monitor", "AskUserQuestion"} {
+		if !denied[tool] {
+			t.Errorf("%s not denied: %s", tool, data)
+		}
+	}
+	// Agent stays: a project's AGENTS.md may require a reviewer subagent.
+	for _, tool := range []string{"Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "Skill", "TaskStop"} {
+		if denied[tool] {
+			t.Errorf("%s must stay available to a Crew", tool)
+		}
+	}
+}
+
 func TestEnsureAutoMemoryOffAddsTheKeyAndKeepsTheRest(t *testing.T) {
 	in := []byte(`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"x"}]}]},"model":"opus"}`)
 	out, changed, err := EnsureAutoMemoryOff(in)

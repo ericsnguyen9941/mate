@@ -190,7 +190,7 @@ func TestUsagePrintsCallsPerTaskAndWarnsAboveTheCompactThreshold(t *testing.T) {
 		"by model and effort (each task's last call):",
 		"  claude-opus-5-5: 1 task(s), 1.0 calls/task, 251k context/call",
 		"  unpriced-model: 1 task(s), 1.0 calls/task, 96k context/call",
-		"warning: 1 crew(s) passed the 160k crew autocompact threshold (crew.autocompact in .mate/workspace.yaml): big 251k\n",
+		"warning: 1 crew(s) passed the 200k crew autocompact threshold (crew.autocompact in .mate/workspace.yaml): big 251k\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("usage output lacks %q:\n%s", want, out)
