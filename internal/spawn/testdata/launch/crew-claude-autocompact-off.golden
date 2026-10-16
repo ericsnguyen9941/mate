@@ -206,9 +206,36 @@ worktree=.worktrees/shop-k3
 }
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/settings.json mode=-rw-r--r-- bytes=33 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/settings.json mode=-rw-r--r-- bytes=583 ---
 {
-  "autoMemoryEnabled": false
+  "autoMemoryEnabled": false,
+  "permissions": {
+    "deny": [
+      "Workflow",
+      "DesignSync",
+      "Monitor",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "ScheduleWakeup",
+      "PushNotification",
+      "SendMessage",
+      "ListAgents",
+      "RemoteTrigger",
+      "AskUserQuestion",
+      "EnterPlanMode",
+      "ExitPlanMode",
+      "EnterWorktree",
+      "ExitWorktree",
+      "NotebookEdit",
+      "Artifact",
+      "ArtifactComments",
+      "ArtifactData",
+      "SendFeedback",
+      "ShareOnboardingGuide",
+      "EndConversation"
+    ]
+  }
 }
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/settings.json ---
 

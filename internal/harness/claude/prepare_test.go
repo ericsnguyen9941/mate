@@ -154,7 +154,7 @@ func TestClaudePrepareCrewKeepsTheCaptainsAuthPath(t *testing.T) {
 	if err := json.Unmarshal(keys["env"], &env); err != nil || string(keys["apiKeyHelper"]) != `"echo k"` || env["ANTHROPIC_BASE_URL"] != "http://127.0.0.1:8317" || len(env) != 1 {
 		t.Fatalf("crew settings lost the captain's auth: %s", prep.Files[0].Data)
 	}
-	if string(keys[AutoMemoryKey]) != "false" || len(keys) != 3 {
+	if string(keys[AutoMemoryKey]) != "false" || keys["permissions"] == nil || len(keys) != 4 {
 		t.Fatalf("crew settings took more than apiKeyHelper and env: %s", prep.Files[0].Data)
 	}
 	if err := os.WriteFile(captain, []byte("not json"), 0o644); err != nil {

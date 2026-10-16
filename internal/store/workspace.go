@@ -90,18 +90,25 @@ type CrewLaunch struct {
 	ContextHigh int `yaml:"context_high,omitempty"`
 }
 
-// DefaultCrewAutocompact is a Crew's compaction threshold when workspace.yaml
+// DefaultCrewAutocompact is a Crew's compaction window when workspace.yaml
 // names none. Measured on hellovietnam 2026-10-06..14 (CON-68): Claude Crews
 // averaged 162k tokens of context per call and never compacted, and the four
-// that passed 300k (the largest 434k) cost 138M tokens between them.
-const DefaultCrewAutocompact = 160000
+// that passed 300k (the largest 434k) cost 138M tokens between them. Claude
+// Code 2.1.292 compacts at min(window*CLAUDE_AUTOCOMPACT_PCT_OVERRIDE/100,
+// window-13000), so the override can only lower it: the window is the one
+// knob. 160000 compacted at 147k, about 74k above a Crew's baseline; with
+// CrewDeniedTools trimming that baseline, 200000 compacts at 187k, which
+// leaves room for most tasks to finish without compacting and keeps every
+// call under 200k, where long-context pricing would start.
+const DefaultCrewAutocompact = 200000
 
 // DefaultCrewContextHigh is the context size past which a working Crew is
 // reported (`context_high`) when workspace.yaml names none. hellovietnam's
 // top ten tasks (2026-10-15, CON-73) ran their fix rounds at 250-434k of
-// context without compacting; 180k is above the autocompact default and
-// below where those rounds started.
-const DefaultCrewContextHigh = 180000
+// context without compacting; the threshold sits above the autocompact one and
+// below where those rounds started. It moved to 200000 with the autocompact
+// window (CON-96), so a Crew is not reported before it could compact.
+const DefaultCrewContextHigh = 200000
 
 // Workspace is an opened workspace: a resolved root plus the parsed
 // workspace.yaml. It is the handle every other package holds.
