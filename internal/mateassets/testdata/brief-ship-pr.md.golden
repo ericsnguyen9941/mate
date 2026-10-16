@@ -80,6 +80,8 @@ Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no
 # Definition of done
 This task is delivered through a GitHub pull request: no pipeline, and the pull request is merged by the Mate or on GitHub, never by you.
 The task is complete only when it is committed on this branch, the hand-back below is written, and the branch is pushed with a pull request open.
+Commit messages are one imperative line of at most 72 characters, with a body only when the why is not obvious from the diff.
+When the first line of `## What we already know` is `- Issue: <ID> (...)`, every commit subject starts with that ID and a colon, `HVN-57: Add trip day warnings`; with no such line, no prefix.
 Keep the branch a clean fast-forward onto `main`; if it has advanced, rebase onto it so the eventual merge stays a fast-forward, then `git push --force-with-lease origin mate/k3`.
 
 # Before you hand back
@@ -108,6 +110,7 @@ A criterion that fails is reported as `fail` with its output, never left out or 
 When the work is committed and the hand-back is written, deliver it:
 1. `git push -u origin mate/k3`.
 2. `gh pr create --base main --head mate/k3 --title "<one line>" --body-file /ws/.mate/projects/shop/crews/k3/handback.md`.
+   The title is one imperative line; with an issue ID it starts with it, `HVN-57: Wire the live trip repository`. Before you create it, put one line at the top of the hand-back with a blank line after: `Closes HVN-57` when this pull request finishes the issue, `Part of HVN-57` when it does not. With no issue, no title prefix and no such line.
 3. `echo "pr-open: <the pull request URL gh printed>" >> $MATE_STATUS`.
 4. `/usr/local/bin/mate pr watch shop k3 <the same URL>`. It returns at once and keeps watching in the background; it wakes the Mate when the pull request is merged or closed. Run it once.
 

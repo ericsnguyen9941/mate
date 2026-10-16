@@ -34,9 +34,21 @@ Refuse only a request you cannot shape into a brief at all, in one line.
 
 ## Name the crew
 
-The crew id is yours, and it names the task: two to four lowercase words from the captain's request, joined by hyphens, such as `fix-cart-total` or, for a scout, `scout-login-timeout`.
-The captain reads it in the console and in the branch `mate/<id>`, so it says what the Crew does: no counters such as `k3`, `p1` or `m1`.
-Letters and digits, single hyphens, a letter first, 2 to 24 characters, never reused in this project; when the name is taken, add a word (`fix-cart-total-rounding`), not a number.
+The crew id is yours, and it names the task. The captain reads it in the console, in the branch `mate/<id>` and in the tracker, so one look says which work it is.
+
+**With a tracker**, every piece of work has an issue before it has a Crew, and the id starts with that issue:
+
+- A ship or a scout: the issue ID in lower case, then one to three words from the issue's title: `hvn-57-trip-repo` for HVN-57.
+- A change within that issue's scope - review findings, a bug found after review, the captain's correction - stays on the same issue. While its Crew is open, send it there (`review-delivery`); once that Crew is gone, the fix Crew is `<issue>-f1`, then `-f2`, on its own branch and pull request under the same issue. It is not a new issue.
+- Its reviewer: `<issue>-r1`, `-r2` for each round (`review-delivery`).
+- New work beyond the issue's scope gets its own issue first. A task too big for one Crew is split into sub-issues in the tracker, one Crew each, never into halves of one issue.
+- Work the captain asks for that has no issue yet: create it in the assigned team and project, then spawn.
+
+Never drop or shorten the issue ID to fit; shorten the words. Put the issue ID as the first line of `## What we already know`, `- Issue: HVN-57 (<tracker>)`, so the Crew prefixes its commits and pull request with it, and give it to `backlog add --tracker`.
+
+**Without a tracker**: two to four lowercase words from the captain's request, such as `fix-cart-total` or, for a scout, `scout-login-timeout`; no counters such as `k3`, `p1` or `m1`. When the name is taken, add a word (`fix-cart-total-rounding`), not a number.
+
+Either way: letters and digits, single hyphens, a letter first, 2 to 24 characters, never reused in this project.
 
 ## The brief
 
