@@ -14,6 +14,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/autopilot"
 	"github.com/nguyenngocanh94/mate/internal/box"
+	"github.com/nguyenngocanh94/mate/internal/brief"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -203,9 +204,32 @@ func writeWakeItem(ctx context.Context, out *strings.Builder, w *store.Workspace
 		fmt.Fprintf(out, "  next: do not cut it mid-turn; at its next hand-back open a fresh session - mate send does that for a resting crew, or mate crew relaunch %s %s --note \"<what it already tried>\"\n", project, crew)
 	case autopilot.ItemNeedsDecision:
 		fmt.Fprintf(out, "needs-decision %s: %s\n", crew, it.Text)
+		writeDecides(out, w, project, it.Crew, it.Text)
 	case autopilot.ItemWaitMate:
 		fmt.Fprintf(out, "wait-mate %s: %s\n", crew, it.Text)
 		writeHandBack(ctx, out, w, git, project, it.Crew, reviews[it.Crew])
+	}
+}
+
+// writeDecides says whose call a Crew's question is, from the brief's
+// `## Open decisions` (CON-93). On mihu 2026-10-14 a Mate decided a
+// `decides: captain` question because the line that woke it said "decide":
+// the rule was in its skill, the word was in the tool output it read. So the
+// tool output carries the rule: the matching entry's decider, or that none
+// matched and how many entries there are to read.
+func writeDecides(out *strings.Builder, w *store.Workspace, project, crew, question string) {
+	var decisions []brief.OpenDecision
+	if data, err := os.ReadFile(w.CrewBrief(project, crew)); err == nil {
+		decisions = brief.ParseOpenDecisions(string(data))
+	}
+	d, ok := brief.MatchDecision(decisions, question)
+	if !ok || d.Decides == "" {
+		fmt.Fprintf(out, "  decides: unknown (open decisions: %d)\n", len(decisions))
+		return
+	}
+	fmt.Fprintf(out, "  decides: %s (%s)\n", d.Decides, clipRunes(d.Text, wakeNoteRunes))
+	if d.Decides == brief.Deciders[0] {
+		out.WriteString("  next: ask the captain and record it under ## Held for the captain; send the Crew nothing until they answer\n")
 	}
 }
 

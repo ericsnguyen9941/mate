@@ -128,6 +128,11 @@ func TestManualComesBackToAutoAfterFiveQuietMinutes(t *testing.T) {
 	if len(typed) != 1 || !strings.Contains(typed[0], "fix-cart-total needs-decision") {
 		t.Fatalf("typed %#v, want the digest the crew's question is in", typed)
 	}
+	// CON-93: auto came back without the captain, so the digest that hands
+	// the Mate the question says a captain's decision is not its to make.
+	if !strings.Contains(typed[0], "a decides: captain choice goes to the captain and waits under Held") {
+		t.Fatalf("digest %q does not keep a captain's decision with the captain", typed[0])
+	}
 	if !hasSent(f.sent(), autopilot.RearmText(autopilot.DefaultQuietAfter)) {
 		t.Fatalf("sent.log = %+v, want the switch back to auto recorded", f.sent())
 	}

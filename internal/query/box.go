@@ -347,9 +347,12 @@ func (e BoxEntry) BudgetHalf() bool {
 // statusPath is already absolute (ws.CrewStatus(project, crew)): the Mate's
 // cwd is its own workspace directory, not the project's, so a path relative
 // to the project never resolves there.
+//
+// The line hands the Mate the question, not the decision (mvp.md section 5,
+// CON-93): it ends with box.CaptainsDecisionRule, not "decide".
 func BoxResolveLine(project, crew, question, statusPath string) string {
-	return fmt.Sprintf("resolve: %s asked: %q — read %s, decide, and answer with mate send %s %s \"<one line>\"",
-		crew, oneLine(question, resolveQuestionRunes), statusPath, project, crew)
+	return fmt.Sprintf("resolve: %s asked: %q — read %s; answer what the brief leaves to you with mate send %s %s \"<one line>\"; %s",
+		crew, oneLine(question, resolveQuestionRunes), statusPath, project, crew, box.CaptainsDecisionRule)
 }
 
 func BoxIncidentResolveLine(kind, crew, text string) string {

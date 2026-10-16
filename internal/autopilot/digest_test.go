@@ -161,7 +161,7 @@ func TestLineIsTheFormatTheSpecPromises(t *testing.T) {
 	}
 	want := `digest: 3 item(s) — k3 needs-decision: "pick A or B" · k9 blocked: stale, quiet for 4m0s · ` +
 		`k7 wait-mate: "report.md is ready" — status files under /w/.mate/projects/shop/crews; ` +
-		`act per AGENTS.md section 10`
+		`act per AGENTS.md section 10; a decides: captain choice goes to the captain and waits under Held`
 	if got := autopilot.Line(items, "/w/.mate/projects/shop/crews"); got != want {
 		t.Fatalf("Line =\n%s\nwant\n%s", got, want)
 	}
