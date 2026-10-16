@@ -34,31 +34,31 @@ func markdownBlock(t *testing.T, what, text string) string {
 	return body[:end]
 }
 
-// TestManualSection14MemoryShapeIsWhatRememberWrites: the entry shape
-// section 14 documents is the one `mate remember` writes, byte for byte,
-// for all three tiers, and it passes `memory check`.
-func TestManualSection14MemoryShapeIsWhatRememberWrites(t *testing.T) {
-	sec := section(t, renderedManual(t), "## 14. Project memory")
-	example := markdownBlock(t, "section 14", sec)
+// TestMemorySkillShapeIsWhatRememberWrites: the entry shape the memory
+// skill documents is the one `mate remember` writes, byte for byte, for all
+// three tiers, and it passes `memory check`.
+func TestMemorySkillShapeIsWhatRememberWrites(t *testing.T) {
+	sec := skillText(t, memorySkill)
+	example := markdownBlock(t, memorySkill, sec)
 	entries, problems := memory.Check(example, memoryExampleDay, "/ws", "/ws/.mate/projects/shop")
 	if len(problems) != 0 {
-		t.Fatalf("section 14's memory example fails memory check: %v\n%s", problems, example)
+		t.Fatalf("%s's memory example fails memory check: %v\n%s", memorySkill, problems, example)
 	}
 	lines := strings.Split(example, "\n")
 	seen := map[memory.Tier]bool{}
 	for _, e := range entries {
 		written, err := memory.NewEntry(e.Section, e.Text, e.Source, e.Expiry, memoryExampleDay)
 		if err != nil {
-			t.Fatalf("remember refuses section 14's entry %q: %v", e.Text, err)
+			t.Fatalf("remember refuses %s's entry %q: %v", memorySkill, e.Text, err)
 		}
 		if got := lines[e.Line-1]; written.Line() != got {
-			t.Errorf("remember writes\n%s\nbut section 14 documents\n%s", written.Line(), got)
+			t.Errorf("remember writes\n%s\nbut %s documents\n%s", written.Line(), memorySkill, got)
 		}
 		seen[e.Tier] = true
 	}
 	for _, tier := range []memory.Tier{memory.Pinned, memory.Aging, memory.Perishable} {
 		if !seen[tier] {
-			t.Errorf("section 14's example has no %s entry", tier)
+			t.Errorf("%s's example has no %s entry", memorySkill, tier)
 		}
 	}
 	for _, want := range []string{
@@ -69,17 +69,16 @@ func TestManualSection14MemoryShapeIsWhatRememberWrites(t *testing.T) {
 		memory.BacklogArchiveName,
 	} {
 		if !strings.Contains(sec, want) {
-			t.Errorf("section 14 does not say %q", want)
+			t.Errorf("%s does not say %q", memorySkill, want)
 		}
 	}
 }
 
-// TestManualSection4DocumentsTheMemoryCommands: remember and memory check
+// TestCommandsSkillDocumentsTheMemoryCommands: remember and memory check
 // are documented with what they really print and enforce, and the old
 // "append it yourself" stop-gap is gone.
-func TestManualSection4DocumentsTheMemoryCommands(t *testing.T) {
-	text := renderedManual(t)
-	sec := section(t, text, "## 4. The `mate` command contract")
+func TestCommandsSkillDocumentsTheMemoryCommands(t *testing.T) {
+	sec := skillText(t, commandsSkill)
 	for _, want := range []string{
 		`mate remember <project> --captain|--lesson [--perishable "<expiry condition>"] --source <src> "<one line>"`,
 		"mate memory check <project>",
@@ -91,7 +90,7 @@ func TestManualSection4DocumentsTheMemoryCommands(t *testing.T) {
 		"if this correction applies to future crews, route it: memory.md Lessons or propose it for CREW.md",
 	} {
 		if !strings.Contains(sec, want) {
-			t.Errorf("section 4 does not document %q", want)
+			t.Errorf("%s does not document %q", commandsSkill, want)
 		}
 	}
 	e, err := memory.NewEntry(memory.LessonsSection,
@@ -101,18 +100,20 @@ func TestManualSection4DocumentsTheMemoryCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := "under ## " + memory.LessonsSection + ": " + e.Line() + "\n"; !strings.Contains(sec, want) {
-		t.Errorf("section 4's remember example is not what remember prints; want a line ending %q", want)
+		t.Errorf("%s's remember example is not what remember prints; want a line ending %q", commandsSkill, want)
 	}
-	for _, gone := range []string{"Not yet available", "lands in a later task", "you append to"} {
-		if strings.Contains(text, gone) {
-			t.Errorf("the manual still says %q", gone)
+	for file, text := range everything(t, fixedParams()) {
+		for _, gone := range []string{"Not yet available", "lands in a later task", "you append to"} {
+			if strings.Contains(text, gone) {
+				t.Errorf("%s still says %q", file, gone)
+			}
 		}
 	}
 }
 
 // TestManualSection2RoutesEveryKindToOneOwner: A1 and A4 are in section 2.
 func TestManualSection2RoutesEveryKindToOneOwner(t *testing.T) {
-	sec := section(t, renderedManual(t), "## 2. File layout you read at bootstrap")
+	sec := part(t, renderedManual(t), "## 2. File layout you read at bootstrap")
 	for _, want := range []string{
 		"You just learned", "is your only memory", "it is never a source",
 		"`## " + memory.CaptainSection + "`", "`## " + memory.LessonsSection + "`", "`## " + memory.BacklogHeld + "`",
@@ -130,7 +131,7 @@ func TestManualSection2RoutesEveryKindToOneOwner(t *testing.T) {
 
 // TestManualSection13RecordsHeldQuestions: A3.
 func TestManualSection13RecordsHeldQuestions(t *testing.T) {
-	sec := section(t, renderedManual(t), "## 13. Escalation and captain etiquette")
+	sec := part(t, renderedManual(t), "## 13. Escalation and captain etiquette")
 	for _, want := range []string{"`## " + memory.BacklogHeld + "`", "exactly as you sent it", "what it waits on", "verbatim", "only then remove the line"} {
 		if !strings.Contains(sec, want) {
 			t.Errorf("section 13 does not say %q", want)
@@ -168,11 +169,7 @@ func TestWriteSeedsMemoryAndBacklogWithTheirSections(t *testing.T) {
 // (task 37) is the one the skill teaches, and the skill's example passes
 // memory check.
 func TestStowSkillQuotesTheStowLine(t *testing.T) {
-	got, err := RenderSkill("stow", fixedParams())
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(got)
+	text := skillText(t, stowSkill)
 	if !strings.Contains(text, send.Marker+memory.StowLine+"\n") {
 		t.Errorf("the stow skill does not quote the stow line %q", send.Marker+memory.StowLine)
 	}
