@@ -79,6 +79,16 @@ Follow it with a `## Summary` section of at most 6000 characters: findings, limi
 End the report with a `## Durable facts` section: what almost any future task in this repository would need to know - its stack, its layout, how to build, test and run it, its current state - or `none` if this investigation found nothing of that kind.
 If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report and propose the acceptance lines for it: one observable result per line, each with `verify:` and the command that proves it.
 A summary in the status line is not the deliverable.
+
+When the task is to find why something is broken, diagnose it this way before you name a cause:
+- Start from what the end user experiences, not from an internal error string or a hypothesis. Reproduce it end to end on the real user path when that is feasible and safe; when it is not, say exactly why, and use the closest path without presenting it as equivalent.
+- Record the expected and observed behaviour, the setup, the inputs and how often it repeats.
+- Keep three facts apart: the initiating trigger that starts the fault, the masking condition (state, environment, timing, cache, configuration) that hides or exposes it, and the visible symptom.
+- Compare the failing path with a proven path where the behaviour works, and find their earliest meaningful divergence. Read the history (blame, commits, migrations, earlier implementations) where it explains the divergence; a recent nearby change is not the cause without evidence.
+- Change the smallest condition that should flip the outcome if your explanation is right, one at a time, and record what the symptom did.
+- Name the observation that would disprove your explanation, run it when you can, and keep contradicting results instead of explaining them away.
+- In the report, keep what you observed apart from what you infer, and say what uncertainty could change the fix.
+
 When the report is written, append `wait-mate: report ready at {{.ReportPath}}` to the status file and stop.
 {{- else}}
 

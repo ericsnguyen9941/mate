@@ -66,7 +66,7 @@ func (Grok) Info() harness.Info {
 	}
 }
 
-// adapterNotes is grok's section of the harness-adapters skill.
+// adapterNotes is grok's section of the crew-recovery skill.
 //
 //go:embed adapter.md
 var adapterNotes string

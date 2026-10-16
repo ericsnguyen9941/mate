@@ -36,6 +36,12 @@ func TestSkillLoadsAreNamedFromTheToolInputOrTheSkillFile(t *testing.T) {
 		{"pi bash", Execution{Tool: "bash", Command: `{"command":"head -80 ~/.agents/skills/lavish/SKILL.md"}`}, []string{"read:lavish"}},
 		{"two skills, one of them twice", Execution{Tool: "exec_command", Command: "cat skills/a/SKILL.md skills/b/SKILL.md\nsed -n '1,20p' skills/a/SKILL.md"}, []string{"read:a", "read:b"}},
 		{"nested shell", Execution{Tool: "exec_command", Command: `bash -lc "cat skills/stow/SKILL.md"`}, []string{"read:stow"}},
+		// CON-69 renamed the built-in skills; a load is named by what the
+		// recording shows, so old sessions keep their old names and new
+		// ones read the new.
+		{"retired built-in name", Execution{Tool: "Skill", Command: `{"skill":"stuck-crew-recovery"}`}, []string{"tool:stuck-crew-recovery"}},
+		{"current built-in name", Execution{Tool: "Skill", Command: `{"skill":"crew-recovery"}`}, []string{"tool:crew-recovery"}},
+		{"current built-in read", Execution{Tool: "Bash", Command: "cat .claude/skills/new-task/SKILL.md"}, []string{"read:new-task"}},
 
 		{"search over skills", Execution{Tool: "exec_command", Command: "rg -n 'restart' .claude/skills/stow/SKILL.md"}, nil},
 		{"locating skills", Execution{Tool: "exec_command", Command: "find .claude/skills -name SKILL.md\nls .claude/skills/stow/SKILL.md"}, nil},

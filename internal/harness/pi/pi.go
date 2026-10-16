@@ -62,7 +62,7 @@ func (Pi) Info() harness.Info {
 	}
 }
 
-// adapterNotes is pi's section of the harness-adapters skill.
+// adapterNotes is pi's section of the crew-recovery skill.
 //
 //go:embed adapter.md
 var adapterNotes string

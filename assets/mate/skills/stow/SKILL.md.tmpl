@@ -1,184 +1,85 @@
-{{- /*
-Reduced from firstmate's .agents/skills/stow/SKILL.md and skills/stow/SKILL.md
-at 9284978f (docs/research/firstmate-memory-2026-09-24.md B4). Deviations,
-each forced by a mate constraint:
-- One memory file with two sections (memory.md ## Captain, ## Lessons)
-  replaces captain.md, captain-shared.md and learnings.md: one Mate per
-  project, no homes, no inheritance.
-- No secondmate cascade, no offload to a local skill (a Mate's skills are
-  regenerated at every start, so a skill it wrote has no stable home), no
-  pass horizon and no <!--g--> migration (no legacy memory exists), so no
-  <!--P--> and no proposed-offload verb.
-- The budget is a fixed 4,000 estimated tokens over memory.md, PROJECT.md
-  and WORKSPACE.md, measured by `mate memory check`, not a captain-set
-  file; the over-budget decision offers what the captain can actually do.
-- The Mate writes only memory.md, backlog.md, the two archives and
-  PROJECT.md. A rule for every Crew or every Mate is the captain's file, so
-  it is routed as a proposal to the captain, never written.
-- A project fact comes only from a report, a hand-back, `project facts` or
-  the captain: the Mate never reads the repository (docs/mvp.md decision 1).
-- Open work is backlog.md's `## Held for the captain`, not tasks-axi holds.
-*/ -}}
 ---
 name: stow
-description: Sweep this conversation for durable knowledge and open work that exist only in chat, file each to its one owner, curate memory.md's tiered, decaying entries, and end with an honest receipt. Load it when the captain says stow or "ghi nhớ lại", when a `⟦mate⟧ stow:` line arrives, when `mate memory check` reports over budget or stale entries, and after a `crew stop` whose task produced a correction.
+description: How memory.md and PROJECT.md are written and kept - entry shape and tiers, the stow pass that files what exists only in this conversation and curates stale entries, and its receipt. Load it when the captain says stow or "ghi nhớ lại", when a `⟦mate⟧ stow:` line arrives, when `mate memory check` reports a problem, after closing a task that taught you something, and before you write memory.md or PROJECT.md.
 ---
 
 # stow
 
-Sweep this session for durable knowledge and open-work record state that exist only in conversation, then leave the next session with a compact current operating map rather than an accumulating journal.
-Memory entries are tiered and decay between passes, and stale material retires to a cold archive instead of being deleted.
-This skill writes only where your manual lets you write: `{{.MemoryFile}}`, `{{.BacklogFile}}`, the two archives beside them, and `{{.ProjectDoc}}`.
+You write only `memory.md`, `backlog.md`, the two archives beside them, and `PROJECT.md`. The manual's table says which knowledge goes where; this skill says how.
 
-Every command below is run with the binary's absolute path, `{{.MatevBin}}`, from your own working directory.
+## Memory entries
 
-## When to run it
-
-- The captain says stow, "ghi nhớ lại", or asks you to write down what you learned: the whole pass.
-- The app sends you this line, which it does just before it restarts you:
-
-  ```text
-  ⟦mate⟧ stow: you are about to be restarted; record anything that exists only in this conversation (skill stow), then end your turn
-  ```
-
-  Run the whole pass, write the receipt, and end your turn; the restart follows, and whatever you did not write is gone.
-- The same line ends with `then run {{.MatevBin}} checkpoint {{.ProjectName}} <nonce>` when the app refreshes your context instead of restarting you: the whole pass, then exactly that command, then end your turn; the fresh session starts with `recall` only after its receipt.
-- `mate memory check {{.ProjectName}}` reports over budget or a stale entry: the whole pass.
-- `crew stop` printed its `record:` line and the task produced a correction you sent the Crew after its brief: the sweep and routing below for that task only, then `memory check`.
-
-## Memory tiers and entry markers
-
-Markers are compact trailing HTML comments, deliberately cheap because marker bytes are counted content:
-
-- `<!--a:YYYY-MM-DD-->` - an `aging` entry; the embedded date is its last-reinforced date.
-- `<!--p:YYYY-MM-DD-->` - a `perishable` entry; the embedded date is its last-reinforced date.
+`## Captain` is how the captain wants you to work; it never reaches a brief. `## Lessons` is what you learned about running Crews, harnesses and mate here; a lesson that applies to a Crew is copied into its brief, so a rule for Crews is a lesson.
+Every entry is one line: the fact, a perishable entry's `(expires: <condition>)`, its source in parentheses, then its tier marker.
 
 ```markdown
 ## Captain
 - Speaks Vietnamese; answer and escalate in Vietnamese. (captain, 2026-09-17)
 
 ## Lessons
-- Scout Crews commit report files to their worktree unless the brief says to keep every report file under crews/<id>/ and commit nothing; proposed to the captain for CREW.md. (sent.log to rpi35 2026-09-18, power12 2026-09-19) <!--a:2026-09-19-->
-- Crew spawn fails with no pane or meta; stop after two tries and tell the captain. (expires: the spawn fix lands) (backlog Failed rpi34) <!--p:2026-09-18-->
+- Scout Crews commit their report files unless the brief says to keep every file under crews/<id>/ and commit nothing. (sent.log to rpi35 2026-09-18) <!--a:2026-09-24-->
+- Crew spawn fails with no pane or meta; stop after two tries and tell the captain. (expires: the spawn fix lands) (backlog Failed rpi34) <!--p:2026-09-24-->
 ```
 
-The tier names say what the pass does with an entry:
+- `pinned`: every `## Captain` entry. No marker, no clock.
+- `aging`: a lesson marked `<!--a:YYYY-MM-DD-->`, its last-reinforced date. It is stale 30 days after it: 30 days since its last-reinforced date it re-proves itself or is archived.
+- `perishable`: a lesson whose truth ends with a checkable condition (a backlog id, a version, a fix landing), marked `<!--p:YYYY-MM-DD-->` and stale after 7: 7 days since its last-reinforced date its condition is checked again. A lesson with no such condition is aging.
 
-- `pinned` - no clock is ever read for it: exempt from decay and from budget eviction, changed only through inspect-then-update when the captain or reality changes it.
-- `aging` - it must re-prove itself: an entry whose age is greater than or equal to 30 days since its last-reinforced date is stale, and a stale entry is re-validated (date refreshed) or archived, never kept by inertia alone.
-- `perishable` - it is stored expecting disposal: an entry whose age is greater than or equal to 7 days since its last-reinforced date is stale, and its prose must name a checkable expiry condition, such as a backlog id, a version, a fix landing, or a dated expectation.
-  An admitted durable entry that cannot name a checkable expiry condition is not `perishable` and must be stored as `aging`.
+A stale entry whose truth still holds is refreshed, never lost. Choose the section by what the entry is about, never by the tier you want: a Crew rule proposed for CREW.md stays a lesson until the captain adds it.
+The file's header line, `<!-- memory tiers: see the stow skill -->`, is the only pointer to these rules.
 
-Marking rules:
+Write an entry when you learn it, with `{{.MatevBin}} remember {{.ProjectName}} --captain` or `--lesson`, `--perishable "<condition>"` when it has one, and `--source`: the captain and a date, or a path relative to the project directory. It prints what it wrote:
 
-- Tier defaults are section-scoped: entries under `## Captain` are `pinned` because preferences and authority boundaries do not age, and entries under `## Lessons` are `aging` because operational facts must re-prove themselves.
-- The section is decided by what the entry is about, never by the tier you want for it: `## Captain` is how the captain wants you to work, and it never reaches a brief; a rule for how Crews work is a `## Lessons` entry, because the manual copies `## Lessons` into every brief it applies to.
-  A Crew rule proposed for a `CREW.md` stays an `aging` lesson until the captain has added it; never move it to `## Captain` to stop its clock.
-- A clock running out never makes a fact lapse: a stale entry is re-checked in step 7, and an entry whose truth still holds is refreshed, not lost.
-- A `pinned` entry carries no marker at all; every `aging` and `perishable` entry always carries its dated marker, whose letter names the tier.
-- Every entry is one line: the fact, a perishable entry's `(expires: <condition>)`, then its source in parentheses, then the marker.
-  The source is the captain and a date, or a path relative to the project directory (`crews/scout-login-timeout/report.md §Durable facts`, `sent.log to add-healthcheck 2026-09-24`), never an absolute or temporary path.
-- `mate remember` writes a new entry in exactly that shape; when you rewrite one by hand, keep the shape, and `mate memory check` tells you if you did not.
-- Marker bytes count toward the budget: the pass's own bookkeeping is costed content, never free.
-- The file's header carries one pointer, `<!-- memory tiers: see the stow skill -->`; this skill is the single owner of tier semantics, marker spellings and clocks, and no memory file restates them.
+```text
+remembered in {{.MemoryFile}} under ## Lessons: - Scout Crews commit their report files unless the brief says to keep every file under crews/<id>/ and commit nothing. (sent.log to rpi35 2026-09-18) <!--a:2026-09-24-->
+```
 
-Decay advances only when a pass runs.
+The captain corrects how you work: `--captain`. The captain states a rule for Crews, or a correction you sent a Crew will matter to later ones: `--lesson`, and propose the exact line for `{{.ProjectCrewDoc}}`.
+`remember` only adds. When a finding duplicates, supersedes or disproves an entry, rewrite that entry in place. Prefer a pointer to the owning file over a copy, and keep temporary paths and moving versions out.
+
+## PROJECT.md
+
+`{{.ProjectDoc}}` is the first source of every brief's `## What we already know`, and scouts grow it: after a report, add what its `## Durable facts` says that the file does not, with the report as source; correct a fact a hand-back's `## Still open` disproved.
+A line under `## Layout and state` or `## How to work here` goes stale by commit, so its source ends with the anchor `project facts` printed, `<repo>:<branch>@<sha>`: `(crews/scout-release-version/report.md §Durable facts, {{.ExampleRepo.Name}}:{{.ExampleRepo.DefaultBranch}}@3f2a91c, 2026-09-24)`, or `{{.ExampleRepo.Name}}:{{.ExampleRepo.DefaultBranch}}@none` while the branch is empty. Two repos, two anchors; no repo, `## What this project is`.
+A product decision goes under `## Captain's decisions`, in the captain's words, dated. Code knowledge is a Crew's to commit to the repo's `AGENTS.md`.
 
 ## The pass
 
-1. Run `{{.MatevBin}} memory check {{.ProjectName}}` before considering a write.
-   Record its budget line and every problem and warning it prints.
-   This run and step 10's are the only two in a pass: it is not a linter to rerun after every edit of `memory.md`, `backlog.md` or `PROJECT.md`.
-   The estimate is `ceil(bytes / 3)` per file, a conservative approximation, not a tokenizer.
-2. Read `{{.MemoryFile}}`, `{{.ProjectDoc}}` and `{{.BacklogFile}}` completely, and `{{.WorkspaceDoc}}`, which you count but never edit.
-   Treat an absent file as absent, not as an invitation to manufacture content.
-3. Sweep the conversation for uncaptured durable knowledge:
-   - User preferences: a working-style, tooling, formatting, or approval preference the user stated in passing rather than through a config file.
-   - Project facts: build, test, deploy, architecture, or convention facts about the current project that would help anyone (or any agent) working in it later.
-   - Operational gotchas: a sharp edge, workaround, recurring mistake, or non-obvious cause discovered while working here.
-   - Standing decisions: a choice made this session that should outlive it, such as an approach settled on, an option ruled out, or a convention agreed to.
-   - Undone next steps: anything left open or agreed to that has not yet been written down anywhere.
+Do the whole pass when the captain asks, when `memory check` reports a problem, and on this line, which comes just before a restart:
 
-   A project fact counts only when a report, a hand-back, `project facts` or the captain gave it to you; you never go and look.
-   Before filing any finding, check whether it already lives authoritatively somewhere - a report, a brief, a hand-back, the captain's own files.
-   If it does, record a one-line pointer to that owner instead of a copy, so the stowed note cannot go stale independently of its source.
-4. Route each finding by the table in section 2 of your manual; it is the source of truth for destinations, and this skill does not repeat it.
-   Write a new captain preference with `{{.MatevBin}} remember {{.ProjectName}} --captain --source <src> "<line>"` and a new lesson with `--lesson`, adding `--perishable "<expiry condition>"` when it has one.
-   Write a project fact into `{{.ProjectDoc}}` yourself, with its source, and a repo-state fact with the `<repo>:<branch>@<sha>` anchor `project facts` printed for that repo (section 14).
-   A rule the captain would want every Crew of this project to follow belongs in `{{.ProjectCrewDoc}}`, and a rule for every project in `{{.WorkspaceDoc}}` or `{{.WorkspaceCrewDoc}}`: those files are the captain's, so propose the exact line to the captain in the receipt and never write it; until they add it, keep it under `## Lessons` and put it in the `## Build` of every brief it applies to.
-   Knowledge about the project's code is never yours to write; a Crew records it in the repository's `AGENTS.md` through a ship.
-5. Read the destination before writing: inspect-then-update, never blind-append.
-   Classify the finding against what is already there: new, duplicate, superseding an existing entry, or evidence that an existing entry is now obsolete.
-   Write the considered replacement that classification implies - a duplicate folds into the entry that already carries it, a superseding finding rewrites the entry it supersedes, and an obsolete entry is refreshed, archived, or replaced in a way that preserves its fact in the same pass - rather than blindly appending a new entry or overwriting the file wholesale.
-   Prefer a one-sentence rewrite of an existing entry over a second entry saying nearly the same thing.
-   `remember` only ever adds; a rewrite, a merge or a removal is your own edit of the file.
-6. Reinforce and stamp.
-   Refresh an entry's last-reinforced date to today only when this session actually exercised, confirmed, or re-derived it.
-   **Hard rule: reinforcement requires independent evidence from this session that you can name in the receipt; plausibility, importance, prior knowledge, and the entry's own text are not evidence.**
-   Re-reading memory is never reinforcement.
-7. Evaluate every dated entry against its tier clock.
-   Re-validate a stale `aging` entry from current evidence and refresh its date, or archive it.
-   Re-confirm a stale `perishable` entry against its named condition: still open means refresh the date, while resolved, expired, or no longer checkable means archive it in this pass.
-   Promote `perishable` to `aging` when its condition keeps proving durable past its expected life.
-   `pinned` is exempt from this step entirely.
-8. Consolidate `{{.MemoryFile}}` and `{{.ProjectDoc}}`, not only the file a new finding went to.
-   Prefer one concise current rule or authoritative pointer over duplicate prose.
-   Archive completed incident and release chronology, stale versions and paths, transient task state, resolved alternatives, old metrics, and report-sized procedures; merge or remove only superseded claims and duplicates whose facts are preserved elsewhere.
-   Never plainly remove a unique current fact: every such exit archives it with provenance in the cold tier, or folds it into an entry that preserves it.
-   In `{{.BacklogFile}}`, keep the 10 most recent `## Done` entries and move older ones to `{{.MateDir}}/backlog-archive.md`.
-9. When the total is still over budget after decay and consolidation, archive every stale, superseded or low-utility `## Lessons` entry, consolidate tighter, then archive `aging` entries oldest-reinforced-first until within budget.
-   Never move a `## Captain` entry for budget reasons.
-   When even that cannot close the gap, ask the captain one concrete decision naming the shortfall and the entries crowding it, with exactly these options: approve archiving each named `## Captain` entry, or shorten `{{.WorkspaceDoc}}` themselves.
-10. Run `{{.MatevBin}} memory check {{.ProjectName}}` again after the complete pass.
-    Finish with it passing, or with the captain's decision asked and recorded under `## Held for the captain`.
+```text
+⟦mate⟧ stow: you are about to be restarted; record anything that exists only in this conversation (skill stow), then end your turn
+```
 
-A net increase is allowed only for a genuinely new current fact with no stronger owner.
-Never describe the session as reset-safe while the memory total is over budget or a problem is unresolved.
+When it ends with `then run {{.MatevBin}} checkpoint {{.ProjectName}} <nonce>`, the app is refreshing your context: do the pass, run exactly that command, and end your turn.
+After a task that taught you something, do steps 3 to 5 for it alone.
 
-## The cold tier: memory-archive.md
+1. `{{.MatevBin}} memory check {{.ProjectName}}`: note the budget and every problem. This and step 9 are the only runs in a pass.
+2. Read memory.md, PROJECT.md and backlog.md whole. WORKSPACE.md counts toward the budget; never edit it.
+3. Sweep this conversation for what lives nowhere else: the captain's stated preferences, project facts a report, hand-back, `project facts` or the captain gave you, gotchas, standing decisions, undone next steps. When a finding already lives in a report or brief, record a pointer.
+4. Route each to its owner. A rule for every Crew or every Mate belongs in the captain's files: propose the exact line in the receipt and never write it yourself.
+5. Inspect, then update: new, duplicate, superseding or obsoleting, and write the considered replacement, never a blind append.
+6. Refresh an entry's date only when this session exercised or confirmed it, with evidence you name in the receipt; re-reading memory is not evidence.
+7. Re-validate or archive each stale aging entry; check each stale perishable entry's condition, refreshing it while open and archiving it once met.
+8. Consolidate memory.md and PROJECT.md: archive chronology, stale versions, transient state, old metrics; never plainly remove a unique current fact. Over budget, archive stale and low-value lessons, then aging ones oldest first. Never move a `## Captain` entry for budget; when only that would fit, ask the captain to approve archiving named entries or to shorten WORKSPACE.md.
+9. `memory check` again: finish with it passing, or with the captain's decision asked and held.
 
-Stale never means deleted: pruning an entry from `{{.MemoryFile}}` always means moving it to `{{.MateDir}}/memory-archive.md`, your append-only cold tier, which no session start reads and `memory check` never counts.
-Each archived entry keeps its provenance under a dated pass heading: source file, tier, last-reinforced date, and the reason it left.
+An entry leaving memory.md moves to `memory-archive.md`, which nothing loads or counts, under a dated heading, with its tier, date and reason:
 
-```markdown
+```text
 ## 2026-10-20 stow
 - (from memory.md, tier: perishable, reinforced: 2026-09-18) Crew spawn fails with no pane or meta ... [archived: expiry condition met, the spawn fix landed]
 ```
 
-Reasons include `unreinforced <N>d`, `superseded`, `expiry condition met`, and `budget oldest-first`.
-Archiving is a move, not a removal, and recovery is `grep` plus copy back.
-Truncating a grown archive is a captain decision, not a mechanism.
-
-## Open work
-
-The sweep above preserves knowledge; this one preserves the state of work.
-A reset destroys whatever exists only in this session, and that includes what you have learned about work already under way, not just facts worth remembering.
-So before the reset, make sure the important open work you are holding in context is durably recorded: file what was never filed, and correct what you now know is stale.
-
-- `## In flight` names every Crew you are running, as `mate backlog {{.ProjectName}}` lists it.
-- `## Held for the captain` holds every question you sent the captain and every promise you made: the task, the date, the question exactly as you sent it - pasted from your message inside double quotes, never paraphrased (manual section 13) - and what it waits on.
-  When the captain answers, put their words verbatim into the task (`mate brief append` for a Crew in flight, `{{.ProjectDoc}}`'s `## Captain's decisions` for a product decision), and only then remove the line.
-- `## Queued` holds each undone next step with its `blocked-by:`.
-
-Judge for yourself what is important and which record each thing belongs to, and write it through the owner that already governs that record.
-One bound holds: this covers the open work you are actually holding in context, not the records at large.
-It is not a reconciliation of durable records against repository or Crew reality, and must never be reported as one.
-Where the right correction is a judgment you cannot make, leave the record alone and raise the question instead of guessing.
+The backlog holds open work: `## In flight` every Crew you run, `## Queued` each next step with its `blocked-by:`, written with `mate backlog add|move|done` (`backlog done` keeps the 10 most recent `## Done` entries and moves the rest to `backlog-archive.md`), and `## Held for the captain` every question and promise, verbatim. This covers what you hold in context; it is not a check of records against reality.
 
 ## Receipt
 
-Report the outcome in plain text, and end your turn.
-This is the one message to the captain where you name your memory files; say everything else in outcomes (manual section 13).
+Plain text, then end your turn; the one message that names your memory files.
 
-- the budget and the estimated total before and after;
-- one or more actions for each of `memory.md`, `PROJECT.md` and `backlog.md`, using only `unchanged`, `added`, `rewritten`, `pruned`, `routed`, or `archived`; a line proposed for the captain's file is `routed: proposed to the captain for <file>`, with the exact line;
-- each durable finding filed outside memory and its owner;
-- each archived entry's reason;
-- each open record this pass filed or corrected, and each one it deliberately left alone with the judgment it is waiting on;
-- every unresolved problem, and the decision you asked the captain for an over-budget result;
-- whether the session is safe to reset, only when all durable findings are captured, every open record this session held is filed or explicitly left with its reason, and `memory check` passes.
-
-State what reset-safe means in the same breath as the claim: nothing this session knew has been lost.
-It is never a claim that your records are correct, because this pass checks no record the session did not name.
-Do not hide an over-budget result behind a reset-safe claim.
-Close with the files a fresh session reads to pick this back up: `memory.md`, `PROJECT.md` and `backlog.md`, listing only the ones this pass wrote.
+- the budget before and after;
+- for memory.md, PROJECT.md and backlog.md: `unchanged`, `added`, `rewritten`, `pruned`, `routed` or `archived`; a line proposed for a captain's file is `routed: proposed to the captain for <file>`, with the line;
+- findings filed elsewhere and their owners; each archived entry's reason;
+- open records filed, corrected, or left with the judgment they wait on;
+- unresolved problems, and the decision asked for an over-budget result;
+- whether it is safe to reset: only when every finding is captured, every open record filed or explained, and `memory check` passes. It means nothing this session knew has been lost, never that the records are correct.

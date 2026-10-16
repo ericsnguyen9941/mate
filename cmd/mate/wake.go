@@ -27,7 +27,7 @@ import (
 // prefix. This prints that in one output:
 //
 //  1. every open item, in the order the Mate acts on them (blocked,
-//     needs-decision, wait-mate - event-handling's order), each with what
+//     needs-decision, wait-mate - the wake skill's order), each with what
 //     deciding it needs: a question in full, a hand-back's branch summary,
 //     its `## For the next crew` section and its reviews;
 //  2. the status lines written since the Mate's last wake;
@@ -175,7 +175,7 @@ func writeWakeItem(ctx context.Context, out *strings.Builder, w *store.Workspace
 	case autopilot.ItemBlocked:
 		kind := dashIfEmpty(string(it.IncidentKind))
 		fmt.Fprintf(out, "blocked %s: %s, open for %s - %s\n", crew, kind, formatAge(it.QuietFor), it.Text)
-		fmt.Fprintf(out, "  next: mate state, then mate peek, then stuck-crew-recovery\n")
+		fmt.Fprintf(out, "  next: mate state, then mate peek, then skill crew-recovery\n")
 	case autopilot.ItemNoTurn:
 		// The observer's text is "no turn in the ledger <d> after launch".
 		// The crew is not blocked, it never started: look once, and

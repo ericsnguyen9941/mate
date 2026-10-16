@@ -1,0 +1,134 @@
+---
+name: new-task
+description: From the captain's words to a running Crew in one turn - ship or scout, one repo, overlap, the brief and its check, the profile from `mate crew dispatch`, the spawn. Load it when the captain asks for work, before you dispatch queued work or spawn any Crew, and before you pass the captain's later words to a Crew in flight.
+---
+
+# new-task
+
+A task the captain asks for is dispatched in the same turn you accept it; never answer with a plan and wait.
+
+## Before you dispatch
+
+Read the evidence you have first: PROJECT.md, memory, and earlier Crews' reports and hand-backs (`{{.MatevBin}} backlog {{.ProjectName}} --all` lists them).
+When it already answers the question, relay it; no scout.
+When the captain's intent is unclear, ask one short implementation question rather than dispatching speculative design work.
+A diagnosis is evidence: a fix that serves a goal the captain already set is yours to dispatch, and you tell them; a fix beyond it is a proposal.
+Record the work in the captain's tracker when one is configured, otherwise in the backlog, before you dispatch it.
+
+**Ship or scout.** A ship's deliverable is a change to one repo; it is the default once the captain asks for an implementation, with any bounded research inside it.
+It lands as you choose at spawn: `--deliver local` (nothing pushed; you merge it) or `--deliver pr` (the Crew pushes and opens a GitHub pull request, merged by you or on GitHub). Choose `pr` when the captain reviews on GitHub, memory `## Captain` asks for pull requests, or others share the repo.
+A scout's deliverable is knowledge: an investigation, a plan, a reproduction, an audit, or an open question that could change whether or what to build. "What's wrong", "how would we" and "find out why" are scouts; never dig through the code yourself. It is spawned with `--scout`, commits nothing, and writes a report that outlives it.
+
+**One repo.** Every task is about exactly one repo: one Crew per repo. A request that needs two repos (an API field and the page that shows it) is two tasks, each with its own brief and merge; a question across repos is one scout per repo.
+
+**Overlap.** A ship waits when it would change the same files or subsystem as an in-flight Crew, including two pull requests that edit the same file, or when it depends on a branch that has not landed.
+Queue it with `{{.MatevBin}} backlog add {{.ProjectName}} <id> --section Queued --text "<one line>; blocked-by: <id>"` and tell the captain what waits and why.
+A scout changes nothing, so it never overlaps: dispatch it beside anything, and say in its brief when an unmerged branch could change its answer. There is no concurrency cap.
+New work, or a large change of spec mid-task, goes to a new Crew, never into the running one.
+A UI task whose design the captain has not settled waits for the design.
+
+**Open questions.** A gap in the request (which page, which name, how far) is usually not a reason to stop, and not yours to settle by looking.
+Write it into `## Open decisions` with who decides, dispatch, and let the Crew stop on it with `needs-decision:`; the question then waits in the captain's inbox at no cost to them.
+Ask the captain first only when your evidence says the gap will probably change whether or what gets built ("add a button to the landing page" when `project facts` shows an empty tree): one question, evidence first, or a scout proposal.
+Refuse only a request you cannot shape into a brief at all, in one line.
+
+## Name the crew
+
+The crew id is yours, and it names the task: two to four lowercase words from the captain's request, joined by hyphens, such as `fix-cart-total` or, for a scout, `scout-login-timeout`.
+The captain reads it in the console and in the branch `mate/<id>`, so it says what the Crew does: no counters such as `k3`, `p1` or `m1`.
+Letters and digits, single hyphens, a letter first, 2 to 24 characters, never reused in this project; when the name is taken, add a word (`fix-cart-total-rounding`), not a number.
+
+## The brief
+
+Write it to `{{.MateDir}}/briefs/<id>.md`; it is the Crew's whole task, since a Crew never reads your memory or backlog.
+The file is the brief's `# Task`: exactly these sections, each a `##` heading, in this order.
+
+- `## Captain's words` - every word the captain said about this task, verbatim, always: their language, spelling and examples, no speaker label, no paraphrase. It is the contract. When the words point at a report or an earlier decision, copy its substance below them with its source. Never widen them into a general goal.
+- `## What we already know` - one fact per line with its source: PROJECT.md and its heading, a report path, `project facts`, a hand-back, the captain. Never invent the repository's state. The last line starts `Unknown:`.
+- `## Build` - only what the captain's words require, one line each, and an `Out of scope:` line. A sweep or hardening nobody asked for is follow-up, not scope; a product choice the words do not settle is an open decision.
+- `## Acceptance` - one observable result per line, traceable to the captain's words, each with `verify:` and the exact command when a document gives one, else "find the project's own check for this, run it, and quote the command and its output".
+- `## Open decisions` - `none`, or one choice per line with its options and `decides: captain` or `decides: mate`. The Crew stops at each and never picks.
+- `## Deliverable` - scouts only: the questions the report must answer, one per line.
+
+A small ship brief, complete:
+
+```markdown
+## Captain's words
+Trang About phải hiện số phiên bản của app.
+
+## What we already know
+- The site is built with Hugo; `make build` writes it to public/ (PROJECT.md, "How to work here").
+- The version is the one line in VERSION at the repository root (scout-release-version report, "Where the version lives").
+- Unknown: whether the About page is a layout template or a content file.
+
+## Build
+- Show the text of VERSION on the About page, as "Version <text>".
+- Out of scope: other pages, the footer, how VERSION is written.
+
+## Acceptance
+- The built About page contains "Version " followed by the text of VERSION. verify: `make build && grep -o 'Version [^<]*' public/about/index.html`
+- The site still builds. verify: `make build`; quote its last lines.
+
+## Open decisions
+none
+```
+
+The Crew template already gives the role, repo and branch, the stop at open decisions, the status protocol, the hand-back or report, the definition of done and the captain's CREW.md rules; do not restate them.
+A split request's briefs each carry the captain's words whole and put the other repo under `Out of scope:`.
+A lesson from memory that applies to Crews goes into `## Build` until the captain has put it in CREW.md; memory `## Captain` never goes into a brief.
+
+**Settle before you spawn**; a guess in a brief costs more than the question:
+
+- A criterion checked by a string or a number is tried first, on an earlier hand-back, report or log, or the default branch through one read-only command. One you cannot make pass goes to `## Open decisions` or the captain.
+- A diagnosis in the captain's words goes under `## What we already know` labelled `verified (<source>)` or `unverified`; unverified, it is never a criterion.
+- "Try both ways" carries a cap and a stop condition: "B failed before (ios-gotchas:25); one build each, stop and record it if the trap repeats".
+- A design conflict you can foresee goes in `## Open decisions` as `decides: mate`, "follow the proposal and record it under Deviations from Build".
+
+Then `{{.MatevBin}} brief check {{.MateDir}}/briefs/<id>.md` (`--scout` for a scout), and fix every line it prints. Passing means the shape is right, not that the brief is good.
+
+## The profile
+
+Run `{{.MatevBin}} crew dispatch {{.ProjectName}}` in every turn you spawn: the table in force, each rule's profiles as flags, and the harness the rotation or quota names next. You decide which rule a task falls under; the app never matches one. On `invalid crew dispatch table`, spawn nothing: tell the captain the line.
+
+The captain's words, and their standing preferences in memory `## Captain`, beat the table:
+
+- a model, profile or harness they named: the table's profile with it, else that model or harness at the matched rule's effort;
+- cheaper or quick: one rule lighter; "think hard", "this one matters": one rule heavier, or one effort level up;
+- `max` effort only when they said so.
+
+Words for a whole batch ("opus high for all of these") cover it; when the table or their plan puts one task two steps lower, ask one question before spawning it ("U3 is a chore the plan gave to the light rule: still opus high?") and record the answer with `remember --captain`.
+
+Otherwise size the task from the brief, heaviest signal first: **blast radius** (a public interface, schema or migration, auth, money, deleting data, shared config: any one makes a ship large), **open decisions**, **spread** (one file, one area, several), **reversibility**.
+A `--scout` spawn matches only a scout rule. A narrow question in the code is a light scout; outside sources, or a bug with no known cause, is the full one.
+Take the first rule that fits, else `default`. Among its alternatives take the harness `crew dispatch` names next, unless the captain chose one or it failed to start (a perishable lesson): then `--skip <harness>`, to `crew dispatch` and `crew spawn` both.
+Pass the flags exactly as printed, `--harness` always; never mix two profiles.
+
+## Spawn
+
+```text
+{{.MatevBin}} crew spawn {{.ProjectName}} <id> --repo <repo> --brief {{.MateDir}}/briefs/<id>.md --size <size> [--deliver pr] <profile flags> --task "<one line>"
+{{.MatevBin}} crew spawn {{.ProjectName}} <id> --repo <repo> --brief {{.MateDir}}/briefs/<id>.md --scout <profile flags> --task "<one line>"
+```
+
+`--repo` is required with two or more repos; pass it anyway. With no repo, add it when the captain named one, else ask, and keep the task queued.
+`--size small|medium|large` is the matched rule's size; it sets the hand-back and evidence the Crew owes, so a small task gets no baseline run and a short hand-back.
+For a split request, spawn the task the other depends on and queue the other with `blocked-by: <id>`; otherwise spawn both now.
+A spawn can take minutes: give it at least a five-minute timeout, and never kill and retry it.
+
+Then `{{.MatevBin}} backlog add {{.ProjectName}} <id> --section "In flight" --text "<repo>, <branch>: <what it is for>"` (`backlog move` when it was queued; `--tracker <tracker-id>` for a tracker's task), tell the captain in one line that it started, with the profile in outcome words ("on the strong profile, because it touches every caller of the API"), and end your turn.
+
+**Later words.** When the captain adds to a task in flight, pass their words verbatim to `{{.MatevBin}} brief append {{.ProjectName}} <crew>` on stdin, never paraphrased into a `mate send`. Your own constraints go as one `mate send` line.
+
+## Scouts
+
+A scout that diagnoses a bug asks in `## Deliverable` for each of these, one line each; the Crew template carries the procedure:
+
+- the end-to-end reproduction on the real user path, or the exact limitation that prevented one;
+- the initiating trigger, the masking condition and the visible symptom, kept apart;
+- the failing path compared with a proven path, and their earliest meaningful divergence;
+- the relevant history;
+- the smallest counterfactual, and what changing it did;
+- the disconfirming evidence sought, and what it showed.
+
+Before acting on a diagnosis, check its cause explains both the reproduction and the proven path; when a load-bearing element is missing, dispatch a focused follow-up scout. The reproduction becomes the fixing ship's regression test, in `## Build` and `## Acceptance`.
+A ship built on a scout's report carries its findings with their source in `## What we already know`, takes acceptance lines from its proposals only where they trace to the captain's words, and moves every question it left open into `## Open decisions`.
