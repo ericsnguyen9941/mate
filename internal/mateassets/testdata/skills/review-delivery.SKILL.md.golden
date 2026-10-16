@@ -15,6 +15,7 @@ Start from the item `/usr/local/bin/mate wake shop` printed: the branch summary,
 2. Read `/ws/.mate/projects/shop/crews/<id>/handback.md` against it: every `## Acceptance` line has a row; each row says `pass` with a command and output that show it; `## Deviations from Build` holds nothing the captain's words did not ask for; `## Still open` holds nothing that was the task's to settle.
    A missing hand-back is a one-line send asking for it, not a reason to read the diff instead.
 3. Start an independent reviewer and end your turn: `/usr/local/bin/mate review shop <id> --id <review-id>`.
+   With a tracker the review id is the issue and the round, `<issue>-r1`, then `-r2` for `--since` (`hvn-57-r1` reviews `hvn-57-trip-repo` and `hvn-57-f1` alike); without one, `<id>-r1`, shortening `<id>` to fit 24 characters.
    Without `--model` and `--effort` it picks the table's review profile by the size of the change; pass `--harness` alone to choose the reviewer's harness, and a full profile only when the change carries the blast radius `new-task` sizes as large.
 4. When the reviewer hands back, read `/usr/local/bin/mate report shop <review-id> --summary`, then `/usr/local/bin/mate review shop <id> --check <review-id>`.
    A failed check is never approval: a stale review, an incomplete verdict or an unresolved finding needs a correction or a new review.

@@ -322,6 +322,46 @@ func TestCrewsAreNamedAfterTheirTask(t *testing.T) {
 	}
 }
 
+// TestWorkIsNamedAfterItsIssue pins CON-89: with a tracker, a crew id, its
+// reviewer's id, its commits and its pull request all carry the issue ID, so
+// the captain can follow one issue through the console, git and the tracker.
+// Before it, new-task taught words only and contradicted the Linear plugin.
+func TestWorkIsNamedAfterItsIssue(t *testing.T) {
+	for skill, wants := range map[string][]string{
+		briefSkill:        {"**With a tracker**", "`hvn-57-trip-repo`", "`<issue>-f1`", "`<issue>-r1`", "sub-issues", "`- Issue: HVN-57 (<tracker>)`", "**Without a tracker**"},
+		"review-delivery": {"`<issue>-r1`", "`<id>-r1`"},
+	} {
+		text := skillText(t, skill)
+		for _, want := range wants {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s does not say %q", skill, want)
+			}
+		}
+	}
+	ship, err := RenderBrief(fixedBriefParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr, err := RenderBrief(withPR(fixedBriefParams()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"`- Issue: <ID> (...)`", "`HVN-57: Add trip day warnings`"} {
+		if !strings.Contains(string(ship), want) {
+			t.Errorf("the ship brief does not say %q", want)
+		}
+	}
+	for _, want := range []string{"`HVN-57: Wire the live trip repository`", "`Closes HVN-57`", "`Part of HVN-57`"} {
+		if !strings.Contains(string(pr), want) {
+			t.Errorf("the pull-request brief does not say %q", want)
+		}
+	}
+	task := "## Captain's words\nx\n\n## What we already know\n- Issue: HVN-57 (Linear)\n- Unknown: y\n\n## Build\n- z\n- Out of scope: w\n\n## Acceptance\n- a. verify: `true`\n\n## Open decisions\nnone\n"
+	if ps := brief.Check(task, brief.Ship); len(ps) != 0 {
+		t.Errorf("a brief opening its facts with the issue line fails the check: %v", ps)
+	}
+}
+
 // TestTheMateNeverWaitsForACrew pins docs/mvp.md task 57: the captain
 // expects a Mate never to hold a long turn except to answer them. A live
 // Mate on 2026-09-26 and again on 2026-09-27 polled its Crews inside one

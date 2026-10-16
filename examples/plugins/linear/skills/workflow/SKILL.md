@@ -63,13 +63,15 @@ task scope. Work only in the assigned scope, including when looking for
   `mate-ready`. Do not take an issue that already has an owner or a running
   Crew.
 - Before spawning a Crew, read the issue, its comments and its blockers.
-- Name the task after its issue: the Crew id (and so its branch,
-  `mate/<id>`) is the issue ID in lower case, then a short slug of the
-  title - `hvn-124-login-oauth` for HVN-124. A Crew id is at most 24
-  characters, so keep the slug short; never drop the issue ID to make room.
-  Use the same `HVN-124` prefix for the task's backlog line and the pull
-  request title. Linear links a branch or PR that carries the ID to the
-  issue by itself.
+- Every Crew works on one issue. Work the captain asks for that has no issue
+  gets one in your team and project before its Crew spawns; a task too big for
+  one Crew becomes sub-issues, one Crew each. A fix within an issue's scope
+  (review findings, a bug found after review) stays on that issue.
+- Name Crews after their issue as `new-task` says (`hvn-124-login-oauth`,
+  `hvn-124-f1`, `hvn-124-r1`). The Crew brief tells each Crew to put
+  `HVN-124:` before its commit subjects and pull request title, and
+  `Closes HVN-124` or `Part of HVN-124` at the top of the PR body; Linear links
+  the branch, commits and PR to the issue by that ID.
 - Put the issue ID and the acceptance criteria in the Crew brief.
 - Comment on the issue when work starts, when it is blocked and when it is
   handed over. Each comment carries evidence or the PR link.
