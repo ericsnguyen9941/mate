@@ -12,7 +12,7 @@ import (
 // the after-compaction rule stay in it.
 func TestManualBootstrapIsRecall(t *testing.T) {
 	p := fixedParams()
-	sec := section(t, renderedManual(t), "## 3. Bootstrap checklist")
+	sec := part(t, renderedManual(t), "## 3. Bootstrap checklist")
 	for _, want := range []string{
 		"`" + p.MatevBin + " recall shop`",
 		"SessionStart hook",
@@ -32,19 +32,11 @@ func TestManualBootstrapIsRecall(t *testing.T) {
 	}
 }
 
-// TestManualRecallNamesEightParts: section 4's contract lists the digest's
-// parts in the order `mate recall` prints them (cmd/mate/recall_test.go
-// holds the command to the same order).
-func TestManualRecallNamesEightParts(t *testing.T) {
-	sec := section(t, renderedManual(t), "## 4. The `mate` command contract")
-	i := strings.Index(sec, "### Recall")
-	if i < 0 {
-		t.Fatal("section 4 has no ### Recall")
-	}
-	rec := sec[i:]
-	if j := strings.Index(rec[len("### Recall"):], "\n### "); j >= 0 {
-		rec = rec[:len("### Recall")+j]
-	}
+// TestCommandsSkillRecallNamesEightParts: the command reference lists the
+// digest's parts in the order `mate recall` prints them
+// (cmd/mate/recall_test.go holds the command to the same order).
+func TestCommandsSkillRecallNamesEightParts(t *testing.T) {
+	rec := part(t, skillText(t, commandsSkill), "### Recall")
 	starts := []string{"Live state", "`mate project facts`", "`/ws/.mate/projects/shop/PROJECT.md`", "`/ws/.mate/projects/shop/mate/backlog.md` without `## Done`", "`/ws/.mate/projects/shop/mate/memory.md`", "`/ws/.mate/WORKSPACE.md`", "What `memory check` says", "Only when the timeline database exists"}
 	for n, want := range starts {
 		item := regexp.MustCompile("(?m)^" + string(rune('1'+n)) + `\. (.*)$`).FindStringSubmatch(rec)
