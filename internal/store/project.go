@@ -53,6 +53,22 @@ type ProjectConfig struct {
 // (internal/timeline) already import this package.
 const MetaBudget = "budget"
 
+// The crew `.meta` keys of CON-94's budget enforcement. budget_line is when
+// the daemon typed the "budget reached" line into the crew's pane, so it is
+// typed once per ceiling; budget_stop is what the daemon did at the hard
+// ceiling, so it acts once. budget_extensions counts `mate crew budget
+// --extend`, budget_reason is the last extension's reason, and
+// budget_original the ceiling the crew was spawned with. An extension
+// deletes budget_line and budget_stop, which re-arms both against the new
+// ceiling.
+const (
+	MetaBudgetLine       = "budget_line"
+	MetaBudgetStop       = "budget_stop"
+	MetaBudgetExtensions = "budget_extensions"
+	MetaBudgetReason     = "budget_reason"
+	MetaBudgetOriginal   = "budget_original"
+)
+
 // MetaMateMode is the mate.meta key recording how the Mate runs, and
 // MateModeHeadless its value for a headless host (CON-78). They live here
 // because the outbox, stow and the console ask it as well as spawn.

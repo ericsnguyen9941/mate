@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -129,6 +130,10 @@ type ledgerRow struct {
 	Reviews   []string
 	ReviewOf  string
 	TaskTotal int64
+	// Budget is the task's token ceiling (CON-94): the crew's `budget=`,
+	// else the project's crew_tokens, zero when neither. TaskTotal is the
+	// spend measured against it, the same total the observer checks.
+	Budget int64
 }
 
 // printLedger is the no-crew form: the Mate's row first (mvp.md M5 task
@@ -209,6 +214,9 @@ func printLedger(ctx context.Context, handle *db.DB, w *store.Workspace, stdout 
 		return err
 	}
 	rollUpReviews(rows[1:], reviewersOf, reviewOf)
+	if err := fillBudgets(w, project, rows[1:]); err != nil {
+		return err
+	}
 
 	shown := rows
 	tasks := 0
@@ -464,16 +472,16 @@ func printLedgerTable(stdout io.Writer, rows []ledgerRow) {
 // so a cut table never understates what the project spent.
 func printLedgerRows(stdout io.Writer, shown, all []ledgerRow) {
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tSTATE\tMODEL\tEFFORT\tTURNS\tIN\tCACHE-READ\tCACHE-WRITE\tOUT\tTOTAL\tTASK-TOTAL\tREVIEWS\tCOST\tCTX\tCTX-AVG\tCTX%\tASKED\tWAITED\tSPAWN→CLOSE")
+	fmt.Fprintln(tw, "ID\tSTATE\tMODEL\tEFFORT\tTURNS\tIN\tCACHE-READ\tCACHE-WRITE\tOUT\tTOTAL\tTASK-TOTAL\tBUDGET\t%\tREVIEWS\tCOST\tCTX\tCTX-AVG\tCTX%\tASKED\tWAITED\tSPAWN→CLOSE")
 
 	var totalTurns, totalIn, totalCached, totalOut, totalTotal, totalAsked, totalWaited int64
 	var totalCost float64
 	haveCost := false
 	for _, r := range shown {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 			r.ID, dashIfEmpty(r.State), dashIfEmpty(r.Model), dashIfEmpty(r.Effort), r.Turns,
 			query.HumanizeTokens(r.In), query.HumanizeTokens(r.CacheRead), query.HumanizeTokens(r.CacheWrite), query.HumanizeTokens(r.Out), query.HumanizeTokens(r.Total),
-			taskTotalWord(r), reviewsWord(r),
+			taskTotalWord(r), budgetColumn(r), budgetPercent(r), reviewsWord(r),
 			costWord(r.Cost), contextWord(r.Context), contextWord(r.CtxAvg), ctxWord(r.CtxPct), r.Asked, waitedWord(r.WaitedMs), r.Span)
 	}
 	for _, r := range all {
@@ -507,6 +515,51 @@ func taskTotalWord(r ledgerRow) string {
 		return "-"
 	}
 	return query.HumanizeTokens(r.TaskTotal)
+}
+
+// fillBudgets sets each task row's Budget: the crew's own `budget=` (the
+// dispatch rule's, or an extension), else the project's crew_tokens. A
+// reviewer row has none of its own; its tokens count in its task's.
+func fillBudgets(w *store.Workspace, project string, rows []ledgerRow) error {
+	cfg, err := w.LoadProject(project)
+	if err != nil {
+		return err
+	}
+	var projectTokens int64
+	if cfg.Budget != nil {
+		projectTokens = cfg.Budget.CrewTokens
+	}
+	for i := range rows {
+		r := &rows[i]
+		if r.ReviewOf != "" {
+			continue
+		}
+		r.Budget = projectTokens
+		meta, err := w.ReadCrewMeta(project, r.ID)
+		if err != nil {
+			continue
+		}
+		if n, err := strconv.ParseInt(strings.TrimSpace(meta[store.MetaBudget]), 10, 64); err == nil && n > 0 {
+			r.Budget = n
+		}
+	}
+	return nil
+}
+
+// budgetColumn is BUDGET, and budgetPercent `%`: TASK-TOTAL as a share of
+// it, a dash where there is no budget to hold the task to.
+func budgetColumn(r ledgerRow) string {
+	if r.Budget <= 0 || r.ReviewOf != "" || r.ID == "mate" {
+		return "-"
+	}
+	return query.HumanizeTokens(r.Budget)
+}
+
+func budgetPercent(r ledgerRow) string {
+	if r.Budget <= 0 || r.ReviewOf != "" || r.ID == "mate" {
+		return "-"
+	}
+	return fmt.Sprintf("%d%%", r.TaskTotal*100/r.Budget)
 }
 
 // reviewsWord is REVIEWS: how many reviewers a task had, or which task a

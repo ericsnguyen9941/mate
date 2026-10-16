@@ -67,6 +67,8 @@ A missing file prints `ABSENT` and an empty one `(empty)`, which mean different 
 **`crew stop`** refuses a branch not landed in its repo's default branch, or a dirty worktree, and leaves the Crew running.
 That is a refusal to destroy work: get the branch merged, or ask the captain whether to throw it away.
 
+**`crew budget --extend`** refuses a ceiling not above the current one (pass the new ceiling, not the increment), and a second extension without `--captain`: that one is the captain's to decide.
+
 **`mate merge`** prints `merge refused:` and moves nothing. `<default>` is the default branch of the Crew's repo.
 
 - `the Mate merges only reviewed work` - run `mate review` first.

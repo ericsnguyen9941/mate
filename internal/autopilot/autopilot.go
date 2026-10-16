@@ -41,6 +41,10 @@ type Deps struct {
 	// the console wires prwatch.Sweep here, so a crew's pull request gets a
 	// watcher even when nobody ran `mate pr watch` (docs/mvp.md M19).
 	Sweep func(context.Context)
+	// Budget acts on a crew's open `budget` incidents at the start of
+	// every project's turn, in auto and manual alike (CON-94,
+	// enforceBudgets). Nil means no budget is enforced, only reported.
+	Budget *BudgetActions
 	// Outbox is where a digest is queued, and the sender that makes the
 	// one immediate attempt right after (task 30). The daemon types
 	// nothing itself.
@@ -252,6 +256,16 @@ func (p *Pilot) tickProject(ctx context.Context, project string) error {
 	p.seen[project] = true
 	p.mu.Unlock()
 	now := p.deps.now()
+	// The budget is enforced before the mode is read: it is the app's
+	// stop condition, and a manual project's crews spend tokens too. A
+	// failure here never holds the digest back.
+	budgetErr := p.enforceBudgets(ctx, project, now)
+	return errors.Join(budgetErr, p.tickMode(ctx, project, now))
+}
+
+// tickMode is the rest of a project's turn: the mode, the Mate's
+// maintenance and the digest.
+func (p *Pilot) tickMode(ctx context.Context, project string, now time.Time) error {
 	if !p.ws.Auto(project) {
 		rearmed, err := p.rearm(project, now)
 		if err != nil {

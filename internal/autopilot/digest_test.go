@@ -194,6 +194,19 @@ func TestLineRendersTheHalfBudgetItemShape(t *testing.T) {
 	}
 }
 
+// The hard-ceiling incident (CON-94) renders as "budget hard ceiling", the
+// crew the app stopped, never as one more "over budget".
+func TestLineRendersTheHardCeilingItemShape(t *testing.T) {
+	items := []autopilot.Item{
+		{Kind: autopilot.ItemBudget, Crew: "k9", Text: box.BudgetHardPrefix + "4.1M tokens of 2M tokens, over twice the budget; the app stops the crew"},
+	}
+	want := `digest: 1 item(s) — k9 budget hard ceiling: 4.1M tokens of 2M tokens, over twice the budget; the app stops the crew — ` +
+		`status files under /w/.mate/projects/shop/crews; act per AGENTS.md section 10`
+	if got := autopilot.Line(items, "/w/.mate/projects/shop/crews"); got != want {
+		t.Fatalf("Line =\n%s\nwant\n%s", got, want)
+	}
+}
+
 // A crew line is arbitrary text: it can be long, it can hold newlines
 // somebody echoed in, and it can hold the quote character the digest uses to
 // delimit it. All three have to come out as one quoted line of bounded

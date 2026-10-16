@@ -30,11 +30,13 @@ const projectBudgetCrew = "mate"
 // A crew's token limit is its own `budget=` (the dispatch rule's budget
 // `mate crew spawn --budget` recorded, CON-76) when it has one, else the
 // project's `budget.crew_tokens`; `crew_usd` and `project_usd` are the
-// project's alone. Against the token limit there are two thresholds: all
-// of it, and half of it while the crew has not handed back (no `pr-open`
-// or `wait-mate` line yet) - the early warning for a task that is spending
-// its size away without delivering. The half incident carries
-// box.BudgetHalfPrefix so every reader tells the two apart.
+// project's alone. Against the token limit there are three thresholds: all
+// of it; half of it while the crew has not handed back (no `pr-open` or
+// `wait-mate` line yet) - the early warning for a task that is spending its
+// size away without delivering; and twice it, the hard ceiling (CON-94).
+// The half and the hard incident carry box.BudgetHalfPrefix and
+// box.BudgetHardPrefix so every reader tells the three apart. The spend is
+// the task's: the crew, every session of it, and its reviewers.
 //
 // It reads the ledger this same poll's Ingest just wrote, so a crossing
 // becomes visible in incidents.log one poll after the turn that caused it -
@@ -51,7 +53,9 @@ const projectBudgetCrew = "mate"
 // ever appends one `open` line per (crew, threshold): a crew already
 // carrying one for a threshold is left alone even if it has spent more
 // since, because the record already says what needs saying; a crew
-// carrying the full one is not checked again at all.
+// carrying the hard one is not checked again at all. The one writer that
+// resolves them is `mate crew budget --extend` (CON-94): the Mate answered
+// the item with a new ceiling, and every threshold re-arms against it.
 func (i *Ingester) CheckBudgets(ctx context.Context) error {
 	if !i.d.Writable() {
 		return errors.New("timeline: this database handle is read-only")
@@ -97,36 +101,71 @@ func (i *Ingester) checkProjectBudget(ctx context.Context, project string) error
 		return err
 	}
 	// filed is which thresholds the crew already carries an open budget
-	// incident for: the record of a crossing is written once.
-	filed := func(crew string) (half, full bool) {
+	// incident for: the record of a crossing is written once. An extension
+	// (`mate crew budget --extend`, CON-94) resolves them, which is what
+	// re-arms every threshold against the new ceiling.
+	filed := func(crew string) (half, full, hard bool) {
 		for _, inc := range box.OpenIncidents(view, crew) {
 			if inc.Kind != box.IncidentBudget {
 				continue
 			}
-			if percent, _ := box.BudgetThreshold(inc.Text); percent == 50 {
+			switch percent, _ := box.BudgetThreshold(inc.Text); percent {
+			case 50:
 				half = true
-			} else {
+			case 200:
+				hard = true
+			default:
 				full = true
 			}
 		}
-		return half, full
+		return half, full, hard
+	}
+
+	// A review is part of its task's spend, not a pocket of its own
+	// (CON-94): a reviewer whose task is a crew of this project is counted
+	// in that task's total and never checked on its own. A reviewer whose
+	// task is unknown stands as a task, as `mate usage` shows it.
+	reviewersOf, reviewOf, err := i.ws.ReviewLinks(project)
+	if err != nil {
+		return err
+	}
+	actorOf := make(map[string]string, len(crews))
+	for _, crew := range crews {
+		actorOf[crew.ID] = crew.ActorID
 	}
 
 	for _, crew := range crews {
-		half, full := filed(crew.ID)
-		if full {
+		if task, ok := reviewOf[crew.ID]; ok && actorOf[task] != "" {
+			continue
+		}
+		half, full, hard := filed(crew.ID)
+		if hard {
 			continue
 		}
 		limit := crewBudget(crew.Meta, budget.CrewTokens)
 		if limit == 0 && budget.CrewUSD == 0 {
 			continue
 		}
-		tokens, cost, err := i.crewSpend(ctx, crew.ActorID)
+		actors := []string{crew.ActorID}
+		for _, reviewer := range reviewersOf[crew.ID] {
+			if actor := actorOf[reviewer]; actor != "" {
+				actors = append(actors, actor)
+			}
+		}
+		tokens, cost, err := i.taskSpend(ctx, actors)
 		if err != nil {
 			return err
 		}
 		text := ""
 		switch {
+		case limit > 0 && tokens > 2*limit && !view.Closed[crew.ID]:
+			// Twice the budget: the hard ceiling, where the daemon stops
+			// the crew (internal/autopilot's budget enforcement). A closed
+			// crew is past stopping.
+			text = box.BudgetHardPrefix + fmt.Sprintf("%s tokens of %s tokens, over twice the budget; the app stops the crew",
+				query.HumanizeTokens(tokens), query.HumanizeTokens(limit))
+		case full:
+			// Already filed at the budget; only the hard ceiling is left.
 		case limit > 0 && tokens > limit:
 			text = fmt.Sprintf("%s tokens of %s tokens",
 				query.HumanizeTokens(tokens), query.HumanizeTokens(limit))
@@ -150,7 +189,7 @@ func (i *Ingester) checkProjectBudget(ctx context.Context, project string) error
 		}
 	}
 
-	if _, full := filed(projectBudgetCrew); budget.ProjectUSD > 0 && !full {
+	if _, full, _ := filed(projectBudgetCrew); budget.ProjectUSD > 0 && !full {
 		cost, err := i.projectSpend(ctx, project)
 		if err != nil {
 			return err
@@ -206,31 +245,41 @@ func handedBack(view box.View, crew string) bool {
 	return false
 }
 
-// crewSpend is one crew's whole-task token total and cost, read the same way
-// `v_task_ledger` computes them: cost only counts a turn whose model has a
-// real (non-zero) price, so a model that is only listed in pricing.yaml as
-// a placeholder never crosses a dollar budget.
-func (i *Ingester) crewSpend(ctx context.Context, actorID string) (int64, sql.NullFloat64, error) {
-	var tokens int64
-	if err := i.d.SQL().QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(input_tokens+cache_read_tokens+cache_write_tokens+output_tokens), 0)
-		  FROM turn WHERE actor_id = ?`, actorID).Scan(&tokens); err != nil {
-		return 0, sql.NullFloat64{}, err
-	}
+// taskSpend is one task's whole token total and cost - the crew and its
+// reviewers, every session of each - read the same way `v_task_ledger`
+// computes them: cost only counts a turn whose model has a real (non-zero)
+// price, so a model that is only listed in pricing.yaml as a placeholder
+// never crosses a dollar budget.
+func (i *Ingester) taskSpend(ctx context.Context, actorIDs []string) (int64, sql.NullFloat64, error) {
+	var total int64
 	var cost sql.NullFloat64
-	if err := i.d.SQL().QueryRowContext(ctx, `
-		SELECT SUM(
-			u.input_tokens       * COALESCE(p.input_per_m, 0) / 1000000.0 +
-			u.cache_read_tokens  * COALESCE(p.cache_read_per_m, 0) / 1000000.0 +
-			u.cache_write_tokens * COALESCE(p.cache_write_per_m, 0) / 1000000.0 +
-			u.output_tokens      * COALESCE(p.output_per_m, 0) / 1000000.0)
-		  FROM turn u JOIN pricing p ON p.model = u.model
-		 WHERE u.actor_id = ?
-		   AND (p.input_per_m > 0 OR p.cache_read_per_m > 0 OR p.cache_write_per_m > 0 OR p.output_per_m > 0)`,
-		actorID).Scan(&cost); err != nil {
-		return 0, sql.NullFloat64{}, err
+	for _, actorID := range actorIDs {
+		var tokens int64
+		if err := i.d.SQL().QueryRowContext(ctx, `
+			SELECT COALESCE(SUM(input_tokens+cache_read_tokens+cache_write_tokens+output_tokens), 0)
+			  FROM turn WHERE actor_id = ?`, actorID).Scan(&tokens); err != nil {
+			return 0, sql.NullFloat64{}, err
+		}
+		total += tokens
+		var c sql.NullFloat64
+		if err := i.d.SQL().QueryRowContext(ctx, `
+			SELECT SUM(
+				u.input_tokens       * COALESCE(p.input_per_m, 0) / 1000000.0 +
+				u.cache_read_tokens  * COALESCE(p.cache_read_per_m, 0) / 1000000.0 +
+				u.cache_write_tokens * COALESCE(p.cache_write_per_m, 0) / 1000000.0 +
+				u.output_tokens      * COALESCE(p.output_per_m, 0) / 1000000.0)
+			  FROM turn u JOIN pricing p ON p.model = u.model
+			 WHERE u.actor_id = ?
+			   AND (p.input_per_m > 0 OR p.cache_read_per_m > 0 OR p.cache_write_per_m > 0 OR p.output_per_m > 0)`,
+			actorID).Scan(&c); err != nil {
+			return 0, sql.NullFloat64{}, err
+		}
+		if c.Valid {
+			cost.Float64 += c.Float64
+			cost.Valid = true
+		}
 	}
-	return tokens, cost, nil
+	return total, cost, nil
 }
 
 // projectSpend is every crew of a project summed: the cost a `project_usd`

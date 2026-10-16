@@ -19,7 +19,7 @@ Work through the items in this order, because it follows what happens to a Crew 
 2. **`needs-decision` second.** Decide it as below, and answer with one `/usr/local/bin/mate send shop <crew> "<line>"`, which is what closes the question.
 3. **`wait-mate` third.** Load `review-delivery`.
 
-Any other item (`no turn`, `context high`, a spend over budget) carries its own `next:` line; do what it says. A budget item is a fact about spend, not a stopped Crew: mention it to the captain and keep going.
+Any other item (`no turn`, `context high`, `budget 50%`) carries its own `next:` line; do what it says. An `over budget` or `budget hard ceiling` item is the Budget section below.
 A `pr-merged:` or `pr-closed:` line is `review-delivery`'s too.
 
 A `resolve:` line is a Crew's question the captain handed to you: it is the `needs-decision` item `wake` prints in full.
@@ -63,3 +63,13 @@ An expansion question to the captain states five things, evidence first and brie
 Do not relay the Crew's labels or wording as if they settled it.
 Record the question under `## Held for the captain` before your turn ends.
 When the captain answers, put their words into the brief with `/usr/local/bin/mate brief append shop <crew>`, which also tells the Crew.
+
+## Budget
+
+A task's budget is a stop condition the app counts: the Crew, its fresh sessions and its reviewers, in tokens. At `over budget` the app has already told the Crew to commit, hand back and stop; at its hand-back choose one:
+
+- **Extend once** when the hand-back shows it is nearly done: `/usr/local/bin/mate crew budget shop <crew> --extend <new ceiling> --reason "<what is left>"`, then send the fix round. A second extension is `decides: captain`.
+- **Narrow**: queue what is left as a new task, and review or merge what is done.
+- **Drop** it: `/usr/local/bin/mate crew stop shop <crew> --discard`, and tell the captain why.
+
+`budget hard ceiling` means the app stopped the Crew at twice its budget and kept any unlanded work: tell the captain, then narrow or drop it; extend and relaunch only on the captain's word.

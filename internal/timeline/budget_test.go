@@ -307,3 +307,88 @@ func TestCheckBudgetsPrefersTheCrewsOwnBudget(t *testing.T) {
 		t.Fatalf("open budget incidents = %q, want none: 234k is under half of the crew's own 1M", got)
 	}
 }
+
+func checkBudgets(t *testing.T, f *fixture, times int) {
+	t.Helper()
+	for range times {
+		if err := f.ing.CheckBudgets(context.Background()); err != nil {
+			t.Fatalf("CheckBudgets: %v", err)
+		}
+	}
+}
+
+// Past twice its budget a crew gets one "budget hard ceiling" incident
+// (CON-94), the one the daemon stops it on, and nothing after it however
+// many polls follow. The fixture crew's 234k tokens are over twice 100k.
+func TestCheckBudgetsFilesTheHardCeilingOnceAtTwiceTheBudget(t *testing.T) {
+	f := newFixture(t)
+	crewOnlyWorking(t, f)
+	setCrewBudget(t, f, "200000")
+	f.ingest(t)
+	checkBudgets(t, f, 1)
+	setCrewBudget(t, f, "100000")
+	checkBudgets(t, f, 2)
+	got := openBudgetTexts(t, f)
+	want := []string{"234k tokens of 200k tokens", box.BudgetHardPrefix + "234k tokens of 100k tokens, over twice the budget; the app stops the crew"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("open budget incidents = %q, want %q", got, want)
+	}
+	if percent, _ := box.BudgetThreshold(got[1]); percent != 200 {
+		t.Fatalf("BudgetThreshold(%q) = %d, want 200", got[1], percent)
+	}
+}
+
+// An extension resolves the crew's budget incidents (what `mate crew
+// budget --extend` writes): every threshold is then measured against the
+// new ceiling, so the next crossing names it.
+func TestCheckBudgetsMeasuresAnExtensionAgainstTheNewCeiling(t *testing.T) {
+	f := newFixture(t)
+	crewOnlyWorking(t, f)
+	setCrewBudget(t, f, "150000")
+	f.ingest(t)
+	checkBudgets(t, f, 1)
+	if got := openBudgetTexts(t, f); len(got) != 1 || got[0] != "234k tokens of 150k tokens" {
+		t.Fatalf("open budget incidents = %q, want the 150k crossing", got)
+	}
+
+	setCrewBudget(t, f, "200000")
+	if err := f.ws.AppendIncident(fixtureProject, store.IncidentEntry{
+		Crew: fixtureCrew, Kind: string(box.IncidentBudget), State: store.IncidentResolved, Text: "budget extended to 200k tokens",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	checkBudgets(t, f, 2)
+	got := openBudgetTexts(t, f)
+	if len(got) != 1 || got[0] != "234k tokens of 200k tokens" {
+		t.Fatalf("open budget incidents = %q, want one crossing of the new 200k ceiling", got)
+	}
+}
+
+// A reviewer is part of its task's spend (CON-94): its tokens count in its
+// task's total against the task's budget, and it is never checked on its
+// own budget, however small. Here the fixture crew (234k tokens) is the
+// reviewer of a task with no turns of its own.
+func TestCheckBudgetsFoldsAReviewerIntoItsTask(t *testing.T) {
+	f := newFixture(t)
+	crewOnlyWorking(t, f)
+	setCrewBudget(t, f, "1")
+	if err := f.ws.WriteCrewMeta(fixtureProject, "task1", map[string]string{"harness": "claude", "state": "spawned", store.MetaBudget: "200000"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.ws.AddCrewReview(fixtureProject, "task1", fixtureCrew); err != nil {
+		t.Fatal(err)
+	}
+	f.ingest(t)
+	checkBudgets(t, f, 1)
+	view, err := box.Load(f.ws, fixtureProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open := box.OpenIncidents(view, fixtureCrew); len(open) != 0 {
+		t.Fatalf("reviewer incidents = %+v, want none: its tokens count in its task's", open)
+	}
+	open := box.OpenIncidents(view, "task1")
+	if len(open) != 1 || open[0].Text != "234k tokens of 200k tokens" {
+		t.Fatalf("task incidents = %+v, want the task over its budget on its reviewer's tokens", open)
+	}
+}

@@ -22,8 +22,10 @@ const (
 	// IncidentBudget is a token/usage budget signal: the observer's budget
 	// check (internal/timeline.CheckBudgets) files one when a crew's spend
 	// crosses its budget, and one earlier, at half of it, when the crew has
-	// not handed back yet (CON-76). Both carry this kind; the half one is
-	// told apart by BudgetHalfPrefix on its text.
+	// not handed back yet (CON-76), and one at twice it, the hard ceiling
+	// where the app stops the crew (CON-94). All carry this kind; the half
+	// and the hard one are told apart by BudgetHalfPrefix and
+	// BudgetHardPrefix on their text.
 	IncidentBudget IncidentKind = "budget"
 	// IncidentNoTurn is a crew that has been working (or has only just
 	// been spawned) for longer than the observer's no-turn threshold while
@@ -55,14 +57,24 @@ const (
 // `budget` as an inbox item rather than a state keeps doing so.
 const BudgetHalfPrefix = "50%: "
 
+// BudgetHardPrefix opens the text of a `budget` incident the observer filed
+// at twice the task's budget (CON-94): the hard ceiling, where the app
+// stops the crew without asking anyone. Like BudgetHalfPrefix it lives in
+// the text, so the kind stays `budget`.
+const BudgetHardPrefix = "budget hard ceiling: "
+
 // BudgetThreshold is the percentage of its budget a `budget` incident was
-// filed at - 50 when the text carries BudgetHalfPrefix, 100 otherwise -
-// and the text with that prefix removed. It is the one place the prefix is
-// read, so the digest, `mate wake`, the console and the dashboard agree
-// on which incident is "over budget" and which is "half the budget".
+// filed at - 50 when the text carries BudgetHalfPrefix, 200 when it
+// carries BudgetHardPrefix, 100 otherwise - and the text with that prefix
+// removed. It is the one place the prefixes are read, so the digest, `mate
+// wake`, the console, the dashboard and the daemon's budget enforcement
+// agree on which incident is which.
 func BudgetThreshold(text string) (percent int, rest string) {
 	if rest, ok := strings.CutPrefix(text, BudgetHalfPrefix); ok {
 		return 50, rest
+	}
+	if rest, ok := strings.CutPrefix(text, BudgetHardPrefix); ok {
+		return 200, rest
 	}
 	return 100, text
 }

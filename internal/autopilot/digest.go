@@ -289,8 +289,13 @@ func itemText(item Item) string {
 		// <total> of <limit>". The half-budget incident (CON-76) is the
 		// same shape under "budget 50%", so a Mate never reads "over
 		// budget" about a crew that is not.
-		if percent, rest := box.BudgetThreshold(item.Text); percent == 50 {
+		// The hard ceiling (CON-94) reads as what it is, the crew the app
+		// stopped.
+		switch percent, rest := box.BudgetThreshold(item.Text); percent {
+		case 50:
 			return fmt.Sprintf("%s budget 50%%: %s", crew, rest)
+		case 200:
+			return fmt.Sprintf("%s budget hard ceiling: %s", crew, rest)
 		}
 		return fmt.Sprintf("%s over budget: %s", crew, item.Text)
 	case ItemNoTurn:
