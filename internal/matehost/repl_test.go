@@ -213,3 +213,55 @@ func TestREPLFoldsStow(t *testing.T) {
 		t.Fatalf("^O did not open the stow:\n%s", view)
 	}
 }
+
+// TestREPLHoldsTheReadPlace: while the captain reads up the chat, a turn
+// that ends or grows below does not move what they read.
+func TestREPLHoldsTheReadPlace(t *testing.T) {
+	m := sampleModel(80, 16)
+	m.scrollView(4)
+	top := func(m Model) string { return ansi.Strip(strings.Split(m.View(), "\n")[2]) }
+	before := top(m)
+	at := m.now()
+	m.apply(Event{Item: &Item{At: at, Source: SourceCaptain, Text: "đang chạy", Reply: "một"}})
+	if got := top(m); got != before {
+		t.Fatalf("a running turn moved the view: %q, was %q", got, before)
+	}
+	m.apply(Event{Item: &Item{At: at, Source: SourceCaptain, Text: "đang chạy", Reply: "một\n\nhai\n\nba\n\nbốn"}})
+	if got := top(m); got != before {
+		t.Fatalf("a growing turn moved the view: %q, was %q", got, before)
+	}
+	m.apply(Event{Item: &Item{At: at, Source: SourceApp, Label: "event", Reply: "Crew e1 xong.\n\nĐã merge.", Done: true}})
+	if got := top(m); got != before {
+		t.Fatalf("a finished app turn moved the view: %q, was %q", got, before)
+	}
+	if m.unseen != 1 {
+		t.Fatalf("unseen = %d, want 1", m.unseen)
+	}
+
+	// At the end the chat still follows what comes.
+	m.scrollBy(-1 << 30)
+	m.apply(Event{Item: &Item{At: at, Source: SourceApp, Label: "event", Reply: "Tin cuối cùng", Done: true}})
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "Tin cuối cùng") {
+		t.Fatalf("the chat did not follow at its end:\n%s", view)
+	}
+}
+
+// TestREPLHoldsTheNewsPlace: a note the Mate adds to a news the captain
+// reads scrolled does not move the page.
+func TestREPLHoldsTheNewsPlace(t *testing.T) {
+	m := sampleModel(80, 14)
+	m.host = New(&Runner{}, Options{})
+	at := m.now()
+	ctx := []string{"một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín", "mười"}
+	n := News{ID: 1, Title: "Vượt ngân sách", Context: ctx, Status: NewsWaiting, OpenedAt: at, At: at}
+	m.news = []News{n}
+	m.mode, m.newsID = viewNews, 1
+	m.scrollView(3)
+	top := func(m Model) string { return ansi.Strip(strings.Split(m.View(), "\n")[2]) }
+	before := top(m)
+	n.Notes = []NewsNote{{At: at, Text: "Crew đã trả PR"}, {At: at, Text: "Đã merge"}}
+	m.apply(Event{News: []News{n}})
+	if got := top(m); got != before {
+		t.Fatalf("a note moved the news: %q, was %q", got, before)
+	}
+}

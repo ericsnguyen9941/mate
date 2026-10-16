@@ -173,7 +173,27 @@ func (m *Model) scrollView(n int) {
 	m.scrollBy(n)
 }
 
+// apply takes a host event. A chat or news read scrolled up keeps its top
+// line where it is: what the event adds below would otherwise push it up.
 func (m *Model) apply(ev Event) {
+	offset := &m.scroll
+	if m.shownMode() == viewNews {
+		offset = &m.newsScroll
+	}
+	if *offset == 0 || m.help {
+		m.applyEvent(ev)
+		return
+	}
+	w, _ := m.size()
+	mode, id := m.shownMode(), m.newsID
+	top := len(m.body(w)) - min(*offset, m.maxScroll()) - m.viewRows()
+	m.applyEvent(ev)
+	if m.shownMode() == mode && m.newsID == id {
+		*offset = min(m.maxScroll(), max(0, len(m.body(w))-m.viewRows()-top))
+	}
+}
+
+func (m *Model) applyEvent(ev Event) {
 	m.state = ev.State
 	m.queue = ev.Queue
 	m.news = ev.News
