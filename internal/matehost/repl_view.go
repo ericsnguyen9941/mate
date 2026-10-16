@@ -181,6 +181,8 @@ func (m Model) footer(w int) []string {
 		hints = []keyHint{{"Esc", "đóng"}, {"PgUp PgDn", "cuộn"}}
 	case m.mode == viewList:
 		hints = []keyHint{{"Enter", "mở news"}, {"Esc", "đóng"}, {"^N", "news chờ tiếp"}}
+	case m.mode == viewNews && m.newsClosed():
+		hints = []keyHint{{"Esc", "về chat"}, {"↑↓ PgUp", "cuộn"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
 	case m.mode == viewNews && m.pending != nil:
 		hints = []keyHint{{"u", "hoàn tác"}, {"Esc", "về chat"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
 	case m.mode == viewNews && m.focusOptions:
@@ -282,7 +284,17 @@ func (m Model) activity() string {
 
 // --- composer ---
 
+// newsClosed reports whether the news shown is over, so read only.
+func (m Model) newsClosed() bool {
+	n, ok := m.findNews(m.newsID)
+	return m.mode == viewNews && ok && n.Closed()
+}
+
 func (m Model) composer(w int) []string {
+	if m.newsClosed() && m.pending == nil {
+		// Nothing to answer: one line says so instead of a composer.
+		return []string{"", styleMuted.Render(fmt.Sprintf(" ✓ #%d đã xong · chỉ đọc", m.newsID))}
+	}
 	inner := max(4, w-4)
 	status, right := m.status()
 	if m.mode == viewNews {

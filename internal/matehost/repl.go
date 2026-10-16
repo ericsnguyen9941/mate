@@ -72,8 +72,10 @@ type Model struct {
 	news []News
 	mode viewMode
 	// listFrom is the view ^T opened the list over.
-	listFrom     viewMode
-	listSel      int
+	listFrom viewMode
+	listSel  int
+	// listClosed unfolds the news closed today in the list (Tab).
+	listClosed   bool
 	newsID       int
 	newsScroll   int
 	optSel       int
