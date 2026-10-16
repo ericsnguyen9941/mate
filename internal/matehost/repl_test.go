@@ -197,3 +197,19 @@ func TestREPLMouseWheel(t *testing.T) {
 		t.Fatal("↓ after Home did not move the view")
 	}
 }
+
+// TestREPLFoldsStow keeps what the Mate saved before a restart to one line
+// until ^O opens it.
+func TestREPLFoldsStow(t *testing.T) {
+	m := sampleModel(80, 30)
+	m.items = append(m.items[:3], Item{At: m.now(), Source: SourceApp, Label: "stow", Text: Marker + "stow: you are about to be restarted",
+		Reply: "Everything is saved, so a restart loses nothing this session knew.", Done: true, MS: 9000})
+	view := ansi.Strip(m.View())
+	if strings.Contains(view, "Everything is saved") || !strings.Contains(view, "Mate ghi nhớ trước khi khởi động lại") {
+		t.Fatalf("stow not folded:\n%s", view)
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	if view := ansi.Strip(next.(Model).View()); !strings.Contains(view, "Everything is saved") {
+		t.Fatalf("^O did not open the stow:\n%s", view)
+	}
+}

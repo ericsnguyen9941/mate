@@ -456,6 +456,11 @@ func (m Model) itemLines(it Item, w int, last bool) []string {
 	} else {
 		out = []string{styleFaint.Render(fmt.Sprintf("   · %s · %s", it.Label, it.At.Format("15:04")))}
 	}
+	if it.Label == "stow" && it.Done && it.Error == "" && !m.expand {
+		// What the Mate saved before a restart is its own bookkeeping:
+		// one line, opened with ^O.
+		return []string{styleMuted.Render(ansi.Truncate(fmt.Sprintf("   ▸ Mate ghi nhớ trước khi khởi động lại · %s · ^O xem", endAt(it).Format("15:04")), w-1, "…"))}
+	}
 	switch {
 	case !it.Done:
 		return append(out, m.liveLines(it, w)...)
@@ -613,7 +618,7 @@ func helpLines() []string {
 		{"Esc", "ngắt lượt đang chạy"},
 		{"^X", "bỏ tin xếp hàng cuối"},
 		{"^R", "thử lại lượt lỗi"},
-		{"^O", "mở/thu gọn tool của lượt cuối"},
+		{"^O", "mở/thu gọn tool lượt cuối · phần Mate ghi nhớ"},
 		{"^T", "danh sách news"},
 		{"^N", "news chờ anh tiếp theo"},
 		{"#3 …", "trả lời news #3 ngay từ chat"},
