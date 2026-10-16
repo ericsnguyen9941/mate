@@ -192,6 +192,25 @@ func TestMergeCrewLetsTheMateMergeReviewedWork(t *testing.T) {
 	}
 }
 
+// TestMergeCrewAcceptsAReviewedBaseAheadOfTheLocalDefault is CON-91: the
+// reviewed base is the merge base the branch grew from, which is ahead of
+// the local main when the crew rebased onto an origin/main nobody pulled.
+// Main not having moved past that base is what the merge holds it to.
+func TestMergeCrewAcceptsAReviewedBaseAheadOfTheLocalDefault(t *testing.T) {
+	w, deps, res := mergeFixture(t)
+	commitInWorktree(t, res.Worktree, "upstream.txt", "already on origin\n")
+	base := headOf(t, w, res.Branch)
+	commitInWorktree(t, res.Worktree, "feature.txt", "feature\n")
+	tip := headOf(t, w, res.Branch)
+
+	if _, err := spawn.MergeCrew(context.Background(), w, deps, "shop", "k3", spawn.CallerMate, spawn.ReviewedCommit{Head: tip, Base: base}); err != nil {
+		t.Fatalf("MergeCrew with a base ahead of main: %v", err)
+	}
+	if got := headOf(t, w, "main"); got != tip {
+		t.Fatalf("main = %s, want the branch tip %s", got, tip)
+	}
+}
+
 func TestMergeCrewAlwaysRefusesACrew(t *testing.T) {
 	// A crew may never land its own branch: the merge follows a review of
 	// its work, which is never the crew's own.

@@ -292,8 +292,22 @@ func MergeCrew(ctx context.Context, w *store.Workspace, deps Deps, project, crew
 		if err != nil {
 			return MergeResult{}, err
 		}
-		if reviewed[0].Head == "" || tip != reviewed[0].Head || before != reviewed[0].Base {
+		if reviewed[0].Head == "" || tip != reviewed[0].Head || reviewed[0].Base == "" {
 			return MergeResult{}, mergeRefusal(observability.CodeStateConflict, "review is stale; branch or base changed")
+		}
+		// The reviewed base is the merge base the branch grew from
+		// (CON-91), which is the default branch's head unless the crew
+		// rebased onto an origin/<default> the local one has not pulled.
+		// Either way the default branch must not have moved past it: what
+		// this fast-forward lands beyond the base is what was reviewed.
+		if before != reviewed[0].Base {
+			inBase, err := git.IsAncestor(ctx, repo, before, reviewed[0].Base)
+			if err != nil {
+				return MergeResult{}, err
+			}
+			if !inBase {
+				return MergeResult{}, mergeRefusal(observability.CodeStateConflict, "review is stale; branch or base changed")
+			}
 		}
 		// Merge the object reviewed, even if the branch advances during git.
 		mergeTarget = reviewed[0].Head
