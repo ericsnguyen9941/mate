@@ -155,6 +155,7 @@ async function boot(opts = {}) {
       }
       else if (p === "/api/now") body = fx.now;
       else if (p === "/api/board") body = boardBody(Number(u.searchParams.get("days")));
+      else if (p === "/api/board/day") body = boardDayBody(u.searchParams.get("date"));
       else if ((m = /^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/.exec(p))) body = fx.tasks[m[1] + "/" + m[2]] || taskBody(fx, m[1], m[2]);
       else if ((m = /^\/api\/projects\/([^/]+)\/mate$/.exec(p))) body = fx.mates[m[1]] || { project: m[1], exchanges: [] };
       else if ((m = /^\/api\/projects\/([^/]+)$/.exec(p))) body = fx.projects[m[1]];
@@ -207,6 +208,37 @@ function boardBody(days) {
   });
   return { generated_at: "2026-10-03T14:32:07.000000000Z", last_event_id: 1, days, zone: "+07:00", dates, total,
     projects: [{ name: "shop", days: shop }, { name: "docs-site", days: docs }, { name: "infra", days: dates.map(d => day(d)) }] };
+}
+
+// boardDayBody is /api/board/day: today has a shop ship opened and
+// finished, a docs-site scout that never started, the shop Mate and an
+// open budget incident; every other day only the shop Mate.
+function boardDayBody(date) {
+  const toks = (cr, out) => ({ input: 1000, cache_read: cr, cache_write: 0, output: out, thinking: 0, total: 1000 + cr + out });
+  const base = { generated_at: "2026-10-03T14:32:07.000000000Z", last_event_id: 1, date, zone: "+07:00" };
+  if (date !== "2026-10-03") {
+    return Object.assign(base, { actors: [{ project: "shop", kind: "mate", name: "", turns: 3, tokens: toks(499000, 0) }], tasks: [], incidents: [] });
+  }
+  const task = (o) => Object.assign({ state: "", closed: true, turns: 4, harness: "claude", model: "opus", effort: "high",
+    tokens: toks(1900000, 9000), opened: true, closed_today: true, day_turns: 4, day_tokens: toks(1900000, 9000) }, o);
+  return Object.assign(base, {
+    actors: [
+      { project: "shop", kind: "crew", name: "login-flow", turns: 4, tokens: toks(1900000, 9000) },
+      { project: "shop", kind: "mate", name: "", turns: 9, tokens: toks(990000, 9000) },
+      { project: "docs-site", kind: "crew", name: "seo", turns: 1, tokens: toks(499000, 0) }
+    ],
+    tasks: [
+      task({ project: "shop", crew: "login-flow", text: "Fix the checkout total", role: "ship", close_state: "finished",
+        spawned_at: "2026-10-03T02:00:00.000000000Z", closed_at: "2026-10-03T05:30:00.000000000Z" }),
+      task({ project: "docs-site", crew: "seo", text: "Why is the build slow", role: "scout", close_state: "failed", failed_reason: "herdr refused",
+        spawned_at: "2026-10-03T06:00:00.000000000Z", closed_at: "2026-10-03T06:01:00.000000000Z", turns: 1,
+        tokens: toks(499000, 0), day_turns: 1, day_tokens: toks(499000, 0) })
+    ],
+    incidents: [
+      { project: "shop", kind: "stale", actor_kind: "crew", name: "login-flow", opened_at: "2026-10-03T03:00:00.000000000Z", resolved_at: "2026-10-03T03:12:00.000000000Z" },
+      { project: "shop", kind: "budget", actor_kind: "mate", name: "", opened_at: "2026-10-03T07:00:00.000000000Z" }
+    ]
+  });
 }
 
 const byKey = (root, key) => root.querySelector(`[data-key="${key}"]`);
@@ -691,6 +723,63 @@ test("the board's range and project buttons re-read and narrow it", async () => 
   assert.match(kpi(d, "Dropped").getAttribute("title"), /1 didn't start/);
   const today = d.querySelector("tbody tr");
   assert.deepEqual(today.children.map(c => c.text), ["Today", "500k", "1", "0", "1", "0", "0", "0", "0"]);
+});
+
+const section = (d, label) => d.querySelector(`section[aria-label="${label}"]`);
+const rowsOf = sec => sec.querySelector("tbody").querySelectorAll("tr");
+
+test("a day on the board opens into its tasks, who spent the tokens and its incidents", async () => {
+  const app = await boot({ hash: "#board" });
+  const todayRow = app.drawer().querySelector("tbody tr");
+  await app.click(todayRow.querySelector(".bday"));
+  assert.equal(app.hash(), "#board/2026-10-03");
+  assert.ok(app.requests.some(r => r.url === "/api/board/day?date=2026-10-03"));
+  const d = app.drawer();
+  assert.ok(d.classes.includes("drawer-day"), "an open day widens the drawer");
+  assert.equal(d.querySelector(".bnavd h3").text, "Today");
+  assert.match(kpi(d, "Tokens").text, /3\.5M/);
+
+  const tasks = section(d, "Tasks that day");
+  assert.match(tasks.querySelector("h3").text, /2 tasks · 2\.4M tokens that day/);
+  const [ship, scout] = rowsOf(tasks);
+  assert.match(ship.text, /login-flow.*Fix the checkout total.*shop.*Claude.*opus.*effort: high.*opened .*finished .*4.*1\.9M.*1\.9M/);
+  assert.match(scout.text, /seo.*docs-site.*didn't start/);
+
+  const who = section(d, "Tokens by who");
+  assert.deepEqual(rowsOf(who).map(r => r.children[0].text), ["login-flow", "Mate", "seo"], "biggest first");
+  assert.match(who.querySelector("tfoot").text, /All.*14.*3k.*3\.4M.*0.*18k.*3\.4M/);
+
+  const inc = section(d, "Incidents that day");
+  assert.equal(rowsOf(inc).length, 2);
+  assert.match(rowsOf(inc)[0].text, /stale.*login-flow.*shop.*after 12m/);
+  assert.match(rowsOf(inc)[1].text, /over budget.*Mate.*shop.*still open/);
+  assert.doesNotMatch(d.text, /\$|USD|cost/i, "the day counts tokens, not money");
+
+  await app.click(ship);
+  assert.equal(app.hash(), "#crew/shop/login-flow", "a task row opens its crew");
+});
+
+test("an open day steps to its neighbours, narrows to a project and closes back to all days", async () => {
+  const app = await boot({ hash: "#board/2026-10-03" });
+  let d = app.drawer();
+  assert.ok(d.querySelectorAll(".bstep").find(b => b.getAttribute("aria-label") === "Day after").hasAttribute("disabled"), "nothing after today");
+  await app.click(d.querySelectorAll(".bstep").find(b => /Day before/.test(b.getAttribute("aria-label"))));
+  assert.equal(app.hash(), "#board/2026-10-02");
+  d = app.drawer();
+  assert.match(section(d, "Tasks that day").text, /No task opened, closed or worked that day/);
+  assert.match(section(d, "Incidents that day").text, /No incidents that day/);
+  assert.ok(d.querySelectorAll("tbody tr").find(r => r.classes.includes("bon")), "the open day's row is marked");
+
+  await app.click(d.querySelectorAll(".bstep").find(b => /Day after/.test(b.getAttribute("aria-label"))));
+  await app.click(app.drawer().querySelectorAll(".bseg button").find(b => b.text === "docs-site"));
+  d = app.drawer();
+  assert.deepEqual(rowsOf(section(d, "Tasks that day")).map(r => r.querySelector(".bday").text), ["seo"]);
+  assert.deepEqual(rowsOf(section(d, "Tokens by who")).map(r => r.children[0].text), ["seo"]);
+  assert.match(section(d, "Incidents that day").text, /No incidents that day/);
+
+  await app.click(d.querySelector(".bback"));
+  assert.equal(app.hash(), "#board");
+  assert.ok(!app.drawer().querySelector(".bnav"), "all days again");
 });
 
 test("on a phone the hallway has the board too", async () => {

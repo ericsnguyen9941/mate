@@ -359,6 +359,7 @@
   var board = null;           // /api/board: {days, body} | {days, error}
   var boardDays = storedBoardDays();
   var boardProject = "";      // "" is the whole workspace
+  var boardDay = null;        // /api/board/day: {date, body} | {date, error}
 
   function parseHash() {
     var h = (window.location.hash || "").replace(/^#\/?/, "");
@@ -368,7 +369,7 @@
     });
     if (parts[0] === "mate" && parts[1]) return { kind: "mate", project: parts[1] };
     if (parts[0] === "cabinet" && parts[1]) return { kind: "cab", project: parts[1] };
-    if (parts[0] === "board") return { kind: "board" };
+    if (parts[0] === "board") return parts[1] ? { kind: "board", date: parts[1] } : { kind: "board" };
     if (parts[0] === "crew" && parts[1] && parts[2]) return { kind: "crew", project: parts[1], crew: parts[2] };
     return null;
   }
@@ -377,7 +378,7 @@
     if (!s) return "";
     if (s.kind === "crew") return "crew/" + enc(s.project) + "/" + enc(s.crew);
     if (s.kind === "cab") return "cabinet/" + enc(s.project);
-    if (s.kind === "board") return "board";
+    if (s.kind === "board") return "board" + (s.date ? "/" + enc(s.date) : "");
     return "mate/" + enc(s.project);
   }
 
@@ -459,7 +460,7 @@
     var key = selKey(s);
     var token = ++detailToken;
     if (!s || s.kind === "cab") return Promise.resolve();
-    if (s.kind === "board") return loadBoard();
+    if (s.kind === "board") return Promise.all([loadBoard(), s.date ? loadBoardDay(s.date) : null]);
     if (!detail || detail.key !== key) detail = { key: key, loading: true };
     var path = s.kind === "crew" ? taskPath(s.project, s.crew) : matePath(s.project);
     var reads = [api(path).then(function (body) {
@@ -1479,7 +1480,8 @@
 
   function drawer() {
     var wide = sel && (sel.kind === "cab" || sel.kind === "board");
-    var aside = el("aside", { class: "drawer" + (wide ? " drawer-cabinet" : ""), "aria-label": "Details", id: "drawer" });
+    var aside = el("aside", { class: "drawer" + (wide ? " drawer-cabinet" : "") + (sel && sel.kind === "board" && sel.date ? " drawer-day" : ""),
+      "aria-label": "Details", id: "drawer" });
     if (!sel) { aside.setAttribute("hidden", ""); return aside; }
     aside.appendChild(el("span", { class: "grab", "aria-hidden": "true" }));
     var nodes = sel.kind === "mate" ? mateDrawer(sel.project) : sel.kind === "crew" ? crewDrawer(sel.project, sel.crew)
@@ -1514,9 +1516,18 @@
     });
   }
 
+  function loadBoardDay(date) {
+    var token = detailToken;
+    return api("/api/board/day?date=" + enc(date)).then(function (body) {
+      if (token === detailToken) boardDay = { date: date, body: body };
+    }, function (err) {
+      if (token === detailToken) boardDay = { date: date, error: err };
+    });
+  }
+
   function boardButton(small) {
     var key = "board";
-    var b = el("button", { class: (small ? "dbm" : "dbd") + (selKey(sel) === key ? " sel" : ""), type: "button",
+    var b = el("button", { class: (small ? "dbm" : "dbd") + (sel && sel.kind === "board" ? " sel" : ""), type: "button",
       "aria-label": "Daily board: tokens, work and incidents by day", "data-focus": "board" }, small
       ? [icon("usage")]
       : [
@@ -1583,8 +1594,9 @@
   }
 
   function boardDrawer() {
+    var date = sel && sel.date || "";
     var head = drawerHead(el("span", { class: "dav dcab", "aria-hidden": "true" }, icon("usage")),
-      [boardProject || "workspace", " · by day"], "Daily board",
+      [boardProject || "workspace", date ? " · " + date : " · by day"], "Daily board",
       chip({ word: "", tone: "t-info", icon: "usage" }, "last " + boardDays + " days"),
       board && board.body ? "days in " + board.body.zone : null);
     var controls = el("section", { class: "ds bctl", "aria-label": "Board range" }, [
@@ -1614,31 +1626,33 @@
     var p = boardProject ? (board.body.projects || []).filter(function (x) { return x.name === boardProject; })[0] : null;
     var days = boardDaysOf(board.body);
     if (!days.length) return [head, controls, el("p", { class: "cab-empty", text: "Nothing recorded for " + (boardProject || "this workspace") + "." })];
-    return [head, controls,
-      p && p.error ? el("p", { class: "room-err", text: "Tasks could not be read: " + p.error }) : null,
-      boardToday(days), boardTable(days)];
+    var err = p && p.error ? el("p", { class: "room-err", text: "Tasks could not be read: " + p.error }) : null;
+    if (date) return [head, controls, err].concat(boardDayView(days, date), [boardTable(days, date)]);
+    return [head, controls, err, boardKpis(days, days.length - 1), boardTable(days, "")];
   }
 
-  // Today against the average of the days before it in the window. Today
-  // is still going, so a lower number before evening is not news.
-  function boardToday(days) {
-    var today = days[days.length - 1];
-    var prior = days.slice(0, -1);
-    return el("section", { class: "ds", "aria-label": "Today against the average" }, [
-      el("h3", { class: "sh" }, ["Today so far", el("span", { text: "vs the average of the " + plural(prior.length, "day", "days") + " before" })]),
+  // One day against the average of the other days in the window. Today is
+  // still going, so a lower number before evening is not news.
+  function boardKpis(days, at) {
+    var day = days[at];
+    var others = days.filter(function (d, i) { return i !== at; });
+    var today = at === days.length - 1;
+    return el("section", { class: "ds", "aria-label": today ? "Today against the average" : "The day against the average" }, [
+      el("h3", { class: "sh" }, [today ? "Today so far" : boardDayLabel(day.date),
+        el("span", { text: "vs the average of the " + plural(others.length, today ? "day" : "other day", today ? "days" : "other days") + (today ? " before" : "") })]),
       el("div", { class: "bkpi" }, BOARD_METRICS.map(function (m) {
-        var v = m.n(today);
+        var v = m.n(day);
         var avg = null;
-        if (prior.length) {
+        if (others.length) {
           var sum = 0;
-          prior.forEach(function (d) { sum += m.n(d); });
-          avg = sum / prior.length;
+          others.forEach(function (d) { sum += m.n(d); });
+          avg = sum / others.length;
         }
         var fmt = m.fmt || String;
         var delta = null;
         if (avg != null && avg > 0) delta = Math.round((v - avg) / avg * 100);
         var tone = delta == null || delta === 0 || !m.good ? "" : (delta > 0) === (m.good > 0) ? " up" : " down";
-        return el("div", { class: "bk", title: m.why(today) }, [
+        return el("div", { class: "bk", title: m.why(day) }, [
           el("span", { class: "bkl", text: m.label }),
           el("b", { text: fmt(v) }),
           el("span", { class: "bkd" + tone, text: avg == null ? "no days before" : "avg " + (m.fmt ? m.fmt(Math.round(avg)) : avg.toFixed(1))
@@ -1648,8 +1662,13 @@
     ]);
   }
 
+  function boardDayName(days, date) {
+    return days.length && days[days.length - 1].date === date ? "Today" : boardDayLabel(date);
+  }
+
   // One row per day, newest first; the token bar splits Mate from crews.
-  function boardTable(days) {
+  // A row opens its day; the open day's row closes it again.
+  function boardTable(days, open) {
     var max = 1;
     days.forEach(function (d) { max = Math.max(max, d.tokens ? d.tokens.total : 0); });
     var cols = BOARD_METRICS.slice(1);
@@ -1662,8 +1681,17 @@
         })))),
         el("tbody", null, days.slice().reverse().map(function (d, i) {
           var total = d.tokens ? d.tokens.total : 0;
-          return el("tr", { class: i === 0 ? "btoday" : "" }, [
-            el("th", { scope: "row", text: i === 0 ? "Today" : boardDayLabel(d.date), title: d.date }),
+          var on = d.date === open;
+          var name = i === 0 ? "Today" : boardDayLabel(d.date);
+          var go = function (e) {
+            if (e && e.stopPropagation) e.stopPropagation();
+            select(on ? "board" : "board/" + enc(d.date));
+          };
+          var btn = el("button", { type: "button", class: "bday", "data-focus": "board-day:" + d.date, "aria-expanded": on ? "true" : "false",
+            "aria-label": (on ? "Close " : "Open ") + name + ": its tasks, tokens and incidents", text: name });
+          btn.addEventListener("click", go);
+          var tr = el("tr", { class: "bpick" + (i === 0 ? " btoday" : "") + (on ? " bon" : ""), title: d.date }, [
+            el("th", { scope: "row" }, [btn, el("span", { class: "bchev", "aria-hidden": "true" }, icon("arrowR"))]),
             el("td", { class: "btok", title: BOARD_METRICS[0].why(d) }, el("div", null, [
               el("span", { class: "bbar", "aria-hidden": "true" }, [
                 el("i", { class: "bm", style: "width:" + (d.mate_tokens / max * 100).toFixed(2) + "%" }),
@@ -1675,8 +1703,181 @@
             var v = m.n(d);
             return el("td", { class: "bn" + (v ? "" : " zero"), title: v ? m.why(d) : null, text: String(v) });
           })));
+          tr.addEventListener("click", go);
+          return tr;
         }))
       ]))
+    ]);
+  }
+
+  // ------------------------------------------------------------ one day
+
+  // A day opened up (CON-88): /api/board/day listed rather than counted -
+  // the day's numbers, then every task that day, who spent the tokens and
+  // the incidents, narrowed to the board's project.
+  function boardDayView(days, date) {
+    var at = -1;
+    days.forEach(function (d, i) { if (d.date === date) at = i; });
+    var dates = board.body.dates || [];
+    var di = dates.indexOf(date);
+    var step = function (to, label, glyph) {
+      var b = el("button", { type: "button", class: "bstep", disabled: to ? null : "", "aria-label": label + (to ? ": " + boardDayName(days, to) : ""),
+        "data-focus": "board-step:" + label }, glyph);
+      if (to) b.addEventListener("click", function (e) { e.stopPropagation(); select("board/" + enc(to)); });
+      return b;
+    };
+    var back = el("button", { type: "button", class: "bback", "data-focus": "board-back" }, ["All days"]);
+    back.addEventListener("click", function (e) { e.stopPropagation(); select("board"); });
+    var nav = el("section", { class: "ds bnav", "aria-label": "Day" }, [
+      back,
+      el("div", { class: "bnavd" }, [
+        step(di > 0 ? dates[di - 1] : "", "Day before", "‹"),
+        el("h3", { text: boardDayName(days, date) }),
+        el("span", { class: "mono", text: date }),
+        step(di >= 0 && di < dates.length - 1 ? dates[di + 1] : "", "Day after", "›")
+      ])
+    ]);
+    var nodes = [nav];
+    if (at >= 0) nodes.push(boardKpis(days, at));
+    var b = boardDay && boardDay.date === date ? boardDay : null;
+    if (!b) return nodes.concat([el("p", { class: "cab-empty", text: "loading…" })]);
+    if (b.error) return nodes.concat([el("p", { class: "cab-empty", text: "The day could not be read: " + (b.error.reason || b.error.message) })]);
+    var mine = function (x) { return !boardProject || x.project === boardProject; };
+    var errs = b.body.errors || {};
+    Object.keys(errs).filter(function (n) { return !boardProject || n === boardProject; }).forEach(function (n) {
+      nodes.push(el("p", { class: "room-err", text: n + ": tasks could not be read: " + errs[n] }));
+    });
+    var all = !boardProject;
+    return nodes.concat([
+      dayTasks((b.body.tasks || []).filter(mine), all),
+      dayActors((b.body.actors || []).filter(mine), all),
+      dayIncidents((b.body.incidents || []).filter(mine), all)
+    ]);
+  }
+
+  // What a task did that day, in order: opened, worked, closed and how.
+  function dayDid(t) {
+    var parts = [];
+    if (t.opened) parts.push(el("span", { class: "bev b-open", title: t.spawned_at }, [icon("ship"), "opened " + clock(t.spawned_at).slice(0, 5)]));
+    if (t.closed_today) {
+      var f = finalState(t);
+      parts.push(el("span", { class: "bev " + f.tone, title: (f.why || f.word) + " · " + closedAt(t) }, [icon(f.icon), f.word + " " + clock(closedAt(t)).slice(0, 5)]));
+    } else if (!t.closed) {
+      var s = crewState(t.state || "");
+      parts.push(el("span", { class: "bev b-still", title: "still open" }, [icon(s.icon), "open · " + s.word]));
+    } else if (!t.opened) {
+      parts.push(el("span", { class: "bev b-still", title: "closed " + closedAt(t) }, ["worked; closed " + monthDay(closedAt(t))]));
+    }
+    return parts;
+  }
+
+  function dayTasks(list, all) {
+    var sum = 0;
+    list.forEach(function (t) { sum += t.day_tokens ? t.day_tokens.total : 0; });
+    var head = [el("th", { text: "Task" })].concat(all ? [el("th", { class: "btl", text: "Project" })] : [],
+      [el("th", { class: "btl", text: "Harness / model / effort" }), el("th", { class: "btl", text: "That day" }), el("th", { text: "Turns" }),
+        el("th", { text: "Tokens that day" }), el("th", { text: "Task total" })]);
+    return el("section", { class: "ds", "aria-label": "Tasks that day" }, [
+      el("h3", { class: "sh" }, ["Tasks", el("span", { text: plural(list.length, "task", "tasks") + " · " + tok(sum) + " tokens that day" })]),
+      list.length ? el("div", { class: "btab bdt" }, el("table", null, [
+        el("thead", null, el("tr", null, head)),
+        el("tbody", null, list.map(function (t) {
+          var tr = el("tr", { class: "bpick", title: t.text || null }, [
+            el("th", { scope: "row" }, el("span", { class: "btask" }, [roleMark(t), el("span", null, [
+              el("button", { type: "button", class: "bday", "data-focus": "board-task:" + t.project + "/" + t.crew,
+                "aria-label": "Open " + t.crew + " in " + t.project, text: t.crew }),
+              el("small", { text: t.text || "no task text recorded" })])]))
+          ].concat(all ? [el("td", { class: "btl", text: t.project })] : [], [
+            el("td", { class: "btl" }, el("span", { class: "ta" }, [
+              el("b", { text: harnessInfo(t.harness).name }),
+              el("span", { class: "mono", text: t.last_model || t.model || "model ?" }),
+              el("small", { text: t.effort ? "effort: " + t.effort : "effort ?" })
+            ])),
+            el("td", { class: "btl" }, el("span", { class: "bevs" }, dayDid(t))),
+            el("td", { class: "bn" + (t.day_turns ? "" : " zero"), text: String(t.day_turns || 0) }),
+            el("td", { class: "bn mono" + (t.day_tokens && t.day_tokens.total ? "" : " zero"), text: tok(t.day_tokens ? t.day_tokens.total : 0) }),
+            el("td", { class: "bn mono", title: tokensWithReviews(t), text: tok(t.tokens ? t.tokens.total : null) })
+          ]));
+          tr.addEventListener("click", function (e) {
+            if (e && e.stopPropagation) e.stopPropagation();
+            select("crew/" + enc(t.project) + "/" + enc(t.crew));
+          });
+          return tr;
+        }))
+      ])) : el("p", { class: "cab-empty", text: "No task opened, closed or worked that day." })
+    ]);
+  }
+
+  // Who spent the day's tokens, biggest first, in the four buckets the
+  // total is made of.
+  // The biggest spenders first; the long tail of small reviewers waits
+  // behind a button.
+  var ACTORS_SHOWN = 12;
+  var actorsAll = false;
+
+  function dayActors(list, all) {
+    var more = null;
+    if (list.length > ACTORS_SHOWN) {
+      more = el("button", { type: "button", class: "bback bmore", "data-focus": "board-actors-more",
+        text: actorsAll ? "Show the top " + ACTORS_SHOWN : "Show all " + list.length });
+      more.addEventListener("click", function (e) { e.stopPropagation(); actorsAll = !actorsAll; draw(); });
+    }
+    var max = 1;
+    var sum = { input: 0, cache_read: 0, cache_write: 0, output: 0, total: 0 };
+    var turns = 0;
+    list.forEach(function (a) {
+      max = Math.max(max, a.tokens.total);
+      turns += a.turns;
+      Object.keys(sum).forEach(function (k) { sum[k] += a.tokens[k] || 0; });
+    });
+    var cells = function (tk) {
+      return ["input", "cache_read", "cache_write", "output"].map(function (k) {
+        return el("td", { class: "bn mono" + (tk[k] ? "" : " zero"), text: tok(tk[k] || 0) });
+      });
+    };
+    return el("section", { class: "ds", "aria-label": "Tokens by who" }, [
+      el("h3", { class: "sh" }, ["Tokens by who", el("span", { class: "bleg" }, [el("i", { class: "bm" }), "Mate", el("i", { class: "bc" }), "crews"])]),
+      list.length ? el("div", { class: "btab bdt" }, el("table", null, [
+        el("thead", null, el("tr", null, [el("th", { class: "btl", text: "Who" })].concat(all ? [el("th", { class: "btl", text: "Project" })] : [],
+          [el("th", { text: "Turns" }), el("th", { text: "Input" }), el("th", { text: "Cache read" }), el("th", { text: "Cache write" }),
+            el("th", { text: "Output" }), el("th", { text: "Total" })]))),
+        el("tbody", null, list.slice(0, actorsAll ? list.length : ACTORS_SHOWN).map(function (a) {
+          var isMate = a.kind === "mate";
+          return el("tr", null, [
+            el("th", { scope: "row", text: isMate ? "Mate" + (all ? "" : " · " + a.project) : a.name }),
+          ].concat(all ? [el("td", { class: "btl", text: a.project })] : [], [el("td", { class: "bn", text: String(a.turns) })], cells(a.tokens), [
+            el("td", { class: "btok" }, el("div", null, [
+              el("span", { class: "bbar", "aria-hidden": "true" }, el("i", { class: isMate ? "bm" : "bc", style: "width:" + (a.tokens.total / max * 100).toFixed(2) + "%" })),
+              el("span", { class: "mono", text: tok(a.tokens.total) })
+            ]))
+          ]));
+        })),
+        el("tfoot", null, el("tr", null, [el("th", { scope: "row", text: "All" })].concat(all ? [el("td")] : [],
+          [el("td", { class: "bn", text: String(turns) })], cells(sum), [el("td", { class: "bn mono", text: tok(sum.total) })])))
+      ])) : el("p", { class: "cab-empty", text: "No turns that day." }),
+      more
+    ]);
+  }
+
+  function dayIncidents(list, all) {
+    return el("section", { class: "ds", "aria-label": "Incidents that day" }, [
+      el("h3", { class: "sh" }, ["Incidents", el("span", { text: list.length + " opened that day" })]),
+      list.length ? el("div", { class: "btab bdt" }, el("table", null, [
+        el("thead", null, el("tr", null, [el("th", { text: "Opened" }), el("th", { class: "btl", text: "Kind" }), el("th", { class: "btl", text: "Who" })]
+          .concat(all ? [el("th", { class: "btl", text: "Project" })] : [], [el("th", { text: "Resolved" })]))),
+        el("tbody", null, list.map(function (x) {
+          var open = !x.resolved_at;
+          var lasted = open ? null : (parseAt(x.resolved_at) || 0) - (parseAt(x.opened_at) || 0);
+          return el("tr", null, [
+            el("th", { scope: "row", class: "mono", title: x.opened_at, text: clock(x.opened_at) }),
+            el("td", { class: "btl" }, el("span", { class: "bev " + (x.kind === "budget" || x.kind === "runtime_lost" ? "t-bad" : "t-wait") },
+              INCIDENT_WORDS[x.kind] || String(x.kind).replace(/_/g, " "))),
+            el("td", { class: "btl", text: x.actor_kind === "mate" ? "Mate" : x.name || "?" })
+          ].concat(all ? [el("td", { class: "btl", text: x.project })] : [], [
+            el("td", { class: open ? "bn bopen" : "bn", title: x.resolved_at || null, text: open ? "still open" : "after " + formatRun(lasted) })
+          ]));
+        }))
+      ])) : el("p", { class: "cab-empty", text: "No incidents that day." })
     ]);
   }
 
