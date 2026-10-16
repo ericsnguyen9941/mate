@@ -80,7 +80,7 @@ Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no
 This task is delivered locally: no remote, no pull request, no pipeline.
 The task is complete only when it is committed on this branch and the hand-back below is written.
 Commit messages are one imperative line of at most 72 characters, with a body only when the why is not obvious from the diff.
-When the first line of `## What we already know` is `- Issue: <ID> (...)`, every commit subject starts with that ID and a colon, `HVN-57: Add trip day warnings`; with no such line, no prefix.
+When the first line of `## What we already know` is `- Issue: <ID> (...)`, every commit subject starts with that ID in brackets, `[HVN-57] Add trip day warnings`; with no such line, no prefix.
 Keep the branch a clean fast-forward onto `main`; if it has advanced, rebase onto it so the eventual merge stays a fast-forward.
 
 # Before you hand back
