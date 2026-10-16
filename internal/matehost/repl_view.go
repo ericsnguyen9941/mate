@@ -297,7 +297,8 @@ func (m Model) composer(w int) []string {
 		status = ansi.Truncate(status, room, "…")
 	}
 	fill := max(0, w-3-ansi.StringWidth(status)-1-ansi.StringWidth(tail))
-	out := []string{styleBorder.Render("┌─ ") + status + " " + styleBorder.Render(strings.Repeat("─", fill)) + tail}
+	// A blank line keeps the composer off the conversation above it.
+	out := []string{"", styleBorder.Render("┌─ ") + status + " " + styleBorder.Render(strings.Repeat("─", fill)) + tail}
 	for _, l := range m.inputLines(inner) {
 		out = append(out, styleBorder.Render("│ ")+l+strings.Repeat(" ", max(0, inner-ansi.StringWidth(l)))+styleBorder.Render(" │"))
 	}
