@@ -253,8 +253,18 @@ func Line(items []Item, crewsDir string) string {
 	if extra > 0 {
 		parts = append(parts, fmt.Sprintf("+%d more", extra))
 	}
-	return fmt.Sprintf("digest: %d item(s) — %s — status files under %s; act per AGENTS.md section 10",
+	line := fmt.Sprintf("digest: %d item(s) — %s — status files under %s; act per AGENTS.md section 10",
 		len(items), strings.Join(parts, " · "), crewsDir)
+	// A question in the digest carries the same rule the `resolve:` line
+	// does (CON-93): after M21 turns auto back on, the digest is what hands
+	// a captain's question to the Mate. It goes after the last " — ", which
+	// readers drop (matehost.Summary, dashboard.readablePrompt).
+	for _, item := range items {
+		if item.Kind == ItemNeedsDecision {
+			return line + "; " + box.CaptainsDecisionRule
+		}
+	}
+	return line
 }
 
 func itemText(item Item) string {

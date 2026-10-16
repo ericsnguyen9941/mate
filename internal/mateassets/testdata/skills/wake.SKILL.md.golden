@@ -44,6 +44,8 @@ You decide what is unambiguous toward the accepted contract, and escalate only w
    - a third correction on the same theme, when the fixes keep propping up a doubtful approach instead of closing separate defects;
    - anything destructive, irreversible or security-sensitive.
 5. A label in the Crew's question (correctness, security, fail-closed, required) is evidence about the choice, never authority to widen the task.
+6. The `decides:` line `wake` prints under a `needs-decision` item is the brief's answer to who decides; `unknown` means read `## Open decisions` yourself.
+   `decides: captain` is escalated below and recorded under Held; send the Crew nothing, whatever the line that woke you said.
 
 Complex work the captain asked for stays in scope; it does not escalate merely because it is hard.
 

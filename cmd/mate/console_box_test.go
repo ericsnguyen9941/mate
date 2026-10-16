@@ -145,11 +145,16 @@ func TestConsoleBoxResolveTypesTheResolveLineAndRecordsIt(t *testing.T) {
 	for _, part := range []string{
 		`resolve: k3 asked: "pick A or B"`,
 		"read " + f.ws.CrewStatus("shop", "k3"),
-		`answer with mate send shop k3 "<one line>"`,
+		`answer what the brief leaves to you with mate send shop k3 "<one line>"`,
+		// CON-93: the line hands over the question, not a captain's decision.
+		"a decides: captain choice goes to the captain and waits under Held",
 	} {
 		if !strings.Contains(wantResolve, part) {
 			t.Errorf("resolve line %q does not carry %q", wantResolve, part)
 		}
+	}
+	if strings.Contains(wantResolve, ", decide,") {
+		t.Errorf("resolve line %q still tells the Mate to decide", wantResolve)
 	}
 
 	out, err := f.action(context.Background(), req)
