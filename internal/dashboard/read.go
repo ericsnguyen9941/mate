@@ -10,6 +10,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/query"
+	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
@@ -231,11 +232,13 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 			return nil, err
 		}
 		out[i].Harness = facts.harness
-		if meta, err := s.ws.ReadCrewMeta(project, out[i].Crew); err == nil {
+		meta, err := s.ws.ReadCrewMeta(project, out[i].Crew)
+		if err == nil {
 			out[i].Model, out[i].Effort = meta["model"], meta["effort"]
 			out[i].FailedReason = meta["failed_reason"]
 		}
 		out[i].Review = s.reviewVerdict(project, out[i].Crew)
+		out[i].Role = taskRole(s.ws, project, out[i].Crew, out[i].Review, meta)
 	}
 	reviewersOf, reviewOf, err := s.ws.ReviewLinks(project)
 	if err != nil {
@@ -261,6 +264,17 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 		}
 	}
 	return out, nil
+}
+
+// taskRole is Task.Role: a reviewer first, then a scout, else a ship.
+func taskRole(ws *store.Workspace, project, crew, review string, meta map[string]string) string {
+	switch {
+	case review != "":
+		return "review"
+	case spawn.CrewIsScout(ws, project, crew, meta):
+		return "scout"
+	}
+	return "ship"
 }
 
 // reviewVerdict is Task.Review: "" unless the crew has review.meta, then

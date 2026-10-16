@@ -333,7 +333,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "claude"
+     "harness": "claude",
+     "role": "ship"
     },
     {
      "crew": "api-fix",
@@ -363,7 +364,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "claude"
+     "harness": "claude",
+     "role": "ship"
     },
     {
      "crew": "ui-polish",
@@ -393,7 +395,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "claude"
+     "harness": "claude",
+     "role": "ship"
     },
     {
      "crew": "db-migrate",
@@ -423,7 +426,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "claude"
+     "harness": "claude",
+     "role": "ship"
     },
     {
      "crew": "login-flow",
@@ -454,6 +458,7 @@
      "waited_ms": 0,
      "tool_count": 0,
      "harness": "claude",
+     "role": "ship",
      "close_state": "finished",
      "closed_at": "2026-10-01T14:32:07.000000000Z",
      "merged_at": "2026-10-01T14:32:07.000000000Z"
@@ -487,6 +492,7 @@
      "waited_ms": 0,
      "tool_count": 0,
      "harness": "claude",
+     "role": "ship",
      "close_state": "failed",
      "closed_at": "2026-09-29T14:32:07.000000000Z"
     },
@@ -519,6 +525,7 @@
      "waited_ms": 0,
      "tool_count": 0,
      "harness": "claude",
+     "role": "ship",
      "close_state": "finished",
      "closed_at": "2026-09-24T14:32:07.000000000Z",
      "merged_at": "2026-09-24T14:32:07.000000000Z"
@@ -552,6 +559,7 @@
      "waited_ms": 0,
      "tool_count": 0,
      "harness": "claude",
+     "role": "ship",
      "close_state": "finished",
      "closed_at": "2026-09-10T14:32:07.000000000Z",
      "merged_at": "2026-09-10T14:32:07.000000000Z"
@@ -645,7 +653,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "codex"
+     "harness": "codex",
+     "role": "ship"
     },
     {
      "crew": "nav",
@@ -675,7 +684,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "codex"
+     "harness": "codex",
+     "role": "ship"
     },
     {
      "crew": "i18n",
@@ -705,7 +715,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "codex"
+     "harness": "codex",
+     "role": "ship"
     },
     {
      "crew": "seo",
@@ -735,7 +746,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "pi"
+     "harness": "pi",
+     "role": "ship"
     },
     {
      "crew": "search",
@@ -765,7 +777,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "pi"
+     "harness": "pi",
+     "role": "ship"
     }
    ],
    "inbox": []
@@ -826,7 +839,8 @@
      "handback_count": 0,
      "waited_ms": 0,
      "tool_count": 0,
-     "harness": "claude"
+     "harness": "claude",
+     "role": "ship"
     },
     {
      "crew": "tf-upgrade",
@@ -857,6 +871,7 @@
      "waited_ms": 0,
      "tool_count": 0,
      "harness": "claude",
+     "role": "ship",
      "close_state": "finished",
      "closed_at": "2026-09-24T14:32:07.000000000Z",
      "merged_at": "2026-09-24T14:32:07.000000000Z"
@@ -899,7 +914,8 @@
     "handback_count": 0,
     "waited_ms": 0,
     "tool_count": 0,
-    "harness": "claude"
+    "harness": "claude",
+    "role": "ship"
    },
    "turns": [
     {

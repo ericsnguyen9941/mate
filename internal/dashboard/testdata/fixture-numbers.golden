@@ -105,6 +105,7 @@
       "waited_ms": 86721,
       "tool_count": 9,
       "harness": "codex",
+      "role": "ship",
       "tokens_with_reviews": 233968
     }
   ],
@@ -1232,6 +1233,7 @@
     "waited_ms": 86721,
     "tool_count": 9,
     "harness": "codex",
+    "role": "ship",
     "tokens_with_reviews": 233968
   },
   "turns": [
