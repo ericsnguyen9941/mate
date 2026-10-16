@@ -60,6 +60,8 @@ type RecoveryStatus struct {
 	Active bool
 	// Failed is true when the summary names something that did not come back.
 	Failed bool
+	// Failures is every failure in full; Line names only the first.
+	Failures []string
 }
 
 // RuntimeStatus is what the observer last knew about the terminal runtime.

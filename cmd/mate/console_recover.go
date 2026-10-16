@@ -112,7 +112,7 @@ func recoverySummary(res recovery.Result) query.RecoveryStatus {
 		failed := fmt.Sprintf("%d failed: %s", len(failures), failures[0])
 		parts = append(parts, failed)
 	}
-	return query.RecoveryStatus{Line: strings.Join(parts, "; "), Failed: len(failures) > 0}
+	return query.RecoveryStatus{Line: strings.Join(parts, "; "), Failed: len(failures) > 0, Failures: failures}
 }
 
 func failedWatchers(res recovery.Result) int {

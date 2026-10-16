@@ -25,6 +25,11 @@ func (m Model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// when the split grows back.
 		return m, nil
 	}
+	if m.shownMsg != nil {
+		// A message opened in full closes on the next key, which it swallows.
+		m.shownMsg = nil
+		return m.relayout(), nil
+	}
 	if m.keysOpen {
 		// `?` shows the key list until the next key, which it swallows.
 		m.keysOpen = false

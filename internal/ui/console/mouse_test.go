@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -256,5 +257,33 @@ func TestClickOnAHarnessRowPicksIt(t *testing.T) {
 	cmd()
 	if len(got) != 1 || got[0].Harness != query.HarnessKind("codex") {
 		t.Fatalf("requests = %+v, want one create with codex", got)
+	}
+}
+
+// A click on the status line opens it in full, every failure included;
+// the next key closes it.
+func TestClickOnTheStatusLineShowsItInFull(t *testing.T) {
+	m, _, _ := bxPayments(t, 40, 36)
+	long := "worktree of crew hellovietnam-e1-avatar-button is missing and could not be recreated from its branch"
+	m.tree.Recovery = query.RecoveryStatus{Line: "recovered 0; 1 failed: " + long, Failed: true, Failures: []string{long, "watcher pr-61: gh exited 1"}}
+	m, _ = send(t, m, press(3, m.plan().statusRow()))
+	if m.sheetOpen() != sheetMessage {
+		t.Fatalf("sheet after the click = %d, want the message", m.sheetOpen())
+	}
+	var all string
+	for _, l := range m.messageSheetLines(m.plan()) {
+		for _, s := range l.segs {
+			all += s.text
+		}
+		all += " "
+	}
+	for _, want := range []string{"could not be recreated", "gh exited 1"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the message sheet lacks %q:\n%s", want, all)
+		}
+	}
+	m, _ = send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if m.sheetOpen() != sheetNone {
+		t.Fatal("a key did not close the message")
 	}
 }

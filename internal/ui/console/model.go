@@ -226,6 +226,9 @@ const (
 type footerMsg struct {
 	tone footerTone
 	text string
+	// detail is what a click on the status line shows under text, one
+	// item per line; a string keeps footerMsg comparable.
+	detail string
 }
 
 func okMsg(text string) footerMsg      { return footerMsg{tone: toneOK, text: text} }
@@ -314,6 +317,9 @@ type Model struct {
 	detailSel int
 	// keysOpen is `?`: the key list, until the next key.
 	keysOpen bool
+	// shownMsg is the status line opened in full by a click on it, until
+	// the next key or click.
+	shownMsg *footerMsg
 	// notice is WithNotice's line; the first key clears it.
 	notice string
 	// staged is what the next pane shows, as far as this Console knows: the

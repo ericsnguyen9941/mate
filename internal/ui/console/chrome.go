@@ -180,7 +180,9 @@ func (m Model) footerMessage() footerMsg {
 	if r := m.tree.Recovery; r.Line != "" {
 		switch {
 		case r.Failed:
-			return warnMsg(r.Line)
+			msg := warnMsg(r.Line)
+			msg.detail = strings.Join(r.Failures, "\n")
+			return msg
 		case r.Active:
 			return infoMsg(r.Line)
 		}
@@ -249,7 +251,7 @@ func (m Model) keyHints() []keyHint {
 		return []keyHint{{m.g.UpDown, "move"}, {"enter", "use"}, {"esc", "cancel"}}
 	case sheetDiff:
 		return []keyHint{{m.g.UpDown, "scroll"}, {"esc", "close"}}
-	case sheetKeys:
+	case sheetKeys, sheetMessage:
 		return []keyHint{{"any key", "closes"}}
 	}
 	if m.emptyWorkspace() {

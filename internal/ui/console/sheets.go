@@ -22,6 +22,7 @@ const (
 	sheetHarness
 	sheetDiff
 	sheetKeys
+	sheetMessage
 )
 
 // sheetOpen is the sheet on screen, in the order the keyboard reaches them.
@@ -39,6 +40,8 @@ func (m Model) sheetOpen() sheetKind {
 		return sheetActions
 	case m.keysOpen:
 		return sheetKeys
+	case m.shownMsg != nil:
+		return sheetMessage
 	}
 	return sheetNone
 }
@@ -62,6 +65,8 @@ func (m Model) sheetTitle() (gline, string) {
 		return gl().add(m.diffTitle(), tAcc), "esc"
 	case sheetKeys:
 		return gl().add("keys", tAcc), "any key"
+	case sheetMessage:
+		return gl().add("message", tAcc), "any key"
 	}
 	return gl(), ""
 }
@@ -108,6 +113,8 @@ func (m Model) sheetLines(p framePlan) []gline {
 		return m.diffSheetLines(p)
 	case sheetKeys:
 		return m.keysSheetLines(p)
+	case sheetMessage:
+		return m.messageSheetLines(p)
 	}
 	return nil
 }
@@ -464,3 +471,27 @@ func (m Model) recordedHarness() query.HarnessKind {
 
 // itoa is fmt.Sprint for an int, for the few places a count is text.
 func itoa(n int) string { return fmt.Sprint(n) }
+
+// messageSheetLines is the status line in full: its text wrapped, then
+// each detail line it stands for.
+func (m Model) messageSheetLines(p framePlan) []gline {
+	msg := *m.shownMsg
+	w := max0(p.w - 4)
+	var out []gline
+	for _, l := range wrapWords(msg.text, w) {
+		out = append(out, gl().pad(2).join(m.messageLine(footerMsg{tone: msg.tone, text: l})).cut(p.w, m.g))
+	}
+	for _, d := range strings.Split(msg.detail, "\n") {
+		if d == "" {
+			continue
+		}
+		for i, l := range wrapWords(d, max0(w-2)) {
+			lead := m.g.Dot + " "
+			if i > 0 {
+				lead = "  "
+			}
+			out = append(out, gl().pad(2).add(lead, tDim).add(l, tFg).cut(p.w, m.g))
+		}
+	}
+	return out
+}
