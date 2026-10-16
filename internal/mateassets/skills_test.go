@@ -157,14 +157,14 @@ func TestWriteRegeneratesSkills(t *testing.T) {
 
 // The harness sections come from the registry, so who runs on what follows
 // the Mate's own harness: a Codex Mate is not told it runs on Claude Code.
-func TestHarnessAdaptersFollowTheMatesHarness(t *testing.T) {
+func TestCrewRecoveryHarnessesFollowTheMatesHarness(t *testing.T) {
 	p := fixedParams()
 	harnesses, err := HarnessesFrom(catalog.Default(), "codex")
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.Harness, p.Harnesses = "codex", harnesses
-	got, err := RenderSkill("harness-adapters", p)
+	got, err := RenderSkill("crew-recovery", p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,5 +178,54 @@ func TestHarnessAdaptersFollowTheMatesHarness(t *testing.T) {
 	}
 	if bytes.Contains(got, []byte("Claude Code is what you run on")) {
 		t.Error("the skill tells a Codex Mate it runs on Claude Code")
+	}
+}
+
+// TestWriteRemovesRetiredSkills: a Mate started by an older mate has the
+// fourteen skills CON-69 merged into seven; Write removes the retired
+// directories and never a user's skill, a plugin's, or a symlink.
+func TestWriteRemovesRetiredSkills(t *testing.T) {
+	p := fixedParams()
+	dir := t.TempDir()
+	root := filepath.Join(dir, p.SkillsDir)
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(root, name, "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("---\nname: "+name+"\n---\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	for _, name := range RetiredSkillNames[1:] {
+		write(name)
+	}
+	kept := []string{write("task-management"), write(PluginSkillPrefix + "linear-work"), write("my-own-skill")}
+	target := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(root, RetiredSkillNames[0])); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(dir, p); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range RetiredSkillNames[1:] {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Errorf("retired skill %s survived Write (%v)", name, err)
+		}
+	}
+	for _, path := range kept {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s was removed: %v", path, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(root, RetiredSkillNames[0])); err != nil {
+		t.Errorf("a symlink under a retired name was removed: %v", err)
+	}
+	for _, name := range SkillNames {
+		if _, err := os.Stat(filepath.Join(root, name, "SKILL.md")); err != nil {
+			t.Errorf("skill %s not installed: %v", name, err)
+		}
 	}
 }

@@ -2,6 +2,7 @@ package mateassets
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,19 +20,17 @@ import (
 
 // The skills that own each contract the tests below hold to the binary.
 const (
-	// briefSkill teaches the brief schema and shows a checked example.
-	briefSkill = "brief-writing"
+	// briefSkill teaches the brief schema, shows a checked example, and
+	// names a crew; it also shapes, splits and spawns a task.
+	briefSkill = "new-task"
 	// commandsSkill shows the output of project facts, remember and recall.
 	commandsSkill = "mate-commands"
 	// memorySkill shows the memory entry shape remember writes.
-	memorySkill = "project-memory"
+	memorySkill = "stow"
 	// stowSkill quotes the stow line the app sends before a restart.
 	stowSkill = "stow"
 	// wakeSkill says what to do when an app event wakes the Mate.
-	wakeSkill = "event-handling"
-	// intakeSkill and spawnSkill shape and start a task.
-	intakeSkill = "task-intake"
-	spawnSkill  = "crew-spawn"
+	wakeSkill = "wake"
 )
 
 func renderedManual(t *testing.T) string {
@@ -141,15 +140,18 @@ func TestBriefSkillExamplePassesTheCheck(t *testing.T) {
 	}
 }
 
-// TestCommandsSkillTeachesTheCheckRules: the command reference names the
-// brief commands and every marker the check looks for.
-func TestCommandsSkillTeachesTheCheckRules(t *testing.T) {
-	text := skillText(t, commandsSkill)
-	for _, want := range []string{"brief check <file> [--scout]", "brief append <project> <crew>", "project facts <project>", "--scout",
-		brief.OutOfScopeMarker, brief.VerifyMarker, brief.UnknownMarker, "decides: captain", brief.TaskHeading} {
+// TestBriefSkillTeachesTheBriefCommands: the brief skill names the brief
+// commands, the scout flag and the `# Task` the file is; the command
+// reference names project facts.
+func TestBriefSkillTeachesTheBriefCommands(t *testing.T) {
+	text := skillText(t, briefSkill)
+	for _, want := range []string{"brief check ", "brief append ", "--scout", brief.TaskHeading} {
 		if !strings.Contains(text, want) {
-			t.Errorf("%s does not document %q", commandsSkill, want)
+			t.Errorf("%s does not document %q", briefSkill, want)
 		}
+	}
+	if !strings.Contains(skillText(t, commandsSkill), "project facts <project>") {
+		t.Errorf("%s does not document project facts", commandsSkill)
 	}
 }
 
@@ -187,7 +189,7 @@ func TestFactsExampleIsTheRealOutput(t *testing.T) {
 
 // identityHeading is the manual's part that holds the hard rules and the
 // project's repos.
-const identityHeading = "## 1. Identity and prime directives"
+const identityHeading = "## Identity and hard rules"
 
 // TestManualListsTheRepos: the manual lists every repo with its absolute
 // path and default branch, or says there is none and what that means.
@@ -221,9 +223,8 @@ func TestManualListsTheRepos(t *testing.T) {
 func TestSkillsTeachOneCrewOneRepo(t *testing.T) {
 	p := twoRepoParams()
 	for name, wants := range map[string][]string{
-		commandsSkill: {"[--repo <name>]", "repo shop, branch mate/add-healthcheck", "<repo>:<branch>@<sha>", "shop:main@none"},
-		intakeSkill:   {"one Crew per repo"},
-		spawnSkill:    {"--repo <repo>", "required", "one Crew per repo", "blocked-by:"},
+		commandsSkill: {"<repo>:<branch>@<sha>", "shop:main@none"},
+		briefSkill:    {"--repo <repo>", "required", "one Crew per repo", "blocked-by:"},
 		memorySkill:   {"<repo>:<branch>@<sha>", "shop:main@3f2a91c"},
 	} {
 		text := skillWith(t, name, p)
@@ -307,10 +308,10 @@ func TestNothingParaphrasesTheCaptain(t *testing.T) {
 // task and is never taught a counter by example.
 func TestCrewsAreNamedAfterTheirTask(t *testing.T) {
 	const rule = "no counters such as `k3`, `p1` or `m1`"
-	text := skillText(t, commandsSkill)
+	text := skillText(t, briefSkill)
 	for _, want := range []string{"it names the task", "`fix-cart-total`", rule, "2 to 24 characters"} {
 		if !strings.Contains(text, want) {
-			t.Errorf("%s does not say %q", commandsSkill, want)
+			t.Errorf("%s does not say %q", briefSkill, want)
 		}
 	}
 	counter := regexp.MustCompile("\\b[kpm][0-9]+\\b")
@@ -332,18 +333,21 @@ func TestTheMateNeverWaitsForACrew(t *testing.T) {
 			t.Errorf("%s still teaches a sleep loop", file)
 		}
 	}
-	if !strings.Contains(renderedManual(t), "**You never wait for a Crew.**") {
-		t.Error("the manual does not state the rule against waiting")
+	// The rule lives in the manual, once, and in no skill.
+	const rule = "**You never wait for a Crew.**"
+	for file, text := range everything(t, fixedParams()) {
+		if n := strings.Count(text, rule); file == "AGENTS.md" && n != 1 || file != "AGENTS.md" && n != 0 {
+			t.Errorf("%s states the rule against waiting %d time(s)", file, n)
+		}
 	}
-	text := skillText(t, wakeSkill)
+	text := renderedManual(t)
 	for _, want := range []string{
-		"### Ending the turn\n",
-		"in either mode, after you spawn a Crew or answer one with `mate send`",
+		"after you spawn a Crew or answer one with `mate send`",
 		"digests keep arriving after your turn",
 		"The captain typing to you does not change the mode.",
 	} {
 		if !strings.Contains(text, want) {
-			t.Errorf("%s does not say %q", wakeSkill, want)
+			t.Errorf("the manual does not say %q", want)
 		}
 	}
 }
@@ -368,6 +372,71 @@ func TestManualGivesTheMateItsOwnProject(t *testing.T) {
 		}
 		if strings.Contains(sec, "theirs to run, never yours") {
 			t.Error("the manual still calls repo add the captain's")
+		}
+	}
+}
+
+// sectionPointer is a pointer into a numbered part of a file: "section 4",
+// "§13". Skills and the manual name parts by heading or skill name.
+var sectionPointer = regexp.MustCompile(`(?i)\bsections? \d|§\s*\d`)
+
+// numberedHeading is a heading that carries a number, `## 7. Spawn`: the
+// mark of a skill cut from a numbered manual (CON-69).
+var numberedHeading = regexp.MustCompile(`(?m)^#+ \d+\.`)
+
+// TestSkillsStandAlone: every built-in skill is its own document, not a
+// chapter cut from a manual: frontmatter, no template marker left, no
+// numbered heading, and no pointer to a numbered section; the manual
+// points at no section number either.
+func TestSkillsStandAlone(t *testing.T) {
+	for file, text := range everything(t, fixedParams()) {
+		if file != "AGENTS.md" && !strings.HasPrefix(text, "---\nname: "+file+"\n") {
+			t.Errorf("%s does not open with its frontmatter", file)
+		}
+		if strings.Contains(text, "{{") {
+			t.Errorf("%s holds a template marker", file)
+		}
+		if m := numberedHeading.FindString(text); m != "" {
+			t.Errorf("%s has the numbered heading %q", file, m)
+		}
+		if m := sectionPointer.FindString(text); m != "" {
+			t.Errorf("%s points at %q", file, m)
+		}
+	}
+}
+
+// skillMention is a backquoted name in the manual's skill list.
+var skillMention = regexp.MustCompile("(?m)^- `([a-z-]+)` - ")
+
+// TestManualListsEverySkillOnce: the manual's skill list has one trigger
+// line per built-in skill, and names no skill that is not installed.
+func TestManualListsEverySkillOnce(t *testing.T) {
+	text := part(t, renderedManual(t), "## Skills")
+	var got []string
+	for _, m := range skillMention.FindAllStringSubmatch(text, -1) {
+		got = append(got, m[1])
+	}
+	if strings.Join(got, "|") != strings.Join(SkillNames, "|") {
+		t.Fatalf("the manual lists skills %q, mate installs %q", got, SkillNames)
+	}
+}
+
+// skillNamed is how the binary's own output names a skill: "(skill stow)".
+var skillNamed = regexp.MustCompile(`skill ([a-z-]+)`)
+
+// TestBinaryOutputNamesInstalledSkills: a skill the app names in a line it
+// sends the Mate is one the Mate has.
+func TestBinaryOutputNamesInstalledSkills(t *testing.T) {
+	for _, line := range []string{memory.StowLine} {
+		for _, m := range skillNamed.FindAllStringSubmatch(line, -1) {
+			if !slices.Contains(SkillNames, m[1]) {
+				t.Errorf("%q names skill %s, which mate does not install", line, m[1])
+			}
+		}
+	}
+	for _, name := range RetiredSkillNames {
+		if slices.Contains(SkillNames, name) {
+			t.Errorf("%s is both installed and retired", name)
 		}
 	}
 }

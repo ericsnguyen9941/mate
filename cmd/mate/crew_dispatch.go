@@ -260,7 +260,7 @@ var readQuota = func(ctx context.Context) (quota.Snapshot, error) {
 }
 
 // writeQuota prints the quota evidence for choosing between a rule's
-// alternatives (skill crew-dispatch section 4). No quota-axi, or an
+// alternatives (skill new-task). No quota-axi, or an
 // unreadable one, is said in one line and never fails the command.
 func writeQuota(out io.Writer, snap quota.Snapshot, err error) {
 	switch {

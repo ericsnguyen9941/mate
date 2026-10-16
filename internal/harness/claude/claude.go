@@ -65,7 +65,7 @@ func (Claude) Info() harness.Info {
 	}
 }
 
-// adapterNotes is Claude Code's section of the harness-adapters skill.
+// adapterNotes is Claude Code's section of the crew-recovery skill.
 //
 //go:embed adapter.md
 var adapterNotes string

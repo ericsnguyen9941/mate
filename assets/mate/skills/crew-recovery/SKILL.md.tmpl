@@ -1,0 +1,50 @@
+---
+name: crew-recovery
+description: The ladder for a Crew that stopped making progress - look once, one line, relaunch a dead pane, replace a confused Crew, report the failure - plus a Crew that never started and each refusal of `mate send`. Load it on a `blocked` item, when a Crew loops, stops responding, asks what its brief already answers, or shows a dialog or sign-in screen, and before you tell the captain a task failed. Covers {{.HarnessNames}}.
+---
+
+# crew-recovery
+
+`blocked` is the app speaking, not the Crew: the Crew can no longer report for itself.
+You can do four things to a Crew: `peek` reads its pane, `send` types one line, `crew relaunch` restarts a dead one, `crew stop` ends it. There is no interrupt, escape, arrow or bare enter, and you never improvise a keystroke.
+A Crew's harness is in `{{.MatevBin}} crew list {{.ProjectName}}`; never assume it is yours.
+
+## The ladder
+
+Climb one rung at a time, and stop at the first that works.
+
+1. **Look once.** `{{.MatevBin}} state {{.ProjectName}} <id>`: `busy` means mid-turn, and a long quiet build is normal; leave it. Otherwise `{{.MatevBin}} peek {{.ProjectName}} <id>` once. A dialog, sign-in, usage limit or model error is a failed start (below); the same action three times is a loop (rung 4); a question or a plan awaiting approval is rung 2; real progress is left alone.
+2. **One line.** `{{.MatevBin}} send {{.ProjectName}} <id> "<one line>"`. When the brief already answers it, point there: "The brief covers this: append the line at the end of the file, not the top." The captain's decisions are escalated as `wake` says, never guessed. A longer answer goes in a file in your directory, named by absolute path. If one specific line did not move it, a second will not.
+3. **Relaunch a dead pane.** The agent is gone but the worktree, branch and status file are intact: `{{.MatevBin}} crew relaunch {{.ProjectName}} <id> --note "<progress the dead pane held>"`. It starts the same profile in a fresh session that knows only the brief and status file. If it fails or the worktree is gone, rung 4.
+4. **Replace a confused Crew.** `{{.MatevBin}} diff {{.ProjectName}} <id> --stat` shows what it committed. Copy the `# Task` of `{{.CrewsDir}}/<id>/brief.md` to `{{.MateDir}}/briefs/<new-id>.md`, add `- Already tried (crew <id>): ...` lines above `Unknown:` (what it attempted, where it stuck, what not to repeat), and `brief check` it.
+   `crew stop` the old one; if it refuses because work is unlanded, keep it and never reach for `--discard`.
+   Spawn the replacement with the same `--repo` (and `--scout`). Its profile follows why the first failed: misjudged the work, one step heavier; its harness failed it while the work was on track, the same weight on another harness; unclear, the same profile. Move the old id out of the backlog with what happened and add the new one.
+5. **Report the failure.** When the replacement fails the same way, the task has failed; a third Crew is not a plan. Record it with the evidence, tell the captain what was attempted, what happens and what would get further, and leave the branches unless they say to discard them.
+
+A low context reading is not stuck; harnesses compact. Never leave a task silently stuck.
+
+## A Crew that did not start
+
+`crew spawn` answers the directory-trust dialog itself. A Crew still on a trust, sign-in, confirmation or usage-limit screen failed to start: never press keys at it.
+Stop it (it committed nothing, so the stop is clean), spawn the same brief under a new id on the rule's other alternative with `--skip <harness>`, and record a perishable lesson so later spawns skip that harness until it works.
+With no alternative left, try `default` on another harness once, then tell the captain which harness failed and what it showed, and keep the task queued.
+`warning: <harness> quota is used up` from a spawn means the same, unless the captain chose that harness.
+
+## When `mate send` refuses
+
+Check a send's exit status before you record a line as sent.
+
+- `is mid-turn`: leave it, or resend with `--queue` to wait behind the current turn.
+- `has unsubmitted text in its composer`: the captain is probably typing there; leave it and say so.
+- `showing a screen mate cannot name`, `a dialog is open`: peek, and start the ladder.
+- `pane changed while it was being read`: send the same line again.
+- `typed into ... but N enter(s) did not submit it`: retry the exact same command; the app checks its saved attempt against the draft and presses Enter without retyping. If it cannot verify the draft, peek and report; never clear or blindly resend it.
+
+What follows is one part per harness, for telling what a pane shows; read only the Crew's.
+{{range .Harnesses}}
+## {{.Kind}}
+
+{{.Lead}}
+
+{{.Notes}}{{end}}
+These are the harnesses this binary was built with, each measured against the harness contract suite. Another harness is not registered, and a Crew on it could not be supervised.
