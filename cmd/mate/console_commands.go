@@ -18,6 +18,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/host"
 	"github.com/nguyenngocanh94/mate/internal/panerun"
 	"github.com/nguyenngocanh94/mate/internal/query"
+	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/ui/console"
 )
@@ -58,6 +59,20 @@ func loadConsoleCommands(ws *store.Workspace) (consolecmd.Config, error) {
 		seen[slot] = true
 	}
 	return cfg, nil
+}
+
+// crewWorktree is the crew's git worktree as its meta records it, or ""
+// when none is recorded or it is no longer on disk.
+func crewWorktree(ws *store.Workspace, target console.StageTarget) string {
+	meta, err := ws.ReadCrewMeta(target.ProjectID, target.ID)
+	if err != nil || meta[spawn.MetaWorktree] == "" {
+		return ""
+	}
+	dir := filepath.Join(ws.Root(), filepath.FromSlash(meta[spawn.MetaWorktree]))
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return ""
+	}
+	return dir
 }
 
 func consoleCommandBindings(cfg consolecmd.Config) []query.CommandBinding {
@@ -123,6 +138,7 @@ func consoleCommandView(ws *store.Workspace, c *consoleColumns, cfg consolecmd.C
 					return err
 				}
 				vars["crew_dir"], vars["report_path"] = dir, report
+				vars["worktree_dir"] = crewWorktree(ws, target)
 			}
 			args, dir, err := b.Resolve(vars)
 			if err != nil {

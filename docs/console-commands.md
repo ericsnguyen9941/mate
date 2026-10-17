@@ -40,6 +40,25 @@ in the console, without opening a terminal tab. They work even without a
 supported terminal host. The launcher must return within 10 seconds; do not
 add `--wait`. The GUI application keeps its own lifetime after launch.
 
+To open the code instead - a crew's worktree on a crew row, the project's
+folder on the Mate or project row - bind the same key on both scopes, the
+crew binding first. A key runs the first of its bindings that fits the row,
+and a project binding fits a crew row too:
+
+```yaml
+bindings:
+  - key: e
+    scope: crew
+    label: code
+    command: [zed, "{worktree_dir}"]
+    mode: external
+  - key: e
+    scope: project
+    label: code
+    command: [zed, "{project_dir}"]
+    mode: external
+```
+
 ## VS Code
 
 Use the same binding with:
@@ -85,11 +104,13 @@ Paths available in arguments and `cwd`:
 | `{project_dir}` | Project's directory under the workspace root |
 | `{crew_dir}` | Crew's persistent folder under `.mate/projects/<p>/crews/<id>`; crew scope only |
 | `{report_path}` | Existing `report.md` in that folder; crew scope only |
+| `{worktree_dir}` | Crew's git worktree, as its meta records it, while it is on disk; crew scope only |
 
 If a report is not written yet, a binding using `{report_path}` reports that
 it is unavailable and does not launch. Use `{crew_dir}` instead to open the
 folder, including its brief and handback. Stopped crews keep their folder and
-report. Relative `cwd` values are relative to the workspace root.
+report. A finished crew whose worktree was removed has no `{worktree_dir}`;
+the key says so and launches nothing. Relative `cwd` values are relative to the workspace root.
 
 Arguments are passed directly, without a shell: spaces and shell characters in
 paths stay intact. `~`, `$EDITOR`, shell quoting and command substitution are
