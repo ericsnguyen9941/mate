@@ -178,8 +178,10 @@ func (m Model) projectPeekFields(proj query.ProjectNode, vw int) []detailField {
 	if n := boxWaiting(proj); n > 0 {
 		out = append(out, detailField{label: "box", lines: text(fmt.Sprintf("%d waiting on you", n), tAmber)})
 	}
-	if n := len(mate.OwedNews()) + len(mate.Held.Value); n > 0 {
+	if n := len(mate.OwedNews()); n > 0 {
 		out = append(out, detailField{label: "news", lines: text(fmt.Sprintf("%d waiting on you", n), tAmber)})
+	} else if n := len(mate.Held.Value); n > 0 && (!mate.News.IsKnown() || len(mate.News.Value) == 0) {
+		out = append(out, detailField{label: "asked", lines: text(fmt.Sprintf("%d waiting on you", n), tAmber)})
 	}
 	out = append(out, detailField{label: "mode", lines: one(m.modeLine(proj))})
 	out = append(out, m.repoFields(proj, vw)...)
@@ -384,13 +386,15 @@ func (m Model) mateNewsFields(mate query.MateNode, vw int) []detailField {
 
 // newsFields are the questions the Mate asked the captain and still waits
 // on (mvp.md section 5, "News"): the task, its age, and the question in
-// the words the Mate sent. They are read from the Mate's backlog, so a
+// the words the Mate sent. They are labelled "asked", not "news": a
+// headless Mate's news is what the REPL's news list shows, and a question
+// only in the backlog is not there. They are read from the Mate's backlog, so a
 // captain who was away reads them here instead of spending a Mate turn
 // asking again. One field per question, so y copies one question.
 func (m Model) newsFields(held query.Field[[]query.HeldItem], vw int) []detailField {
 	switch {
 	case held.State == query.Unknown:
-		return []detailField{{label: "news", lines: fieldState(held, vw)}}
+		return []detailField{{label: "asked", lines: fieldState(held, vw)}}
 	case !held.IsKnown():
 		// No backlog yet: there is nothing the Mate could have asked.
 		return nil
@@ -404,7 +408,7 @@ func (m Model) newsFields(held query.Field[[]query.HeldItem], vw int) []detailFi
 	for i, it := range held.Value {
 		label := ""
 		if i == 0 {
-			label = "news"
+			label = "asked"
 		}
 		head := gl()
 		if it.Task != "" {

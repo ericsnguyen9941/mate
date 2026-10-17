@@ -275,7 +275,7 @@ func bxHeld(t *testing.T, held query.Field[[]query.HeldItem]) Model {
 	return m
 }
 
-// News: under the Mate's own fields, every question the Mate asked the
+// Asked: under the Mate's own fields, every question the Mate asked the
 // captain and still waits on - the task, its age, and the question in the
 // Mate's words, with none of its bookkeeping - so a captain who was away
 // reads it without asking the Mate again.
@@ -288,14 +288,15 @@ func TestMateDetailShowsTheQuestionsTheMateAskedTheCaptain(t *testing.T) {
 	}))
 	d := bxDetail(t, m)
 	bxWants(t, "Mate detail", d,
-		"  news     checkout-button · 3d\n    Classic checkout or the express\n    one?\n",
+		"  asked    checkout-button · 3d\n    Classic checkout or the express\n    one?\n",
 		"           go-live · today\n    Ship on Friday?\n",
 		"           Which database do you want\n           to use?\n")
-	bxDenies(t, "Mate detail", d, "waits on:", "asked")
+	// "news" is the REPL's list; a backlog question is not in it (CON-100).
+	bxDenies(t, "Mate detail", d, "waits on:", "news")
 
 	// One field per question: y on the first copies that question.
 	for i, f := range m.detailFields(m.w) {
-		if f.label == "news" {
+		if f.label == "asked" {
 			m.detailSel = i
 		}
 	}
@@ -312,10 +313,11 @@ func TestMateDetailNewsStates(t *testing.T) {
 	d = bxDetail(t, bxHeld(t, query.AbsentField[[]query.HeldItem]("no backlog")))
 	bxDenies(t, "absent news", d, "news")
 	d = bxDetail(t, bxHeld(t, query.UnknownField[[]query.HeldItem]("permission denied")))
-	bxWants(t, "unreadable news", d, "news     unknown", "permission denied")
+	bxWants(t, "unreadable news", d, "asked    unknown", "permission denied")
 }
 
-// On the workspace level a Project says how much news waits in it.
+// On the workspace level a Project says how many questions wait in it:
+// news first, the backlog's asked ones when the Mate opened no news.
 func TestProjectPeekCountsNews(t *testing.T) {
 	tree := designTree()
 	tree.Projects[7].Mate.Held = query.KnownField([]query.HeldItem{{Question: "a?"}, {Question: "b?"}})
@@ -323,5 +325,13 @@ func TestProjectPeekCountsNews(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		m, _ = send(t, m, key("down"))
 	}
-	bxWants(t, "project peek", bxDetail(t, m), "news      2 waiting on you")
+	bxWants(t, "project peek", bxDetail(t, m), "asked     2 waiting on you")
+	tree.Projects[7].Mate.News = query.KnownField([]query.NewsItem{{ID: 3, Title: "R2 account id", Owed: true}})
+	m = newFixture(t, tree, 40, 36, unicodeGlyphs)
+	for i := 0; i < 7; i++ {
+		m, _ = send(t, m, key("down"))
+	}
+	d := bxDetail(t, m)
+	bxWants(t, "project peek", d, "news      1 waiting on you")
+	bxDenies(t, "project peek", d, "asked")
 }

@@ -255,6 +255,8 @@ Chế độ tự động (daemon `internal/autopilot`, chốt 2026-09-18 ở tas
 Chốt 2026-10-03.
 Captain có thể bỏ qua câu hỏi của Mate hoặc đi vắng; hỏi lại Mate "còn gì chờ tôi" tốn thêm một lượt.
 Detail của hàng Mate (dưới các field của nó) có mục `news`: các câu hỏi Mate đã gửi captain mà chưa được trả lời, tức các mục `asked "…"` trong `## Held for the captain` của `mate/backlog.md` (manual mục 13).
+
+**2026-10-17 (CON-100).** Captain chốt: Mate headless hỏi captain câu gì cũng là news (`mate news open`, bỏ `--crew` khi là câu của Mate), kể cả câu hỏi nảy ra trong chat, để nó hiện ở danh sách news của REPL (Ctrl+T). Dòng backlog của câu hỏi mang `#<id>` của news. Console gọi mục backlog là `asked` thay vì `news`, vì câu hỏi chỉ nằm trong backlog thì không có trong danh sách news; khi Mate có news, detail chỉ hiện news.
 Chỉ câu hỏi của Mate: lời hứa và ghi chú trong cùng section là sổ sách của Mate, không hiện; câu hỏi của Crew đi tới Mate, và Mate tự quyết có đưa lên captain hay không (skill `wake`), nên chỉ thứ Mate đã đưa lên mới thành news.
 Console chỉ đọc file đó ở mỗi lần nạp snapshot (`query.MateNode.Held`), không gửi gì cho Mate và không tốn lượt nào.
 Mỗi mục là một field: dòng đầu là tên task và tuổi theo ngày (`today`, `3d`), rồi đúng câu Mate đã gửi captain, không kèm `asked` hay `Waits on: …` (đó là ghi chú vận hành của Mate; câu hỏi gửi captain đã phải nói bằng kết quả theo manual mục 13); `y` copy câu hỏi.
