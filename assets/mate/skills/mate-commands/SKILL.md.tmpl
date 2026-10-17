@@ -71,7 +71,7 @@ That is a refusal to destroy work: get the branch merged, or ask the captain whe
 
 **`mate merge`** prints `merge refused:` and moves nothing. `<default>` is the default branch of the Crew's repo.
 
-- `the Mate merges only reviewed work` - run `mate review` first.
+- `the Mate merges only reviewed work` - the project's review is on: run `mate review` first. With `records no decision`, ask the captain and record their answer with `mate project review <project> on|off`.
 - `review is stale` - the branch, pull request or contract moved after the review: review again (`review-delivery`).
 - `passed but left N finding(s) standing` - record them (backlog `## Queued` or the tracker) and merge again with `--followups`.
 - `has N uncommitted file(s)` naming the Crew's worktree - send the Crew one line to commit or drop them; never merge around them.

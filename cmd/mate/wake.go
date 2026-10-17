@@ -280,7 +280,7 @@ func writeHandBack(ctx context.Context, out *strings.Builder, w *store.Workspace
 	}
 	if len(reviewers) == 0 {
 		if !scout {
-			out.WriteString("  reviews: none yet\n")
+			out.WriteString("  reviews: none yet; " + projectReviewWord(w, project) + "\n")
 		}
 		return
 	}
@@ -322,6 +322,24 @@ func branchSummary(ctx context.Context, w *store.Workspace, git gitx.Git, projec
 	}
 	lines := strings.Split(strings.TrimSpace(stat), "\n")
 	return fmt.Sprintf("%s: %d commit(s) beyond %s;%s", branch, ahead, base, " "+strings.TrimSpace(lines[len(lines)-1]))
+}
+
+// projectReviewWord is the project's review setting as the hand-back item
+// states it (CON-101), so the Mate knows from the item alone whether to
+// start a reviewer, land, or ask the captain.
+func projectReviewWord(w *store.Workspace, project string) string {
+	cfg, err := w.LoadProject(project)
+	if err != nil {
+		return "project review unreadable: " + err.Error()
+	}
+	switch cfg.Review {
+	case store.ReviewOn:
+		return "project review on: start one"
+	case store.ReviewOff:
+		return "project review off: land once the hand-back checks out"
+	default:
+		return "project review undecided: ask the captain, record it with `mate project review " + project + " on|off`"
+	}
 }
 
 // reviewsByTarget maps each reviewed Crew to its reviewers, oldest first by
