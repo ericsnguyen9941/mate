@@ -43,7 +43,20 @@ type ProjectConfig struct {
 	// BudgetConfig's own fields carry that same "unset means no limit"
 	// convention one level down.
 	Budget *BudgetConfig `yaml:"budget,omitempty"`
+	// Review is whether each task's work is independently reviewed before
+	// the Mate lands it (CON-101): ReviewOn or ReviewOff. Empty means the
+	// captain has not decided, and the Mate asks before it lands one.
+	Review string `yaml:"review,omitempty"`
 }
+
+// The values of ProjectConfig.Review.
+const (
+	ReviewOn  = "on"
+	ReviewOff = "off"
+)
+
+// ValidReview reports whether s is a value project.yaml's review may hold.
+func ValidReview(s string) bool { return s == ReviewOn || s == ReviewOff }
 
 // MetaBudget is the crew `.meta` key holding the crew's own token budget
 // (CON-76): the dispatch rule's budget `mate crew spawn --budget` recorded,

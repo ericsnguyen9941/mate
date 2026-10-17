@@ -122,7 +122,8 @@ func mergeRefusal(code observability.Code, msg string) error {
 //  1. the crew is unknown, or already closed (`finished`/`failed`);
 //  2. a Crew is typing - a crew never merges its own branch;
 //  3. a Mate is typing without a reviewed commit - the Mate merges only what
-//     an independent review passed (`--review`, docs/mvp.md M19);
+//     an independent review passed (`--review`, docs/mvp.md M19), unless
+//     project.yaml's review is off (CON-101);
 //  4. the crew's worktree is dirty - uncommitted work is not in the branch,
 //     and merging would land a different change than the one reviewed;
 //  5. the branch carries no commit the default branch does not have;
@@ -186,13 +187,19 @@ func MergeCrew(ctx context.Context, w *store.Workspace, deps Deps, project, crew
 	out.DefaultBranch = repoCfg.DefaultBranch
 
 	// 2 & 3. Who is typing. A crew is refused outright; a Mate merges only
-	// a revision an independent review passed. The captain is never gated.
+	// a revision an independent review passed, unless the captain set the
+	// project's review off (CON-101). The captain is never gated.
 	switch NormaliseCaller(caller) {
 	case CallerCrew:
 		return MergeResult{}, mergeRefusal(observability.CodePermission,
 			"a crew cannot merge its own branch; the Mate merges it after an independent review passes, or the captain does")
 	case CallerMate:
-		if len(reviewed) == 0 {
+		switch {
+		case len(reviewed) > 0, cfg.Review == store.ReviewOff:
+		case cfg.Review == "":
+			return MergeResult{}, mergeRefusal(observability.CodePermission,
+				fmt.Sprintf("the Mate merges only reviewed work until the captain decides otherwise, and project %s records no decision; ask the captain whether this project's tasks get an independent review, record the answer with `mate project review %s on|off`, then merge again", project, project))
+		default:
 			return MergeResult{}, mergeRefusal(observability.CodePermission,
 				fmt.Sprintf("the Mate merges only reviewed work; run `mate review %s %s <reviewer>`, and once it passes `mate merge %s %s --review <reviewer>`", project, crew, project, crew))
 		}

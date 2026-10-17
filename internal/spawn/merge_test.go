@@ -174,6 +174,42 @@ func TestMergeCrewRefusesAnUnreviewedMateMerge(t *testing.T) {
 	}
 }
 
+// The review is the project's choice (CON-101): undecided, the Mate's
+// unreviewed merge is refused and told to ask the captain; on, it is
+// refused as before; off, it lands.
+func TestMergeCrewFollowsTheProjectsReviewSetting(t *testing.T) {
+	for _, tc := range []struct{ review, refusal string }{
+		{"", "ask the captain whether this project's tasks get an independent review"},
+		{store.ReviewOn, "run `mate review shop k3 <reviewer>`"},
+		{store.ReviewOff, ""},
+	} {
+		t.Run("review="+tc.review, func(t *testing.T) {
+			w, deps, res := mergeFixture(t)
+			cfg, err := w.LoadProject("shop")
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Review = tc.review
+			if err := w.SaveProject("shop", cfg); err != nil {
+				t.Fatal(err)
+			}
+			commitInWorktree(t, res.Worktree, "feature.txt", "feature\n")
+			before := headOf(t, w, "main")
+			_, err = spawn.MergeCrew(context.Background(), w, deps, "shop", "k3", spawn.CallerMate)
+			if tc.refusal == "" {
+				if err != nil {
+					t.Fatalf("review off: the Mate's merge was refused: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.refusal) {
+				t.Fatalf("err = %v, want %q", err, tc.refusal)
+			}
+			assertNothingChanged(t, w, res, before)
+		})
+	}
+}
+
 func TestMergeCrewLetsTheMateMergeReviewedWork(t *testing.T) {
 	w, deps, res := mergeFixture(t)
 	commitInWorktree(t, res.Worktree, "feature.txt", "feature\n")
