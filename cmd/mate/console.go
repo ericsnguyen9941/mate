@@ -74,10 +74,11 @@ Use an absolute executable path if the CLI is not on PATH.
 
 3. Reopen the console, select a Crew row and press e. Press ? for key help.
    If report.md does not exist yet, the binding reports it; use {crew_dir}
-   instead of {report_path} to open the Crew's folder.
+   instead of {report_path} to open the Crew's folder, or {worktree_dir}
+   for the code it is changing.
 
-Available paths: {workspace_dir}, {project_dir}, {crew_dir}, {report_path}.
-The last two require scope: crew. scope: project opens on a project row.
+Available paths: {workspace_dir}, {project_dir}, {crew_dir}, {report_path},
+{worktree_dir}. The last three require scope: crew. scope: project opens on a project row.
 cwd defaults to the crew/project directory; a relative cwd uses workspace root.
 command is an argv list, passed without a shell or environment expansion.
 terminal opens/reuses a managed tab in WezTerm/Ghostty.

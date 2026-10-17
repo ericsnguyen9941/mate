@@ -63,7 +63,7 @@ func Load(path string) (Config, error) {
 		// variables cannot be used by project bindings.
 		vars := map[string]string{"workspace_dir": "/workspace", "project_dir": "/workspace/project"}
 		if b.Scope == "crew" {
-			vars["crew_dir"], vars["report_path"] = "/crew", "/crew/report.md"
+			vars["crew_dir"], vars["report_path"], vars["worktree_dir"] = "/crew", "/crew/report.md", "/worktree"
 		}
 		if _, _, err := b.Resolve(vars); err != nil {
 			return Config{}, fmt.Errorf("%s: binding %d: %w", path, i+1, err)
@@ -100,6 +100,12 @@ func (b Binding) Resolve(vars map[string]string) ([]string, string, error) {
 	return args, cwd, nil
 }
 
+// unavailable says why a variable that exists for the scope has no value.
+var unavailable = map[string]string{
+	"report_path":  "the crew may not have written a report yet",
+	"worktree_dir": "the crew has no worktree on disk; it may have finished and been cleaned up",
+}
+
 func expand(s string, vars map[string]string) (string, error) {
 	var out strings.Builder
 	for {
@@ -120,7 +126,7 @@ func expand(s string, vars map[string]string) (string, error) {
 			return "", fmt.Errorf("unknown or unavailable path variable {%s}", name)
 		}
 		if value == "" {
-			return "", fmt.Errorf("{%s} is unavailable; the crew may not have written a report yet", name)
+			return "", fmt.Errorf("{%s} is unavailable; %s", name, unavailable[name])
 		}
 		out.WriteString(value)
 		s = s[end+1:]

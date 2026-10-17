@@ -48,6 +48,10 @@ func TestLoadAndResolveCommands(t *testing.T) {
 	if _, _, err := cfg.Bindings[0].Resolve(vars); err == nil || !strings.Contains(err.Error(), "report") {
 		t.Fatalf("missing report passed to command: %v", err)
 	}
+	worktree := Binding{Key: "e", Scope: "crew", Label: "code", Command: []string{"zed", "{worktree_dir}"}}
+	if _, _, err := worktree.Resolve(map[string]string{"crew_dir": "/tmp/crew", "worktree_dir": ""}); err == nil || !strings.Contains(err.Error(), "no worktree") {
+		t.Fatalf("missing worktree passed to command: %v", err)
+	}
 }
 
 func TestLoadRefusesInvalidCommands(t *testing.T) {

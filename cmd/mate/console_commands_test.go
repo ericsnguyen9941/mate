@@ -175,3 +175,40 @@ func TestConsoleCommandConfigurationAndTabs(t *testing.T) {
 		t.Fatalf("configured keys missing from read model: %+v", bindings)
 	}
 }
+
+// {worktree_dir} opens the code a crew is changing, and only while that
+// worktree is on disk.
+func TestWorktreeDirOpensTheCrewsWorktree(t *testing.T) {
+	w, deps := consoleFixture(t, "shop")
+	spawnFakeCrew(t, w, deps, "shop", "k3")
+	worktree := w.WorktreeDir("shop", "k3")
+	if st, err := os.Stat(worktree); err != nil || !st.IsDir() {
+		t.Fatalf("setup: the fake crew has no worktree at %s: %v", worktree, err)
+	}
+	cfg := consolecmd.Config{Bindings: []consolecmd.Binding{
+		{Key: "e", Scope: "crew", Label: "code", Mode: "external", Command: []string{"/bin/echo", "{worktree_dir}"}},
+		{Key: "e", Scope: "project", Label: "code", Mode: "external", Command: []string{"/bin/echo", "{project_dir}"}},
+	}}
+	var got []consolecmd.Invocation
+	runner := func(_ context.Context, inv consolecmd.Invocation, _ io.Reader, _, _ io.Writer) error {
+		got = append(got, inv)
+		return nil
+	}
+	view := consoleCommandView(w, nil, cfg, runner)
+	if err := view(context.Background(), "e", console.StageTarget{Kind: console.StageCrew, ID: "k3", ProjectID: "shop"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := view(context.Background(), "e", console.StageTarget{ProjectID: "shop"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || !slices.Equal(got[0].Args, []string{worktree}) || !slices.Equal(got[1].Args, []string{w.ProjectHome("shop")}) {
+		t.Fatalf("launches = %+v, want the worktree then the project folder", got)
+	}
+	if err := os.RemoveAll(worktree); err != nil {
+		t.Fatal(err)
+	}
+	err := view(context.Background(), "e", console.StageTarget{Kind: console.StageCrew, ID: "k3", ProjectID: "shop"})
+	if err == nil || !strings.Contains(err.Error(), "no worktree") || len(got) != 2 {
+		t.Fatalf("a removed worktree launched or was misreported: %v, %d launches", err, len(got))
+	}
+}
