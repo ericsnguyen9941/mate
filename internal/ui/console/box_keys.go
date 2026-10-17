@@ -155,18 +155,20 @@ func boxAssignChoice(project string, e query.BoxEntry) actionChoice {
 // showBoxItem is Enter on an item: show its crew in the next pane, the
 // same way Enter on that crew's row does, so the box cannot show a pane
 // the list would refuse. On the workspace level the crew's row lives on
-// its Project, which opens first.
+// its Project, which opens first; the Mates list already has the Mate's.
 func (m Model) showBoxItem(it boxItem) (Model, tea.Cmd) {
 	if it.e.Crew == "" {
 		m.msg = errMsg("Show refused: this entry names no crew " + m.g.Dot + " nothing was shown")
 		return m, nil
 	}
-	if m.cur().kind == frameWorkspace {
-		if it.e.Crew == "mate" {
-			m = m.open(frame{kind: frameProject, id: it.project})
-		} else if jumped, ok := m.jumpToCrew(it.e.Crew); ok {
+	switch {
+	case m.cur().kind == frameProject:
+	case it.e.Crew != "mate":
+		if jumped, ok := m.jumpToCrew(it.e.Crew); ok {
 			m = jumped
 		}
+	case m.cur().kind == frameWorkspace:
+		m = m.open(frame{kind: frameProject, id: it.project})
 	}
 	r, ok := m.boxItemRow(it)
 	if !ok {
@@ -200,6 +202,9 @@ func (m Model) openNews(project string, id int) tea.Cmd {
 
 // boxItemRow is the Project row an item names.
 func (m Model) boxItemRow(it boxItem) (row, bool) {
+	if m.cur().kind == frameMates && it.e.Crew == "mate" {
+		return row{kind: rowMate, id: it.project}, true
+	}
 	if m.cur().kind != frameProject {
 		return row{}, false
 	}

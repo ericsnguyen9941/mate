@@ -93,7 +93,8 @@ func (m Model) emptyWorkspaceLines(p framePlan) []gline {
 	return out
 }
 
-// emptyWorkspace reports whether the workspace frame has no Projects.
+// emptyWorkspace reports whether the workspace frame, or the Mates list,
+// has no Projects.
 func (m Model) emptyWorkspace() bool {
-	return m.phase == phaseReady && m.cur().kind == frameWorkspace && len(m.tree.Projects) == 0
+	return m.phase == phaseReady && m.cur().kind != frameProject && len(m.tree.Projects) == 0
 }

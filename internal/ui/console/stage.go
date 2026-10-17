@@ -71,7 +71,8 @@ func (m Model) stageTargetAvailable(r row) (StageTarget, bool) {
 func (m Model) stageTargetFor(r row) (StageTarget, bool) {
 	switch r.kind {
 	case rowMate:
-		mate := m.currentProject().Mate
+		proj := m.mateProject(r)
+		mate := proj.Mate
 		if !mate.Designated.IsKnown() || mate.Designated.Value.MateID == "" {
 			return StageTarget{}, false
 		}
@@ -82,7 +83,7 @@ func (m Model) stageTargetFor(r row) (StageTarget, bool) {
 		return StageTarget{
 			Kind:        StageMate,
 			ID:          mate.Designated.Value.MateID,
-			ProjectID:   m.currentProject().ProjectID,
+			ProjectID:   proj.ProjectID,
 			HarnessKind: mate.Designated.Value.HarnessKind,
 			AgentName:   agent,
 		}, true
@@ -126,7 +127,7 @@ func (m Model) stageRefusal(r row) (string, bool) {
 	var binding query.Field[query.BindingValue]
 	switch r.kind {
 	case rowMate:
-		mate := m.currentProject().Mate
+		mate := m.mateProject(r).Mate
 		switch {
 		case mate.Designated.State == query.Unknown:
 			return "the Mate could not be read; r re-reads", true
@@ -288,7 +289,8 @@ var ownedKeys = map[string]bool{
 	"down": true, "end": true, "enter": true, "esc": true, "g": true,
 	"home": true, "j": true, "k": true, "l": true, "m": true, "n": true,
 	"o": true, "pgdown": true, "pgup": true, "q": true, "r": true,
-	"s": true, "shift+tab": true, "tab": true, "up": true, "y": true,
+	"s": true, "shift+tab": true, "tab": true, "up": true, "v": true,
+	"y": true,
 }
 
 // commandHints lists configured project keys with their labels. A crew key

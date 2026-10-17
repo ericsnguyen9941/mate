@@ -365,6 +365,7 @@ var keyTable = [][2]string{
 	{"n", "new project"},
 	{"s", "start the mate"},
 	{"m", "flip its mode"},
+	{"v", "projects / mates only"},
 	{"y", "copy"},
 	toolKeyRows,
 	{"l", "box: whole log"},

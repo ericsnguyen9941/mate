@@ -222,7 +222,7 @@ func (m Model) boxMetaLine(it boxItem, p framePlan) gline {
 	from := shortID(it.e.Crew, m.g)
 	if it.news != nil && it.news.Crew != "" && m.cur().kind == frameProject {
 		from = shortID(it.news.Crew, m.g)
-	} else if m.cur().kind == frameWorkspace || it.e.Crew == "mate" || it.e.Crew == "" {
+	} else if m.cur().kind != frameProject || it.e.Crew == "mate" || it.e.Crew == "" {
 		if proj, ok := m.projectByID(it.project); ok {
 			from = proj.Name
 		}
