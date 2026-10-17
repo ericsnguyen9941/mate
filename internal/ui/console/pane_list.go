@@ -163,7 +163,7 @@ func (m Model) listItems(p framePlan) []listItem {
 		case rowProject:
 			lines = m.projectRowLines(r, p)
 		case rowMate:
-			lines = m.mateRowLines(p)
+			lines = m.mateRowLines(r, p)
 		case rowCrew:
 			lines = m.crewRowLines(r, p)
 		case rowCompletedGroup:
@@ -303,8 +303,8 @@ func worstProblem(proj query.ProjectNode) (string, tok) {
 
 // ---------- project rows ----------
 
-func (m Model) mateRowLines(p framePlan) []gline {
-	proj := m.currentProject()
+func (m Model) mateRowLines(r row, p framePlan) []gline {
+	proj := m.mateProject(r)
 	mate := proj.Mate
 	word := mateWord(mate)
 	bang := 0

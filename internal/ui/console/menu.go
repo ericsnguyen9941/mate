@@ -47,7 +47,7 @@ func (e menuEntry) confirms() bool { return e.kind == entryAction && e.choice.da
 // row and the workspace offers only a new Project.
 func (m Model) menuFor(r row, ok bool) []menuEntry {
 	if !ok {
-		if m.cur().kind == frameWorkspace {
+		if m.cur().kind != frameProject {
 			return []menuEntry{m.newProjectEntry()}
 		}
 		return nil

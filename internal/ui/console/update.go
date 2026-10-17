@@ -87,7 +87,7 @@ func (m Model) onTreeLoaded(msg treeLoadedMsg) Model {
 	m.tree = msg.tree
 	m.hasLoaded = true
 	if first {
-		m.stack = []frame{{kind: frameWorkspace}}
+		m.stack = []frame{{kind: m.rootKind()}}
 		m.focus = paneList
 		m.detail = false
 		m.msg = footerMsg{}

@@ -114,7 +114,7 @@ func (m Model) queryAction(r row, name Action) (bool, string, bool) {
 	} else {
 		switch r.kind {
 		case rowMate:
-			actions = m.currentProject().Mate.Actions
+			actions = m.mateProject(r).Mate.Actions
 		case rowCrew:
 			if c, ok := m.crewByID(r.id); ok {
 				actions = c.Actions
@@ -297,10 +297,10 @@ func (m Model) onboardChoice(r row) actionChoice {
 		return c
 	}
 	if r.kind == rowMate {
-		mate := m.currentProject().Mate
+		mate := m.mateProject(r).Mate
 		if mate.Designated.State == query.Absent {
 			c.enabled, c.desc = true, "Create and start this Project's Mate"
-			c.req.Target = m.currentProject().ProjectID
+			c.req.Target = m.mateProject(r).ProjectID
 			c.req.TargetKind = "project-mate"
 		}
 	}
@@ -354,7 +354,7 @@ func (m Model) actionRequest(a Action, r row) ActionRequest {
 			req.TargetKind = "mate"
 		}
 	case rowMate:
-		req.Target, req.TargetKind = m.currentProject().ProjectID, "mate"
+		req.Target, req.TargetKind = m.mateProject(r).ProjectID, "mate"
 	case rowCrew:
 		// A crew is named within its Project, as every crew action names it.
 		req.Target, req.TargetKind, req.Crew = m.currentProject().ProjectID, "crew", r.id
@@ -367,7 +367,7 @@ func (m Model) actionRequest(a Action, r row) ActionRequest {
 func (m Model) mateForRow(r row) (query.MateNode, bool) {
 	switch r.kind {
 	case rowMate:
-		return m.currentProject().Mate, true
+		return m.mateProject(r).Mate, true
 	case rowProject:
 		p, ok := m.projectByID(r.id)
 		if ok {
@@ -379,7 +379,7 @@ func (m Model) mateForRow(r row) (query.MateNode, bool) {
 
 func (m Model) bindingForRow(r row) query.Field[query.BindingValue] {
 	if r.kind == rowMate {
-		return m.currentProject().Mate.Binding
+		return m.mateProject(r).Mate.Binding
 	}
 	if r.kind == rowCrew {
 		if c, ok := m.crewByID(r.id); ok {
@@ -421,7 +421,7 @@ func (m Model) beginNewProject() Model {
 // same source the menu entry uses, so the shortcut and the menu cannot
 // disagree about whether a Project may be added.
 func (m Model) newProjectChoice() (actionChoice, bool) {
-	if m.cur().kind != frameWorkspace {
+	if m.cur().kind == frameProject {
 		return actionChoice{action: ActionOnboard,
 			desc: "unavailable · a Project is created at the workspace level; Esc goes back there",
 		}, false
@@ -658,7 +658,7 @@ func (m Model) onActionDone(msg actionDoneMsg) (Model, tea.Cmd) {
 	}
 	m.actionAfterRead = &result
 	m.msg = result
-	if msg.err == nil && msg.choice.action == ActionOnboard && msg.choice.req.TargetKind == "workspace" && m.cur().kind == frameWorkspace {
+	if msg.err == nil && msg.choice.action == ActionOnboard && msg.choice.req.TargetKind == "workspace" && m.cur().kind != frameProject {
 		// The new Project lands in order and becomes the selection (design
 		// K): the re-read finds it by id, which is its name.
 		f := m.cur()
@@ -771,7 +771,7 @@ func (m Model) mateStartChoice(r row, mate query.MateNode) actionChoice {
 		c.desc = "unavailable · the Mate could not be read; r re-reads"
 	case mate.Designated.State == query.Absent || mate.Designated.Value.MateID == "":
 		c = m.onboardChoice(r)
-		c.req.Target, c.req.TargetKind = m.currentProject().ProjectID, "project-mate"
+		c.req.Target, c.req.TargetKind = m.mateProject(r).ProjectID, "project-mate"
 		c.enabled, c.desc = true, "Create and start this Project's Mate"
 	case mate.Designated.Value.Status == query.MateStopped:
 		c = actionChoice{action: ActionResume, enabled: true, desc: "Resume the Project Mate", req: m.actionRequest(ActionResume, r)}

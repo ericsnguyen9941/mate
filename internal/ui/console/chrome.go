@@ -60,6 +60,9 @@ func (m Model) listRule(w int) gline {
 		n, failed = projectAttention(proj)
 	} else {
 		title = focusTitle(gl().add(ws, tFg), focused)
+		if m.cur().kind == frameMates {
+			title = title.add(" "+m.g.Dot+" mates", tDim)
+		}
 		for _, p := range m.tree.Projects {
 			pn, pf := projectAttention(p)
 			n += pn
@@ -267,8 +270,13 @@ func (m Model) keyHints() []keyHint {
 		}
 		return joinHints([]keyHint{{m.g.UpDown, "move"}, {"enter", "crew"}, {"a", "assign"}}, tools, []keyHint{{"esc", ""}})
 	}
-	if m.cur().kind == frameWorkspace {
-		return joinHints([]keyHint{{m.g.UpDown, "move"}, {"enter", "open"}}, tools, []keyHint{{"a", "act"}, {"n", "new"}, {"?", ""}})
+	switch m.cur().kind {
+	case frameWorkspace:
+		return joinHints([]keyHint{{m.g.UpDown, "move"}, {"enter", "open"}}, tools, []keyHint{{"a", "act"}, {"v", "mates"}, {"n", "new"}, {"?", ""}})
+	case frameMates:
+		// The way back to the Projects goes first: it is the one key this
+		// list adds, and the tool keys would push it off a narrow line.
+		return joinHints([]keyHint{{m.g.UpDown, "move"}, {"enter", "show"}, {"v", "projects"}}, tools, []keyHint{{"a", "act"}, {"?", ""}})
 	}
 	return joinHints([]keyHint{{m.g.UpDown, "move"}, {"enter", "show"}}, tools, []keyHint{{"a", "act"}, {"tab", "pane"}, {"?", ""}})
 }

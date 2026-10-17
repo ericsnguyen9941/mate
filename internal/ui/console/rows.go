@@ -23,11 +23,12 @@ const (
 // row is one selectable row of the current frame. idx indexes the slice
 // rowKind names within the model's current selection (snap.Projects or the
 // current Project's Crews) - list.go's column builders use it to look the
-// underlying node back up; rowMate carries no idx, since a Project has at
-// most one designated Mate.
+// underlying node back up; rowMate carries no idx inside a Project, since a
+// Project has at most one designated Mate.
 //
 // id is the row's identity - the Project or Crew id, or the reserved
-// "mate:none" for a Project with no designated Mate. It is what a frame's
+// "mate:none" for a Project with no designated Mate; a Mate row on the Mates
+// list carries its Project's id (mateRows). It is what a frame's
 // selID stores, so a refresh that inserted or removed rows above the
 // selection re-finds the same row rather than the same index
 // (Model.reconcileSelection).
@@ -41,6 +42,18 @@ func projectRows(projects []query.ProjectNode) []row {
 	rows := make([]row, 0, len(projects))
 	for i, p := range projects {
 		rows = append(rows, row{kind: rowProject, idx: i, id: p.ProjectID})
+	}
+	return rows
+}
+
+// mateRows are the Mates list: one Mate row per Project, crews left out.
+// The id is the Project's, not the Mate's, so it is unique even across
+// Projects with no Mate and the same Project stays selected when `v` swaps
+// lists.
+func mateRows(projects []query.ProjectNode) []row {
+	rows := make([]row, 0, len(projects))
+	for i, p := range projects {
+		rows = append(rows, row{kind: rowMate, idx: i, id: p.ProjectID})
 	}
 	return rows
 }

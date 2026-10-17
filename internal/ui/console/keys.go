@@ -77,6 +77,8 @@ func (m Model) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.onTab(), nil
 	case "shift+tab":
 		return m.onTabBack(), nil
+	case "v":
+		return m.toggleMates(), nil
 	case "r":
 		if m.staged.err != "" {
 			return m.retryStage()
@@ -139,12 +141,12 @@ func (m Model) onListKey(key string) (tea.Model, tea.Cmd) {
 }
 
 // modeTarget is the Project `m` flips: the one open, or the one selected
-// on the workspace level.
+// on the workspace level or the Mates list.
 func (m Model) modeTarget() string {
 	if m.cur().kind == frameProject {
 		return m.currentProject().ProjectID
 	}
-	if r, ok := m.selectedRow(); ok && r.kind == rowProject {
+	if r, ok := m.selectedRow(); ok && (r.kind == rowProject || m.cur().kind == frameMates) {
 		return r.id
 	}
 	return ""

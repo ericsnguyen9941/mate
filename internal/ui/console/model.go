@@ -168,6 +168,10 @@ type frameKind int
 const (
 	frameWorkspace frameKind = iota // the Workspace: its Projects
 	frameProject                    // one Project: its Mate row and its Crews
+	// frameMates is the Workspace again, as one Mate row per Project and no
+	// Crews: the root `v` swaps in, so a click shows another Project's Mate
+	// without going through the Project.
+	frameMates
 )
 
 // TODO(task 21): v1 had a third level, frameTask, listing one Task's Crew
@@ -178,6 +182,8 @@ func (k frameKind) String() string {
 	switch k {
 	case frameProject:
 		return "project"
+	case frameMates:
+		return "mates"
 	default:
 		return "workspace"
 	}
@@ -308,6 +314,9 @@ type Model struct {
 	stack  []frame
 	focus  pane
 	detail bool // < 100 cols: the inspector takes the whole main region
+	// matesOnly is `v`: the stack's root lists the Mates (frameMates)
+	// instead of the Projects.
+	matesOnly bool
 	// completedOpen records which Completed groups the reader has expanded,
 	// keyed by the parent Project id. Presentation only: expanding does not
 	// change the snapshot. A missing key is collapsed, which is the default
@@ -640,14 +649,63 @@ func (m Model) projectByID(id string) (query.ProjectNode, bool) {
 }
 
 // currentProject is the Project of the innermost Project frame.
+// On the Mates list it is the selected Mate's Project, which is what every
+// Mate action and sheet there acts on.
 func (m Model) currentProject() query.ProjectNode {
 	for i := len(m.stack) - 1; i >= 0; i-- {
-		if m.stack[i].kind == frameProject {
+		switch m.stack[i].kind {
+		case frameProject:
 			p, _ := m.projectByID(m.stack[i].id)
 			return p
+		case frameMates:
+			if r, ok := m.selectedRow(); ok {
+				p, _ := m.projectByID(r.id)
+				return p
+			}
 		}
 	}
 	return query.ProjectNode{}
+}
+
+// mateProject is the Project a Mate row belongs to: the row's own on the
+// Mates list, where every row is a different Project, the open one inside
+// a Project.
+func (m Model) mateProject(r row) query.ProjectNode {
+	if m.cur().kind == frameMates {
+		p, _ := m.projectByID(r.id)
+		return p
+	}
+	return m.currentProject()
+}
+
+// rootKind is the list the stack starts from: the Projects, or the Mates
+// while `v` has them on.
+func (m Model) rootKind() frameKind {
+	if m.matesOnly {
+		return frameMates
+	}
+	return frameWorkspace
+}
+
+// toggleMates is `v`: swap the root between the Projects and the Mates,
+// keeping the Project the reader was on - the open one, or the selected
+// row, whose id is the Project's on both lists. It is Console state for
+// the run, like the box's `l`.
+func (m Model) toggleMates() Model {
+	id := ""
+	if f := m.cur(); f.kind == frameProject {
+		id = f.id
+	} else if r, ok := m.selectedRow(); ok {
+		id = r.id
+	}
+	m.matesOnly = !m.matesOnly
+	m.stack = []frame{{kind: m.rootKind(), selID: id}}
+	m.focus = paneList
+	m.detail = false
+	m.detailSel = 0
+	m.boxSel = -1
+	m.msg = footerMsg{}
+	return m.reconcileSelection()
 }
 
 // rowsFor computes the rows one frame lists, against the tree as it stands
@@ -662,6 +720,8 @@ func (m Model) rowsFor(i int) []row {
 	switch f.kind {
 	case frameWorkspace:
 		return projectRows(m.tree.Projects)
+	case frameMates:
+		return mateRows(m.tree.Projects)
 	case frameProject:
 		p, ok := m.projectByID(f.id)
 		if !ok {
@@ -695,7 +755,7 @@ func (m Model) jumpToCrew(crewID string) (Model, bool) {
 				m.handedBackOpen[p.ProjectID] = true
 			}
 			m.stack = []frame{
-				{kind: frameWorkspace, selID: p.ProjectID},
+				{kind: m.rootKind(), selID: p.ProjectID},
 				{kind: frameProject, id: p.ProjectID, selID: c.CrewID},
 			}
 			m = m.reconcileSelection()
@@ -791,7 +851,7 @@ func (m Model) reconcileSelection() Model {
 	prevSelID := m.cur().selID
 	kept := make([]frame, 0, len(m.stack))
 	for i, f := range m.stack {
-		if f.kind != frameWorkspace && !m.frameEntityExists(i) {
+		if f.kind == frameProject && !m.frameEntityExists(i) {
 			break
 		}
 		rows := m.rowsFor(i)
@@ -816,7 +876,7 @@ func (m Model) reconcileSelection() Model {
 		kept = append(kept, f)
 	}
 	if len(kept) == 0 {
-		kept = []frame{{kind: frameWorkspace}}
+		kept = []frame{{kind: m.rootKind()}}
 	}
 	m.stack = kept
 	if len(m.stack) == 0 || m.stack[len(m.stack)-1].selID != prevSelID {
