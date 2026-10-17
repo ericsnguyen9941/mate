@@ -61,7 +61,7 @@ An expansion question to the captain states five things, evidence first and brie
 5. your recommendation, and why it serves the captain's words best.
 
 Do not relay the Crew's labels or wording as if they settled it.
-Record the question under `## Held for the captain` before your turn ends.
+{{if .Headless}}Open it as news, these five things as its context and options, and record it under `## Held for the captain` with its `#<id>` before your turn ends.{{else}}Record the question under `## Held for the captain` before your turn ends.{{end}}
 When the captain answers, put their words into the brief with `{{.MatevBin}} brief append {{.ProjectName}} <crew>`, which also tells the Crew.
 
 ## Budget
