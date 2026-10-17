@@ -1,6 +1,7 @@
 package matehost
 
 import (
+	"os"
 	"strings"
 	"time"
 
@@ -96,7 +97,11 @@ func NewModel(host *Host, cfg Config, history []Item) Model {
 func Program(m Model) *tea.Program {
 	// Mouse reporting makes the wheel scroll the view; without it the
 	// terminal turns the wheel into ↑/↓ keys.
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}
+	if in := newSeqInput(os.Stdin); in != nil {
+		opts = append(opts, tea.WithInput(in))
+	}
+	p := tea.NewProgram(m, opts...)
 	m.host.Subscribe(func(ev Event) { p.Send(hostMsg(ev)) })
 	return p
 }
