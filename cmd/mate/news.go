@@ -55,6 +55,10 @@ func newsLog(workspaceFlag, project string) (string, error) {
 	return matehost.NewsPath(w.MateDir(project)), nil
 }
 
+// optionKeys are the keys an option may have. The REPL's Topic page takes
+// the other letters as its own keys, so an answer is never one of them.
+const optionKeys = "abcd"
+
 func cmdNewsOpen(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("news open", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -81,12 +85,15 @@ func cmdNewsOpen(args []string, stdout, stderr io.Writer) error {
 		return newUsageError("mate news open: --title is required")
 	}
 	n := matehost.News{Title: *title, Crew: *crew, Kind: *kind, Question: *question, Context: context}
+	if len(options) > len(optionKeys) {
+		return newUsageErrorf("mate news open: at most %d options, got %d", len(optionKeys), len(options))
+	}
 	seen := map[string]bool{}
 	for _, o := range options {
 		key, text, ok := strings.Cut(o, "=")
 		key = strings.TrimSpace(key)
-		if !ok || key == "" || strings.ContainsAny(key, " \t") || strings.TrimSpace(text) == "" {
-			return newUsageErrorf("mate news open: --option wants key=text, got %q", o)
+		if !ok || !strings.Contains(optionKeys, key) || len(key) != 1 || strings.TrimSpace(text) == "" {
+			return newUsageErrorf("mate news open: --option wants key=text with a key from a to d, got %q", o)
 		}
 		if seen[key] {
 			return newUsageErrorf("mate news open: option %s is given twice", key)
@@ -124,7 +131,7 @@ func cmdNewsUpdate(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, `usage: mate news update <project> <id> "<text>" [--ask] [--workspace <dir>]`)
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
-	ask := fs.Bool("ask", false, "the update asks the captain again")
+	ask := fs.Bool("ask", false, "the text is the news's question, asked again; it replaces the question and its options")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
 	}

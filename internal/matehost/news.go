@@ -161,7 +161,8 @@ func OpenNews(path string, n News, now time.Time) (int, error) {
 
 // UpdateNews adds the Mate's line to an open news and moves it to the top.
 // It waits on the captain again only when the Mate asks them (ask): an
-// update is not a new debt.
+// update is not a new debt. An ask is the news's question from then on,
+// without the options of the one before.
 func UpdateNews(path string, id int, text string, ask bool, now time.Time) error {
 	op := opUpdate
 	if ask {
@@ -266,9 +267,13 @@ func LoadNews(path string) ([]News, error) {
 		}
 		n := &list[i]
 		switch ev.Op {
-		case opUpdate, opAsk:
+		case opUpdate:
 			n.Notes = append(n.Notes, NewsNote{At: ev.At, Text: ev.Text})
-			if ev.Op == opAsk && !n.Closed() {
+		case opAsk:
+			// A new question takes the place of the open one, and the
+			// options answered that one, not this.
+			n.Question, n.Options = ev.Text, nil
+			if !n.Closed() {
 				n.Status, n.Archived = NewsNew, false
 			}
 		case opSeen:
@@ -302,7 +307,11 @@ func LoadNews(path string) ([]News, error) {
 }
 
 // newsAnswerPrompt is the turn a captain's answer to a news becomes: the
-// Mate's manual reads `[news #n]` as the captain answering news n.
+// Mate's manual reads `[news #n]` as the captain answering news n. It
+// carries the question it answers, so the Mate need not find it.
 func newsAnswerPrompt(n News, text string) string {
+	if q := strings.TrimSpace(n.Question); q != "" {
+		return fmt.Sprintf("[news #%d · %s] Hỏi: %s · Trả lời: %s", n.ID, n.Title, q, text)
+	}
 	return fmt.Sprintf("[news #%d · %s] %s", n.ID, n.Title, text)
 }
