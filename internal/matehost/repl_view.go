@@ -182,13 +182,13 @@ func (m Model) footer(w int) []string {
 	case m.mode == viewList:
 		hints = []keyHint{{"Enter", "mở news"}, {"Esc", "đóng"}, {"^N", "news chờ tiếp"}}
 	case m.mode == viewNews && m.newsClosed():
-		hints = []keyHint{{"Esc", "về chat"}, {"↑↓ PgUp", "cuộn"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
+		hints = []keyHint{{"Esc", "về chat"}, {"↑↓ PgUp", "cuộn"}, {"^O", "lượt cũ"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
 	case m.mode == viewNews && m.pending != nil:
 		hints = []keyHint{{"u", "hoàn tác"}, {"Esc", "về chat"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
 	case m.mode == viewNews && m.focusOptions:
 		hints = []keyHint{{"a b c", "chọn"}, {"↑↓ Enter", "chọn"}, {"Tab", "gõ tự do"}, {"Esc", "về chat"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
 	case m.mode == viewNews:
-		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"Esc", "về chat"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
+		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"Esc", "về chat"}, {"^O", "lượt cũ"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
 		if n, ok := m.findNews(m.newsID); ok && len(n.Options) > 0 {
 			hints = append(hints[:2], append([]keyHint{{"Tab", "lựa chọn"}}, hints[2:]...)...)
 		}
@@ -630,7 +630,7 @@ func helpLines() []string {
 		{"Esc", "ngắt lượt đang chạy"},
 		{"^X", "bỏ tin xếp hàng cuối"},
 		{"^R", "thử lại lượt lỗi"},
-		{"^O", "mở/thu gọn tool lượt cuối · phần Mate ghi nhớ"},
+		{"^O", "mở/thu gọn tool lượt cuối · phần Mate ghi nhớ · lượt cũ trong news"},
 		{"^T", "danh sách news"},
 		{"^N", "news chờ anh tiếp theo"},
 		{"#3 …", "trả lời news #3 ngay từ chat"},

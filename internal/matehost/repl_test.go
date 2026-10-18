@@ -265,3 +265,43 @@ func TestREPLHoldsTheNewsPlace(t *testing.T) {
 		t.Fatalf("a note moved the news: %q, was %q", got, before)
 	}
 }
+
+// TestREPLFoldsSettledNewsRounds: in a news, the rounds before the
+// captain's last message are one line each, and ^O unfolds them.
+func TestREPLFoldsSettledNewsRounds(t *testing.T) {
+	m := sampleModel(100, 40)
+	at := m.now()
+	m.news = []News{{ID: 3, Title: "E0: cần bản xuất design", Status: NewsWorking, OpenedAt: at, At: at}}
+	m.items = append(m.items,
+		Item{At: at, Source: SourceCaptain, News: 3, Text: "đã up hết design lên rồi đó", Done: true,
+			Reply: "Cảm ơn anh. Em đã gửi hai điểm cần anh chốt.\n\nĐoạn hai của lượt cũ."},
+		Item{At: at, Source: SourceApp, News: 3, Label: "event", Done: true,
+			Reply: "Đã giao việc khung bản đồ.\n\nĐoạn hai của tin app cũ."},
+		Item{At: at, Source: SourceApp, News: 3, Label: "event", Silent: true, Reply: "—", Done: true},
+		Item{At: at, Source: SourceCaptain, News: 3, Text: "ok, anh đã update lại trên linear", Done: true,
+			Reply: "Đã giao việc onboard.\n\nPLA-12 vẫn chờ anh chọn cách làm sheet."},
+	)
+	m.openNews(3)
+	view := ansi.Strip(m.View())
+	for _, want := range []string{"2 lượt trước đã xong · ^O mở", "▸ đã up hết design lên rồi đó → Cảm ơn anh.", "▸ ● Đã giao việc khung bản đồ.", "PLA-12 vẫn chờ anh chọn cách làm sheet."} {
+		if !strings.Contains(view, want) {
+			t.Errorf("folded news lacks %q:\n%s", want, view)
+		}
+	}
+	for _, gone := range []string{"Đoạn hai của lượt cũ.", "Đoạn hai của tin app cũ."} {
+		if strings.Contains(view, gone) {
+			t.Errorf("folded news still shows %q:\n%s", gone, view)
+		}
+	}
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	view = ansi.Strip(next.(Model).View())
+	for _, want := range []string{"Đoạn hai của lượt cũ.", "Đoạn hai của tin app cũ.", "PLA-12 vẫn chờ anh chọn cách làm sheet."} {
+		if !strings.Contains(view, want) {
+			t.Errorf("^O did not unfold %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "lượt trước đã xong") {
+		t.Errorf("unfolded news still says rounds are folded:\n%s", view)
+	}
+}
