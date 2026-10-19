@@ -89,6 +89,8 @@ Keep the branch a clean fast-forward onto `main`; if it has advanced, rebase ont
 # Before you hand back
 Run every `verify:` under `## Acceptance` yourself, against the committed branch.
 Where a `verify:` asks you to find the project's own check, find it, run it, and name the exact command you ran.
+Every other claim in the hand-back, not only the acceptance rows, carries the command you ran and its output, or says `unverified`.
+After fixing a correction or a review finding, rerun the check that caught it, not only the test of the line you changed.
 Then write `/ws/.mate/projects/shop/crews/k3/handback.md`.
 It is outside this worktree on purpose, like the status file: the worktree is removed when the task is closed, and that file is kept.
 It has exactly these four parts, within 120 lines in all:

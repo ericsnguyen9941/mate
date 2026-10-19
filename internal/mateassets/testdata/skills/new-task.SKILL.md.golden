@@ -59,6 +59,10 @@ The file is the brief's `# Task`: exactly these sections, each a `##` heading, i
 - `## What we already know` - one fact per line with its source: PROJECT.md and its heading, a report path, `project facts`, a hand-back, the captain. Never invent the repository's state. The last line starts `Unknown:`.
 - `## Build` - only what the captain's words require, one line each, and an `Out of scope:` line. A sweep or hardening nobody asked for is follow-up, not scope; a product choice the words do not settle is an open decision.
 - `## Acceptance` - one observable result per line, traceable to the captain's words, each with `verify:` and the exact command when a document gives one, else "find the project's own check for this, run it, and quote the command and its output".
+  A `verify:` is the check an independent reviewer would run, in a clean environment, not the Crew's warm one:
+  - a gate that depends on state (a simulator, caches, a database, DerivedData) runs from the clean state the repo provides;
+  - UI built to a reference image or HTML compares the render to the reference, with a tolerance;
+  - a claim that a re-run keeps something re-runs it, then `git diff --exit-code`.
 - `## Open decisions` - `none`, or one choice per line with its options and `decides: captain` or `decides: mate`. The Crew stops at each and never picks.
 - `## Deliverable` - scouts only: the questions the report must answer, one per line.
 

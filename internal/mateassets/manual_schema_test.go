@@ -345,6 +345,37 @@ func TestDeviationsAreSettledBeforeReview(t *testing.T) {
 	}
 }
 
+// TestBuilderRunsTheReviewersChecks pins CON-108: four of the eight
+// changes-requested reviews on plantrip and mihuv2 (17-19/10) caught what
+// the Crew would have caught had it run the reviewer's check - a re-run
+// claim never re-run, a gate run only on a warm simulator, UI built to a
+// reference image never compared to it, a fix that broke what the earlier
+// check had caught. The brief's verify: is the reviewer's check in a clean
+// environment, every hand-back claim carries its command, a fix reruns the
+// check that caught it, and the finding becomes a standing check.
+func TestBuilderRunsTheReviewersChecks(t *testing.T) {
+	for skill, wants := range map[string][]string{
+		briefSkill: {"the check an independent reviewer would run, in a clean environment", "runs from the clean state the repo provides", "compares the render to the reference, with a tolerance", "re-runs it, then `git diff --exit-code`"},
+		stowSkill:  {"could have caught with a cheaper check goes under `## How to work here` as a standing check"},
+	} {
+		text := skillText(t, skill)
+		for _, want := range wants {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s does not say %q", skill, want)
+			}
+		}
+	}
+	crew, err := RenderBrief(fixedBriefParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Every other claim in the hand-back, not only the acceptance rows, carries the command you ran and its output, or says `unverified`", "rerun the check that caught it"} {
+		if !strings.Contains(string(crew), want) {
+			t.Errorf("crew brief does not say %q", want)
+		}
+	}
+}
+
 // TestWorkIsNamedAfterItsIssue pins CON-89: with a tracker, a crew id, its
 // reviewer's id, its commits and its pull request all carry the issue ID, so
 // the captain can follow one issue through the console, git and the tracker.
