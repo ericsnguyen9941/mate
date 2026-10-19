@@ -322,6 +322,29 @@ func TestCrewsAreNamedAfterTheirTask(t *testing.T) {
 	}
 }
 
+// TestDeviationsAreSettledBeforeReview pins CON-107: three of the eight
+// changes-requested reviews on plantrip and mihuv2 (17-19/10) caught a
+// choice the Crew had made and disclosed under Deviations instead of
+// asking. The Mate settles a deviation before it starts a reviewer, and the
+// Crew asks before it builds one or records its reading as the captain's.
+func TestDeviationsAreSettledBeforeReview(t *testing.T) {
+	text := skillText(t, "review-delivery")
+	for _, want := range []string{"A failed step 2 is settled before anyone reviews", "A reviewer never decides a deviation", "`on`: once step 2 holds"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("review-delivery does not say %q", want)
+		}
+	}
+	crew, err := RenderBrief(fixedBriefParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"never report it as a deviation afterwards", "quote their words as they are"} {
+		if !strings.Contains(string(crew), want) {
+			t.Errorf("crew brief does not say %q", want)
+		}
+	}
+}
+
 // TestWorkIsNamedAfterItsIssue pins CON-89: with a tracker, a crew id, its
 // reviewer's id, its commits and its pull request all carry the issue ID, so
 // the captain can follow one issue through the console, git and the tracker.
