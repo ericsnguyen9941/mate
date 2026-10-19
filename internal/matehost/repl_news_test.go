@@ -284,3 +284,66 @@ func TestREPLOpensTheFocusedNews(t *testing.T) {
 		t.Fatalf("focus left mode %d, open #%d, cursor #%d", m.mode, m.openID, m.selID)
 	}
 }
+
+// TestREPLTopicFoldsSettledRounds is CON-103 in the Topic page: in the open
+// frame, the rounds before the captain's last message are one line each,
+// and ^O unfolds them - while writing too - until another frame opens.
+func TestREPLTopicFoldsSettledRounds(t *testing.T) {
+	m := sampleModel(100, 60)
+	at := m.now()
+	m.news = []News{{ID: 3, Title: "E0: cần bản xuất design", Status: NewsWorking, OpenedAt: at, At: at}}
+	m.items = append(m.items,
+		Item{At: at, Source: SourceCaptain, News: 3, Text: "đã up hết design lên rồi đó", Done: true,
+			Reply: "Cảm ơn anh. Em đã gửi hai điểm cần anh chốt.\n\nĐoạn hai của lượt cũ."},
+		Item{At: at, Source: SourceApp, News: 3, Label: "event", Done: true,
+			Reply: "Đã giao việc khung bản đồ.\n\nĐoạn hai của tin app cũ."},
+		Item{At: at, Source: SourceApp, News: 3, Label: "event", Silent: true, Reply: "—", Done: true},
+		Item{At: at, Source: SourceCaptain, News: 3, Text: "ok, anh đã update lại trên linear", Done: true,
+			Reply: "Đã giao việc onboard.\n\nPLA-12 vẫn chờ anh chọn cách làm sheet."},
+	)
+	m.openTopic(3)
+	view := ansi.Strip(m.View())
+	for _, want := range []string{"2 lượt trước đã xong · ^O mở", "▸ đã up hết design lên rồi đó → Cảm ơn anh.", "▸ ● Đã giao việc khung bản đồ.", "PLA-12 vẫn chờ anh chọn cách làm sheet.", "^O lượt cũ"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("folded frame lacks %q:\n%s", want, view)
+		}
+	}
+	for _, gone := range []string{"Đoạn hai của lượt cũ.", "Đoạn hai của tin app cũ."} {
+		if strings.Contains(view, gone) {
+			t.Errorf("folded frame still shows %q:\n%s", gone, view)
+		}
+	}
+
+	unfolded := func(m Model, how string) {
+		t.Helper()
+		view := ansi.Strip(m.View())
+		for _, want := range []string{"Đoạn hai của lượt cũ.", "Đoạn hai của tin app cũ.", "PLA-12 vẫn chờ anh chọn cách làm sheet."} {
+			if !strings.Contains(view, want) {
+				t.Errorf("%s did not unfold %q:\n%s", how, want, view)
+			}
+		}
+		if strings.Contains(view, "lượt trước đã xong") {
+			t.Errorf("%s: the frame still says rounds are folded:\n%s", how, view)
+		}
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	m = next.(Model)
+	unfolded(m, "^O")
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	m = next.(Model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = next.(Model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	m = next.(Model)
+	if !m.typing {
+		t.Fatalf("^O while writing left the composer")
+	}
+	unfolded(m, "^O while writing")
+
+	m.switchTo(viewTopics, 0)
+	m.openTopic(3)
+	if !strings.Contains(ansi.Strip(m.View()), "2 lượt trước đã xong") {
+		t.Errorf("reopening the frame kept its rounds unfolded:\n%s", ansi.Strip(m.View()))
+	}
+}

@@ -125,6 +125,9 @@ func (m Model) selected(list []News) int {
 // composer of what it leaves: the chat's draft, and each frame's.
 func (m *Model) switchTo(mode viewMode, open int) {
 	m.stash()
+	if open != m.openID {
+		m.roundsOpen = false
+	}
 	m.mode, m.openID, m.typing = mode, open, false
 	m.restore()
 }
@@ -345,6 +348,8 @@ func (m Model) topicKey(k tea.KeyMsg) (Model, bool) {
 		if n, ok := m.findNews(m.openID); ok && !n.Closed() {
 			m.typing = true
 		}
+	case tea.KeyCtrlO:
+		m.roundsOpen = !m.roundsOpen
 	case tea.KeyF1:
 		m.help = true
 	case tea.KeyCtrlC:
@@ -412,7 +417,9 @@ func (m Model) typingKey(k tea.KeyMsg) (Model, bool) {
 		m.cursor = m.lineStart()
 	case tea.KeyEnd:
 		m.cursor = m.lineEnd()
-	case tea.KeyPgUp, tea.KeyPgDown, tea.KeyShiftUp, tea.KeyShiftDown, tea.KeyCtrlR, tea.KeyCtrlX, tea.KeyCtrlO:
+	case tea.KeyCtrlO:
+		m.roundsOpen = !m.roundsOpen
+	case tea.KeyPgUp, tea.KeyPgDown, tea.KeyShiftUp, tea.KeyShiftDown, tea.KeyCtrlR, tea.KeyCtrlX:
 		// The chat's keys do nothing here.
 	default:
 		return m, false
@@ -724,18 +731,75 @@ func (m Model) topicFrame(n News, selected bool, w int) []string {
 
 // exchange is the captain's answers to news id and the Mate's replies.
 // The app turn that opened the news shows only its reply, when it had one.
+// The rounds before the captain's last message are settled: one line each,
+// unless ^O unfolded them.
 func (m Model) exchange(id, w int) []string {
 	var out []string
-	for i, it := range m.items {
-		if it.News != id {
-			continue
-		}
-		if lines := m.threadLines(it, w, i == len(m.items)-1 && m.running == nil); len(lines) > 0 {
+	thread, from := m.settled(id)
+	if folded := foldedLines(m.items, thread[:from], w); len(folded) > 0 {
+		out = append(out, "", styleMuted.Render(fmt.Sprintf("%d lượt trước đã xong · ^O mở", len(folded))))
+		out = append(out, folded...)
+	}
+	for _, i := range thread[from:] {
+		if lines := m.threadLines(m.items[i], w, i == len(m.items)-1 && m.running == nil); len(lines) > 0 {
 			out = append(append(out, ""), lines...)
 		}
 	}
 	if it := m.running; it != nil && it.News == id {
 		out = append(append(out, ""), m.threadLines(*it, w, true)...)
+	}
+	return out
+}
+
+// settled is news id's exchange as indexes into m.items, and how many of
+// them are settled rounds to fold: those before the captain's last message
+// (or the turn of it still running). None while ^O has them open.
+func (m Model) settled(id int) (thread []int, from int) {
+	for i, it := range m.items {
+		if it.News == id {
+			thread = append(thread, i)
+		}
+	}
+	if m.roundsOpen {
+		return thread, 0
+	}
+	last := -1
+	for j, i := range thread {
+		if m.items[i].Source == SourceCaptain {
+			last = j
+		}
+	}
+	if r := m.running; r != nil && r.News == id && r.Source == SourceCaptain {
+		last = len(thread)
+	}
+	return thread, max(0, last)
+}
+
+// foldedLines are settled rounds of a news's exchange, one line each: the
+// captain's message, then the first line of the Mate's reply.
+func foldedLines(items []Item, thread []int, w int) []string {
+	var out []string
+	for _, i := range thread {
+		it := items[i]
+		reply := ""
+		if it.Error == "" && !it.Silent {
+			reply = firstLine(strings.TrimSpace(it.Reply))
+		}
+		var line string
+		switch {
+		case it.Source == SourceCaptain:
+			line = "▸ " + strings.Join(strings.Fields(it.Text), " ")
+			if reply != "" {
+				line += styleMuted.Render(" → " + reply)
+			}
+		case reply != "":
+			line = styleMuted.Render("▸ ● " + reply)
+		default:
+			continue
+		}
+		at := it.At.Format("15:04")
+		line = ansi.Truncate(line, max(4, w-len(at)-2), "…")
+		out = append(out, spread(line, styleMuted.Render(at), w))
 	}
 	return out
 }
@@ -798,6 +862,9 @@ func (m Model) frameBottom(n News, border lipgloss.Style, w int) string {
 		hints = []keyHint{{"Tab", "gõ"}, {"Enter", "thu gọn"}}
 	default:
 		hints = []keyHint{{"Tab", "ghi thêm"}, {"Enter", "thu gọn"}}
+	}
+	if thread, from := m.settled(n.ID); from > 0 || (m.roundsOpen && len(thread) > 1) {
+		hints = append(hints, keyHint{"^O", "lượt cũ"})
 	}
 	text := hintLine(hints, w-6)
 	return border.Render("└─ ") + text + " " + border.Render(strings.Repeat("─", max(0, w-5-ansi.StringWidth(text)))+"┘")

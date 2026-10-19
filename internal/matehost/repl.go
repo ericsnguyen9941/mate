@@ -78,6 +78,8 @@ type Model struct {
 	selID  int
 	openID int
 	typing bool
+	// roundsOpen unfolds the settled rounds of the open frame (^O).
+	roundsOpen bool
 	// drafts keep the composer of each view: 0 the chat's, n frame n's.
 	drafts    map[int]string
 	pending   *pendingAnswer

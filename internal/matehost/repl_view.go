@@ -579,7 +579,7 @@ func helpLines() []string {
 		{"Esc", "ngắt lượt đang chạy"},
 		{"^X", "bỏ tin xếp hàng cuối"},
 		{"^R", "thử lại lượt lỗi"},
-		{"^O", "mở/thu gọn tool lượt cuối · phần Mate ghi nhớ"},
+		{"^O", "mở/thu gọn tool lượt cuối · phần Mate ghi nhớ · lượt cũ trong khung"},
 		{"^T", "trang Topic: mỗi câu hỏi một khung"},
 		{"^N", "mở topic chưa trả lời tiếp theo"},
 		{"#3 …", "trả lời topic #3 ngay từ chat"},
