@@ -48,6 +48,7 @@ With the project's review `off`, land it once the hand-back checks out, with `{{
 With `--review` it pins the commit the reviewer saw; either way it closes the Crew; report what it printed, in outcome words, and stop.
 When memory `## Captain` says the captain merges this kind of work, report it as ready instead, naming the branch or the pull request.
 A review that passed but left findings standing must have them recorded first: add a line under `## Queued` with `mate backlog add`, or name the tracker issue, and merge again with `--followups backlog:<text>` or `--followups <TRACKER-id>`.
+A passing review's `## Notes` open no correction round: merge, and record a note worth keeping with `mate backlog add` or in the tracker, as you judge; it needs no `--followups`.
 On `merge refused: needs-rebase`, send the Crew one line, "rebase onto <default branch> and hand back with wait-mate", and merge after its next hand-back. Any other refusal: `mate-commands`.
 
 A pull request ship (`--deliver pr`) hands back with `pr-open:`; review its branch exactly as above. It fixes corrections on the same branch and pushes; the same pull request follows. `mate merge` runs `gh pr merge` for it.
