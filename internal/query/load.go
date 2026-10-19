@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/box"
+	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -470,8 +471,15 @@ func loadCrew(ws *store.Workspace, project, id string, repos Field[[]RepoValue],
 		c.Closed = true
 		return c
 	}
-	openIncident := viewOK && len(box.BlockingIncidents(view, id)) > 0
-	c.Status = CrewStateOf(meta, openIncident, lastStatusVerb(ws, project, id, view, viewOK, w, row))
+	// A question somebody has answered is out of the inbox, and the state
+	// says so too (box.Answered): without the view there is no sent.log to
+	// tell, so the question stands.
+	c.Status = CrewStatus(crewstate.Declare(crewstate.Declaration{
+		Meta:         meta,
+		OpenIncident: viewOK && len(box.BlockingIncidents(view, id)) > 0,
+		LastVerb:     crewstate.StatusVerb(lastStatusVerb(ws, project, id, view, viewOK, w, row)),
+		Answered:     viewOK && box.Answered(view, id),
+	}))
 	return c
 }
 

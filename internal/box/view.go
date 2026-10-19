@@ -268,7 +268,7 @@ func Summarize(v View) Summary {
 	var s Summary
 	s.Crews = len(v.ByCrew)
 	for crew := range v.ByCrew {
-		if st, ok := LatestStatus(v, crew); ok && Attention(st.State) {
+		if st, ok := LatestStatus(v, crew); ok && Attention(st.State) && !Answered(v, crew) {
 			s.Awaiting++
 		}
 	}
