@@ -13,35 +13,33 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// News in the REPL (the design's topics): a badge in the header and a tray
-// over the composer while the captain owes an answer, ^T for the list, ^N
-// for the next one owed, and a screen per news where the captain reads it,
-// picks an option or writes an answer, and Esc goes back to the chat where
-// it was. An answer waits undoDelay before it is sent, so `u` can take it
-// back.
+// News in the REPL are the design's topics (CON-104, design v2 of
+// 2026-10-18): a badge in the header and a tray over the composer while the
+// captain owes an answer, and ^T for the Topic page, which takes the chat's
+// place. Each news is one frame on the page. Folded, a frame is three
+// lines: its number and crew, its question, and whether it is answered.
+// Open, it holds all the captain needs to answer in place: the crew's
+// context, the options a–d, and a line to write in. One frame is open at a
+// time; the cursor moves between frames without opening them. An answer
+// waits undoDelay before it is sent, so `u` can take it back.
 
 const (
-	undoDelay   = 5 * time.Second
-	confirmFor  = 5 * time.Second
-	listMaxRows = 12
-	// unclosedAfter is how long a news may be worked after the captain's
-	// answer before the list says the Mate has not closed it: the captain
-	// owes nothing, the Mate likely forgot `mate news close`.
-	unclosedAfter = 30 * time.Minute
+	undoDelay  = 5 * time.Second
+	confirmFor = 5 * time.Second
+	// ageFrom is the width from which a frame's border shows its age.
+	ageFrom = 90
 )
 
 var (
 	colAttention   = lipgloss.AdaptiveColor{Light: "130", Dark: "214"}
 	styleAttention = lipgloss.NewStyle().Foreground(colAttention)
-	styleSelected  = lipgloss.NewStyle().Reverse(true)
 )
 
 type viewMode int
 
 const (
 	viewChat viewMode = iota
-	viewList
-	viewNews
+	viewTopics
 )
 
 // pendingAnswer is an answer waiting out its undo delay.
@@ -57,130 +55,217 @@ var newsRef = regexp.MustCompile(`^#(\d+)\s+(?s)(.+)$`)
 
 func (m Model) findNews(id int) (News, bool) { return findNews(m.news, id) }
 
-// owed are the news waiting on the captain, oldest first.
-func (m Model) owed() []News {
-	var out []News
-	for _, n := range m.news {
-		if n.Owed() {
-			out = append(out, n)
-		}
-	}
-	return out
+// answered reports whether a news reads as answered: the captain owes it
+// nothing, or their answer to it waits out its undo delay. The Mate at
+// work on an answer is answered too; the page shows only the two states.
+func (m Model) answered(n News) bool {
+	return !n.Owed() || m.pending != nil && m.pending.id == n.ID
 }
 
-// listed are the news of the list's three groups: owed, being handled,
-// closed today.
-func (m Model) listed() (owed, working, closed []News) {
+// owed are the news waiting on the captain, oldest first.
+func (m Model) owed() []News {
+	owed, _ := m.topics()
+	return owed
+}
+
+// topics are the page's frames in their two groups: the news owed, oldest
+// first, then those answered, newest first. A news closed before today is
+// archived and off the page.
+func (m Model) topics() (owed, answered []News) {
 	today := m.now().Format("2006-01-02")
 	for _, n := range m.news {
 		switch {
-		case n.Owed():
+		case !m.answered(n):
 			owed = append(owed, n)
-		case n.Status == NewsWorking:
-			working = append(working, n)
-		case n.Closed() && !n.Archived && n.At.Format("2006-01-02") == today:
-			closed = append(closed, n)
+		case n.Closed() && (n.Archived || n.At.Format("2006-01-02") != today):
+		default:
+			answered = append(answered, n)
 		}
 	}
-	newest := func(l []News) {
-		sort.SliceStable(l, func(i, j int) bool { return l[i].At.After(l[j].At) })
-	}
-	newest(owed)
-	newest(working)
-	newest(closed)
-	return
+	sort.SliceStable(owed, func(i, j int) bool { return owed[i].At.Before(owed[j].At) })
+	sort.SliceStable(answered, func(i, j int) bool { return m.answeredAt(answered[i]).After(m.answeredAt(answered[j])) })
+	return owed, answered
 }
 
-// listFlat are the rows the list selects: the news closed today only
-// while Tab has unfolded them.
-func (m Model) listFlat() []News {
-	a, b, c := m.listed()
-	out := append(append([]News(nil), a...), b...)
-	if m.listClosed {
-		out = append(out, c...)
+// topicList is the page's frames in order.
+func (m Model) topicList() []News {
+	owed, answered := m.topics()
+	return append(owed, answered...)
+}
+
+// answeredAt is when a news last changed, or when the answer waiting out
+// its undo delay was given.
+func (m Model) answeredAt(n News) time.Time {
+	if p := m.pending; p != nil && p.id == n.ID {
+		return p.at
 	}
-	return out
+	if !n.AnsweredAt.IsZero() && n.AnsweredAt.After(n.At) {
+		return n.AnsweredAt
+	}
+	return n.At
+}
+
+// selected is the index of the frame under the cursor in list, the first
+// when the news it was on left the page, -1 on an empty page.
+func (m Model) selected(list []News) int {
+	for i, n := range list {
+		if n.ID == m.selID {
+			return i
+		}
+	}
+	if len(list) == 0 {
+		return -1
+	}
+	return 0
 }
 
 // --- moving between views ---
 
-// openNews shows news id, keeping the chat's draft and scroll to come back
-// to.
-func (m *Model) openNews(id int) {
+// switchTo shows mode with frame open open (0 for none), keeping the
+// composer of what it leaves: the chat's draft, and each frame's.
+func (m *Model) switchTo(mode viewMode, open int) {
+	m.stash()
+	if open != m.openID {
+		m.roundsOpen = false
+	}
+	m.mode, m.openID, m.typing = mode, open, false
+	m.restore()
+}
+
+// draftKey is the draft the composer holds now: 0 the chat's, n frame n's,
+// -1 none (the page with every frame folded).
+func (m Model) draftKey() int {
+	switch {
+	case m.mode == viewChat:
+		return 0
+	case m.openID > 0:
+		return m.openID
+	}
+	return -1
+}
+
+func (m *Model) stash() {
+	if m.drafts == nil {
+		m.drafts = map[int]string{}
+	}
+	if key := m.draftKey(); key >= 0 {
+		m.drafts[key] = string(m.input)
+	}
+}
+
+func (m *Model) restore() {
+	r := []rune(m.drafts[m.draftKey()])
+	m.input, m.cursor = r, len(r)
+}
+
+// openTopic shows the page with the cursor on news id and its frame open.
+func (m *Model) openTopic(id int) {
 	n, ok := m.findNews(id)
 	if !ok {
 		return
 	}
-	m.stash()
-	m.mode, m.newsID, m.newsScroll, m.newsExpand = viewNews, id, 0, false
-	m.restore()
-	m.optSel = 0
-	for i, o := range n.Options {
-		if o.Recommended {
-			m.optSel = i
-		}
-	}
-	m.focusOptions = len(n.Options) > 0 && n.Owed() && len(m.input) == 0
+	m.selID = id
+	m.switchTo(viewTopics, id)
 	if n.Status == NewsNew {
 		go m.host.SeenNews(id)
 	}
 }
 
-func (m *Model) closeView() {
-	m.stash()
-	m.mode, m.newsID = viewChat, 0
-	m.restore()
+// showTopics shows the page from the chat, every frame folded and the
+// cursor on the first.
+func (m *Model) showTopics() {
+	m.selID = 0
+	if list := m.topicList(); len(list) > 0 {
+		m.selID = list[0].ID
+	}
+	m.switchTo(viewTopics, 0)
 }
 
-// stash and restore keep a draft per view: the chat's, and each news's.
-func (m *Model) stash() {
-	if m.drafts == nil {
-		m.drafts = map[int]string{}
+// toggle opens the frame under the cursor, or folds it when it is open.
+func (m *Model) toggle() {
+	list := m.topicList()
+	i := m.selected(list)
+	if i < 0 {
+		return
 	}
-	key := 0
-	if m.mode == viewNews {
-		key = m.newsID
+	if m.openID == list[i].ID {
+		m.switchTo(viewTopics, 0)
+		return
 	}
-	m.drafts[key] = string(m.input)
+	m.openTopic(list[i].ID)
 }
 
-func (m *Model) restore() {
-	key := 0
-	if m.mode == viewNews {
-		key = m.newsID
+// moveCursor moves the cursor n frames down (up if n < 0), opening none.
+func (m *Model) moveCursor(n int) {
+	list := m.topicList()
+	if i := m.selected(list); i >= 0 {
+		m.selID = list[min(len(list)-1, max(0, i+n))].ID
 	}
-	r := []rune(m.drafts[key])
-	m.input, m.cursor = r, len(r)
 }
 
-// nextOwed opens the owed news after the one open now, oldest first, and
-// wraps around.
+// nextOwed opens the frame owed after the one under the cursor, oldest
+// first, wrapping around; from the chat, the oldest owed.
 func (m *Model) nextOwed() {
 	owed := m.owed()
 	if len(owed) == 0 {
-		m.note = "không có news nào chờ anh"
+		m.note = "không có topic nào chờ anh"
 		return
 	}
 	next := owed[0]
-	if m.mode == viewNews {
+	if m.mode == viewTopics {
+		// The frame under the cursor first, unless it is open already.
 		for i, n := range owed {
-			if n.ID == m.newsID {
-				next = owed[(i+1)%len(owed)]
-				break
+			if n.ID != m.selID {
+				continue
 			}
+			next = n
+			if m.openID == n.ID {
+				next = owed[(i+1)%len(owed)]
+			}
+			break
 		}
 	}
-	m.openNews(next.ID)
+	m.openTopic(next.ID)
 }
 
 // --- answering ---
 
-// answer queues an answer to news id behind the undo delay.
+// answer queues an answer to news id behind the undo delay. On the page
+// its frame folds into the answered, and the cursor moves to the frame
+// owed after it, unopened.
 func (m *Model) answer(id int, text, label string) {
-	if p := m.pending; p != nil {
+	if m.pending != nil {
 		m.flush()
 	}
+	owed := m.owed()
 	m.pending = &pendingAnswer{id: id, text: text, label: label, at: m.now()}
+	if m.mode != viewTopics {
+		return
+	}
+	if m.openID == id {
+		m.switchTo(viewTopics, 0)
+	}
+	for i, n := range owed {
+		if n.ID != id {
+			continue
+		}
+		rest := append(append([]News(nil), owed[i+1:]...), owed[:i]...)
+		if len(rest) > 0 {
+			m.selID = rest[0].ID
+		}
+		break
+	}
+}
+
+// undo takes back the answer waiting out its delay; on the page its frame
+// opens again to be answered.
+func (m *Model) undo() {
+	p := m.pending
+	m.pending = nil
+	m.note = fmt.Sprintf("đã hoàn tác câu trả lời cho #%d", p.id)
+	if m.mode == viewTopics {
+		m.openTopic(p.id)
+	}
 }
 
 // flush sends the pending answer.
@@ -213,146 +298,130 @@ func (m *Model) choose(n News, i int) {
 
 // --- keys ---
 
-// newsKey handles a key in the list or a news; handled is false for keys
-// the composer takes.
+// newsKey handles a key that moves between the chat and the page, and
+// every key on the page; handled is false for keys the composer takes.
 func (m Model) newsKey(k tea.KeyMsg) (Model, bool) {
 	switch k.Type {
 	case tea.KeyCtrlT:
-		if m.mode == viewList {
-			m.mode = m.listFrom
+		if m.mode == viewTopics {
+			m.switchTo(viewChat, 0)
 		} else {
-			m.listFrom, m.mode, m.listSel = m.mode, viewList, 0
+			m.showTopics()
 		}
 		return m, true
 	case tea.KeyCtrlN:
 		m.nextOwed()
 		return m, true
 	}
-	if p := m.pending; p != nil && k.Type == tea.KeyRunes && string(k.Runes) == "u" && (len(m.input) == 0 || m.focusOptions) {
-		m.pending = nil
-		m.note = fmt.Sprintf("đã hoàn tác câu trả lời cho #%d", p.id)
+	if m.pending != nil && k.Type == tea.KeyRunes && string(k.Runes) == "u" && !m.typing && (m.mode == viewTopics || len(m.input) == 0) {
+		m.undo()
 		return m, true
 	}
-	switch m.mode {
-	case viewList:
-		return m.listKey(k), true
-	case viewNews:
-		return m.newsViewKey(k)
+	if m.mode != viewTopics {
+		return m, false
 	}
-	return m, false
+	if m.typing {
+		return m.typingKey(k)
+	}
+	return m.topicKey(k)
 }
 
-func (m Model) listKey(k tea.KeyMsg) Model {
-	flat := m.listFlat()
+// topicKey is a key on the page while the captain is not writing in a
+// frame: the cursor, opening and folding, and the options of the frame
+// open.
+func (m Model) topicKey(k tea.KeyMsg) (Model, bool) {
+	list := m.topicList()
 	switch k.Type {
 	case tea.KeyEsc:
-		m.mode = m.listFrom
-	case tea.KeyTab:
-		m.listClosed = !m.listClosed
-		m.listSel = min(m.listSel, max(0, len(m.listFlat())-1))
+		m.switchTo(viewChat, 0)
 	case tea.KeyUp:
-		m.listSel = max(0, m.listSel-1)
+		m.moveCursor(-1)
 	case tea.KeyDown:
-		m.listSel = min(max(0, len(flat)-1), m.listSel+1)
-	case tea.KeyEnter:
-		if m.listSel < len(flat) {
-			m.mode = m.listFrom
-			m.openNews(flat[m.listSel].ID)
+		m.moveCursor(1)
+	case tea.KeyHome:
+		m.moveCursor(-len(list))
+	case tea.KeyEnd:
+		m.moveCursor(len(list))
+	case tea.KeyEnter, tea.KeySpace:
+		m.toggle()
+	case tea.KeyTab:
+		if n, ok := m.findNews(m.openID); ok && !n.Closed() {
+			m.typing = true
 		}
+	case tea.KeyCtrlO:
+		m.roundsOpen = !m.roundsOpen
+	case tea.KeyF1:
+		m.help = true
+	case tea.KeyCtrlC:
+		// Interrupting the Mate works on the page too.
+		return m, false
 	case tea.KeyRunes:
-		switch r := string(k.Runes); {
-		case r == "j":
-			m.listSel = min(max(0, len(flat)-1), m.listSel+1)
-		case r == "k":
-			m.listSel = max(0, m.listSel-1)
-		case r == "x":
-			if m.listSel < len(flat) && flat[m.listSel].Closed() {
-				go m.host.ArchiveNews(flat[m.listSel].ID)
+		r := strings.ToLower(string(k.Runes))
+		if n, ok := m.findNews(m.openID); ok && !m.answered(n) {
+			for i, o := range n.Options {
+				if strings.ToLower(o.Key) == r {
+					m.choose(n, i)
+					return m, true
+				}
 			}
+		}
+		switch {
+		case r == "j":
+			m.moveCursor(1)
+		case r == "k":
+			m.moveCursor(-1)
+		case r == "?":
+			m.help = true
 		case len(r) == 1 && r >= "1" && r <= "9":
-			if i, _ := strconv.Atoi(r); i <= len(flat) {
-				m.mode = m.listFrom
-				m.openNews(flat[i-1].ID)
+			if i, _ := strconv.Atoi(r); i <= len(list) {
+				m.selID = list[i-1].ID
+				m.openTopic(list[i-1].ID)
 			}
 		}
 	}
-	return m
+	return m, true
 }
 
-func (m Model) newsViewKey(k tea.KeyMsg) (Model, bool) {
-	n, ok := m.findNews(m.newsID)
-	if !ok {
-		m.closeView()
+// typingKey is a key while the captain writes in the open frame: Enter
+// sends, Tab goes back to the options, and the composer takes the rest.
+func (m Model) typingKey(k tea.KeyMsg) (Model, bool) {
+	n, ok := m.findNews(m.openID)
+	if !ok || n.Closed() {
+		m.typing = false
 		return m, true
 	}
 	switch k.Type {
 	case tea.KeyEsc:
-		m.closeView()
-		return m, true
-	case tea.KeyCtrlO:
-		m.newsExpand = !m.newsExpand
-		m.newsScroll = 0
-		return m, true
-	case tea.KeyPgUp:
-		m.scrollView(max(1, m.viewRows()-2))
-		return m, true
-	case tea.KeyPgDown:
-		m.scrollView(-max(1, m.viewRows()-2))
-		return m, true
-	}
-	if n.Closed() {
-		// A closed news is read, not answered: no composer takes the key.
-		switch k.Type {
-		case tea.KeyUp:
-			m.scrollView(1)
-		case tea.KeyDown:
-			m.scrollView(-1)
-		}
-		return m, true
-	}
-	switch k.Type {
+		m.switchTo(viewChat, 0)
 	case tea.KeyTab:
-		if m.focusOptions {
-			m.focusOptions = false
-		} else if len(n.Options) > 0 && len(m.input) == 0 {
-			m.focusOptions = true
-		}
-		return m, true
+		m.typing = false
 	case tea.KeyEnter:
 		if k.Alt {
 			return m, false
-		}
-		if m.focusOptions {
-			m.choose(n, m.optSel)
-			return m, true
 		}
 		text := strings.TrimSpace(string(m.input))
 		if text == "" {
 			return m, true
 		}
 		m.setInput(nil)
-		m.answer(n.ID, text, "Đã gửi")
-		return m, true
-	}
-	if !m.focusOptions {
-		return m, false
-	}
-	switch k.Type {
-	case tea.KeyUp:
-		m.optSel = max(0, m.optSel-1)
-	case tea.KeyDown:
-		m.optSel = min(len(n.Options)-1, m.optSel+1)
-	case tea.KeyRunes:
-		key := strings.ToLower(string(k.Runes))
-		for i, o := range n.Options {
-			if strings.ToLower(o.Key) == key {
-				m.optSel = i
-				m.choose(n, i)
-				return m, true
-			}
+		label := "Đã gửi"
+		if !n.Owed() {
+			label = "Đã ghi thêm"
 		}
-		// Any other letter starts a written answer.
-		m.focusOptions = false
+		m.answer(n.ID, text, label)
+	case tea.KeyUp:
+		m.lineUp()
+	case tea.KeyDown:
+		m.lineDown()
+	case tea.KeyHome:
+		m.cursor = m.lineStart()
+	case tea.KeyEnd:
+		m.cursor = m.lineEnd()
+	case tea.KeyCtrlO:
+		m.roundsOpen = !m.roundsOpen
+	case tea.KeyPgUp, tea.KeyPgDown, tea.KeyShiftUp, tea.KeyShiftDown, tea.KeyCtrlR, tea.KeyCtrlX:
+		// The chat's keys do nothing here.
+	default:
 		return m, false
 	}
 	return m, true
@@ -380,31 +449,36 @@ func (m *Model) chatNewsRef(text string) bool {
 			answer = fmt.Sprintf("[%s] %s", o.Key, o.Text)
 		}
 	}
-	m.answer(id, answer, fmt.Sprintf("Đã ghi vào #%d", id))
+	m.answer(id, answer, "Đã ghi từ chat")
 	return true
 }
 
-// --- drawing ---
+// --- mouse ---
 
-// newsStatus is how a news reads at now. A news worked unclosedAfter past
-// the captain's answer reads as the Mate not having closed it.
-func newsStatus(n News, now time.Time) (glyph, label string, style lipgloss.Style) {
-	switch n.Status {
-	case NewsNew:
-		return "●", "mới", styleAttention.Bold(true)
-	case NewsWaiting:
-		return "●", "chờ anh", styleAttention
-	case NewsWorking:
-		if now.Sub(n.At) >= unclosedAfter {
-			return "⠋", "Mate chưa đóng", styleAttention
+// clickTopic opens or folds the frame at screen row y of the page.
+func (m *Model) clickTopic(y int) {
+	w, _ := m.size()
+	_, frames := m.topicView(w, m.topicRows())
+	row := y - len(m.header(w))
+	if row < 0 || row >= len(frames) || frames[row] < 0 {
+		return
+	}
+	list := m.topicList()
+	m.selID = list[frames[row]].ID
+	m.toggle()
+}
+
+// clickChat opens the oldest frame owed when the captain clicks the
+// tray's line in the chat.
+func (m *Model) clickChat(y int) {
+	if row := m.trayRow(); row >= 0 && y == row {
+		if owed := m.owed(); len(owed) > 0 {
+			m.openTopic(owed[0].ID)
 		}
-		return "⠋", "Mate xử lý", styleWorking
-	case NewsDropped:
-		return "✓", "tự đóng", styleMuted
-	default:
-		return "✓", "xong", styleSuccess
 	}
 }
+
+// --- drawing ---
 
 func age(d time.Duration) string {
 	switch {
@@ -429,208 +503,276 @@ func (m Model) badge() string {
 			style = style.Bold(true)
 		}
 	}
-	return style.Render(fmt.Sprintf("● %d chờ anh", len(owed)))
+	return style.Render(fmt.Sprintf("● %d chưa trả lời", len(owed)))
 }
 
-// tray is the line over the composer in the chat: an answer just sent, and
-// the newest news owed.
-func (m Model) tray(w int) []string {
-	var out []string
+// answerLine is the answer waiting out its undo delay, or the one just
+// sent.
+func (m Model) answerLine() []string {
 	if p := m.pending; p != nil {
 		left := max(0, int((undoDelay-m.now().Sub(p.at)+time.Second-1)/time.Second))
-		out = append(out, styleSuccess.Render(fmt.Sprintf(" ✓ %s · u hoàn tác (%ds)", p.label, left)))
-	} else if m.confirm != "" && m.now().Sub(m.confirmAt) < confirmFor {
-		out = append(out, styleSuccess.Render(" "+m.confirm))
+		return []string{styleSuccess.Render(fmt.Sprintf(" ✓ #%d · %s · u hoàn tác (%ds)", p.id, p.label, left))}
 	}
+	if m.confirm != "" && m.now().Sub(m.confirmAt) < confirmFor {
+		return []string{styleSuccess.Render(" " + m.confirm)}
+	}
+	return nil
+}
+
+// tray is the lines over the composer in the chat: an answer just sent,
+// and the newest news owed.
+func (m Model) tray(w int) []string {
+	out := m.answerLine()
 	owed := m.owed()
 	if len(owed) == 0 {
 		return out
 	}
-	n := owed[0]
-	for _, x := range owed {
-		if x.At.After(n.At) {
-			n = x
-		}
+	n := owed[len(owed)-1]
+	style := styleAttention
+	if n.Status == NewsNew {
+		style = style.Bold(true)
 	}
-	glyph, label, style := newsStatus(n, m.now())
-	text := fmt.Sprintf(" %s %s  #%d ", glyph, label, n.ID)
+	text := fmt.Sprintf(" ● chưa trả lời  #%d ", n.ID)
 	if n.Crew != "" {
 		text += n.Crew + ": "
 	}
-	text += n.Title
+	text += topicQuestion(n)
 	more := ""
 	if len(owed) > 1 {
 		more = fmt.Sprintf("+%d · ", len(owed)-1)
 	}
-	right := styleMuted.Render(more + "^N news ")
+	right := styleMuted.Render(more + "^N trả lời ")
 	text = ansi.Truncate(text, max(4, w-ansi.StringWidth(right)-2), "…")
 	return append(out, spread(style.Render(text), right, w))
 }
 
-// listBox is the ^T list, drawn over the bottom of the conversation.
-func (m Model) listBox(w int) []string {
-	owed, working, closed := m.listed()
-	inner := w - 4
-	row := func(n News, i int) string {
-		glyph, label, style := newsStatus(n, m.now())
-		mark := "  "
-		if i == m.listSel {
-			mark = "▸ "
-		}
-		ageText := age(m.now().Sub(n.At))
-		right := fmt.Sprintf("%-14s%4s", label, ageText)
-		title := n.Title
-		if n.Crew != "" && w >= 100 {
-			title = fmt.Sprintf("%-20s %s", ansi.Truncate(n.Crew, 20, "…"), title)
-		}
-		left := fmt.Sprintf("%s%s #%d %s", mark, style.Render(glyph), n.ID, title)
-		left = ansi.Truncate(left, max(4, inner-ansi.StringWidth(right)-2), "…")
-		line := spread(left, style.Render(right), inner)
-		if i == m.listSel {
-			line = styleSelected.Render(ansi.Strip(line) + strings.Repeat(" ", max(0, inner-ansi.StringWidth(line))))
-		}
-		return line
+// topicQuestion is what a frame asks: the news's question, or its title
+// when it has none.
+func topicQuestion(n News) string {
+	if q := strings.TrimSpace(n.Question); q != "" {
+		return q
 	}
-	var body []string
-	i := 0
-	group := func(title string, list []News) {
-		if len(list) == 0 {
-			return
-		}
-		if len(body) > 0 {
-			body = append(body, "")
-		}
-		body = append(body, styleMuted.Render(title))
-		for _, n := range list {
-			body = append(body, row(n, i))
-			i++
-		}
-	}
-	group("CHỜ ANH", owed)
-	group("MATE ĐANG XỬ LÝ", working)
-	if m.listClosed {
-		group("XONG HÔM NAY", closed)
-	} else if len(closed) > 0 {
-		if len(body) > 0 {
-			body = append(body, "")
-		}
-		body = append(body, styleMuted.Render(fmt.Sprintf("  ✓ %d xong hôm nay · Tab xem", len(closed))))
-	}
-	if len(body) == 0 {
-		body = []string{styleMuted.Render("Chưa có news nào. Khi crew báo việc cần anh, Mate mở news ở đây.")}
-	}
-	if len(body) > listMaxRows {
-		body = body[:listMaxRows]
-	}
-	summary := fmt.Sprintf(" %d chờ anh · %d Mate xử lý · %d xong ", len(owed), len(working), len(closed))
-	top := styleBorder.Render("┌─ ") + styleBold.Render("News") + " " + styleBorder.Render(strings.Repeat("─", max(0, w-8-ansi.StringWidth(summary)-2))) + styleMuted.Render(summary) + styleBorder.Render("─┐")
-	out := []string{top}
-	for _, l := range body {
-		out = append(out, styleBorder.Render("│ ")+l+strings.Repeat(" ", max(0, inner-ansi.StringWidth(l)))+styleBorder.Render(" │"))
-	}
-	hint := " ↑↓ chọn · Enter mở · 1–9 nhảy · Tab news xong · Esc về "
-	if m.listClosed {
-		hint = " ↑↓ chọn · Enter mở · Tab ẩn news xong · x lưu trữ · Esc về "
-	}
-	return append(out, styleBorder.Render("└─")+styleMuted.Render(hint)+styleBorder.Render(strings.Repeat("─", max(0, w-3-ansi.StringWidth(hint)))+"┘"))
+	return n.Title
 }
 
-// newsLines are the screen of one news: what it is, its context, the
-// Mate's question and options, its updates, and the exchange about it.
-func (m Model) newsLines(w int) []string {
-	n, ok := m.findNews(m.newsID)
-	if !ok {
-		return nil
-	}
-	glyph, label, style := newsStatus(n, m.now())
-	if n.Status == NewsWorking {
-		glyph = spinnerFrames[m.frame%len(spinnerFrames)]
-	}
-	head := []string{strings.ToUpper(label)}
-	if n.Kind != "" {
-		head = append(head, n.Kind)
-	}
-	if n.Crew != "" {
-		head = append(head, "crew "+n.Crew)
-	}
-	head = append(head, n.OpenedAt.Format("15:04"))
-	out := []string{"", ansi.Truncate(style.Render(" "+glyph+" "+strings.Join(head, " · ")), w-1, "…"), ""}
-	for _, l := range wrap(styleBold.Render(n.Title), max(10, w-4)) {
-		out = append(out, "   "+l)
-	}
-	if len(n.Context) > 0 {
-		out = append(out, "", " "+styleMuted.Render("Ngữ cảnh"))
-		for _, c := range n.Context {
-			for _, l := range wrap(c, max(10, w-6)) {
-				out = append(out, styleBorder.Render("  │ ")+l)
+// topicRows is how many lines the page has on screen.
+func (m Model) topicRows() int {
+	w, h := m.size()
+	return max(1, h-len(m.header(w))-len(m.topicBelow(w))-len(m.footer(w)))
+}
+
+// topicBelow is the strip under the page: the answer waiting out its
+// undo delay.
+func (m Model) topicBelow(int) []string { return m.answerLine() }
+
+// topicView is the page as rows lines: the frames, scrolled so the frame
+// under the cursor shows from its top, and for each line the index of its
+// frame in topicList (-1 between frames).
+func (m Model) topicView(w, rows int) ([]string, []int) {
+	lines, frames := m.topicLines(w)
+	sel := m.selected(m.topicList())
+	start, end := 0, 0
+	for i, f := range frames {
+		if f == sel {
+			if end == 0 {
+				start = i
 			}
+			end = i + 1
 		}
 	}
-	if n.Question != "" {
-		out = append(out, "")
-		out = append(out, replyLines(n.Question, w)...)
+	room := rows
+	if len(lines) > rows {
+		// The last row says what is below.
+		room = max(1, rows-1)
 	}
-	if len(n.Options) > 0 {
-		out = append(out, "")
-		for i, o := range n.Options {
-			out = append(out, m.optionLines(n, i, o, w)...)
+	offset := 0
+	if end > room {
+		offset = min(start, end-room)
+	}
+	offset = min(offset, max(0, len(lines)-room))
+	view := append([]string(nil), lines[offset:min(len(lines), offset+room)]...)
+	at := append([]int(nil), frames[offset:min(len(frames), offset+room)]...)
+	if offset+room < len(lines) {
+		hint := "▾ cuộn xuống: còn topic đã trả lời"
+		owed, _ := m.topics()
+		for _, f := range frames[offset+room:] {
+			if f >= 0 && f < len(owed) {
+				hint = "▾ cuộn xuống: còn topic chưa trả lời"
+				break
+			}
+		}
+		view = append(view, " "+styleAccent.Render(hint))
+		at = append(at, -1)
+	}
+	for len(view) < rows {
+		view, at = append(view, ""), append(at, -1)
+	}
+	return view, at
+}
+
+// topicLines are every line of the page and the frame each belongs to.
+func (m Model) topicLines(w int) ([]string, []int) {
+	owed, answered := m.topics()
+	list := append(append([]News(nil), owed...), answered...)
+	if len(list) == 0 {
+		return []string{"", styleMuted.Render(" Chưa có topic nào. Khi crew báo việc cần anh, Mate mở topic ở đây.")}, []int{-1, -1}
+	}
+	sel := m.selected(list)
+	var lines []string
+	var frames []int
+	add := func(l string, f int) { lines, frames = append(lines, l), append(frames, f) }
+	for i, n := range list {
+		add("", -1)
+		if i == len(owed) {
+			add(styleMuted.Render(" Đã trả lời"), -1)
+		}
+		for _, l := range m.topicFrame(n, i == sel, w) {
+			add(l, i)
+		}
+	}
+	return lines, frames
+}
+
+// topicFrame is one topic: three lines folded, everything to answer it open.
+func (m Model) topicFrame(n News, selected bool, w int) []string {
+	open := n.ID == m.openID
+	answered := m.answered(n)
+	border := styleBorder
+	if selected || open {
+		border = styleAccent
+	}
+	inner := max(10, w-4)
+
+	// The top border: the number and crew left, the state right.
+	left := styleBold.Render(fmt.Sprintf("#%d", n.ID))
+	if answered {
+		left = styleMuted.Render(fmt.Sprintf("#%d", n.ID))
+	}
+	if selected {
+		left = styleAccent.Render("▸ ") + left
+	}
+	if n.Crew != "" {
+		left += styleMuted.Render(" · " + n.Crew)
+	}
+	state := styleAttention.Render("● chưa trả lời")
+	since := n.At
+	switch {
+	case n.Status == NewsDropped:
+		state, since = styleMuted.Render("✓ tự đóng"), m.answeredAt(n)
+	case answered:
+		state, since = styleSuccess.Render("✓ đã trả lời"), m.answeredAt(n)
+	}
+	if w >= ageFrom {
+		state += styleMuted.Render(" · " + age(m.now().Sub(since)))
+	}
+	room := max(4, w-8-ansi.StringWidth(state))
+	if ansi.StringWidth(left) > room {
+		left = ansi.Truncate(left, room, "…")
+	}
+	fill := max(1, w-8-ansi.StringWidth(left)-ansi.StringWidth(state))
+	out := []string{border.Render("┌─ ") + left + " " + border.Render(strings.Repeat("─", fill)) + " " + state + border.Render(" ─┐")}
+	body := func(l string) {
+		out = append(out, border.Render("│ ")+l+strings.Repeat(" ", max(0, inner-ansi.StringWidth(l)))+border.Render(" │"))
+	}
+	question := topicQuestion(n)
+
+	if !open {
+		q := ansi.Truncate(strings.Join(strings.Fields(question), " "), inner, "…")
+		switch {
+		case answered:
+			q = styleMuted.Render(q)
+		case selected:
+			q = styleBold.Render(q)
+		}
+		body(q)
+		return append(out, border.Render("└"+strings.Repeat("─", max(0, w-2))+"┘"))
+	}
+
+	for _, l := range wrap(styleBold.Render(question), inner) {
+		body(l)
+	}
+	if len(n.Context) > 0 || len(n.Notes) > 0 {
+		body("")
+	}
+	for _, c := range n.Context {
+		for _, l := range wrap(c, max(4, inner-2)) {
+			body(styleBorder.Render("│ ") + styleMuted.Render(l))
 		}
 	}
 	for _, note := range n.Notes {
-		out = append(out, "", styleMuted.Render(ansi.Truncate(fmt.Sprintf(" · %s  %s", note.At.Format("15:04"), note.Text), w-1, "…")))
+		body(styleMuted.Render(ansi.Truncate(fmt.Sprintf("· %s  %s", note.At.Format("15:04"), note.Text), inner, "…")))
 	}
-	var thread []int
-	for i, it := range m.items {
-		if it.News == m.newsID {
-			thread = append(thread, i)
-		}
-	}
-	// The rounds before the captain's last message are settled: one line
-	// each, unless ^O unfolded them.
-	from := 0
-	if !m.newsExpand {
-		last := -1
-		for j, i := range thread {
-			if m.items[i].Source == SourceCaptain {
-				last = j
+	if len(n.Options) > 0 {
+		body("")
+		for _, o := range n.Options {
+			for _, l := range m.optionLines(n, o, inner) {
+				body(l)
 			}
 		}
-		if r := m.running; r != nil && r.News == m.newsID && r.Source == SourceCaptain {
-			last = len(thread)
-		}
-		from = max(0, last)
 	}
+	for _, l := range m.exchange(n.ID, inner) {
+		body(l)
+	}
+	if n.Closed() {
+		glyph, label := "✓", "Xong"
+		if n.Status == NewsDropped {
+			label = "Tự đóng"
+		}
+		body("")
+		body(styleMuted.Render(fmt.Sprintf("%s %s · %s", glyph, label, n.At.Format("15:04"))))
+	} else {
+		body("")
+		for _, l := range m.frameInput(inner) {
+			body(l)
+		}
+	}
+	return append(out, m.frameBottom(n, border, w))
+}
+
+// exchange is the captain's answers to news id and the Mate's replies.
+// The app turn that opened the news shows only its reply, when it had one.
+// The rounds before the captain's last message are settled: one line each,
+// unless ^O unfolded them.
+func (m Model) exchange(id, w int) []string {
+	var out []string
+	thread, from := m.settled(id)
 	if folded := foldedLines(m.items, thread[:from], w); len(folded) > 0 {
-		out = append(out, "", styleMuted.Render(fmt.Sprintf(" %d lượt trước đã xong · ^O mở", len(folded))))
+		out = append(out, "", styleMuted.Render(fmt.Sprintf("%d lượt trước đã xong · ^O mở", len(folded))))
 		out = append(out, folded...)
 	}
 	for _, i := range thread[from:] {
-		out = append(out, "")
-		out = append(out, m.threadLines(m.items[i], w, i == len(m.items)-1 && m.running == nil)...)
+		if lines := m.threadLines(m.items[i], w, i == len(m.items)-1 && m.running == nil); len(lines) > 0 {
+			out = append(append(out, ""), lines...)
+		}
 	}
-	if it := m.running; it != nil && it.News == m.newsID {
-		out = append(out, "")
-		out = append(out, m.threadLines(*it, w, true)...)
-	}
-	if n.Closed() {
-		out = append(out, "", style.Render(fmt.Sprintf(" %s %s · %s", glyph, strings.ToUpper(label[:1])+label[1:], n.At.Format("15:04"))))
+	if it := m.running; it != nil && it.News == id {
+		out = append(append(out, ""), m.threadLines(*it, w, true)...)
 	}
 	return out
 }
 
-// threadLines are one turn of a news's exchange. The turn that opened the
-// news shows only the Mate's reply, when it had one.
-func (m Model) threadLines(it Item, w int, last bool) []string {
-	if it.Source == SourceApp {
-		if !it.Done {
-			return m.liveLines(it, w)
+// settled is news id's exchange as indexes into m.items, and how many of
+// them are settled rounds to fold: those before the captain's last message
+// (or the turn of it still running). None while ^O has them open.
+func (m Model) settled(id int) (thread []int, from int) {
+	for i, it := range m.items {
+		if it.News == id {
+			thread = append(thread, i)
 		}
-		if it.Silent || it.Reply == "" {
-			return nil
-		}
-		return append(replyLines(it.Reply, w), metaLine(it, w, false))
 	}
-	return m.itemLines(it, w, last)
+	if m.roundsOpen {
+		return thread, 0
+	}
+	last := -1
+	for j, i := range thread {
+		if m.items[i].Source == SourceCaptain {
+			last = j
+		}
+	}
+	if r := m.running; r != nil && r.News == id && r.Source == SourceCaptain {
+		last = len(thread)
+	}
+	return thread, max(0, last)
 }
 
 // foldedLines are settled rounds of a news's exchange, one line each: the
@@ -646,28 +788,91 @@ func foldedLines(items []Item, thread []int, w int) []string {
 		var line string
 		switch {
 		case it.Source == SourceCaptain:
-			line = " ▸ " + strings.Join(strings.Fields(it.Text), " ")
+			line = "▸ " + strings.Join(strings.Fields(it.Text), " ")
 			if reply != "" {
 				line += styleMuted.Render(" → " + reply)
 			}
 		case reply != "":
-			line = styleMuted.Render(" ▸ ● " + reply)
+			line = styleMuted.Render("▸ ● " + reply)
 		default:
 			continue
 		}
 		at := it.At.Format("15:04")
-		line = ansi.Truncate(line, max(4, w-len(at)-3), "…")
-		out = append(out, spread(line, styleMuted.Render(at)+" ", w))
+		line = ansi.Truncate(line, max(4, w-len(at)-2), "…")
+		out = append(out, spread(line, styleMuted.Render(at), w))
 	}
 	return out
 }
 
-func (m Model) optionLines(n News, i int, o NewsOption, w int) []string {
-	chosen := strings.HasPrefix(n.Answer, "["+o.Key+"]")
+func (m Model) threadLines(it Item, w int, last bool) []string {
+	if it.Source == SourceApp {
+		if !it.Done {
+			return m.liveLines(it, w)
+		}
+		if it.Silent || it.Reply == "" {
+			return nil
+		}
+		return append(replyLines(it.Reply, w), metaLine(it, w, false))
+	}
+	return m.itemLines(it, w, last)
+}
+
+// frameInput is the open frame's line to write in: the composer while the
+// captain writes, the draft or a hint while not.
+func (m Model) frameInput(w int) []string {
+	prompt := styleMuted.Render("› ")
+	var lines []string
+	switch {
+	case m.typing:
+		lines = m.inputLines(w-2, "Viết câu trả lời…")
+	case len(m.input) > 0:
+		lines = wrap(string(m.input), w-2)
+		if len(lines) > composerRows {
+			lines = lines[len(lines)-composerRows:]
+		}
+	default:
+		lines = []string{styleMuted.Render("Tab để gõ câu trả lời tự do…")}
+	}
+	for i := range lines {
+		if i == 0 {
+			lines[i] = prompt + lines[i]
+		} else {
+			lines[i] = "  " + lines[i]
+		}
+	}
+	return lines
+}
+
+// frameBottom is the open frame's bottom border, with the keys that work
+// in it.
+func (m Model) frameBottom(n News, border lipgloss.Style, w int) string {
+	var hints []keyHint
+	switch {
+	case n.Closed():
+		hints = []keyHint{{"Enter", "thu gọn"}}
+	case m.typing:
+		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"Tab", "ra"}}
+	case n.Owed() && len(n.Options) > 0:
+		keys := make([]string, len(n.Options))
+		for i, o := range n.Options {
+			keys[i] = o.Key
+		}
+		hints = []keyHint{{strings.Join(keys, "/"), "chọn"}, {"Tab", "gõ"}, {"Enter", "thu gọn"}}
+	case n.Owed():
+		hints = []keyHint{{"Tab", "gõ"}, {"Enter", "thu gọn"}}
+	default:
+		hints = []keyHint{{"Tab", "ghi thêm"}, {"Enter", "thu gọn"}}
+	}
+	if thread, from := m.settled(n.ID); from > 0 || (m.roundsOpen && len(thread) > 1) {
+		hints = append(hints, keyHint{"^O", "lượt cũ"})
+	}
+	text := hintLine(hints, w-6)
+	return border.Render("└─ ") + text + " " + border.Render(strings.Repeat("─", max(0, w-5-ansi.StringWidth(text)))+"┘")
+}
+
+func (m Model) optionLines(n News, o NewsOption, w int) []string {
 	mark := "  "
-	if m.focusOptions && i == m.optSel {
-		mark = styleAccent.Render("▸ ")
-	} else if chosen {
+	if strings.HasPrefix(n.Answer, "["+o.Key+"]") {
 		mark = styleSuccess.Render("✓ ")
 	}
 	right := ""
@@ -675,13 +880,13 @@ func (m Model) optionLines(n News, i int, o NewsOption, w int) []string {
 		right = "khuyên dùng"
 	}
 	key := styleAccent.Render("[" + o.Key + "]")
-	lines := wrap(o.Text, max(10, w-8-len(right)-2))
+	lines := wrap(o.Text, max(10, w-6-len(right)-2))
 	out := make([]string, len(lines))
 	for j, l := range lines {
 		if j == 0 {
-			out[j] = spread(" "+mark+key+" "+l, styleMuted.Render(right)+" ", w)
+			out[j] = spread(mark+key+" "+l, styleSuccess.Render(right), w)
 		} else {
-			out[j] = "       " + l
+			out[j] = "      " + l
 		}
 	}
 	return out

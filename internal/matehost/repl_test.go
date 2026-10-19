@@ -218,7 +218,7 @@ func TestREPLFoldsStow(t *testing.T) {
 // that ends or grows below does not move what they read.
 func TestREPLHoldsTheReadPlace(t *testing.T) {
 	m := sampleModel(80, 16)
-	m.scrollView(4)
+	m.scrollBy(4)
 	top := func(m Model) string { return ansi.Strip(strings.Split(m.View(), "\n")[2]) }
 	before := top(m)
 	at := m.now()
@@ -243,65 +243,5 @@ func TestREPLHoldsTheReadPlace(t *testing.T) {
 	m.apply(Event{Item: &Item{At: at, Source: SourceApp, Label: "event", Reply: "Tin cuối cùng", Done: true}})
 	if view := ansi.Strip(m.View()); !strings.Contains(view, "Tin cuối cùng") {
 		t.Fatalf("the chat did not follow at its end:\n%s", view)
-	}
-}
-
-// TestREPLHoldsTheNewsPlace: a note the Mate adds to a news the captain
-// reads scrolled does not move the page.
-func TestREPLHoldsTheNewsPlace(t *testing.T) {
-	m := sampleModel(80, 14)
-	m.host = New(&Runner{}, Options{})
-	at := m.now()
-	ctx := []string{"một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín", "mười"}
-	n := News{ID: 1, Title: "Vượt ngân sách", Context: ctx, Status: NewsWaiting, OpenedAt: at, At: at}
-	m.news = []News{n}
-	m.mode, m.newsID = viewNews, 1
-	m.scrollView(3)
-	top := func(m Model) string { return ansi.Strip(strings.Split(m.View(), "\n")[2]) }
-	before := top(m)
-	n.Notes = []NewsNote{{At: at, Text: "Crew đã trả PR"}, {At: at, Text: "Đã merge"}}
-	m.apply(Event{News: []News{n}})
-	if got := top(m); got != before {
-		t.Fatalf("a note moved the news: %q, was %q", got, before)
-	}
-}
-
-// TestREPLFoldsSettledNewsRounds: in a news, the rounds before the
-// captain's last message are one line each, and ^O unfolds them.
-func TestREPLFoldsSettledNewsRounds(t *testing.T) {
-	m := sampleModel(100, 40)
-	at := m.now()
-	m.news = []News{{ID: 3, Title: "E0: cần bản xuất design", Status: NewsWorking, OpenedAt: at, At: at}}
-	m.items = append(m.items,
-		Item{At: at, Source: SourceCaptain, News: 3, Text: "đã up hết design lên rồi đó", Done: true,
-			Reply: "Cảm ơn anh. Em đã gửi hai điểm cần anh chốt.\n\nĐoạn hai của lượt cũ."},
-		Item{At: at, Source: SourceApp, News: 3, Label: "event", Done: true,
-			Reply: "Đã giao việc khung bản đồ.\n\nĐoạn hai của tin app cũ."},
-		Item{At: at, Source: SourceApp, News: 3, Label: "event", Silent: true, Reply: "—", Done: true},
-		Item{At: at, Source: SourceCaptain, News: 3, Text: "ok, anh đã update lại trên linear", Done: true,
-			Reply: "Đã giao việc onboard.\n\nPLA-12 vẫn chờ anh chọn cách làm sheet."},
-	)
-	m.openNews(3)
-	view := ansi.Strip(m.View())
-	for _, want := range []string{"2 lượt trước đã xong · ^O mở", "▸ đã up hết design lên rồi đó → Cảm ơn anh.", "▸ ● Đã giao việc khung bản đồ.", "PLA-12 vẫn chờ anh chọn cách làm sheet."} {
-		if !strings.Contains(view, want) {
-			t.Errorf("folded news lacks %q:\n%s", want, view)
-		}
-	}
-	for _, gone := range []string{"Đoạn hai của lượt cũ.", "Đoạn hai của tin app cũ."} {
-		if strings.Contains(view, gone) {
-			t.Errorf("folded news still shows %q:\n%s", gone, view)
-		}
-	}
-
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
-	view = ansi.Strip(next.(Model).View())
-	for _, want := range []string{"Đoạn hai của lượt cũ.", "Đoạn hai của tin app cũ.", "PLA-12 vẫn chờ anh chọn cách làm sheet."} {
-		if !strings.Contains(view, want) {
-			t.Errorf("^O did not unfold %q:\n%s", want, view)
-		}
-	}
-	if strings.Contains(view, "lượt trước đã xong") {
-		t.Errorf("unfolded news still says rounds are folded:\n%s", view)
 	}
 }

@@ -38,51 +38,55 @@ const composerRows = 8
 
 func (m Model) View() string {
 	w, h := m.size()
-	header := m.header(w)
-	below := m.below(w)
-	composer := m.composer(w)
-	footer := m.footer(w)
-	var overlay []string
-	if m.mode == viewList {
-		overlay = m.listBox(w)
+	out := make([]string, 0, h)
+	out = append(out, m.header(w)...)
+	if m.mode == viewTopics && !m.help {
+		// The Topic page takes the chat's place, composer and all: each
+		// frame has its own line to write in.
+		view, _ := m.topicView(w, m.topicRows())
+		out = append(out, view...)
+		out = append(out, m.topicBelow(w)...)
+	} else {
+		out = append(out, m.chatView(w)...)
+		out = append(out, m.below(w)...)
+		out = append(out, m.composer(w)...)
 	}
-	room := max(1, h-len(header)-len(overlay)-len(below)-len(composer)-len(footer))
+	out = append(out, m.footer(w)...)
+	for i, l := range out {
+		out[i] = ansi.Truncate(l, w, "")
+	}
+	return strings.Join(out, "\n")
+}
 
+// chatView is the conversation's lines on screen, or the help.
+func (m Model) chatView(w int) []string {
+	room := m.viewRows()
 	body := m.body(w)
-	offset := m.scroll
-	if m.shownMode() == viewNews {
-		offset = m.newsScroll
-	}
-	scroll := min(offset, max(0, len(body)-room))
+	scroll := min(m.scroll, max(0, len(body)-room))
 	end := len(body) - scroll
 	view := body[max(0, end-room):end]
 	for len(view) < room {
-		if m.shownMode() == viewNews && !m.help {
-			// A news reads from its top, like a page.
-			view = append(view, "")
-		} else {
-			view = append([]string{""}, view...)
-		}
+		view = append([]string{""}, view...)
 	}
-	if scroll > 0 && m.shownMode() == viewChat {
+	if scroll > 0 && !m.help {
 		hint := "▾ đang xem tin cũ · End về cuối"
 		if m.unseen > 0 {
 			hint = fmt.Sprintf("▾ %d tin mới · End", m.unseen)
 		}
 		view[len(view)-1] = " " + styleAccent.Render(hint)
 	}
+	return view
+}
 
-	out := make([]string, 0, h)
-	out = append(out, header...)
-	out = append(out, view...)
-	out = append(out, overlay...)
-	out = append(out, below...)
-	out = append(out, composer...)
-	out = append(out, footer...)
-	for i, l := range out {
-		out[i] = ansi.Truncate(l, w, "")
+// trayRow is the screen row of the tray's line for the newest news owed,
+// -1 when the chat does not show one.
+func (m Model) trayRow() int {
+	w, h := m.size()
+	if m.mode != viewChat || m.help || len(m.owed()) == 0 {
+		return -1
 	}
-	return strings.Join(out, "\n")
+	// The line is the tray's last, over the queue and the composer.
+	return h - len(m.footer(w)) - len(m.composer(w)) - len(m.queueLines(w)) - 1
 }
 
 func (m Model) size() (int, int) {
@@ -99,34 +103,19 @@ func (m Model) size() (int, int) {
 // viewRows is how many lines the conversation has on screen.
 func (m Model) viewRows() int {
 	w, h := m.size()
-	n := h - len(m.header(w)) - len(m.below(w)) - len(m.composer(w)) - len(m.footer(w))
-	if m.mode == viewList {
-		n -= len(m.listBox(w))
-	}
-	return max(1, n)
+	return max(1, h-len(m.header(w))-len(m.below(w))-len(m.composer(w))-len(m.footer(w)))
 }
 
-// maxScroll is how far the shown chat or news scrolls up: its top line at
-// the top of the screen.
+// maxScroll is how far the chat scrolls up: its top line at the top of
+// the screen.
 func (m Model) maxScroll() int {
 	w, _ := m.size()
 	return max(0, len(m.body(w))-m.viewRows())
 }
 
-// shownMode is the view under the list, or the view itself.
-func (m Model) shownMode() viewMode {
-	if m.mode == viewList {
-		return m.listFrom
-	}
-	return m.mode
-}
-
 func (m Model) body(w int) []string {
-	switch {
-	case m.help:
+	if m.help {
 		return helpLines()
-	case m.shownMode() == viewNews:
-		return m.newsLines(w)
 	}
 	return m.conversation(w)
 }
@@ -135,8 +124,8 @@ func (m Model) body(w int) []string {
 
 func (m Model) header(w int) []string {
 	left := " " + styleBold.Inherit(styleAccent).Render("mate") + styleMuted.Render(" · "+m.cfg.Project)
-	if m.shownMode() == viewNews {
-		left += styleMuted.Render(" › ") + styleBold.Render(fmt.Sprintf("News #%d", m.newsID))
+	if m.mode == viewTopics {
+		left += styleMuted.Render(" › ") + styleBold.Inherit(styleAttention).Render("Topic")
 	}
 	var right []string
 	if m.crews >= 0 {
@@ -179,38 +168,39 @@ func (m Model) footer(w int) []string {
 	switch {
 	case m.help:
 		hints = []keyHint{{"Esc", "đóng"}, {"PgUp PgDn", "cuộn"}}
-	case m.mode == viewList:
-		hints = []keyHint{{"Enter", "mở news"}, {"Esc", "đóng"}, {"^N", "news chờ tiếp"}}
-	case m.mode == viewNews && m.newsClosed():
-		hints = []keyHint{{"Esc", "về chat"}, {"↑↓ PgUp", "cuộn"}, {"^O", "lượt cũ"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
-	case m.mode == viewNews && m.pending != nil:
-		hints = []keyHint{{"u", "hoàn tác"}, {"Esc", "về chat"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
-	case m.mode == viewNews && m.focusOptions:
-		hints = []keyHint{{"a b c", "chọn"}, {"↑↓ Enter", "chọn"}, {"Tab", "gõ tự do"}, {"Esc", "về chat"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
-	case m.mode == viewNews:
-		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"Esc", "về chat"}, {"^O", "lượt cũ"}, {"^N", "news chờ tiếp"}, {"^T", "danh sách"}}
-		if n, ok := m.findNews(m.newsID); ok && len(n.Options) > 0 {
-			hints = append(hints[:2], append([]keyHint{{"Tab", "lựa chọn"}}, hints[2:]...)...)
-		}
+	case m.mode == viewTopics && m.typing:
+		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"Tab", "về lựa chọn"}, {"Esc", "về chat"}}
+	case m.mode == viewTopics && w >= 100:
+		hints = []keyHint{{"↑↓", "chọn"}, {"Enter", "mở/thu gọn"}, {"1–9", "nhảy"}, {"^N", "chưa trả lời tiếp"}, {"Esc", "về chat"}}
+	case m.mode == viewTopics:
+		hints = []keyHint{{"↑↓", "chọn"}, {"Enter", "mở/thu"}, {"Esc", "về chat"}}
 	case m.state.Busy:
 		hints = []keyHint{{"Enter", "xếp hàng"}, {"^X", "bỏ tin cuối"}, {"^C", "ngắt"}, {"?", "phím tắt"}}
 		if len(m.input) > 0 {
 			hints = append(hints[:1], append([]keyHint{{"^U", "xoá ô"}}, hints[1:]...)...)
 		}
 	default:
-		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"^T", "news"}, {"↑↓ PgUp", "cuộn"}, {"^O", "tool"}, {"?", "phím tắt"}}
+		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"^T", "topic"}, {"↑↓ PgUp", "cuộn"}, {"^O", "tool"}, {"?", "phím tắt"}}
 		if len(m.input) > 0 {
 			hints = append(hints[:2], append([]keyHint{{"^U", "xoá ô"}}, hints[2:]...)...)
 		}
 		if m.pending != nil {
 			hints = append([]keyHint{{"u", "hoàn tác"}}, hints...)
 		} else if len(m.owed()) > 0 {
-			hints = append(hints[:3], append([]keyHint{{"^N", "news chờ"}}, hints[3:]...)...)
+			hints = append(hints[:3], append([]keyHint{{"^N", "trả lời"}}, hints[3:]...)...)
 		}
 		if m.failed() {
 			hints = append([]keyHint{{"^R", "thử lại"}}, hints...)
 		}
 	}
+	if m.mode == viewTopics && m.pending != nil && !m.typing {
+		hints = append([]keyHint{{"u", "hoàn tác"}}, hints...)
+	}
+	return []string{" " + hintLine(hints, w-2)}
+}
+
+// hintLine is keys and what they do, as many as fit in w columns.
+func hintLine(hints []keyHint, w int) string {
 	line := ""
 	for _, h := range hints {
 		part := styleBold.Render(strings.TrimSpace(h.key)) + " " + styleMuted.Render(h.does)
@@ -218,12 +208,12 @@ func (m Model) footer(w int) []string {
 		if line != "" {
 			next = line + styleMuted.Render(" · ") + part
 		}
-		if ansi.StringWidth(next) > w-2 {
+		if ansi.StringWidth(next) > w {
 			break
 		}
 		line = next
 	}
-	return []string{" " + line}
+	return line
 }
 
 // failed reports whether the last item is a captain message whose turn
@@ -240,13 +230,16 @@ func (m Model) failed() bool {
 
 func (m Model) below(w int) []string {
 	var out []string
-	if m.mode == viewNews {
-		return nil
-	}
 	if a := m.activity(); a != "" {
 		out = append(out, styleFaint.Render(ansi.Truncate(a, w-1, "…")))
 	}
 	out = append(out, m.tray(w)...)
+	return append(out, m.queueLines(w)...)
+}
+
+// queueLines are the captain's messages waiting for the Mate's turn.
+func (m Model) queueLines(w int) []string {
+	var out []string
 	if n := len(m.queue); n > 0 {
 		out = append(out, " "+styleMuted.Render(fmt.Sprintf("Xếp hàng (%d) · gửi lần lượt khi Mate xong lượt này", n)))
 		for i, q := range m.queue {
@@ -284,22 +277,9 @@ func (m Model) activity() string {
 
 // --- composer ---
 
-// newsClosed reports whether the news shown is over, so read only.
-func (m Model) newsClosed() bool {
-	n, ok := m.findNews(m.newsID)
-	return m.mode == viewNews && ok && n.Closed()
-}
-
 func (m Model) composer(w int) []string {
-	if m.newsClosed() && m.pending == nil {
-		// Nothing to answer: one line says so instead of a composer.
-		return []string{"", styleMuted.Render(fmt.Sprintf(" ✓ #%d đã xong · chỉ đọc", m.newsID))}
-	}
 	inner := max(4, w-4)
 	status, right := m.status()
-	if m.mode == viewNews {
-		status, right = m.newsStatusLine()
-	}
 	tail := styleBorder.Render("┐")
 	if right != "" {
 		tail = " " + styleMuted.Render(right) + styleBorder.Render(" ─┐")
@@ -311,7 +291,11 @@ func (m Model) composer(w int) []string {
 	fill := max(0, w-3-ansi.StringWidth(status)-1-ansi.StringWidth(tail))
 	// A blank line keeps the composer off the conversation above it.
 	out := []string{"", styleBorder.Render("┌─ ") + status + " " + styleBorder.Render(strings.Repeat("─", fill)) + tail}
-	for _, l := range m.inputLines(inner) {
+	hint := "Nhắn cho Mate…"
+	if m.state.Busy {
+		hint = "Gõ tiếp, tin sẽ xếp hàng…"
+	}
+	for _, l := range m.inputLines(inner, hint) {
 		out = append(out, styleBorder.Render("│ ")+l+strings.Repeat(" ", max(0, inner-ansi.StringWidth(l)))+styleBorder.Render(" │"))
 	}
 	return append(out, styleBorder.Render("└"+strings.Repeat("─", max(0, w-2))+"┘"))
@@ -341,32 +325,6 @@ func (m Model) status() (string, string) {
 	return styleWorking.Render(spin + " " + what + since), "^C ngắt"
 }
 
-// newsStatusLine is the composer's border in a news: the answer waiting
-// out its undo delay, the Mate at work, or what the composer answers.
-func (m Model) newsStatusLine() (string, string) {
-	if p := m.pending; p != nil {
-		left := max(0, int((undoDelay-m.now().Sub(p.at)+time.Second-1)/time.Second))
-		return styleSuccess.Render(fmt.Sprintf("✓ %s · u hoàn tác (%ds)", p.label, left)), ""
-	}
-	if m.state.Busy {
-		return m.status()
-	}
-	title := styleAttention.Render(fmt.Sprintf("Trả lời #%d", m.newsID))
-	if n, ok := m.findNews(m.newsID); ok && !n.Owed() {
-		title = styleMuted.Render(fmt.Sprintf("Ghi thêm cho #%d", m.newsID))
-	}
-	if m.focusOptions {
-		if n, ok := m.findNews(m.newsID); ok {
-			keys := make([]string, len(n.Options))
-			for i, o := range n.Options {
-				keys[i] = o.Key
-			}
-			return title, strings.Join(keys, "/") + " chọn ngay"
-		}
-	}
-	return title, ""
-}
-
 func (m Model) runningTool() *ToolRecord {
 	if m.running == nil {
 		return nil
@@ -381,18 +339,9 @@ func (m Model) runningTool() *ToolRecord {
 
 // inputLines are the composer's lines, wrapped to width, with the cursor
 // drawn on the character it stands on; at most composerRows of them,
-// around the cursor.
-func (m Model) inputLines(width int) []string {
+// around the cursor. An empty composer shows hint.
+func (m Model) inputLines(width int, hint string) []string {
 	if len(m.input) == 0 {
-		hint := "Nhắn cho Mate…"
-		switch {
-		case m.mode == viewNews && m.focusOptions:
-			return []string{styleMuted.Render(ansi.Truncate("Tab để gõ câu trả lời tự do…", width, ""))}
-		case m.mode == viewNews:
-			hint = "Viết câu trả lời…"
-		case m.state.Busy:
-			hint = "Gõ tiếp, tin sẽ xếp hàng…"
-		}
 		return []string{styleCursor.Render(" ") + styleMuted.Render(ansi.Truncate(hint, width-1, ""))}
 	}
 	type pos struct{ row, col int }
@@ -630,15 +579,18 @@ func helpLines() []string {
 		{"Esc", "ngắt lượt đang chạy"},
 		{"^X", "bỏ tin xếp hàng cuối"},
 		{"^R", "thử lại lượt lỗi"},
-		{"^O", "mở/thu gọn tool lượt cuối · phần Mate ghi nhớ · lượt cũ trong news"},
-		{"^T", "danh sách news"},
-		{"^N", "news chờ anh tiếp theo"},
-		{"#3 …", "trả lời news #3 ngay từ chat"},
-		{"a b c (trong news)", "chọn đáp án · Tab gõ tự do"},
+		{"^O", "mở/thu gọn tool lượt cuối · phần Mate ghi nhớ · lượt cũ trong khung"},
+		{"^T", "trang Topic: mỗi câu hỏi một khung"},
+		{"^N", "mở topic chưa trả lời tiếp theo"},
+		{"#3 …", "trả lời topic #3 ngay từ chat"},
+		{"↑↓ · j k (Topic)", "dời con trỏ · Enter/Space mở, thu"},
+		{"1–9 (Topic)", "nhảy tới khung thứ n và mở"},
+		{"a b c d (khung mở)", "chọn đáp án · Tab gõ tự do"},
 		{"u", "hoàn tác câu trả lời trong 5 giây"},
 		{"PgUp PgDn · ⇧↑ ⇧↓", "cuộn trang · dòng"},
 		{"↑ ↓ (ô trống)", "cuộn một dòng"},
-		{"bánh xe chuột", "cuộn chat · news"},
+		{"bánh xe chuột", "cuộn chat · dời con trỏ Topic"},
+		{"click", "mở khung topic · dòng khay"},
 		{"⌥/⇧ + kéo chuột", "bôi đen chữ để copy"},
 		{"Home End (ô trống)", "lên đầu · về cuối"},
 		{"? · F1", "bảng phím này"},

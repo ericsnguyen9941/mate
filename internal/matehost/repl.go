@@ -72,18 +72,15 @@ type Model struct {
 
 	news []News
 	mode viewMode
-	// listFrom is the view ^T opened the list over.
-	listFrom viewMode
-	listSel  int
-	// listClosed unfolds the news closed today in the list (Tab).
-	listClosed bool
-	newsID     int
-	newsScroll int
-	// newsExpand unfolds the settled rounds of the news shown (^O).
-	newsExpand   bool
-	optSel       int
-	focusOptions bool
-	// drafts keep the composer of each view: 0 the chat's, n news n's.
+	// selID is the news whose frame the cursor is on in the Topic page,
+	// openID the one open (0 for none); typing is the captain writing in
+	// it.
+	selID  int
+	openID int
+	typing bool
+	// roundsOpen unfolds the settled rounds of the open frame (^O).
+	roundsOpen bool
+	// drafts keep the composer of each view: 0 the chat's, n frame n's.
 	drafts    map[int]string
 	pending   *pendingAnswer
 	confirm   string
@@ -150,9 +147,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // wheelLines is how far one notch of the mouse wheel scrolls.
 const wheelLines = 3
 
-// mouse scrolls the view under the wheel; other mouse events do nothing.
+// mouse scrolls the view under the wheel; a click opens a topic: its
+// frame on the Topic page, the tray's line in the chat.
 func (m *Model) mouse(msg tea.MouseMsg) {
-	if msg.Action != tea.MouseActionPress {
+	if msg.Action != tea.MouseActionPress || m.help {
 		return
 	}
 	switch msg.Button {
@@ -160,45 +158,37 @@ func (m *Model) mouse(msg tea.MouseMsg) {
 		m.wheel(1)
 	case tea.MouseButtonWheelDown:
 		m.wheel(-1)
+	case tea.MouseButtonLeft:
+		if m.mode == viewTopics {
+			m.clickTopic(msg.Y)
+		} else {
+			m.clickChat(msg.Y)
+		}
 	}
 }
 
-// wheel moves what is shown by one notch: up is n > 0. In the news list
-// it moves the selection; in a news it scrolls the news; else the chat.
+// wheel moves what is shown by one notch: up is n > 0. On the Topic page
+// it moves the cursor; else it scrolls the chat.
 func (m *Model) wheel(n int) {
-	if m.mode == viewList && !m.help {
-		m.listSel = min(max(0, len(m.listFlat())-1), max(0, m.listSel-n))
+	if m.mode == viewTopics {
+		m.moveCursor(-n)
 		return
 	}
-	m.scrollView(n * wheelLines)
+	m.scrollBy(n * wheelLines)
 }
 
-// scrollView scrolls the shown chat or news n lines up (down if n < 0).
-func (m *Model) scrollView(n int) {
-	if m.shownMode() == viewNews {
-		m.newsScroll = min(m.maxScroll(), max(0, m.newsScroll+n))
-		return
-	}
-	m.scrollBy(n)
-}
-
-// apply takes a host event. A chat or news read scrolled up keeps its top
-// line where it is: what the event adds below would otherwise push it up.
+// apply takes a host event. A chat read scrolled up keeps its top line
+// where it is: what the event adds below would otherwise push it up.
 func (m *Model) apply(ev Event) {
-	offset := &m.scroll
-	if m.shownMode() == viewNews {
-		offset = &m.newsScroll
-	}
-	if *offset == 0 || m.help {
+	if m.scroll == 0 || m.help || m.mode != viewChat {
 		m.applyEvent(ev)
 		return
 	}
 	w, _ := m.size()
-	mode, id := m.shownMode(), m.newsID
-	top := len(m.body(w)) - min(*offset, m.maxScroll()) - m.viewRows()
+	top := len(m.body(w)) - min(m.scroll, m.maxScroll()) - m.viewRows()
 	m.applyEvent(ev)
-	if m.shownMode() == mode && m.newsID == id {
-		*offset = min(m.maxScroll(), max(0, len(m.body(w))-m.viewRows()-top))
+	if m.mode == viewChat {
+		m.scroll = min(m.maxScroll(), max(0, len(m.body(w))-m.viewRows()-top))
 	}
 }
 
@@ -213,11 +203,8 @@ func (m *Model) applyEvent(ev Event) {
 		m.setInput(nil)
 	}
 	if ev.Focus > 0 {
-		if m.mode == viewList {
-			m.mode = m.listFrom
-		}
 		m.help = false
-		m.openNews(ev.Focus)
+		m.openTopic(ev.Focus)
 	}
 	it := ev.Item
 	if it == nil {
@@ -301,14 +288,14 @@ func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyUp:
 		if empty {
-			m.scrollView(1)
+			m.scrollBy(1)
 			return m, nil
 		}
 		m.lineUp()
 		return m, nil
 	case tea.KeyDown:
 		if empty {
-			m.scrollView(-1)
+			m.scrollBy(-1)
 			return m, nil
 		}
 		m.lineDown()
