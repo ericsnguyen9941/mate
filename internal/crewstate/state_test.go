@@ -95,6 +95,21 @@ func TestDeclare(t *testing.T) {
 			want: crewstate.StateWaitMate,
 		},
 		{
+			name: "an answered needs-decision is working",
+			in:   crewstate.Declaration{LastVerb: crewstate.VerbNeedsDecision, Answered: true},
+			want: crewstate.StateWorking,
+		},
+		{
+			name: "answered says nothing about a wait-mate",
+			in:   crewstate.Declaration{LastVerb: crewstate.VerbWaitMate, Answered: true},
+			want: crewstate.StateWaitMate,
+		},
+		{
+			name: "an open incident outranks an answer",
+			in:   crewstate.Declaration{LastVerb: crewstate.VerbNeedsDecision, Answered: true, OpenIncident: true},
+			want: crewstate.StateBlocked,
+		},
+		{
 			name: "wait-mate is not closed; only crew stop closes a crew",
 			in: crewstate.Declaration{
 				Meta:     map[string]string{"state": "spawned"},

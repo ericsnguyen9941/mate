@@ -155,6 +155,39 @@ func TestLoadReadsMateMetaAndCrewStatus(t *testing.T) {
 	}
 }
 
+// TestLoadShowsAnAnsweredQuestionAsWorking is CON-105: the crew asked,
+// the Mate replied through `mate send`, and the crew - told to wait - wrote
+// nothing more. The inbox let go of the question at the reply; the crew row
+// must agree, so it is working and nothing about it needs attention.
+func TestLoadShowsAnAnsweredQuestionAsWorking(t *testing.T) {
+	ws := newWorkspace(t, "shop")
+	if err := ws.WriteCrewMeta("shop", "k3", map[string]string{"task": "profile", "state": "spawned"}); err != nil {
+		t.Fatalf("write crew meta: %v", err)
+	}
+	if err := ws.AppendStatus("shop", "k3", "needs-decision: 50 or 60?"); err != nil {
+		t.Fatalf("append status: %v", err)
+	}
+	load := func() CrewNode {
+		t.Helper()
+		snap, err := Load(context.Background(), ws, testHarnesses, nil)
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		return snap.Projects[0].Crews[0]
+	}
+	if c := load(); c.Status != CrewNeedsDecision || c.Attention.State != Known {
+		t.Fatalf("before the reply: status %q, attention %+v; want needs-decision needing attention", c.Status, c.Attention)
+	}
+	if err := ws.AppendSent("shop", store.SentEntry{
+		Time: time.Now().Add(time.Second), Source: store.SourceMate, Target: store.CrewTarget("k3"), Text: "60; wait for PLA-88",
+	}); err != nil {
+		t.Fatalf("append sent: %v", err)
+	}
+	if c := load(); c.Status != CrewWorking || c.Attention.State == Known {
+		t.Fatalf("after the reply: status %q, attention %+v; want working with no attention", c.Status, c.Attention)
+	}
+}
+
 // TestLoadGivesACrewThatWroteNothingTheSpawnedState: the meta is what
 // records the crew, so a crew with no status line yet is `spawned` - the
 // last rule of mvp.md section 4b's resolution order, and not blank.

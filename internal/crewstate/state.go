@@ -149,6 +149,13 @@ type Declaration struct {
 	// LastVerb is the verb of the crew's most recent recognised `.status`
 	// line, VerbNone when it has written none.
 	LastVerb StatusVerb
+	// Answered is true when LastVerb is needs-decision and somebody has
+	// since replied to the crew (box.Answered: a `sent.log` line to
+	// `crew:<id>` after the question). The inbox already treats that
+	// question as closed; the displayed state agrees and calls the crew
+	// working, because it has its answer and is carrying on - or waiting
+	// as the answer told it to - not waiting on anybody (CON-105).
+	Answered bool
 }
 
 // Declare resolves the displayed state in the fixed order of mvp.md
@@ -159,7 +166,8 @@ type Declaration struct {
 //  2. Backward compatibility: `.meta` carries stopped_at= and no state=.
 //     Only `crew stop` ever wrote that key, so the crew is finished.
 //  3. The observer has an open incident: blocked.
-//  4. The last verb in `.status`: working, needs-decision or wait-mate.
+//  4. The last verb in `.status`: working, needs-decision or wait-mate. A
+//     needs-decision somebody has since answered reads as working.
 //  5. Nothing at all: spawned.
 //
 // A `.meta` carrying state=spawned adds nothing to step 5 and is not read
@@ -183,6 +191,9 @@ func Declare(d Declaration) State {
 	case VerbWorking:
 		return StateWorking
 	case VerbNeedsDecision:
+		if d.Answered {
+			return StateWorking
+		}
 		return StateNeedsDecision
 	case VerbWaitMate:
 		return StateWaitMate

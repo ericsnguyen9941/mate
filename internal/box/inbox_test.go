@@ -35,6 +35,12 @@ func runInbox(t *testing.T, incidents []store.IncidentEntry, steps ...step) []bo
 
 func runInboxIn(t *testing.T, auto bool, incidents []store.IncidentEntry, steps ...step) []box.Item {
 	t.Helper()
+	return box.Inbox(loadSteps(t, auto, incidents, steps...))
+}
+
+// loadSteps applies steps to a fresh fixture workspace and loads its View.
+func loadSteps(t *testing.T, auto bool, incidents []store.IncidentEntry, steps ...step) box.View {
+	t.Helper()
 	w := newFixtureWorkspace(t)
 	if err := w.SetAuto("shop", auto); err != nil {
 		t.Fatalf("SetAuto: %v", err)
@@ -71,7 +77,7 @@ func runInboxIn(t *testing.T, auto bool, incidents []store.IncidentEntry, steps 
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	return box.Inbox(v)
+	return v
 }
 
 func itemStates(items []box.Item) []string {
@@ -382,5 +388,50 @@ func TestInboxKeepsAQuestionFromACrewThatOnlyReportedWaitMate(t *testing.T) {
 	}
 	if items := box.Inbox(v); len(items) != 1 {
 		t.Fatalf("inbox = %+v, want the crew's question", items)
+	}
+}
+
+// TestAnsweredIsRuleTwoOfTheInbox pins box.Answered to the inbox: a crew
+// whose last word is a question reads as answered exactly when the inbox
+// let go of that question through a reply, and never otherwise (CON-105:
+// the console showed a crew needs-decision for two hours after the Topic
+// page showed its question answered).
+func TestAnsweredIsRuleTwoOfTheInbox(t *testing.T) {
+	ask := step{crew: "k3", status: "needs-decision: A or B?"}
+	cases := []struct {
+		name  string
+		steps []step
+		want  bool
+	}{
+		{"unanswered", []step{ask}, false},
+		{"mate replied", []step{ask, {source: store.SourceMate, target: store.CrewTarget("k3"), text: "A"}}, true},
+		{"captain replied", []step{ask, {source: store.SourceUser, target: store.CrewTarget("k3"), text: "A"}}, true},
+		{"reply to another crew", []step{ask, {source: store.SourceMate, target: store.CrewTarget("k9"), text: "A"}}, false},
+		{"forwarded to the Mate", []step{ask, {source: store.SourceApp, target: store.TargetMate, text: "resolve: k3 asked ..."}}, false},
+		{"crew moved on", []step{ask, {crew: "k3", status: "working: chose A"}}, false},
+		{"asked again after the reply", []step{
+			ask,
+			{source: store.SourceMate, target: store.CrewTarget("k3"), text: "A", at: time.Now().Add(-time.Hour)},
+			{crew: "k3", status: "needs-decision: the staging API is down, wait or mock it?"},
+		}, false},
+		{"never asked", []step{{crew: "k3", status: "working: start"}, {source: store.SourceMate, target: store.CrewTarget("k3"), text: "hi"}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := loadSteps(t, true, nil, tc.steps...)
+			if got := box.Answered(v, "k3"); got != tc.want {
+				t.Fatalf("Answered = %v, want %v", got, tc.want)
+			}
+			if box.LastCrewVerb(v, "k3") != box.StateNeedsDecision {
+				return
+			}
+			inInbox := false
+			for _, it := range box.Inbox(v) {
+				inInbox = inInbox || (it.Crew() == "k3" && it.State == box.StateNeedsDecision)
+			}
+			if inInbox == tc.want {
+				t.Fatalf("Answered = %v but the inbox still holds the question = %v", tc.want, inInbox)
+			}
+		})
 	}
 }

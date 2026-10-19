@@ -1,6 +1,9 @@
 package box
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // The inbox: the subset of a View that a human or the Mate still has to
 // decide on.
@@ -152,6 +155,41 @@ func inboxItem(e Entry, manual bool) (Item, bool) {
 	default:
 		return Item{}, false
 	}
+}
+
+// Answered reports whether crew's question has been answered while the
+// crew itself has not spoken since: its last recognised status line is
+// `needs-decision` and rule 2 above resolves it - a `sent.log` reply to
+// `crew:<id>` at or after that line. Rule 1 needs no help here, because a
+// later status line is the crew's last verb and the question is no longer
+// it. crewstate shows such a crew as `working` rather than as still waiting
+// (CON-105): the inbox and the crew's displayed state are one rule.
+func Answered(v View, crew string) bool {
+	entries := v.ByCrew[crew]
+	question := -1
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if e.Kind != KindStatus || strings.TrimSpace(e.Text) == "" {
+			continue
+		}
+		if st := ParseStatus(e.Text); st.State != StateUnknown {
+			if st.State != StateNeedsDecision {
+				return false
+			}
+			question = i
+			break
+		}
+	}
+	if question < 0 {
+		return false
+	}
+	asked := entries[question].At.Truncate(time.Second)
+	for _, e := range entries {
+		if e.Kind == KindMessage && crewFromTarget(e.Target) == crew && !e.At.Before(asked) {
+			return true
+		}
+	}
+	return false
 }
 
 // inboxResolved applies the two rules above, in that order.

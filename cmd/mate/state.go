@@ -121,11 +121,13 @@ func stateOfCrew(ctx context.Context, w *store.Workspace, deps spawn.Deps, proje
 		return crewstate.Result{}, observability.NewError(observability.CodeNotFound,
 			fmt.Sprintf("no crew %s is recorded for project %s; %s is empty", crew, project, w.CrewMeta(project, crew)))
 	}
+	openIncident, answered := crewBoxFacts(w, project, crew)
 	in := crewstate.Input{
 		Declaration: crewstate.Declaration{
 			Meta:         meta,
-			OpenIncident: crewHasOpenIncident(w, project, crew),
+			OpenIncident: openIncident,
 			LastVerb:     crewstate.StatusVerb(lastCrewVerb(w, project, crew)),
+			Answered:     answered,
 		},
 		Observation: crewstate.Observation{AgentRecorded: meta[spawn.MetaAgent] != ""},
 	}
@@ -179,18 +181,20 @@ func composerReading(state send.ComposerState) crewstate.Composer {
 	}
 }
 
-// crewHasOpenIncident asks the merged box view whether the observer has an
-// unresolved *blocking* finding for this crew - `stale` or `runtime_lost`,
-// the two kinds that make a crew `blocked` (mvp.md section 4b; `budget` is
-// excluded by decision 2026-09-20, box.BlockingIncidents). A box that cannot
-// be read is reported as no incident: `blocked` is a claim, and a failed
-// read has not established it.
-func crewHasOpenIncident(w *store.Workspace, project, crew string) bool {
+// crewBoxFacts reads the merged box view once for the two facts it holds
+// about a crew's state. openIncident: the observer has an unresolved
+// *blocking* finding - `stale` or `runtime_lost`, the two kinds that make a
+// crew `blocked` (mvp.md section 4b; `budget` is excluded by decision
+// 2026-09-20, box.BlockingIncidents). answered: its last `needs-decision`
+// has a reply in `sent.log` (box.Answered, CON-105). A box that cannot be
+// read reports neither: `blocked` is a claim a failed read has not
+// established, and an unread sent.log has not shown the question answered.
+func crewBoxFacts(w *store.Workspace, project, crew string) (openIncident, answered bool) {
 	view, err := box.Load(w, project)
 	if err != nil {
-		return false
+		return false, false
 	}
-	return len(box.BlockingIncidents(view, crew)) > 0
+	return len(box.BlockingIncidents(view, crew)) > 0, box.Answered(view, crew)
 }
 
 // lastCrewVerb is the verb of the crew's last recognised status line, ""

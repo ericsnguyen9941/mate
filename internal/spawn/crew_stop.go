@@ -471,6 +471,7 @@ func ListCrews(w *store.Workspace, project string) ([]CrewSummary, error) {
 			Meta:         meta,
 			OpenIncident: viewOK && len(box.BlockingIncidents(view, id)) > 0,
 			LastVerb:     crewstate.StatusVerb(verb),
+			Answered:     viewOK && box.Answered(view, id),
 		})
 		out = append(out, CrewSummary{
 			Crew:    id,
