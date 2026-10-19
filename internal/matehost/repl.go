@@ -76,9 +76,11 @@ type Model struct {
 	listFrom viewMode
 	listSel  int
 	// listClosed unfolds the news closed today in the list (Tab).
-	listClosed   bool
-	newsID       int
-	newsScroll   int
+	listClosed bool
+	newsID     int
+	newsScroll int
+	// newsExpand unfolds the settled rounds of the news shown (^O).
+	newsExpand   bool
 	optSel       int
 	focusOptions bool
 	// drafts keep the composer of each view: 0 the chat's, n news n's.

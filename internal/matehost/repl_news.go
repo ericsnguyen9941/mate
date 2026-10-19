@@ -112,7 +112,7 @@ func (m *Model) openNews(id int) {
 		return
 	}
 	m.stash()
-	m.mode, m.newsID, m.newsScroll = viewNews, id, 0
+	m.mode, m.newsID, m.newsScroll, m.newsExpand = viewNews, id, 0, false
 	m.restore()
 	m.optSel = 0
 	for i, o := range n.Options {
@@ -288,6 +288,10 @@ func (m Model) newsViewKey(k tea.KeyMsg) (Model, bool) {
 	switch k.Type {
 	case tea.KeyEsc:
 		m.closeView()
+		return m, true
+	case tea.KeyCtrlO:
+		m.newsExpand = !m.newsExpand
+		m.newsScroll = 0
 		return m, true
 	case tea.KeyPgUp:
 		m.scrollView(max(1, m.viewRows()-2))
@@ -575,12 +579,34 @@ func (m Model) newsLines(w int) []string {
 	for _, note := range n.Notes {
 		out = append(out, "", styleMuted.Render(ansi.Truncate(fmt.Sprintf(" · %s  %s", note.At.Format("15:04"), note.Text), w-1, "…")))
 	}
+	var thread []int
 	for i, it := range m.items {
-		if it.News != m.newsID {
-			continue
+		if it.News == m.newsID {
+			thread = append(thread, i)
 		}
+	}
+	// The rounds before the captain's last message are settled: one line
+	// each, unless ^O unfolded them.
+	from := 0
+	if !m.newsExpand {
+		last := -1
+		for j, i := range thread {
+			if m.items[i].Source == SourceCaptain {
+				last = j
+			}
+		}
+		if r := m.running; r != nil && r.News == m.newsID && r.Source == SourceCaptain {
+			last = len(thread)
+		}
+		from = max(0, last)
+	}
+	if folded := foldedLines(m.items, thread[:from], w); len(folded) > 0 {
+		out = append(out, "", styleMuted.Render(fmt.Sprintf(" %d lượt trước đã xong · ^O mở", len(folded))))
+		out = append(out, folded...)
+	}
+	for _, i := range thread[from:] {
 		out = append(out, "")
-		out = append(out, m.threadLines(it, w, i == len(m.items)-1 && m.running == nil)...)
+		out = append(out, m.threadLines(m.items[i], w, i == len(m.items)-1 && m.running == nil)...)
 	}
 	if it := m.running; it != nil && it.News == m.newsID {
 		out = append(out, "")
@@ -605,6 +631,35 @@ func (m Model) threadLines(it Item, w int, last bool) []string {
 		return append(replyLines(it.Reply, w), metaLine(it, w, false))
 	}
 	return m.itemLines(it, w, last)
+}
+
+// foldedLines are settled rounds of a news's exchange, one line each: the
+// captain's message, then the first line of the Mate's reply.
+func foldedLines(items []Item, thread []int, w int) []string {
+	var out []string
+	for _, i := range thread {
+		it := items[i]
+		reply := ""
+		if it.Error == "" && !it.Silent {
+			reply = firstLine(strings.TrimSpace(it.Reply))
+		}
+		var line string
+		switch {
+		case it.Source == SourceCaptain:
+			line = " ▸ " + strings.Join(strings.Fields(it.Text), " ")
+			if reply != "" {
+				line += styleMuted.Render(" → " + reply)
+			}
+		case reply != "":
+			line = styleMuted.Render(" ▸ ● " + reply)
+		default:
+			continue
+		}
+		at := it.At.Format("15:04")
+		line = ansi.Truncate(line, max(4, w-len(at)-3), "…")
+		out = append(out, spread(line, styleMuted.Render(at)+" ", w))
+	}
+	return out
 }
 
 func (m Model) optionLines(n News, i int, o NewsOption, w int) []string {
