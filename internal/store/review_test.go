@@ -18,6 +18,23 @@ func TestReviewFindingsReadsTheFindingsAndTheOpenPriorOnes(t *testing.T) {
 	}
 }
 
+// pla-30-r1's shape (CON-106): a finding with supporting sub-bullets is one
+// finding, and what the reviewer put under Notes blocks nothing.
+func TestReviewFindingsKeepsSubBulletsInTheirFindingAndSkipsNotes(t *testing.T) {
+	report := "## Findings\n- **1 (material).** a.swift:46 folds diacritics\n  - The captain's words allow only XOÁ/XÓA.\n  - Tests at b.swift:8 assert xoa passes.\n    1. nested deeper still\n- **2.** c.swift:3 drops the error\n## Notes\n- d.swift:31 removeAll is broader than it needs\n## Verdict\nchanges-requested\n"
+	want := []string{
+		"**1 (material).** a.swift:46 folds diacritics - The captain's words allow only XOÁ/XÓA. - Tests at b.swift:8 assert xoa passes. 1. nested deeper still",
+		"**2.** c.swift:3 drops the error",
+	}
+	if got := ReviewFindings(report); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ReviewFindings = %q, want %q", got, want)
+	}
+	indented := "## Prior findings\n  - F1 closed: fixed\n    - evidence: a.go:1\n  - F2 open: still there\n"
+	if marks := ReviewPriorFindings(indented); !reflect.DeepEqual(marks, map[int]string{1: "closed", 2: "open"}) {
+		t.Fatalf("ReviewPriorFindings on an indented list = %v", marks)
+	}
+}
+
 func TestReviewFindingsTreatsNoneAndMissingAsEmpty(t *testing.T) {
 	for _, report := range []string{"## Summary\nfine\n## Verdict\npass\n", "## Findings\nnone\n## Verdict\npass\n", "## Findings\n- None\n"} {
 		if got := ReviewFindings(report); len(got) != 0 {

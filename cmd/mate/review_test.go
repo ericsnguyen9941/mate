@@ -82,8 +82,14 @@ func TestReviewVerdictDoesNotInferApprovalFromProse(t *testing.T) {
 			t.Fatal(text)
 		}
 	}
-	if !strings.Contains(reviewBrief(nilSafeReviewWorkspace(t), "shop", "k3", map[string]string{}, nil, nil), "FULL committed change") {
+	full := reviewBrief(nilSafeReviewWorkspace(t), "shop", "k3", map[string]string{}, nil, nil)
+	if !strings.Contains(full, "FULL committed change") {
 		t.Fatal("missing full review")
+	}
+	// CON-106: a later review passes only when every finding is closed, so
+	// the full brief keeps what should not block out of Findings.
+	if !strings.Contains(full, "section named Notes") || !strings.Contains(full, "indented sub-bullets") {
+		t.Fatalf("full brief does not separate blocking findings from notes:\n%s", full)
 	}
 }
 func nilSafeReviewWorkspace(t *testing.T) *store.Workspace {
@@ -191,6 +197,7 @@ func TestReviewSinceBriefCoversOnlyTheChangeAndListsTheFindings(t *testing.T) {
 		"Rerun a gate",
 		"section named Prior findings",
 		"F<n> closed or F<n> open",
+		"section named Notes",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("brief lacks %q:\n%s", want, text)
