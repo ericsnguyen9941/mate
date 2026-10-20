@@ -42,7 +42,7 @@ func runInboxIn(t *testing.T, auto bool, incidents []store.IncidentEntry, steps 
 func loadSteps(t *testing.T, auto bool, incidents []store.IncidentEntry, steps ...step) box.View {
 	t.Helper()
 	w := newFixtureWorkspace(t)
-	if err := w.SetAuto("shop", auto); err != nil {
+	if err := w.SetMode("shop", auto); err != nil {
 		t.Fatalf("SetAuto: %v", err)
 	}
 	for _, inc := range incidents {
@@ -165,6 +165,9 @@ func TestInboxManualKeepsEachCrewsLatestWaitMate(t *testing.T) {
 // TestInboxManualDropsAClosedCrewsWaitMate: crew stop ends the item.
 func TestInboxManualDropsAClosedCrewsWaitMate(t *testing.T) {
 	w := newFixtureWorkspace(t)
+	if err := w.SetMode("shop", false); err != nil {
+		t.Fatal(err)
+	}
 	if err := w.AppendStatus("shop", "k3", "wait-mate: ready"); err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +310,7 @@ func TestInboxDoesNotShrinkTheView(t *testing.T) {
 			t.Fatalf("AppendStatus: %v", err)
 		}
 	}
-	if err := w.SetAuto("shop", true); err != nil {
+	if err := w.SetMode("shop", true); err != nil {
 		t.Fatal(err)
 	}
 	v, err := box.Load(w, "shop")

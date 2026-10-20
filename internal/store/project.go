@@ -307,14 +307,18 @@ func (w *Workspace) RelRepo(repo string) (string, error) {
 	return filepath.ToSlash(rel), nil
 }
 
-// Auto reports whether the project is in auto mode, which is the presence of
-// `mate/.auto`.
+// Auto reports whether the project is in auto mode: always, unless the
+// captain holds it in manual with the console's `m` key (Held). Auto is the
+// default (CON-115, docs/mvp.md M19): a new project's Mate hears its crews
+// from the first hand-back, with no key to press first. `mate/.auto` is
+// still written by SetMode, for readers that date the switch by its mtime,
+// but it no longer decides; a project with no flag at all used to sit in
+// manual with no way out but the `m` key (signal, 2026-10-20).
 func (w *Workspace) Auto(project string) bool {
 	if err := ValidateProjectName(project); err != nil {
 		return false
 	}
-	_, err := os.Stat(w.AutoFlag(project))
-	return err == nil
+	return !w.Held(project)
 }
 
 // Held reports whether the captain holds the project in manual mode, which
@@ -359,7 +363,8 @@ func (w *Workspace) removeFlag(path string) error {
 	return nil
 }
 
-// SetAuto creates or removes `mate/.auto`.
+// SetAuto creates or removes `mate/.auto`. It records the mode, it does not
+// decide it: only the hold does (Auto). Choosing a mode is SetMode.
 func (w *Workspace) SetAuto(project string, on bool) error {
 	if err := ValidateProjectName(project); err != nil {
 		return err

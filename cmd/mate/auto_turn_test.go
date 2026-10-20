@@ -50,7 +50,7 @@ func lastLine(out string) string {
 
 func setAuto(t *testing.T, w *store.Workspace, on bool) {
 	t.Helper()
-	if err := w.SetAuto("shop", on); err != nil {
+	if err := w.SetMode("shop", on); err != nil {
 		t.Fatalf("SetAuto(%v): %v", on, err)
 	}
 }

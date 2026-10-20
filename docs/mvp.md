@@ -1214,12 +1214,17 @@ Captain chốt 2026-10-13. Thực tế ở `hellovietnam`: captain bấm `m` lú
 
 - Manual là captain đang ngồi với Mate. Project có `.manual` mà captain không gõ cho Mate (dòng `user→mate` trong `sent.log`) và không bấm `m` (mtime của `.manual`) trong `store.QuietAfter` (5 phút) thì daemon gọi `SetMode(auto)`, ghi `auto mode on: …` vào `sent.log`, và digest cùng tick với những gì còn mở theo con trỏ.
 - Không đòi Mate đã trả lời: outbox chỉ gõ vào composer trống, nên lượt captain đang chờ không bị chen. Mate Codex cũng được bật lại.
-- Project không có `.auto` lẫn `.manual` (chưa bật auto bao giờ, hoặc xoá cờ bằng tay) thì để nguyên.
+- ~~Project không có `.auto` lẫn `.manual` (chưa bật auto bao giờ, hoặc xoá cờ bằng tay) thì để nguyên.~~ Thay bởi CON-115 bên dưới.
 - Daemon xét mỗi `DefaultInterval` (90s), nên auto có thể về muộn tới 90s sau mốc 5 phút.
 
 | # | Task | Xong khi |
 | --- | --- | --- |
 | 91 | `autopilot.rearm` cho manual giữ bằng `m`; chữ của phím `m` và skill `event-handling` (nay `wake`) nói manual hết sau 5 phút vắng. | Unit tái hiện 2026-10-13: giữ manual, crew `needs-decision`, 4:59 không gõ gì, 5:00 auto bật, digest tới Mate, `sent.log` có dòng bật lại; captain gõ lúc 4:00 thì tính lại từ đó; không cờ nào thì không bật. `make check` xanh. |
+
+**2026-10-20 (CON-115). Auto là mặc định.** Thực tế ở `signal`: project tạo lúc 09:55 bằng `mate project add`, không ai bấm `m`; ba crew onboard `wait-mate` lúc 10:00-10:04 và Mate không nghe gì tới 13:07. `project add` không bao giờ ghi `.auto`, nên project mới nằm ở trạng thái thứ ba (không `.auto`, không `.manual`) mà autopilot coi là manual và `rearm` của M21 cố ý để nguyên; chỉ phím `m` đưa nó ra. Spec M19 đã ghi "mode mặc định là auto" nhưng code không đổi. Captain chốt: "giữ auto luôn bật".
+- `Workspace.Auto(project)` là "không bị giữ": manual chỉ khi có `mate/.manual` (phím `m`), và vẫn hết sau 5 phút vắng như M21. `.auto` vẫn được `SetMode` ghi để timeline lấy mtime, nhưng không còn quyết định. Project không có cờ nào là auto.
+- Timeline: auto là chỗ project bắt đầu, nên lượt đầu trên project auto không ghi `mode.changed`; manual có ngày theo mtime của `.manual`.
+- Hệ quả: các project chưa từng bấm `m` (fusenlockscreen, matemarketing, reversegamefb, socialautomation) thành auto; project không có Mate chạy thì digest chỉ chờ trong outbox. Dashboard của corpus mẫu thành `auto`, nên `wait-mate` của nó là việc của Mate, không còn trong inbox captain.
 
 ### Token review: task nào tốn, vì sao, sửa harness của project ở đâu
 

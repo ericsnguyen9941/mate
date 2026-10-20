@@ -157,7 +157,7 @@ func TestAutomaticRefreshUsesOnlyCurrentSessionAndHonorsThreshold(t *testing.T) 
 			rt := deps.Runtime.(*runtime.Fake)
 			h, _, _ := spawn.MateHandle(ctx, w, deps, "shop")
 			rt.SetReadOutput(h, claudeEmptyScreen)
-			if err := w.SetAuto("shop", true); err != nil {
+			if err := w.SetMode("shop", true); err != nil {
 				t.Fatal(err)
 			}
 			if err := w.AppendSent("shop", store.SentEntry{Source: store.SourceMate, Target: store.SourceUser, Time: deps.Now().Add(-6 * time.Minute), Text: "answered"}); err != nil {

@@ -255,21 +255,20 @@ func (p *pass) ingestMeta(ctx context.Context) error {
 // - the Mate's own hook, the `m` key and a human). So this is an observation,
 // and the only one in the package besides `health.changed`: a pass compares
 // the flag with the last `mode.changed` it recorded and writes one event when
-// they differ. `auto` is dated by the flag file's mtime, which is exact;
-// `manual` is dated by the pass that noticed, which is a lower bound and says
-// so in its payload. A rebuild therefore records only the mode the workspace
+// they differ. Each mode is dated by its flag file's mtime when it has one,
+// which is exact, and otherwise by the pass that noticed, which is a lower
+// bound and says so in its payload. A rebuild therefore records only the mode the workspace
 // is in now, and docs/timeline.md says so plainly.
 func (p *pass) ingestMode(ctx context.Context) error {
-	auto := p.ing.ws.Auto(p.project)
-	mode := "manual"
-	at := p.now
-	dated := "observed"
-	if auto {
-		mode = "auto"
-		if fi, err := os.Stat(p.ing.ws.AutoFlag(p.project)); err == nil {
-			at = fi.ModTime()
-			dated = "flag_mtime"
-		}
+	// Each mode is dated by the flag that records it, when it has one:
+	// `.auto` for auto, the `m` key's `.manual` hold for manual.
+	mode, flag := "auto", p.ing.ws.AutoFlag(p.project)
+	if !p.ing.ws.Auto(p.project) {
+		mode, flag = "manual", p.ing.ws.ManualHold(p.project)
+	}
+	at, dated := p.now, "observed"
+	if fi, err := os.Stat(flag); err == nil {
+		at, dated = fi.ModTime(), "flag_mtime"
 	}
 
 	var last string
@@ -283,20 +282,20 @@ func (p *pass) ingestMode(ctx context.Context) error {
 	if last == mode {
 		return nil
 	}
-	if last == "" && mode == "manual" {
-		// Manual is where a project starts (section 5), so a first pass over
-		// a manual project has seen no change and invents none.
+	if last == "" && mode == "auto" {
+		// Auto is where a project starts (CON-115), so a first pass over
+		// an auto project has seen no change and invents none.
 		return nil
 	}
 	from := last
 	if from == "" {
-		from = "manual"
+		from = "auto"
 	}
 	p.b.event(pendingEvent{
 		Dedup:   dedup(KindModeChanged, p.project, mode, at.Format(time.RFC3339Nano)),
 		Project: p.project, At: at, ActorID: AppActorID(p.project), Kind: KindModeChanged,
 		Payload: map[string]any{"from": from, "to": mode, "dated_by": dated},
-		RefPath: p.ing.ws.AutoFlag(p.project),
+		RefPath: flag,
 	})
 	return nil
 }

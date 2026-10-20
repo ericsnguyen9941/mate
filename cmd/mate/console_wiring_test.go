@@ -168,29 +168,31 @@ func TestConsoleActionModeTogglesTheAutoFlagAndTheLabel(t *testing.T) {
 	action := consoleAction(w, deps)
 	ctx := context.Background()
 
-	if w.Auto("shop") {
-		t.Fatal("a fresh project is not manual")
+	// Auto is the default (CON-115); the first press holds manual, the
+	// second releases it.
+	if !w.Auto("shop") {
+		t.Fatal("a fresh project is not in auto mode")
 	}
 	out, err := action(ctx, console.ActionRequest{Action: console.ActionMode, Target: "shop", TargetKind: "project"})
 	if err != nil {
 		t.Fatalf("mode: %v", err)
 	}
-	if !w.Auto("shop") {
-		t.Fatal("the .auto flag was not created")
+	if w.Auto("shop") || !w.Held("shop") {
+		t.Fatal("the manual hold was not set")
 	}
-	if !strings.Contains(out, string(query.ModeAuto)) || !strings.Contains(out, autopilot.DefaultInterval.String()) {
-		t.Fatalf("mode outcome = %q, want the new label and the digest window", out)
+	if !strings.Contains(out, string(query.ModeManual)) {
+		t.Fatalf("mode outcome = %q, want the manual label", out)
 	}
 
 	out, err = action(ctx, console.ActionRequest{Action: console.ActionMode, Target: "shop", TargetKind: "project"})
 	if err != nil {
 		t.Fatalf("mode back: %v", err)
 	}
-	if w.Auto("shop") {
-		t.Fatal("the .auto flag was not removed")
+	if !w.Auto("shop") || w.Held("shop") {
+		t.Fatal("the manual hold was not released")
 	}
-	if !strings.Contains(out, string(query.ModeManual)) {
-		t.Fatalf("mode outcome = %q, want the manual label", out)
+	if !strings.Contains(out, string(query.ModeAuto)) || !strings.Contains(out, autopilot.DefaultInterval.String()) {
+		t.Fatalf("mode outcome = %q, want the new label and the digest window", out)
 	}
 
 	// And the snapshot the Console renders follows the flag.
@@ -198,17 +200,17 @@ func TestConsoleActionModeTogglesTheAutoFlagAndTheLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query.Load: %v", err)
 	}
-	if snap.Projects[0].Mode != query.ModeManual {
-		t.Fatalf("snapshot mode = %q, want manual", snap.Projects[0].Mode)
+	if snap.Projects[0].Mode != query.ModeAuto {
+		t.Fatalf("snapshot mode = %q, want auto", snap.Projects[0].Mode)
 	}
-	if err := w.SetAuto("shop", true); err != nil {
+	if err := w.SetMode("shop", false); err != nil {
 		t.Fatal(err)
 	}
 	if snap, err = query.Load(ctx, w, consoleHarnesses(), nil); err != nil {
 		t.Fatalf("query.Load: %v", err)
 	}
-	if snap.Projects[0].Mode != query.ModeAuto {
-		t.Fatalf("snapshot mode = %q, want auto", snap.Projects[0].Mode)
+	if snap.Projects[0].Mode != query.ModeManual {
+		t.Fatalf("snapshot mode = %q, want manual", snap.Projects[0].Mode)
 	}
 }
 

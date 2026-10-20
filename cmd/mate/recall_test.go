@@ -37,6 +37,11 @@ func recallFixture(t *testing.T) (*store.Workspace, time.Time, string) {
 	if err := os.MkdirAll(w.MateDir("shop"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The captain holds this project in manual, so the hand-backs below are
+	// the captain's inbox items the recall lists.
+	if err := w.SetMode("shop", false); err != nil {
+		t.Fatal(err)
+	}
 	writeFixture(t, w.ProjectDoc("shop"), "# shop\n\n## What this project is\n- A landing page for the ESP32 kit. (captain, 2026-09-18)\n\n## Layout and state\n- main has one README and no build. (crews/k1/report.md §Durable facts, main@"+first+", 2026-09-19)\n\n## How to work here\n\n## Research on file\n\n## Captain's decisions\n")
 	writeFixture(t, w.BacklogFile("shop"), "# Backlog\n\n## In flight\n- k2 (ship, mate/k2): fix the flaky test\n- k3: pick a colour\n- k4 ship the button\n- k6 (scout): crash\n- buyesp32 (ship): stopped at needs-decision\n\n## Held for the captain\n- k3, asked 2026-09-19: \"red or blue?\" Waiting on: the captain.\n\n## Queued\n- none\n\n## Done (10 most recent)\n- k5 (ship, 2026-09-18): merged\n- rpi35 (scout, 2026-09-17): crews/rpi35/report.md\n")
 	writeFixture(t, w.MemoryFile("shop"), "# Memory\n"+memory.HeaderPointer+"\n\n## Captain\n- Speaks Vietnamese. (captain, 2026-09-17)\n\n## Lessons\n- Scouts commit their reports unless told not to. (sent.log to rpi35 2026-09-18) <!--a:2026-08-01-->\n- The canary lesson is HERON-7. (captain, 2026-09-19) <!--a:2026-09-19-->\n")

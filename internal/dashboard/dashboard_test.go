@@ -31,8 +31,8 @@ func TestWorkspaceCardRepeatsTheViews(t *testing.T) {
 		t.Fatalf("projects = %+v, want one named %s", got.Projects, fixtureProject)
 	}
 	card := got.Projects[0]
-	if card.Mode != "manual" {
-		t.Errorf("mode = %q, want manual", card.Mode)
+	if card.Mode != "auto" {
+		t.Errorf("mode = %q, want auto, the default (CON-115)", card.Mode)
 	}
 	if card.Mate.Harness != "claude" {
 		t.Errorf("mate harness = %q, want claude (actor.harness)", card.Mate.Harness)
