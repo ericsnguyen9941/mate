@@ -1105,3 +1105,14 @@ func spawnLane(req SpawnCrewRequest, repoCfg store.RepoConfig) (string, error) {
 	}
 	return lane, nil
 }
+
+// LaneFor is the lane a spawn request would hold: its repo's, or what
+// `--lane` said. The CLI reads it before spawning to refuse a spawn into a
+// full lane (CON-118).
+func LaneFor(req SpawnCrewRequest, cfg store.ProjectConfig) (string, error) {
+	repoCfg, err := spawnRepo(cfg, req.Project, req.Repo)
+	if err != nil {
+		return "", err
+	}
+	return spawnLane(req, repoCfg)
+}
