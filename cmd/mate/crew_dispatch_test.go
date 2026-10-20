@@ -562,3 +562,66 @@ func TestCrewDispatchPrintsTheReviewSmallProfile(t *testing.T) {
 		t.Fatalf("output lacks %q:\n%s", want, out.String())
 	}
 }
+
+// `crew dispatch` reports every lane some repo declares: who holds it
+// (crews spawned or working, not those waiting), its cap from
+// workspace.yaml `lanes:` or the default, and what to do when it is full
+// (CON-118). A workspace with no lane prints no lanes block.
+func TestCrewDispatchReportsLanes(t *testing.T) {
+	w := wakeFixture(t)
+	var out, errw bytes.Buffer
+	if err := run([]string{"crew", "dispatch", "--workspace", w.Root()}, &out, &errw); err != nil {
+		t.Fatalf("crew dispatch: %v\n%s", err, errw.String())
+	}
+	if strings.Contains(out.String(), "lanes") {
+		t.Fatalf("a workspace with no lane printed a lanes block:\n%s", out.String())
+	}
+
+	cfg, err := w.LoadProject("shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := runMate(t, "project", "repo", "lane", "shop", cfg.Repos[0].Name, "xcode", "--workspace", w.Root()); code != 0 {
+		t.Fatal("lane not set")
+	}
+	// The fixture: rev-k3 and busy-k5 are working; k3 is wait-mate;
+	// done-old is finished. A crew spawned with --lane none holds nothing.
+	// Two hold the lane, cap two.
+	if err := w.WriteCrewMeta("shop", "api-1", map[string]string{spawn.MetaHarness: "codex", spawn.MetaState: "working", spawn.MetaTask: "api", spawn.MetaLane: ""}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := run([]string{"crew", "dispatch", "--workspace", w.Root()}, &out, &errw); err != nil {
+		t.Fatalf("crew dispatch: %v\n%s", err, errw.String())
+	}
+	for _, want := range []string{
+		"lanes (a crew holds its repo's lane while spawned or working",
+		"xcode: 2/2 busy - shop/busy-k5 (working), shop/rev-k3 (working); full: queue the next xcode task with `blocked-by: lane xcode`",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	for _, bad := range []string{"shop/k3", "done-old", "api-1"} {
+		if strings.Contains(out.String(), bad) {
+			t.Errorf("a crew that holds no lane is listed (%q):\n%s", bad, out.String())
+		}
+	}
+
+	// workspace.yaml resizes the lane.
+	path := filepath.Join(w.StateDir(), "workspace.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, []byte("lanes:\n  xcode: 4\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := run([]string{"crew", "dispatch", "--workspace", w.Root()}, &out, &errw); err != nil {
+		t.Fatalf("crew dispatch: %v\n%s", err, errw.String())
+	}
+	if !strings.Contains(out.String(), "xcode: 2/4 busy") || !strings.Contains(out.String(), "; 2 free") {
+		t.Errorf("cap from workspace.yaml not applied:\n%s", out.String())
+	}
+}

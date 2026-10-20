@@ -95,13 +95,14 @@ MATE_CALLER=crew
 
 == files the launch created or changed ==
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3.meta mode=-rw-r--r-- bytes=351 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3.meta mode=-rw-r--r-- bytes=357 ---
 agent=crew-k3
 branch=mate/k3
 delivery=local
 effort=high
 harness=codex
 kind=ship
+lane=
 launched_at=2026-09-17T10:00:00Z
 model=gpt-5.5
 pane=w1:p2
