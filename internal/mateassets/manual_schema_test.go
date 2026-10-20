@@ -249,10 +249,11 @@ var headingMention = regexp.MustCompile("`## ([^`]+)`")
 // templateHeadings are the `##` headings the crew template itself asks a
 // Crew to write, in a hand-back or a report, the sections the review brief
 // (cmd/mate/review.go) asks a reviewer to write, and the sections of the
-// Mate's own files (internal/memory); they are not brief sections.
+// Mate's own files (internal/memory); they are not brief sections. Notes is
+// a review section no code reads (CON-106), so it has no store constant.
 var templateHeadings = func() map[string]bool {
 	m := map[string]bool{"Deviations from Build": true, "Still open": true, "Durable facts": true, "For the next crew": true,
-		store.VerdictSection: true, store.FindingsSection: true, store.PriorFindingsSection: true}
+		store.VerdictSection: true, store.FindingsSection: true, store.PriorFindingsSection: true, "Notes": true}
 	for _, set := range [][]string{memory.Sections, memory.ProjectSections, memory.BacklogSections} {
 		for _, s := range set {
 			m[s] = true
@@ -372,6 +373,19 @@ func TestBuilderRunsTheReviewersChecks(t *testing.T) {
 	for _, want := range []string{"Every other claim in the hand-back, not only the acceptance rows, carries the command you ran and its output, or says `unverified`", "rerun the check that caught it"} {
 		if !strings.Contains(string(crew), want) {
 			t.Errorf("crew brief does not say %q", want)
+		}
+	}
+}
+
+// TestPassingReviewNotesOpenNoCorrection pins CON-109: a review whose
+// Findings is none passes whatever its Notes holds, so the Mate merges it
+// rather than send the crew back over a doc nit; a note worth keeping is a
+// follow-up at its discretion, and --followups stays for standing Findings.
+func TestPassingReviewNotesOpenNoCorrection(t *testing.T) {
+	text := skillText(t, "review-delivery")
+	for _, want := range []string{"`## Notes` open no correction round", "`mate backlog add` or in the tracker, as you judge", "it needs no `--followups`"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("review-delivery does not say %q", want)
 		}
 	}
 }

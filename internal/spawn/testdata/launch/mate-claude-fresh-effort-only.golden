@@ -164,8 +164,8 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=f2ae36362670d1bdc3d47768c07fd80bdb12f8be86599d3c1b8da2dcd715969d
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/new-task/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md mode=-rw-r--r-- bytes=8172 ---
-(rendered asset) sha256=aa10db257aa54696000c159cfe6196f5b37d0e73f7939af5c5a6b324cb522b3d
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md mode=-rw-r--r-- bytes=8351 ---
+(rendered asset) sha256=31e87067b900372f92cdd521576908b3dbbafc4d19b3aa70cb69310609635deb
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/stow/SKILL.md mode=-rw-r--r-- bytes=7998 ---

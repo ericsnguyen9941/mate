@@ -91,6 +91,25 @@ func TestReviewVerdictDoesNotInferApprovalFromProse(t *testing.T) {
 	if !strings.Contains(full, "section named Notes") || !strings.Contains(full, "indented sub-bullets") {
 		t.Fatalf("full brief does not separate blocking findings from notes:\n%s", full)
 	}
+	assertMaterialRubric(t, full)
+}
+
+// assertMaterialRubric pins CON-109: a brief defines a material finding and
+// passes a review whose Findings is none, whatever its Notes holds, so a
+// reviewer does not return a delivery over a doc nit.
+func assertMaterialRubric(t *testing.T, brief string) {
+	t.Helper()
+	for _, want := range []string{
+		"material only when an Acceptance line or the captain's words are not met",
+		"a gate cannot be trusted (flaky, or not running what it claims)",
+		"data loss or a security hole",
+		"doc nits, hardening or refactors nobody asked for, hypothetical risks",
+		"pass when Findings is none, whatever Notes holds",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Errorf("brief lacks %q:\n%s", want, brief)
+		}
+	}
 }
 func nilSafeReviewWorkspace(t *testing.T) *store.Workspace {
 	w, err := store.Init(t.TempDir(), workspaceDefaults())
@@ -206,6 +225,7 @@ func TestReviewSinceBriefCoversOnlyTheChangeAndListsTheFindings(t *testing.T) {
 	if strings.Contains(text, "FULL committed change") || strings.Contains(text, "git diff "+fp["base"]+"...") {
 		t.Fatalf("scoped brief still asks for the full diff:\n%s", text)
 	}
+	assertMaterialRubric(t, text)
 }
 
 func TestReviewCheckAcceptsAScopedReviewOnlyWhenEveryFindingIsClosed(t *testing.T) {
