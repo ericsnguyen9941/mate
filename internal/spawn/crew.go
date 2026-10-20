@@ -870,6 +870,7 @@ func renderCrewBrief(w *store.Workspace, deps Deps, plan crewPlan) ([]byte, erro
 		HandbackPath:       w.CrewHandback(plan.project, plan.crew),
 		WorkspaceCrewRules: plan.crewRulesWS,
 		ProjectCrewRules:   plan.crewRulesProject,
+		Lane:               plan.repoCfg.Lane,
 	})
 }
 
