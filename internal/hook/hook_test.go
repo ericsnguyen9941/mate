@@ -105,10 +105,8 @@ func TestHandlePromptTableDriven(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			w := newWorkspace(t)
-			if tc.autoBefore {
-				if err := w.SetAuto("shop", true); err != nil {
-					t.Fatalf("SetAuto: %v", err)
-				}
+			if err := w.SetMode("shop", tc.autoBefore); err != nil {
+				t.Fatalf("SetMode: %v", err)
 			}
 			err := hook.HandlePrompt(w, "shop", []byte(tc.payload))
 			if tc.wantErr {

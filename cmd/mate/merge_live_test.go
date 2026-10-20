@@ -279,7 +279,7 @@ func TestLiveMateMergesReviewedWork(t *testing.T) {
 		t.Fatal("the rendered manual does not tell the Mate to merge with --review")
 	}
 
-	if err := w.SetAuto("shop", true); err != nil {
+	if err := w.SetMode("shop", true); err != nil {
 		t.Fatalf("SetAuto: %v", err)
 	}
 

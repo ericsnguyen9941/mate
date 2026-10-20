@@ -3,6 +3,7 @@ package autopilot_test
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,16 +16,17 @@ import (
 
 // Manual mode sends nothing, ever - mvp.md section 5's first line, and
 // the rule the whole daemon has to be safe under. The project here has a full
-// inbox and a live Mate with an empty composer: everything except the flag.
+// inbox and a live Mate with an empty composer: everything except auto.
 func TestManualModeSendsNothing(t *testing.T) {
 	f := newFixture(t)
+	f.auto(false)
 	f.status("k3", "needs-decision: pick A or B")
 	f.incident("k9", box.IncidentStale, store.IncidentOpen, "quiet for 3m0s")
 
 	f.mustTick()
 
 	if typed := f.typed(); len(typed) != 0 {
-		t.Fatalf("typed %#v into the Mate with no .auto flag", typed)
+		t.Fatalf("typed %#v into the Mate in manual mode", typed)
 	}
 	if sent := f.sent(); len(sent) != 0 {
 		t.Fatalf("sent.log = %+v, want nothing recorded", sent)
@@ -402,12 +404,15 @@ func TestTheFlagIsReadAgainRightBeforeTyping(t *testing.T) {
 	}
 }
 
-// One workspace, two projects, one flag: the daemon is per project and the
-// other one is untouched.
+// One workspace, two projects, one held in manual: the daemon is per
+// project and the held one is untouched.
 func TestOnlyProjectsWithTheFlagAreDigested(t *testing.T) {
 	f := newFixture(t)
 	f.addProject("blog")
 	f.auto(true)
+	if err := f.ws.SetMode("blog", false); err != nil {
+		t.Fatal(err)
+	}
 	f.status("k3", "needs-decision: pick A or B")
 	if err := f.ws.AppendStatus("blog", "b1", "needs-decision: which template"); err != nil {
 		t.Fatalf("AppendStatus: %v", err)
@@ -597,5 +602,23 @@ func TestEveryTickSweepsInBothModes(t *testing.T) {
 	}
 	if sweeps != 2 {
 		t.Fatalf("swept %d times in two ticks, want 2", sweeps)
+	}
+}
+
+// A project nobody switched - no `.auto`, no `.manual`, as `project add`
+// leaves it - is in auto mode: its Mate hears its crews' first hand-back
+// (CON-115; signal 2026-10-20 sat three hours with three hand-backs
+// nobody delivered).
+func TestANewProjectIsDigestedWithoutAKeyPressed(t *testing.T) {
+	f := newFixture(t)
+	if _, err := os.Stat(f.ws.AutoFlag(project)); !os.IsNotExist(err) {
+		t.Fatalf("fixture already has .auto: %v", err)
+	}
+	f.status("k3", "wait-mate: report ready")
+
+	f.mustTick()
+
+	if line := f.requireOneDigest(); !strings.Contains(line, "k3 wait-mate") {
+		t.Fatalf("digest = %q, want the hand-back", line)
 	}
 }

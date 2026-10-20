@@ -202,28 +202,37 @@ func TestStoreAutoFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if w.Auto("shop") {
-		t.Fatal("auto mode is on before anything set it")
+	// Auto is the default: a new project's Mate hears its crews without a
+	// key pressed first (CON-115).
+	if !w.Auto("shop") || w.Held("shop") {
+		t.Fatal("a new project is not in auto mode")
 	}
-	if err := w.SetAuto("shop", true); err != nil {
-		t.Fatalf("SetAuto(true): %v", err)
+	if err := w.SetMode("shop", true); err != nil {
+		t.Fatalf("SetMode(true): %v", err)
 	}
 	if !w.Auto("shop") {
-		t.Fatal("auto mode is off after SetAuto(true)")
+		t.Fatal("auto mode is off after SetMode(true)")
 	}
 	if _, err := os.Stat(w.AutoFlag("shop")); err != nil {
 		t.Fatalf(".auto file missing: %v", err)
 	}
-	if err := w.SetAuto("shop", true); err != nil {
+	if err := w.SetMode("shop", true); err != nil {
 		t.Fatalf("SetAuto(true) twice: %v", err)
 	}
-	if err := w.SetAuto("shop", false); err != nil {
+	if err := w.SetMode("shop", false); err != nil {
 		t.Fatalf("SetAuto(false): %v", err)
 	}
-	if w.Auto("shop") {
-		t.Fatal("auto mode still on after SetAuto(false)")
+	if w.Auto("shop") || !w.Held("shop") {
+		t.Fatal("auto mode still on after SetMode(false)")
 	}
-	if err := w.SetAuto("shop", false); err != nil {
+	// Removing `.auto` by hand no longer turns auto off: only the hold does.
+	if err := os.Remove(w.ManualHold("shop")); err != nil {
+		t.Fatal(err)
+	}
+	if !w.Auto("shop") {
+		t.Fatal("a project with no flag at all is not in auto mode")
+	}
+	if err := w.SetMode("shop", false); err != nil {
 		t.Fatalf("SetAuto(false) on a missing flag: %v", err)
 	}
 }

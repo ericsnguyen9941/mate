@@ -190,7 +190,7 @@ func (f *fixture) addProject(name string) {
 
 func (f *fixture) auto(on bool) {
 	f.t.Helper()
-	if err := f.ws.SetAuto(project, on); err != nil {
+	if err := f.ws.SetMode(project, on); err != nil {
 		f.t.Fatalf("SetAuto(%v): %v", on, err)
 	}
 }

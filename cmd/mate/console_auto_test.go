@@ -33,7 +33,7 @@ func TestConsolePilotDigestsToAStartedMate(t *testing.T) {
 	}
 	rt.SetReadOutput(handle, claudeEmptyScreen)
 
-	if err := w.SetAuto("shop", true); err != nil {
+	if err := w.SetMode("shop", true); err != nil {
 		t.Fatalf("SetAuto: %v", err)
 	}
 	if err := w.AppendStatus("shop", "k3", "needs-decision: pick A or B"); err != nil {

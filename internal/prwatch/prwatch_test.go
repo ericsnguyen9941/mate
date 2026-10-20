@@ -249,8 +249,8 @@ func (e *env) head(branch string) string {
 func TestMergedPullRequestFastForwardsRecordsAndWakesTheMate(t *testing.T) {
 	e := newEnv(t, prJSON("OPEN", ""), prJSON("OPEN", ""), prJSON("MERGED", "ignored"))
 	e.gh.answers[2] = prJSON("MERGED", e.mergeSHA)
-	if e.ws.Auto(project) {
-		t.Fatal("the fixture is not in manual mode")
+	if err := e.ws.SetMode(project, false); err != nil {
+		t.Fatal(err)
 	}
 	before := e.head("main")
 

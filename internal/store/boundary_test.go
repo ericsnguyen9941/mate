@@ -61,7 +61,7 @@ func TestStoreWritesRefuseSymlinkEscape(t *testing.T) {
 		{
 			name:  "auto flag through a symlinked mate dir",
 			link:  ".mate/projects/shop/mate",
-			write: func(w *store.Workspace) error { return w.SetAuto("shop", true) },
+			write: func(w *store.Workspace) error { return w.SetMode("shop", true) },
 		},
 		{
 			name: "project.yaml through a symlinked project dir",

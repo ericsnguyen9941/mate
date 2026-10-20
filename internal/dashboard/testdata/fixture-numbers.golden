@@ -6,7 +6,7 @@
   "projects": [
     {
       "name": "shop",
-      "mode": "manual",
+      "mode": "auto",
       "mate": {
         "harness": "claude",
         "running": true,
@@ -19,7 +19,7 @@
       "crews_by_state": {
         "waiting_review": 1
       },
-      "inbox_waiting": 1
+      "inbox_waiting": 0
     }
   ]
 }
@@ -29,7 +29,7 @@
   "generated_at": "-",
   "last_event_id": 203,
   "project": "shop",
-  "mode": "manual",
+  "mode": "auto",
   "mate": {
     "harness": "claude",
     "running": true,
@@ -109,19 +109,7 @@
       "tokens_with_reviews": 233968
     }
   ],
-  "inbox": [
-    {
-      "seq": 5,
-      "at": "2026-09-19T10:46:40.000000000Z",
-      "kind": "status",
-      "source": "crew",
-      "target": "crew:buybtn",
-      "crew": "buybtn",
-      "verb": "wait-mate",
-      "text": "ready in branch mate/buybtn",
-      "attention": false
-    }
-  ]
+  "inbox": []
 }
 
 == /api/projects/shop/mate

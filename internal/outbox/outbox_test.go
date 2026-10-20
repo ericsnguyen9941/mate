@@ -456,11 +456,11 @@ func TestOnePassTriesOnlyTheOldestItem(t *testing.T) {
 }
 
 // An assign is the captain's keystroke and goes out in manual mode, which is
-// where [assign] lives; only a digest is withdrawn when `.auto` is absent.
+// where [assign] lives; only a digest is withdrawn in manual mode.
 func TestAnAssignIsDeliveredInManualMode(t *testing.T) {
 	f := newFixture(t)
-	if f.ws.Auto(project) {
-		t.Fatal("fixture starts in auto mode")
+	if err := f.ws.SetMode(project, false); err != nil {
+		t.Fatal(err)
 	}
 	s := f.sender()
 	f.assign(s, "crews/k3.status@0", resolveLine)

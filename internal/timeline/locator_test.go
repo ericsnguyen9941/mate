@@ -401,20 +401,28 @@ func TestTurningAutoModeOnIsRecordedOnce(t *testing.T) {
 	f := newFixture(t)
 	f.ingest(t)
 	if n := f.count(t, `SELECT COUNT(*) FROM event WHERE kind = ?`, timeline.KindModeChanged); n != 0 {
-		t.Fatalf("%d mode.changed event(s) for a project that has always been manual", n)
+		t.Fatalf("%d mode.changed event(s) for a project that has always been auto", n)
 	}
-	if err := f.ws.SetAuto(fixtureProject, true); err != nil {
-		t.Fatalf("SetAuto: %v", err)
+	if err := f.ws.SetMode(fixtureProject, false); err != nil {
+		t.Fatalf("SetMode(false): %v", err)
 	}
 	f.ingest(t)
 	f.ingest(t)
 	if n := f.count(t, `SELECT COUNT(*) FROM event WHERE kind = ?`, timeline.KindModeChanged); n != 1 {
-		t.Fatalf("%d mode.changed event(s) after auto was turned on once", n)
+		t.Fatalf("%d mode.changed event(s) after manual was chosen once", n)
+	}
+	if err := f.ws.SetMode(fixtureProject, true); err != nil {
+		t.Fatalf("SetMode(true): %v", err)
+	}
+	f.ingest(t)
+	f.ingest(t)
+	if n := f.count(t, `SELECT COUNT(*) FROM event WHERE kind = ?`, timeline.KindModeChanged); n != 2 {
+		t.Fatalf("%d mode.changed event(s) after auto was turned back on once, want 2", n)
 	}
 	var to, dated string
 	if err := f.db.SQL().QueryRow(
 		`SELECT json_extract(payload, '$.to'), json_extract(payload, '$.dated_by')
-		   FROM event WHERE kind = ?`, timeline.KindModeChanged).Scan(&to, &dated); err != nil {
+		   FROM event WHERE kind = ? ORDER BY id DESC LIMIT 1`, timeline.KindModeChanged).Scan(&to, &dated); err != nil {
 		t.Fatalf("read the mode event: %v", err)
 	}
 	if to != "auto" || dated != "flag_mtime" {

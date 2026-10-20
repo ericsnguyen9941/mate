@@ -101,7 +101,7 @@ func TestLiveAutoPolicyMateAnswersADigest(t *testing.T) {
 		t.Fatalf("StartMate: %v", err)
 	}
 	t.Logf("Mate %s is running on %s in pane %s", mateRes.Agent, mateRes.Harness, mateRes.Pane)
-	if err := w.SetAuto("shop", true); err != nil {
+	if err := w.SetMode("shop", true); err != nil {
 		t.Fatalf("SetAuto: %v", err)
 	}
 
