@@ -625,3 +625,45 @@ func TestCrewDispatchReportsLanes(t *testing.T) {
 		t.Errorf("cap from workspace.yaml not applied:\n%s", out.String())
 	}
 }
+
+// A spawn into a full lane is refused with exit 2 and the line the Mate
+// acts on; --lane none and a lane with room pass (CON-118).
+func TestLaneGuardRefusesAFullLane(t *testing.T) {
+	w := wakeFixture(t)
+	req := spawn.SpawnCrewRequest{Project: "shop", Crew: "ui-9"}
+	if err := laneGuard(w, req); err != nil {
+		t.Fatalf("no lane declared: %v", err)
+	}
+	cfg, err := w.LoadProject("shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := runMate(t, "project", "repo", "lane", "shop", cfg.Repos[0].Name, "xcode", "--workspace", w.Root()); code != 0 {
+		t.Fatal("lane not set")
+	}
+	err = laneGuard(w, req)
+	var ue *usageError
+	if err == nil || !errors.As(err, &ue) || !strings.Contains(err.Error(), "lane xcode is full (2/2: shop/busy-k5 (working), shop/rev-k3 (working)); queue the task with `blocked-by: lane xcode`") {
+		t.Fatalf("full lane: err = %v, want a usage error naming the holders", err)
+	}
+	req.Lane = "none"
+	if err := laneGuard(w, req); err != nil {
+		t.Fatalf("--lane none: %v", err)
+	}
+	req.Lane = ""
+	path := filepath.Join(w.StateDir(), "workspace.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, []byte("lanes:\n  xcode: 3\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w2, err := store.Open(w.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := laneGuard(w2, req); err != nil {
+		t.Fatalf("lane with room: %v", err)
+	}
+}

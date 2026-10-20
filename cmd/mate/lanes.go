@@ -120,3 +120,35 @@ func writeLanes(out io.Writer, rows []laneRow) {
 		fmt.Fprintln(out, line)
 	}
 }
+
+// laneGuard refuses a spawn into a full lane, exit 2 like any other bad
+// argument: the Mate queues the task with `blocked-by: lane <name>` and
+// dispatches work outside the lane (skill new-task). It reports and the
+// Mate still decides, but twice in one evening a Mate dispatched into a
+// lane that `crew dispatch` had just called full, so the report alone was
+// not enough. `--lane none` passes, for a crew whose gate never runs the
+// lane's resource.
+func laneGuard(w *store.Workspace, req spawn.SpawnCrewRequest) error {
+	cfg, err := w.LoadProject(req.Project)
+	if err != nil {
+		return err
+	}
+	lane, err := spawn.LaneFor(req, cfg)
+	if err != nil || lane == "" {
+		// A repo or lane the spawn cannot resolve is SpawnCrew's refusal
+		// to make, with its own exit code; the guard only knows lanes.
+		return nil
+	}
+	rows, err := laneRows(w)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if r.Name != lane || !r.Full() {
+			continue
+		}
+		return newUsageErrorf("mate crew spawn: lane %s is full (%d/%d: %s); queue the task with `blocked-by: lane %s` and dispatch work outside the lane, or pass --lane none only when this crew's gate never runs xcodebuild",
+			lane, len(r.Holders), r.Cap, strings.Join(r.Holders, ", "), lane)
+	}
+	return nil
+}

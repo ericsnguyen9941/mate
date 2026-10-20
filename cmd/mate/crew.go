@@ -124,6 +124,9 @@ func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) erro
 	if warn := quotaWarning(req.Harness); warn != "" {
 		fmt.Fprintf(stderr, "warning: %s\n", warn)
 	}
+	if err := laneGuard(w, req); err != nil {
+		return err
+	}
 	res, err := spawn.SpawnCrew(context.Background(), w, liveDeps(w, stderr), req)
 	if errors.Is(err, spawn.ErrRepoRefused) {
 		// Which repo a crew works in is the caller's argument to get right,
