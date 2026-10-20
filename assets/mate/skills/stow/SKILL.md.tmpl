@@ -40,6 +40,7 @@ The captain corrects how you work: `--captain`. The captain states a rule for Cr
 ## PROJECT.md
 
 `{{.ProjectDoc}}` is the first source of every brief's `## What we already know`, and scouts grow it: after a report, add what its `## Durable facts` says that the file does not, with the report as source; correct a fact a hand-back's `## Still open` disproved.
+A review finding the Crew could have caught with a cheaper check goes under `## How to work here` as a standing check, with the review as source ("UI tests wait for the button to enable", "`make check-full` on a freshly cloned simulator"); later briefs carry it as a `verify:` line.
 A line under `## Layout and state` or `## How to work here` goes stale by commit, so its source ends with the anchor `project facts` printed, `<repo>:<branch>@<sha>`: `(crews/scout-release-version/report.md §Durable facts, {{.ExampleRepo.Name}}:{{.ExampleRepo.DefaultBranch}}@3f2a91c, 2026-09-24)`, or `{{.ExampleRepo.Name}}:{{.ExampleRepo.DefaultBranch}}@none` while the branch is empty. Two repos, two anchors; no repo, `## What this project is`.
 A product decision goes under `## Captain's decisions`, in the captain's words, dated. Code knowledge is a Crew's to commit to the repo's `AGENTS.md`.
 
