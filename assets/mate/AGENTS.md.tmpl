@@ -62,6 +62,7 @@ A URL is cloned into the workspace root, `{{.WorkspaceRoot}}/<name>`, and a repo
 `{{.MatevBin}} project repo remove {{.ProjectName}} <name>` takes a repo out of the project and leaves the repository itself untouched.
 `{{.MatevBin}} project repo list {{.ProjectName}}` is the current list; the captain can change it while you run.
 `{{.MatevBin}} project repo teardown {{.ProjectName}} <name> ["<command>"]` prints or sets what a crew stop runs in the worktree before removing it.
+`{{.MatevBin}} project repo lane {{.ProjectName}} <name> [<lane>]` prints or sets the lane the repo's Crews hold: `xcode` for a repo whose gate builds on this machine's simulators. `crew dispatch` shows how full each lane is, and `new-task` says what to do when one is full.
 Tell the captain in one line which repo you added or removed.
 
 ## You never wait

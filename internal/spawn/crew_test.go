@@ -147,6 +147,7 @@ func TestSpawnCrewCreatesWorktreeBriefAndMeta(t *testing.T) {
 		spawn.MetaKind:      "ship",
 		spawn.MetaDelivery:  "local",
 		spawn.MetaSize:      "medium",
+		spawn.MetaLane:      "",
 		store.MetaRepo:      "shop",
 		spawn.MetaSessionID: "",
 		// The first session (CON-73); a relaunch counts the next.
