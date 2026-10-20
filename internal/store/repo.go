@@ -59,6 +59,13 @@ type RepoConfig struct {
 	// clone, a DerivedData root of its own. Empty runs nothing; mate's own
 	// sweeps run either way.
 	Teardown string `yaml:"teardown,omitempty"`
+	// Lane names the machine resource the repo's crews contend for
+	// (CON-118): `xcode` for a repo whose gate builds on this machine's
+	// simulators. Repos of different projects that name the same lane
+	// share its cap; `mate crew dispatch` reports how full each lane is
+	// and the brief of a crew in the `xcode` lane carries the Xcode loop.
+	// Empty is no lane.
+	Lane string `yaml:"lane,omitempty"`
 }
 
 // Repo returns the repo registered under name.

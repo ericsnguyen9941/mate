@@ -479,3 +479,31 @@ func TestWriteOverwritesAgents(t *testing.T) {
 		t.Errorf("AGENTS.md was not regenerated: %q", got)
 	}
 }
+
+// A crew in the `xcode` lane gets the Xcode loop (CON-117); every other
+// crew does not, and no brief tells a crew to poll.
+func TestBriefCarriesTheXcodeLoopOnlyInTheXcodeLane(t *testing.T) {
+	plain, err := RenderBrief(fixedBriefParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(plain), "# The Xcode loop") {
+		t.Fatalf("a crew with no lane got the Xcode loop:\n%s", plain)
+	}
+	for _, bad := range []string{"`until`", "until loop"} {
+		if strings.Contains(string(plain), bad) {
+			t.Errorf("the brief still suggests polling (%q)", bad)
+		}
+	}
+	p := fixedBriefParams()
+	p.Lane = "xcode"
+	xcode, err := RenderBrief(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"# The Xcode loop", "build-for-testing", "-collect-test-diagnostics never", "Never run two xcodebuilds at once"} {
+		if !strings.Contains(string(xcode), want) {
+			t.Errorf("xcode-lane brief lacks %q", want)
+		}
+	}
+}
