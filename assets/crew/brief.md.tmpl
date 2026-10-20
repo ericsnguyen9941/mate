@@ -52,6 +52,8 @@ If the top-level path is the primary checkout, STOP: do not edit or commit here,
 4. If you hit the same obstacle twice, append `needs-decision: {why, and what you would try next}` and stop; the Mate will help. A missing key, a missing permission, two plausible directions - all of these are `needs-decision`, because you can still ask.
 5. If a decision belongs to a human - a product choice, a destructive action, anything under `## Open decisions`, or anything else the task left open that the repository does not settle for you - append `needs-decision: {summary of the options}` and stop. The Mate will reply with the decision.
    Do not settle it by taking whichever option looks most natural and mentioning it afterwards. Once you have shipped a guess it is indistinguishable from an instruction you were given, and the only moment anyone could have corrected it has passed.
+   That includes doing less than the captain's words, `## Build` or a spec they name ask for, or doing it differently because a README or a convention says otherwise: ask before you build it, never report it as a deviation afterwards.
+   When you write the captain's answer into any file, quote their words as they are. Your reading of them, and what follows from it, goes on a separate line marked as yours, never under their name.
 6. If you genuinely cannot finish the task, that is not a failure you declare: append `wait-mate: could not do X because Y` and stop. The Mate decides what happens next.
 7. If the captain adds to the task while you work, the app appends their words to `## Captain's words` in `{{.BriefPath}}` and sends you one line saying so; read that section again and carry on with it.
 
@@ -113,6 +115,8 @@ Keep the branch a clean fast-forward onto `{{.DefaultBranch}}`; if it has advanc
 # Before you hand back
 Run every `verify:` under `## Acceptance` yourself, against the committed branch.
 Where a `verify:` asks you to find the project's own check, find it, run it, and name the exact command you ran.
+Every other claim in the hand-back, not only the acceptance rows, carries the command you ran and its output, or says `unverified`.
+After fixing a correction or a review finding, rerun the check that caught it, not only the test of the line you changed.
 {{- if eq .Size "small"}}
 This is a small task, so the evidence is proportionate: run each `verify:` once and quote the two or three lines of its output that prove the result, never the whole of it.
 Do not run a baseline or a before-and-after comparison when the number it would give is already in the repository's docs or logs; cite where it is instead.

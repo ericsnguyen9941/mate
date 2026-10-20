@@ -323,6 +323,60 @@ func TestCrewsAreNamedAfterTheirTask(t *testing.T) {
 	}
 }
 
+// TestDeviationsAreSettledBeforeReview pins CON-107: three of the eight
+// changes-requested reviews on plantrip and mihuv2 (17-19/10) caught a
+// choice the Crew had made and disclosed under Deviations instead of
+// asking. The Mate settles a deviation before it starts a reviewer, and the
+// Crew asks before it builds one or records its reading as the captain's.
+func TestDeviationsAreSettledBeforeReview(t *testing.T) {
+	text := skillText(t, "review-delivery")
+	for _, want := range []string{"A failed step 2 is settled before anyone reviews", "A reviewer never decides a deviation", "`on`: once step 2 holds"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("review-delivery does not say %q", want)
+		}
+	}
+	crew, err := RenderBrief(fixedBriefParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"never report it as a deviation afterwards", "quote their words as they are"} {
+		if !strings.Contains(string(crew), want) {
+			t.Errorf("crew brief does not say %q", want)
+		}
+	}
+}
+
+// TestBuilderRunsTheReviewersChecks pins CON-108: four of the eight
+// changes-requested reviews on plantrip and mihuv2 (17-19/10) caught what
+// the Crew would have caught had it run the reviewer's check - a re-run
+// claim never re-run, a gate run only on a warm simulator, UI built to a
+// reference image never compared to it, a fix that broke what the earlier
+// check had caught. The brief's verify: is the reviewer's check in a clean
+// environment, every hand-back claim carries its command, a fix reruns the
+// check that caught it, and the finding becomes a standing check.
+func TestBuilderRunsTheReviewersChecks(t *testing.T) {
+	for skill, wants := range map[string][]string{
+		briefSkill: {"the check an independent reviewer would run, in a clean environment", "runs from the clean state the repo provides", "compares the render to the reference, with a tolerance", "re-runs it, then `git diff --exit-code`"},
+		stowSkill:  {"could have caught with a cheaper check goes under `## How to work here` as a standing check"},
+	} {
+		text := skillText(t, skill)
+		for _, want := range wants {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s does not say %q", skill, want)
+			}
+		}
+	}
+	crew, err := RenderBrief(fixedBriefParams())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Every other claim in the hand-back, not only the acceptance rows, carries the command you ran and its output, or says `unverified`", "rerun the check that caught it"} {
+		if !strings.Contains(string(crew), want) {
+			t.Errorf("crew brief does not say %q", want)
+		}
+	}
+}
+
 // TestPassingReviewNotesOpenNoCorrection pins CON-109: a review whose
 // Findings is none passes whatever its Notes holds, so the Mate merges it
 // rather than send the crew back over a doc nit; a note worth keeping is a
