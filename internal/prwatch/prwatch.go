@@ -165,7 +165,7 @@ func (d Deps) ended(ctx context.Context, project, crew, url, repo string, repoCf
 		sync := d.syncCheckout(ctx, repo, repoCfg.DefaultBranch, pr)
 		set[crewstate.MetaMergeCommit] = pr.MergeCommit
 		set[crewstate.MetaPRSync] = sync
-		line = fmt.Sprintf("pr-merged: %s %s was merged on GitHub as %s (%s); read %s, then run mate crew stop %s %s and take the next task from the backlog",
+		line = fmt.Sprintf("pr-merged: %s %s was merged on GitHub as %s (%s); read %s, then run mate crew stop %s %s and keep the work moving",
 			crew, url, short(pr.MergeCommit), sync, statusPath, project, crew)
 		d.logf("%s merged as %s; primary checkout: %s", url, short(pr.MergeCommit), sync)
 	} else {
