@@ -86,11 +86,11 @@ type MergeResult struct {
 // same words.
 func (r MergeResult) Line() string {
 	if r.PullRequest != "" {
-		return fmt.Sprintf("%s/%s: merged pull request %s as %s (%s); crew finished, worktree and branch removed",
-			r.Project, r.Crew, r.PullRequest, shortCommit(r.After), r.Sync)
+		return fmt.Sprintf("%s/%s: merged pull request %s as %s (%s); crew finished, worktree and branch removed%s",
+			r.Project, r.Crew, r.PullRequest, shortCommit(r.After), r.Sync, r.Stop.Cleanup.Note())
 	}
-	return fmt.Sprintf("%s/%s: merged %d commit(s) into %s (%s..%s); crew finished, worktree and branch removed",
-		r.Project, r.Crew, r.Commits, r.DefaultBranch, shortCommit(r.Before), shortCommit(r.After))
+	return fmt.Sprintf("%s/%s: merged %d commit(s) into %s (%s..%s); crew finished, worktree and branch removed%s",
+		r.Project, r.Crew, r.Commits, r.DefaultBranch, shortCommit(r.Before), shortCommit(r.After), r.Stop.Cleanup.Note())
 }
 
 // shortCommit is the seven-character prefix git itself prints by default.

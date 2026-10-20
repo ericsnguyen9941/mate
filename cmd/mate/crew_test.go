@@ -12,6 +12,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/harness/claude"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
+	"github.com/nguyenngocanh94/mate/internal/teardown"
 )
 
 func TestRunUnknownCrewSubcommandIsUsageError(t *testing.T) {
@@ -188,6 +189,15 @@ func TestCrewStopReportLineDescribesEachOutcome(t *testing.T) {
 				Teardown: spawn.TeardownClean, State: spawn.CrewStateFinished, Branch: "mate/k3",
 			},
 			want: []string{"git no longer knew the worktree", "already landed", "state finished"},
+		},
+		{
+			name: "cleanup with something left behind",
+			res: spawn.StopResult{
+				Agent: "crew-k3", TabClosed: true, WorktreeRemoved: true, BranchRemoved: true,
+				Teardown: spawn.TeardownClean, State: spawn.CrewStateFinished, Branch: "mate/k3",
+				Cleanup: teardown.Report{Hook: "ok", Removed: []string{"simulator PlanTrip-shop-k3"}, Pending: []string{"docker: daemon not running"}},
+			},
+			want: []string{"state finished", "also removed: teardown command ran, simulator PlanTrip-shop-k3", "left behind: docker: daemon not running"},
 		},
 		{
 			name: "already gone",

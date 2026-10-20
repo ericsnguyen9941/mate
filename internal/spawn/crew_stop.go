@@ -14,6 +14,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/store"
+	"github.com/nguyenngocanh94/mate/internal/teardown"
 )
 
 // MetaTeardown records what a stop did with the worktree and the branch:
@@ -21,6 +22,11 @@ import (
 // never been stopped, and absent for a Mate, which has no worktree of its
 // own.
 const MetaTeardown = "teardown"
+
+// MetaCleanup records what a stop tore down besides the worktree
+// (CON-111): `done (...)`, or `pending: <what was left and why> (...)`
+// for a later `mate gc` to retry. Absent when there was nothing to do.
+const MetaCleanup = "cleanup"
 
 // Teardown outcomes written to `teardown=`. There are only two, because a
 // stop now has only two outcomes: it tears the crew down, or it refuses and
@@ -61,7 +67,8 @@ var ErrUnlandedWork = errors.New("crew has unlanded work")
 // and then either land it or rerun with --discard.
 //
 // Only once the teardown is allowed does the agent get stopped, the tab
-// closed, the worktree removed and the branch deleted. The meta is written
+// closed, what the worktree started torn down, the worktree removed and the
+// branch deleted. The meta is written
 // last, in one write: stopped_at=, teardown=, and the state that ends the
 // task - `failed` when a --discard threw unlanded work away, because that is
 // deciding the work will not land, and `finished` otherwise.
@@ -267,7 +274,25 @@ func StopCrew(ctx context.Context, w *store.Workspace, deps Deps, project, crew 
 		stoppedMeta = clearCrewRunMeta(meta)
 	}
 
-	// 4. The worktree is given back, then the branch - only when it is
+	// 4a. What the worktree started goes before the worktree does
+	// (CON-111): the repo's teardown command, which needs the worktree's
+	// files, then mate's sweeps for the stack, simulators, DerivedData and
+	// processes it can prove the worktree owns. Nothing here refuses the
+	// stop; what could not go is written to `cleanup=` and reported.
+	if worktree != "" {
+		env := []string{"MATE_PROJECT=" + project, "MATE_CREW=" + crew, "MATE_WORKTREE=" + worktree, "MATE_WORKTREE_NAME=" + filepath.Base(worktree)}
+		out.Cleanup = deps.cleaner().Clean(ctx, teardown.Target{
+			Worktree: worktree,
+			Hook:     repoCfg.Teardown,
+			Env:      env,
+			Log:      w.CrewTeardownLog(project, crew),
+		})
+		if out.Cleanup.Ran() {
+			stoppedMeta[MetaCleanup] = out.Cleanup.Meta()
+		}
+	}
+
+	// 4b. The worktree is given back, then the branch - only when it is
 	// already contained in default or the caller accepted the loss. Two
 	// releases, not one, because the result reports each half.
 	worktrees := deps.worktrees()

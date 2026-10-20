@@ -15,6 +15,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/screen"
 	"github.com/nguyenngocanh94/mate/internal/screen/fixture"
 	"github.com/nguyenngocanh94/mate/internal/store"
+	"github.com/nguyenngocanh94/mate/internal/teardown"
 )
 
 // Meta keys written to `mate/mate.meta`. They are spelled once, here, so the
@@ -151,6 +152,11 @@ type Deps struct {
 	// Worktrees acquires and releases crew working copies. Nil means
 	// GitWorktrees over Git: linked git worktrees under `.worktrees/`.
 	Worktrees Worktrees
+	// Cleaner tears down what a crew's worktree started before a stop
+	// gives the worktree back (CON-111). Nil runs only the repo's
+	// teardown command; LiveDeps adds the docker, simulator, DerivedData
+	// and process sweeps.
+	Cleaner Cleaner
 	// Sleep is the pause between pane polls; tests shorten it.
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Now is the clock the meta's timestamps come from.
@@ -171,7 +177,20 @@ func LiveDeps(harnesses harness.Registry) Deps {
 	names := runtime.NewMemoryNameRegistry()
 	rt := runtime.NewHerdr(process.ExecRunner{})
 	rt.Names = names
-	return Deps{Runtime: rt, Harnesses: harnesses, Names: names, DefaultMode: ModeHeadless}
+	return Deps{Runtime: rt, Harnesses: harnesses, Names: names, DefaultMode: ModeHeadless, Cleaner: teardown.Live()}
+}
+
+// Cleaner is what a crew stop asks to tear a worktree's resources down.
+// teardown.Cleaner is the real one.
+type Cleaner interface {
+	Clean(ctx context.Context, t teardown.Target) teardown.Report
+}
+
+func (d Deps) cleaner() Cleaner {
+	if d.Cleaner != nil {
+		return d.Cleaner
+	}
+	return teardown.Cleaner{}
 }
 
 // defaultHarness is the harness a role gets when the request named none:

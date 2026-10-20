@@ -198,6 +198,12 @@ func (w *Workspace) CrewPRWatchLog(project, crew string) string {
 	return filepath.Join(w.CrewDir(project, crew), "prwatch.log")
 }
 
+// CrewTeardownLog is `projects/<project>/crews/<crew>/teardown.log`, the
+// output of the repo's teardown command at the crew's stop (CON-111).
+func (w *Workspace) CrewTeardownLog(project, crew string) string {
+	return filepath.Join(w.CrewDir(project, crew), "teardown.log")
+}
+
 // CrewDir is `projects/<project>/crews/<crew>`, kept after teardown.
 func (w *Workspace) CrewDir(project, crew string) string {
 	return filepath.Join(w.CrewsDir(project), crew)

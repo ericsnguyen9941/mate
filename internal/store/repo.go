@@ -53,6 +53,12 @@ type RepoConfig struct {
 	Path string `yaml:"path"`
 	// DefaultBranch is the branch crew worktrees branch from and merge into.
 	DefaultBranch string `yaml:"default_branch"`
+	// Teardown is the command a crew stop runs in the crew's worktree
+	// before giving it back, with `sh -c` (CON-111): what the repo starts
+	// per worktree and knows how to stop - a compose stack, a simulator
+	// clone, a DerivedData root of its own. Empty runs nothing; mate's own
+	// sweeps run either way.
+	Teardown string `yaml:"teardown,omitempty"`
 }
 
 // Repo returns the repo registered under name.
