@@ -13,7 +13,10 @@ import (
 // session and its tokens, with the question pinned below. It is a chat like
 // the Mate's, with a composer of its own. Esc goes back to the page and
 // leaves it running; the frame and a line over the footer say so. ^X closes
-// it without answering, ^C stops its run.
+// it without answering, ^C stops its run. Once the session proposes an
+// answer (`mate news propose`), a frame over the composer holds it: ^S
+// sends it to the Mate as the captain's answer and closes the session; ↑
+// puts it in the composer to edit, and ^S then sends the edit.
 
 // sessionDraft keys a session's composer draft in Model.drafts.
 const sessionDraft = 1 << 20
@@ -84,13 +87,41 @@ func (m Model) sessionKey(k tea.KeyMsg) (Model, bool) {
 			return m, true
 		}
 		m.setInput(nil)
-		m.scroll = 0
+		m.scroll, m.editProposal = 0, false
+	case tea.KeyCtrlS:
+		m.settle()
+	case tea.KeyUp:
+		n, _ := m.findNews(id)
+		if len(m.input) > 0 || n.Proposal == "" {
+			return m, false
+		}
+		m.setInput([]rune(n.Proposal))
+		m.editProposal = true
 	case tea.KeyCtrlR:
 		// The chat's retry does not apply to a session.
 	default:
 		return m, false
 	}
 	return m, true
+}
+
+// settle sends the session's proposal, or the captain's edit of it, as the
+// answer to its news, behind the usual undo delay, and closes the session.
+func (m *Model) settle() {
+	id := m.openID
+	n, _ := m.findNews(id)
+	text := strings.TrimSpace(n.Proposal)
+	if m.editProposal {
+		text = strings.TrimSpace(string(m.input))
+	}
+	if text == "" {
+		m.note = "session chưa đề xuất câu trả lời nào; bảo nó đề xuất trước"
+		return
+	}
+	m.setInput(nil)
+	m.leaveSession()
+	m.answer(id, text, "Đã chốt từ session")
+	m.host.CloseSession(id)
 }
 
 // seeSession marks what session s said so far as seen.
@@ -104,6 +135,7 @@ func (m *Model) seeSession(s SessionInfo) {
 // leaveSession goes back to the Topic page with the session's frame open.
 func (m *Model) leaveSession() {
 	id := m.openID
+	m.editProposal = false
 	m.selID = id
 	m.switchTo(viewTopics, id)
 }
@@ -153,6 +185,28 @@ func (m Model) sessionConversation(w int) []string {
 		out = append(append(out, ""), m.itemLines(*it, w, true)...)
 	}
 	return out
+}
+
+// proposalFrame is the answer the session proposed, over the composer.
+func (m Model) proposalFrame(w int) []string {
+	n, ok := m.findNews(m.openID)
+	if !ok || n.Proposal == "" {
+		return nil
+	}
+	label := fmt.Sprintf("Chốt cho #%d · chưa gửi", n.ID)
+	hints := []keyHint{{"^S", "gửi cho Mate"}, {"↑", "sửa"}}
+	if m.editProposal {
+		label = fmt.Sprintf("Chốt cho #%d · đang sửa bên dưới", n.ID)
+		hints = []keyHint{{"^S", "gửi bản sửa"}}
+	}
+	inner := max(10, w-4)
+	top := styleBorder.Render("┌─ ") + styleBold.Inherit(styleAccent).Render(label) + " " + styleBorder.Render(strings.Repeat("─", max(0, w-5-ansi.StringWidth(label)))+"┐")
+	out := []string{"", top}
+	for _, l := range wrap(n.Proposal, inner) {
+		out = append(out, styleBorder.Render("│ ")+l+strings.Repeat(" ", max(0, inner-ansi.StringWidth(l)))+styleBorder.Render(" │"))
+	}
+	text := hintLine(hints, w-6)
+	return append(out, styleBorder.Render("└─ ")+text+" "+styleBorder.Render(strings.Repeat("─", max(0, w-5-ansi.StringWidth(text)))+"┘"))
 }
 
 // sessionStatus is what the session's composer border says it is doing.

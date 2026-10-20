@@ -121,3 +121,43 @@ func TestREPLSessionRefusals(t *testing.T) {
 		t.Fatalf("f on a closed news: mode %v, note %q", m.mode, m.note)
 	}
 }
+
+// Settling (CON-104 PR3): the session proposes the answer with `mate news
+// propose`; ^S sends it to the Mate as the captain's answer, behind the
+// undo delay, and closes the session. ↑ edits it first.
+func TestREPLSessionSettles(t *testing.T) {
+	m := sessionModel(100, 30)
+	press(t, &m, tea.KeyCtrlT, tea.KeyEnter, "f")
+	refresh(&m)
+	press(t, &m, tea.KeyCtrlS)
+	if m.mode != viewSession || !strings.Contains(m.note, "chưa đề xuất") {
+		t.Fatalf("^S with no proposal: mode %v, note %q", m.mode, m.note)
+	}
+	m.note = ""
+	m.news[1].Proposal = "Chọn a: THEME=system trong .env.example"
+	screen := fits(t, "proposed", m)
+	for _, want := range []string{"Chốt cho #3 · chưa gửi", "Chọn a: THEME=system trong .env.example", "^S gửi cho Mate · ↑ sửa", "^S chốt"} {
+		if !strings.Contains(screen, want) {
+			t.Errorf("session lacks %q:\n%s", want, screen)
+		}
+	}
+	press(t, &m, tea.KeyUp)
+	if string(m.input) != m.news[1].Proposal || !m.editProposal {
+		t.Fatalf("↑ did not put the proposal in the composer: %q", string(m.input))
+	}
+	press(t, &m, " và ghi vào README")
+	if edited := fits(t, "editing", m); !strings.Contains(edited, "đang sửa bên dưới") || !strings.Contains(edited, "^S gửi bản sửa") {
+		t.Errorf("editing the proposal:\n%s", edited)
+	}
+	press(t, &m, tea.KeyCtrlS)
+	refresh(&m)
+	if m.mode != viewTopics || m.pending == nil || m.pending.id != 3 || m.pending.text != "Chọn a: THEME=system trong .env.example và ghi vào README" {
+		t.Fatalf("^S: mode %v, pending %+v", m.mode, m.pending)
+	}
+	if len(m.sessions) != 0 {
+		t.Fatalf("^S left the session open")
+	}
+	if m.openID != 0 || m.selID != 4 {
+		t.Fatalf("after ^S the page shows open #%d, cursor #%d; want #3 folded and the cursor on #4", m.openID, m.selID)
+	}
+}

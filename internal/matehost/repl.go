@@ -81,14 +81,17 @@ type Model struct {
 	// roundsOpen unfolds the settled rounds of the open frame (^O).
 	roundsOpen bool
 	// drafts keep the composer of each view: 0 the chat's, n frame n's.
-	drafts  map[int]string
-	pending *pendingAnswer
-	// sessions are the open topic sessions; sessSeen counts the items of
-	// each the captain has seen.
-	sessions  []SessionInfo
-	sessSeen  map[int]int
+	drafts    map[int]string
+	pending   *pendingAnswer
 	confirm   string
 	confirmAt time.Time
+
+	// sessions are the open topic sessions; sessSeen counts the items of
+	// each the captain has seen. editProposal is the captain editing a
+	// session's proposal in its composer; ^S sends the edit.
+	sessions     []SessionInfo
+	sessSeen     map[int]int
+	editProposal bool
 }
 
 // NewModel shows history (oldest first) and then what the host does.

@@ -2,6 +2,7 @@ package matehost
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -180,5 +181,43 @@ func TestWatchNewsPassesTheConsolesFocus(t *testing.T) {
 	case id := <-focus:
 		t.Fatalf("one request opened #%d twice", id)
 	case <-time.After(60 * time.Millisecond):
+	}
+}
+
+// A session's proposal waits for the captain: it answers nothing, a later
+// one replaces it, and the captain's answer clears it.
+func TestProposeNews(t *testing.T) {
+	path := filepath.Join(t.TempDir(), NewsName)
+	now := time.Now()
+	id, err := OpenNews(path, News{Title: "t", Question: "q?"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ProposeNews(path, id, "  ", now); err == nil {
+		t.Fatal("an empty proposal was kept")
+	}
+	for _, p := range []string{"a", "b thì hơn"} {
+		if err := ProposeNews(path, id, p, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, _ := LoadNews(path)
+	if n := list[0]; n.Proposal != "b thì hơn" || !n.Owed() || n.Answer != "" {
+		t.Fatalf("after two proposals: %+v", n)
+	}
+	if err := withNewsLog(path, func(_ []News, f *os.File) error {
+		return writeNewsEvent(f, newsEvent{At: now, Op: opAnswer, ID: id, Text: "b thì hơn"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = LoadNews(path)
+	if list[0].Proposal != "" {
+		t.Fatalf("the answer left the proposal: %q", list[0].Proposal)
+	}
+	if err := CloseNews(path, id, "", false, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := ProposeNews(path, id, "c", now); err == nil {
+		t.Fatal("a closed news took a proposal")
 	}
 }

@@ -179,6 +179,9 @@ func (m Model) footer(w int) []string {
 		if s, ok := m.findSession(m.openID); ok && s.Busy() {
 			hints = append(hints[:3], append([]keyHint{{"^C", "ngắt"}}, hints[3:]...)...)
 		}
+		if n, ok := m.findNews(m.openID); ok && n.Proposal != "" {
+			hints = append([]keyHint{{"^S", "chốt"}}, hints...)
+		}
 	case m.mode == viewTopics && m.typing:
 		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"Tab", "về lựa chọn"}, {"Esc", "về chat"}}
 	case m.mode == viewTopics && w >= 100:
@@ -241,7 +244,7 @@ func (m Model) failed() bool {
 
 func (m Model) below(w int) []string {
 	if m.mode == viewSession {
-		return m.backgroundLine(w)
+		return append(m.proposalFrame(w), m.backgroundLine(w)...)
 	}
 	var out []string
 	if a := m.activity(); a != "" {
