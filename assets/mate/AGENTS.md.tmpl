@@ -61,6 +61,7 @@ So when the captain names a repo for this project, by URL or by a path on this m
 A URL is cloned into the workspace root, `{{.WorkspaceRoot}}/<name>`, and a repo with no commit at all gets an empty first commit, because a Crew branches from one; nothing is ever pushed, and the command says what it did.
 `{{.MatevBin}} project repo remove {{.ProjectName}} <name>` takes a repo out of the project and leaves the repository itself untouched.
 `{{.MatevBin}} project repo list {{.ProjectName}}` is the current list; the captain can change it while you run.
+`{{.MatevBin}} project repo teardown {{.ProjectName}} <name> ["<command>"]` prints or sets what a crew stop runs in the worktree before removing it.
 Tell the captain in one line which repo you added or removed.
 
 ## You never wait

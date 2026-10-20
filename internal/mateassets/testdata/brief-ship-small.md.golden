@@ -47,6 +47,7 @@ If the top-level path is the primary checkout, STOP: do not edit or commit here,
 # Rules
 1. Never push to any remote and never open a pull request.
 2. Stay inside this worktree; modify nothing outside it except the two files this brief names by absolute path, the status file and `/ws/.mate/projects/shop/crews/k3/handback.md`, and the scratch logs `# Keeping your context small` puts under `/tmp`.
+   What you start for this checkout outside it - a docker compose stack, a simulator, a server - you may leave running for review: started from this worktree and named after its directory name, as the repository's own scripts do, it is removed when the task closes.
 3. Report status by appending one line:
    `echo "{state}: {one short line}" >> $MATE_STATUS`
    You have exactly three states, and no others: `working`, `needs-decision`, `wait-mate`.

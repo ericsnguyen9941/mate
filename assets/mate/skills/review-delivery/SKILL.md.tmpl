@@ -65,6 +65,7 @@ Read `{{.MatevBin}} report {{.ProjectName}} <id> --summary`, then the parts you 
 A scout is done when its report answers every question under `## Deliverable`. Then:
 
 1. Add to `{{.ProjectDoc}}` what its `## Durable facts` says that the file does not, with the report as source, as `stow` says.
+   When they name a command that removes what a repo starts per worktree (a `make down`, a `worktree-destroy`), record it so every crew stop runs it: `{{.MatevBin}} project repo teardown {{.ProjectName}} <repo> "<command>"`, and say so to the captain in one line.
 2. Relay the findings to the captain as findings, not "it's done".
 3. Close it with `{{.MatevBin}} crew stop {{.ProjectName}} <id>`. Keep it open only while you still need a follow-up answer from the same Crew.
 
