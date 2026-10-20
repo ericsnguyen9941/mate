@@ -85,6 +85,17 @@ terminal opens/reuses a managed tab in WezTerm/Ghostty.
 external launches a GUI without a host tab; omit --wait (10-second timeout).
 No editor binding is installed by default. Keys reserved by the console or
 already bound in the same scope are refused. Configuration loads at startup.
+
+Dashboard on the LAN (a phone on the same Wi-Fi): the console serves the
+dashboard on 127.0.0.1:7777 only. To reach it from other devices add
+
+dashboard:
+  addr: 0.0.0.0:7777
+  allow_remote: true
+
+The dashboard has no login and quotes everything typed in the console, so
+allow_remote is required for any non-loopback addr. The status line shows
+the LAN URL to open.
 Full reference: docs/console-commands.md in the Mate source repository.
 `
 
@@ -194,7 +205,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	// The dashboard comes up with the console, after the observer has made
 	// sure the database exists. It is a convenience: a failure is said on the
 	// status line and never stops the console.
-	if url, stopDashboard, err := startConsoleDashboard(ctx, ws, ""); err != nil {
+	if url, stopDashboard, err := startConsoleDashboard(ctx, ws, commands.Dashboard.Addr, commands.Dashboard.AllowRemote); err != nil {
 		notice = err.Error()
 	} else {
 		defer stopDashboard()

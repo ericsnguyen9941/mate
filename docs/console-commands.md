@@ -23,6 +23,26 @@ that used the built-in Fresh `e` binding need to add a binding explicitly.
 including when run outside a workspace. The agent Mate's `mate-commands` skill
 also teaches this setup flow and the workspace config location.
 
+## Dashboard on the LAN
+
+The console serves the read-only dashboard on `127.0.0.1:7777`, reachable
+only from the same machine. To open it from a phone or another computer on
+the same network, bind every interface and say that you mean it:
+
+```yaml
+dashboard:
+  addr: 0.0.0.0:7777
+  allow_remote: true
+```
+
+`allow_remote` is required for any address that is not loopback: the
+dashboard has no login and quotes everything typed in the console. Without
+it the console starts, says `dashboard not started` on its status line, and
+serves nothing. With it the status line shows both URLs, the loopback one
+and the LAN one (the machine's private IPv4, Wi-Fi on a laptop); open the
+LAN one on the phone. The port stays whatever `addr` says. The setting is
+read at console start, so reopen the console after changing it.
+
 ## Zed
 
 ```yaml
