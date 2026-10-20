@@ -59,7 +59,7 @@ func TestGCTargetsOnlyWorktreesThatAreGone(t *testing.T) {
 	if !slices.Equal(dry, []bool{true}) {
 		t.Fatalf("dry = %v, want one dry run", dry)
 	}
-	out := gcReport(targets, r, false)
+	out := gcReport(targets, r, gcIdleReport{}, false)
 	if !strings.Contains(out, "dry run, nothing removed") || !strings.Contains(out, "would remove: docker shop-gone-1 (2 volumes)") {
 		t.Fatalf("report:\n%s", out)
 	}
@@ -105,5 +105,82 @@ func waitFor(t *testing.T, ok func() bool) {
 			t.Fatal("timed out")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// The idle pass shuts down the simulator of a crew that has waited on the
+// Mate or the captain for gcIdleAfter, never of one still working, one
+// that only just went quiet, one with no worktree, or a closed one; without
+// --apply it only lists (CON-119).
+func TestGCIdleShutsDownSimulatorsOfCrewsThatWaited(t *testing.T) {
+	w := wakeFixture(t)
+	for crew, meta := range map[string]map[string]string{
+		"idle-1":  {spawn.MetaState: spawn.CrewStateSpawned, spawn.MetaWorktree: ".worktrees/shop-idle-1"},
+		"fresh":   {spawn.MetaState: spawn.CrewStateSpawned, spawn.MetaWorktree: ".worktrees/shop-fresh"},
+		"ask-k4":  {spawn.MetaState: spawn.CrewStateSpawned, spawn.MetaWorktree: ".worktrees/shop-ask-k4"},
+		"busy-k5": {spawn.MetaState: spawn.CrewStateSpawned, spawn.MetaWorktree: ".worktrees/shop-busy-k5"},
+		"old-wt":  {spawn.MetaState: spawn.CrewStateFinished, spawn.MetaWorktree: ".worktrees/shop-old-wt"},
+	} {
+		if err := w.WriteCrewMeta("shop", crew, meta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for crew, line := range map[string]string{
+		"idle-1": "wait-mate: ready in branch mate/idle-1",
+		"fresh":  "wait-mate: ready in branch mate/fresh",
+		"old-wt": "wait-mate: long done",
+	} {
+		if err := w.AppendStatus("shop", crew, line); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	for _, crew := range []string{"idle-1", "ask-k4", "busy-k5", "old-wt"} {
+		if err := os.Chtimes(w.CrewStatus("shop", crew), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var dry []bool
+	var got []string
+	d := gcDeps{
+		Collect: func(context.Context, []teardown.Target, bool) teardown.Report { return teardown.Report{} },
+		Shutdown: func(_ context.Context, ts []teardown.Target, isDry bool) ([]string, error) {
+			dry = append(dry, isDry)
+			got = got[:0]
+			for _, tg := range ts {
+				got = append(got, tg.Name())
+			}
+			return []string{"simulator Shop-shop-idle-1"}, nil
+		},
+	}
+
+	idle := runGCIdle(context.Background(), w, d, false)
+	slices.Sort(got)
+	if want := []string{"shop-ask-k4", "shop-idle-1"}; !slices.Equal(got, want) {
+		t.Fatalf("targets = %q, want %q", got, want)
+	}
+	if !slices.Equal(dry, []bool{true}) {
+		t.Fatalf("dry = %v, want one dry run", dry)
+	}
+	out := gcReport(nil, teardown.Report{}, idle, false)
+	for _, want := range []string{"2 idle crew(s)", "shut down 1 simulator(s)", "would shut down: simulator Shop-shop-idle-1 (crew shop/idle-1 wait-mate 2h)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("report lacks %q:\n%s", want, out)
+		}
+	}
+
+	if _ = runGCIdle(context.Background(), w, d, true); !slices.Equal(dry, []bool{true, false}) {
+		t.Fatalf("dry = %v, want --apply to shut down", dry)
+	}
+	if r := runGCIdle(context.Background(), w, gcDeps{}, true); len(r.Crews) != 0 {
+		t.Fatalf("no Shutdown dep still found %d crews", len(r.Crews))
+	}
+}
+
+func TestCompactDuration(t *testing.T) {
+	for d, want := range map[time.Duration]string{45 * time.Minute: "45m", 2 * time.Hour: "2h", 2*time.Hour + 15*time.Minute + 40*time.Second: "2h16m", 30 * time.Second: "1m"} {
+		if got := compactDuration(d); got != want {
+			t.Errorf("compactDuration(%v) = %q, want %q", d, got, want)
+		}
 	}
 }

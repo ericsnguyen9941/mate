@@ -28,32 +28,10 @@ type simDevice struct {
 
 // Sweep implements Sweep.
 func (s Simulators) Sweep(ctx context.Context, targets []Target, dry bool) ([]string, error) {
-	res, err := s.run(ctx, "list", "devices", "-j")
-	if err != nil {
-		if missing(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("simulators: %v", err)
+	owned, err := s.owned(ctx, targets)
+	if err != nil || len(owned) == 0 {
+		return nil, err
 	}
-	if res.ExitCode != 0 {
-		return nil, fmt.Errorf("simulators: simctl list exited %d%s", res.ExitCode, lastLine(res.Stderr))
-	}
-	var list struct {
-		Devices map[string][]simDevice `json:"devices"`
-	}
-	if err := json.Unmarshal(res.Stdout, &list); err != nil {
-		return nil, fmt.Errorf("simulators: simctl list: %v", err)
-	}
-	var owned []simDevice
-	for _, devices := range list.Devices {
-		for _, d := range devices {
-			if d.UDID != "" && namedAfter(targets, d.Name) {
-				owned = append(owned, d)
-			}
-		}
-	}
-	sort.Slice(owned, func(i, j int) bool { return owned[i].Name < owned[j].Name })
-
 	var removed, failed []string
 	for _, d := range owned {
 		if dry {
@@ -79,6 +57,72 @@ func (s Simulators) Sweep(ctx context.Context, targets []Target, dry bool) ([]st
 		return removed, fmt.Errorf("%s", strings.Join(failed, "; "))
 	}
 	return removed, nil
+}
+
+// Shutdown shuts down, and keeps, the booted simulators named after the
+// targets (CON-119): a crew that waits on the Mate or the captain may come
+// back and boot it again, which is cheap, while a booted simulator costs
+// ~1.8 GB and ~180 processes for as long as it sits. With dry set nothing
+// is shut down and the lines say what would be.
+func (s Simulators) Shutdown(ctx context.Context, targets []Target, dry bool) ([]string, error) {
+	owned, err := s.owned(ctx, targets)
+	if err != nil {
+		return nil, err
+	}
+	var done, failed []string
+	for _, d := range owned {
+		if d.State != "Booted" {
+			continue
+		}
+		if dry {
+			done = append(done, "simulator "+d.Name)
+			continue
+		}
+		res, err := s.run(ctx, "shutdown", d.UDID)
+		switch {
+		case err != nil:
+			failed = append(failed, fmt.Sprintf("simulator %s: %v", d.Name, err))
+		case res.ExitCode != 0:
+			failed = append(failed, fmt.Sprintf("simulator %s: shutdown exited %d%s", d.Name, res.ExitCode, lastLine(res.Stderr)))
+		default:
+			done = append(done, "simulator "+d.Name)
+		}
+	}
+	if len(failed) > 0 {
+		return done, fmt.Errorf("%s", strings.Join(failed, "; "))
+	}
+	return done, nil
+}
+
+// owned lists the simulators named after any target, by name. No simctl on
+// this machine is no simulator.
+func (s Simulators) owned(ctx context.Context, targets []Target) ([]simDevice, error) {
+	res, err := s.run(ctx, "list", "devices", "-j")
+	if err != nil {
+		if missing(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("simulators: %v", err)
+	}
+	if res.ExitCode != 0 {
+		return nil, fmt.Errorf("simulators: simctl list exited %d%s", res.ExitCode, lastLine(res.Stderr))
+	}
+	var list struct {
+		Devices map[string][]simDevice `json:"devices"`
+	}
+	if err := json.Unmarshal(res.Stdout, &list); err != nil {
+		return nil, fmt.Errorf("simulators: simctl list: %v", err)
+	}
+	var owned []simDevice
+	for _, devices := range list.Devices {
+		for _, d := range devices {
+			if d.UDID != "" && namedAfter(targets, d.Name) {
+				owned = append(owned, d)
+			}
+		}
+	}
+	sort.Slice(owned, func(i, j int) bool { return owned[i].Name < owned[j].Name })
+	return owned, nil
 }
 
 func (s Simulators) run(ctx context.Context, args ...string) (process.Result, error) {

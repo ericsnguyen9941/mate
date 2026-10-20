@@ -107,9 +107,10 @@ func consoleAutoPilot(ws *store.Workspace, deps spawn.Deps) *autopilot.Pilot {
 	// What closed tasks left behind is collected once at start and every
 	// GCEvery after (CON-114) - by a console with the real teardown only,
 	// so a test's fake deps never reach docker or simctl.
-	var gc *gcSchedule
+	var gc, gcIdle *gcSchedule
 	if deps.Cleaner != nil {
 		gc = consoleGC(ws, liveGCDeps())
+		gcIdle = consoleGCIdle(ws, liveGCDeps())
 	}
 	return autopilot.New(ws, autopilot.Deps{
 		Outbox: consoleOutbox(ws, deps),
@@ -119,6 +120,7 @@ func consoleAutoPilot(ws *store.Workspace, deps spawn.Deps) *autopilot.Pilot {
 		Sweep: func(ctx context.Context) {
 			prwatch.Sweep(ws, prStarter)
 			gc.Tick(ctx)
+			gcIdle.Tick(ctx)
 		},
 		Budget: consoleBudgetActions(ws, deps),
 	})

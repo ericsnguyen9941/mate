@@ -167,6 +167,33 @@ func TestSimulatorsDeletesOnlyTheOneNamedAfterTheWorktree(t *testing.T) {
 	}
 }
 
+// Shutdown only shuts down the booted simulator named after the worktree
+// and deletes nothing: the crew may come back (CON-119).
+func TestSimulatorsShutdownKeepsTheDevice(t *testing.T) {
+	run := &process.FakeRunner{Responses: map[string]process.Result{
+		"xcrun simctl list devices -j": {Stdout: []byte(simJSON)},
+	}}
+	got, err := Simulators{Runner: run}.Shutdown(context.Background(), []Target{Target{Worktree: wt}, Target{Worktree: wt + "-be-r2"}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"simulator PlanTrip-plantrip-pla-6"}; !slices.Equal(got, want) {
+		t.Fatalf("shut down = %q, want %q (the -be-r2 one is already shut down)", got, want)
+	}
+	var calls []string
+	for _, c := range run.Calls {
+		calls = append(calls, process.CommandKey(c))
+	}
+	if want := []string{"xcrun simctl list devices -j", "xcrun simctl shutdown MINE"}; !slices.Equal(calls, want) {
+		t.Fatalf("calls = %q, want %q", calls, want)
+	}
+
+	run.Calls = nil
+	if got, err := (Simulators{Runner: run}).Shutdown(context.Background(), []Target{Target{Worktree: wt}}, true); err != nil || !slices.Equal(got, []string{"simulator PlanTrip-plantrip-pla-6"}) || len(run.Calls) != 1 {
+		t.Fatalf("dry: %q, %v, %d calls", got, err, len(run.Calls))
+	}
+}
+
 func TestDerivedDataDeletesTheFoldersXcodeMadeForTheWorktree(t *testing.T) {
 	root := t.TempDir()
 	write := func(name, workspace string) {
