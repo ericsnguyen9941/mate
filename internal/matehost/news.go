@@ -43,6 +43,8 @@ const (
 	opClose   = "close"
 	opDrop    = "drop"
 	opArchive = "archive"
+	// opSession records the fork a news's session runs in (session.go).
+	opSession = "session"
 )
 
 // NewsOption is one answer the Mate offers.
@@ -79,6 +81,8 @@ type News struct {
 	Answer     string    `json:"answer,omitempty"`
 	AnsweredAt time.Time `json:"answered_at,omitzero"`
 	Archived   bool      `json:"archived,omitempty"`
+	// Session is the fork the news's session runs in, once it has run.
+	Session string `json:"session,omitempty"`
 }
 
 // Owed reports whether the news waits on the captain.
@@ -297,6 +301,9 @@ func LoadNews(path string) ([]News, error) {
 			}
 		case opArchive:
 			n.Archived = true
+			continue
+		case opSession:
+			n.Session = ev.Text
 			continue
 		default:
 			continue

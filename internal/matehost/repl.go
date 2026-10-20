@@ -81,8 +81,12 @@ type Model struct {
 	// roundsOpen unfolds the settled rounds of the open frame (^O).
 	roundsOpen bool
 	// drafts keep the composer of each view: 0 the chat's, n frame n's.
-	drafts    map[int]string
-	pending   *pendingAnswer
+	drafts  map[int]string
+	pending *pendingAnswer
+	// sessions are the open topic sessions; sessSeen counts the items of
+	// each the captain has seen.
+	sessions  []SessionInfo
+	sessSeen  map[int]int
 	confirm   string
 	confirmAt time.Time
 }
@@ -196,6 +200,15 @@ func (m *Model) applyEvent(ev Event) {
 	m.state = ev.State
 	m.queue = ev.Queue
 	m.news = ev.News
+	m.sessions = ev.Sessions
+	if m.mode == viewSession {
+		if s, ok := m.findSession(m.openID); ok {
+			m.seeSession(s)
+		} else {
+			// Closed for idling, or by the host stopping.
+			m.leaveSession()
+		}
+	}
 	if ev.Note != "" {
 		m.note = ev.Note
 	}

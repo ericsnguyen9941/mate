@@ -38,9 +38,11 @@ case "$prompt" in *chatty*) say "Epic 1 has 3 tasks left.";; esac
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash"}]}}'
 echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1"}]}}'
 case "$prompt" in *slow*) sleep 2;; esac
-case "$prompt" in *quiet*) reply='—';; *) reply="re: $prompt";; esac
+case "$prompt" in *quiet*) reply='—';; *) reply="re: $(printf '%s' "$prompt" | tail -n 1 | tr -d '"\\')";; esac
 case "$prompt" in *chatty*) say "Noted in the backlog."; say "$reply";; esac
-printf '{"type":"result","subtype":"success","result":"%s","session_id":"s1","is_error":false}\n' "$reply"
+sid=s1
+case "$*" in *--fork-session*|*"--resume f1"*) sid=f1;; esac
+printf '{"type":"result","subtype":"success","result":"%s","session_id":"%s","is_error":false}\n' "$reply" "$sid"
 case "$prompt" in *exitlate*) echo "late" >&2; exit 3;; esac
 `
 
@@ -68,10 +70,11 @@ func (streamTurns) SessionOpened(string, string) bool { return false }
 
 func (streamTurns) ParseTurnEvent(line []byte) (harness.TurnEvent, bool) {
 	var l struct {
-		Type    string `json:"type"`
-		Result  string `json:"result"`
-		IsError bool   `json:"is_error"`
-		Event   struct {
+		Type      string `json:"type"`
+		Result    string `json:"result"`
+		IsError   bool   `json:"is_error"`
+		SessionID string `json:"session_id"`
+		Event     struct {
 			Delta struct{ Text string } `json:"delta"`
 		} `json:"event"`
 		Message struct {
@@ -96,7 +99,7 @@ func (streamTurns) ParseTurnEvent(line []byte) (harness.TurnEvent, bool) {
 		}
 	}
 	if l.Type == "result" {
-		ev.Final, ev.Text, ev.IsError = true, l.Result, l.IsError
+		ev.Final, ev.Text, ev.IsError, ev.SessionID = true, l.Result, l.IsError, l.SessionID
 	}
 	return ev, true
 }
