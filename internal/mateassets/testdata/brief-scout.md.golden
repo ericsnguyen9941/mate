@@ -54,6 +54,7 @@ If the top-level path is the primary checkout, STOP: do not edit or commit here,
 # Rules
 1. Never push to any remote and never open a pull request.
 2. Stay inside this worktree; modify nothing outside it except the two files this brief names by absolute path, the status file and `/ws/.mate/projects/shop/crews/k3/report.md`, and the scratch logs `# Keeping your context small` puts under `/tmp`.
+   What you start for this checkout outside it - a docker compose stack, a simulator, a server - you may leave running for review: started from this worktree and named after its directory name, as the repository's own scripts do, it is removed when the task closes.
 3. Report status by appending one line:
    `echo "{state}: {one short line}" >> $MATE_STATUS`
    You have exactly three states, and no others: `working`, `needs-decision`, `wait-mate`.
@@ -91,7 +92,7 @@ Answer every question under `## Deliverable`, each under its own heading, and sa
 The Mate never reads this repository, so the report is its only view of it: name files by path and line, quote commands exactly as you ran them, and keep what you observed apart from what you infer.
 Follow it with a `## Summary` section of at most 6000 characters: findings, limitations or failed checks, recommendation, and paths to the supporting evidence. The summary must preserve uncertainty; it is a navigation aid, not proof of acceptance.
 
-End the report with a `## Durable facts` section: what almost any future task in this repository would need to know - its stack, its layout, how to build, test and run it, its current state - or `none` if this investigation found nothing of that kind.
+End the report with a `## Durable facts` section: what almost any future task in this repository would need to know - its stack, its layout, how to build, test and run it, what it starts outside the checkout for each worktree (a compose stack, a simulator, a build folder) and the command that removes it, its current state - or `none` if this investigation found nothing of that kind.
 If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report and propose the acceptance lines for it: one observable result per line, each with `verify:` and the command that proves it.
 A summary in the status line is not the deliverable.
 

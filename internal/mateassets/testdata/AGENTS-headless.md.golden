@@ -55,6 +55,7 @@ So when the captain names a repo for this project, by URL or by a path on this m
 A URL is cloned into the workspace root, `/ws/<name>`, and a repo with no commit at all gets an empty first commit, because a Crew branches from one; nothing is ever pushed, and the command says what it did.
 `/usr/local/bin/mate project repo remove shop <name>` takes a repo out of the project and leaves the repository itself untouched.
 `/usr/local/bin/mate project repo list shop` is the current list; the captain can change it while you run.
+`/usr/local/bin/mate project repo teardown shop <name> ["<command>"]` prints or sets what a crew stop runs in the worktree before removing it.
 Tell the captain in one line which repo you added or removed.
 
 ## You never wait

@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 )
 
-// cmdProjectRepo dispatches `mate project repo <add|list|remove>`: a
-// project's repos, zero or more (docs/mvp.md M9).
+// cmdProjectRepo dispatches `mate project repo <add|list|remove|teardown>`:
+// a project's repos, zero or more (docs/mvp.md M9).
 func cmdProjectRepo(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return newUsageError("usage: mate project repo <add|list|remove> <project> ...")
+		return newUsageError("usage: mate project repo <add|list|remove|teardown> <project> ...")
 	}
 	switch args[0] {
 	case "add":
@@ -21,6 +21,8 @@ func cmdProjectRepo(args []string, stdout, stderr io.Writer) error {
 		return cmdProjectRepoList(args[1:], stdout, stderr)
 	case "remove":
 		return cmdProjectRepoRemove(args[1:], stdout, stderr)
+	case "teardown":
+		return cmdProjectRepoTeardown(args[1:], stdout, stderr)
 	default:
 		return newUsageErrorf("unknown project repo subcommand %q", args[0])
 	}
