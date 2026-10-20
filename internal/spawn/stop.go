@@ -10,6 +10,8 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/store"
+
+	"github.com/nguyenngocanh94/mate/internal/teardown"
 )
 
 // StopResult is what a stop established.
@@ -79,6 +81,10 @@ type StopResult struct {
 	// successful (idempotent) teardown.
 	WorktreeRemoved bool
 	BranchRemoved   bool
+	// Cleanup is what the stop tore down besides the worktree: the repo's
+	// teardown command and mate's sweeps (CON-111). Its Pending lines are
+	// what was left behind.
+	Cleanup teardown.Report
 	// AlreadyClosed is true when the crew's meta already recorded a final
 	// state: the stop changed nothing, and Teardown and State are the ones
 	// recorded by the stop (or merge) that closed it.

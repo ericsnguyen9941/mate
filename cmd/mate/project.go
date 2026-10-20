@@ -273,6 +273,7 @@ type repoRow struct {
 	Name          string `json:"name"`
 	Path          string `json:"path"`
 	DefaultBranch string `json:"default_branch"`
+	Teardown      string `json:"teardown,omitempty"`
 }
 
 // printProjectTable writes an aligned plain-text table: one header row plus

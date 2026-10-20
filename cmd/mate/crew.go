@@ -374,11 +374,11 @@ func crewStopReport(project, crew string, res spawn.StopResult) string {
 	}
 	switch res.Teardown {
 	case spawn.TeardownClean:
-		return fmt.Sprintf("%s/%s: agent %s (%s), tab %s; worktree%s and branch removed (%s was already landed in default); state %s",
-			project, crew, agent, stopped, tab, orphan, res.Branch, res.State)
+		return fmt.Sprintf("%s/%s: agent %s (%s), tab %s; worktree%s and branch removed (%s was already landed in default); state %s%s",
+			project, crew, agent, stopped, tab, orphan, res.Branch, res.State, res.Cleanup.Note())
 	case spawn.TeardownDiscarded:
-		return fmt.Sprintf("%s/%s: agent %s (%s), tab %s; worktree%s and branch removed with --discard (%d commit(s) ahead, %d dirty file(s) discarded); state %s",
-			project, crew, agent, stopped, tab, orphan, res.Ahead, res.DirtyFiles, res.State)
+		return fmt.Sprintf("%s/%s: agent %s (%s), tab %s; worktree%s and branch removed with --discard (%d commit(s) ahead, %d dirty file(s) discarded); state %s%s",
+			project, crew, agent, stopped, tab, orphan, res.Ahead, res.DirtyFiles, res.State, res.Cleanup.Note())
 	default:
 		return fmt.Sprintf("%s/%s: agent %s (%s), tab %s; worktree and branch kept; state %s",
 			project, crew, agent, stopped, tab, res.State)
