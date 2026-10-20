@@ -23,7 +23,10 @@ A scout's deliverable is knowledge: an investigation, a plan, a reproduction, an
 
 **Overlap.** A ship waits when it would change the same files or subsystem as an in-flight Crew, including two pull requests that edit the same file, or when it depends on a branch that has not landed.
 Queue it with `{{.MatevBin}} backlog add {{.ProjectName}} <id> --section Queued --text "<one line>; blocked-by: <id>"` and tell the captain what waits and why.
-A scout changes nothing, so it never overlaps: dispatch it beside anything, and say in its brief when an unmerged branch could change its answer. There is no concurrency cap.
+A scout changes nothing, so it never overlaps: dispatch it beside anything, and say in its brief when an unmerged branch could change its answer. There is no concurrency cap, only lanes.
+
+**Lanes.** A repo may name a lane (`{{.MatevBin}} project repo lane {{.ProjectName}} <repo> xcode`): the machine resource its Crews contend for, two iOS repos of different projects sharing one `xcode` lane. A Crew holds its repo's lane while it is spawned or working, scouts and reviews included, unless you spawn it with `--lane none` (a task in an iOS repo that never builds the app: a backend change, a docs change) or `--lane xcode` (the reverse); `crew dispatch` prints every lane with its holders and its cap.
+When the task's repo is in a lane the output calls full, do not spawn: queue it with `blocked-by: lane <name>`, tell the captain in one line, and dispatch the next ready task outside the lane, so a backend task runs while the UI tasks wait their turn. When a digest says a Crew in that lane closed, dispatch the first task queued on it.
 New work, or a large change of spec mid-task, goes to a new Crew, never into the running one.
 A UI task whose design the captain has not settled waits for the design.
 
@@ -122,7 +125,7 @@ Pass the flags exactly as printed, `--harness` always; never mix two profiles.
 ## Spawn
 
 ```text
-{{.MatevBin}} crew spawn {{.ProjectName}} <id> --repo <repo> --brief {{.MateDir}}/briefs/<id>.md --size <size> [--deliver pr] <profile flags> --task "<one line>"
+{{.MatevBin}} crew spawn {{.ProjectName}} <id> --repo <repo> --brief {{.MateDir}}/briefs/<id>.md --size <size> [--deliver pr] [--lane none|<lane>] <profile flags> --task "<one line>"
 {{.MatevBin}} crew spawn {{.ProjectName}} <id> --repo <repo> --brief {{.MateDir}}/briefs/<id>.md --scout <profile flags> --task "<one line>"
 ```
 

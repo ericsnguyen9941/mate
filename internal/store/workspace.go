@@ -71,8 +71,25 @@ type WorkspaceConfig struct {
 	Defaults Defaults `yaml:"defaults"`
 	// Crew is what every Crew of the workspace is launched with, whatever
 	// its project. Absent is the defaults below.
-	Crew     CrewLaunch   `yaml:"crew,omitempty"`
-	Projects []ProjectRef `yaml:"projects"`
+	Crew CrewLaunch `yaml:"crew,omitempty"`
+	// Lanes sizes the lanes repos declare (RepoConfig.Lane, CON-118):
+	// how many crews may hold each at once. A lane not listed here is
+	// DefaultLaneCap wide.
+	Lanes    map[string]int `yaml:"lanes,omitempty"`
+	Projects []ProjectRef   `yaml:"projects"`
+}
+
+// DefaultLaneCap is how many crews may hold a lane workspace.yaml does not
+// size: two, because on the captain's machine a third concurrent Xcode
+// build makes every crew wait (CON-118).
+const DefaultLaneCap = 2
+
+// LaneCap is how many crews may hold the lane at once.
+func (w *Workspace) LaneCap(lane string) int {
+	if n := w.cfg.Lanes[lane]; n > 0 {
+		return n
+	}
+	return DefaultLaneCap
 }
 
 // CrewLaunch is the `crew:` block of workspace.yaml.

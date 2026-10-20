@@ -61,6 +61,7 @@ func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) erro
 	deliverFlag := fs.String("deliver", "", "how a ship's work lands: local (fast-forward on the primary checkout, the default) or pr (push the branch and open a pull request; needs gh logged in and origin on GitHub)")
 	sizeFlag := fs.String("size", "", "how big the task is: small, medium (the default) or large; picks the hand-back shape and evidence level the brief asks of a ship")
 	taskFlag := fs.String("task", "", "one line recorded as task= (default: the brief's first line)")
+	laneFlag := fs.String("lane", "", "the lane the crew holds while it works (default: its repo's; none for a task that never touches the lane's resource, such as a backend change in an iOS repo)")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
 	}
@@ -75,7 +76,7 @@ func cmdCrewSpawn(args []string, stdin io.Reader, stdout, stderr io.Writer) erro
 	if *budgetFlag < 0 {
 		return newUsageError("mate crew spawn: --budget wants a positive number of tokens")
 	}
-	req := spawn.SpawnCrewRequest{Project: fs.Arg(0), Crew: fs.Arg(1), Task: *taskFlag, Scout: *scoutFlag, Repo: *repoFlag, Delivery: *deliverFlag, Budget: *budgetFlag, Size: *sizeFlag}
+	req := spawn.SpawnCrewRequest{Project: fs.Arg(0), Crew: fs.Arg(1), Task: *taskFlag, Scout: *scoutFlag, Repo: *repoFlag, Delivery: *deliverFlag, Budget: *budgetFlag, Size: *sizeFlag, Lane: *laneFlag}
 	if *briefFlag == "-" {
 		text, err := spawn.ReadBriefStdin(stdin)
 		if err != nil {

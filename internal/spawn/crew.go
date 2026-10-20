@@ -54,6 +54,11 @@ const (
 	// MetaSize is the task's size (brief.Size, `--size`): `small`, `medium`
 	// or `large`. It chose the hand-back shape the brief asks for (CON-72).
 	MetaSize = "size"
+	// MetaLane is the lane the crew holds while spawned or working
+	// (`--lane`, CON-118): the repo's lane unless the spawn said
+	// otherwise, empty for none. A meta without the key is a crew from
+	// before lanes, which holds its repo's.
+	MetaLane = "lane"
 	// MetaRotationSlot is the turn this spawn took in the dispatch table's
 	// harness rotation (dispatch.Step.Slot, CON-77): the running count of
 	// turns the project has taken, from which `crew dispatch` reads the
@@ -147,6 +152,11 @@ type SpawnCrewRequest struct {
 	// evidence level the brief template asks of a ship (CON-72). A scout's
 	// report is the same at every size.
 	Size string
+	// Lane is the lane this crew holds (`--lane`): empty takes the repo's
+	// (store.RepoConfig.Lane), `none` holds nothing, any other word is
+	// the lane. The Mate passes `none` for a task in an iOS repo that
+	// never builds the app, and `xcode` for the reverse.
+	Lane string
 }
 
 // CrewResult is what a successful spawn established. Every field except the
@@ -257,6 +267,10 @@ func SpawnCrew(ctx context.Context, w *store.Workspace, deps Deps, req SpawnCrew
 	if err != nil {
 		return CrewResult{}, err
 	}
+	lane, err := spawnLane(req, repoCfg)
+	if err != nil {
+		return CrewResult{}, err
+	}
 	size, err := brief.ParseSize(req.Size)
 	if err != nil {
 		return CrewResult{}, errUsage("crew spawn: " + err.Error())
@@ -339,6 +353,7 @@ func SpawnCrew(ctx context.Context, w *store.Workspace, deps Deps, req SpawnCrew
 		branch:           branch,
 		worktree:         worktree,
 		repoCfg:          repoCfg,
+		lane:             lane,
 		delivery:         delivery,
 		autocompact:      w.CrewAutocompact(),
 		budget:           spawnBudget(req, cfg),
@@ -436,6 +451,8 @@ type crewPlan struct {
 	branch           string
 	worktree         string
 	repoCfg          store.RepoConfig
+	// lane is what the crew holds (MetaLane), empty for nothing.
+	lane string
 	// delivery is the Mate's choice for this crew, crewstate.DeliveryLocal
 	// or crewstate.DeliveryPR.
 	delivery string
@@ -582,6 +599,7 @@ func spawnInWorktree(ctx context.Context, w *store.Workspace, deps Deps, saga *c
 		MetaDelivery:   plan.delivery,
 		MetaSize:       plan.size.String(),
 		store.MetaRepo: plan.repoCfg.Name,
+		MetaLane:       plan.lane,
 		MetaSessionID:  sessionID,
 		MetaSessions:   "1",
 		MetaTranscript: "",
@@ -870,7 +888,7 @@ func renderCrewBrief(w *store.Workspace, deps Deps, plan crewPlan) ([]byte, erro
 		HandbackPath:       w.CrewHandback(plan.project, plan.crew),
 		WorkspaceCrewRules: plan.crewRulesWS,
 		ProjectCrewRules:   plan.crewRulesProject,
-		Lane:               plan.repoCfg.Lane,
+		Lane:               plan.lane,
 	})
 }
 
@@ -1071,4 +1089,19 @@ func CrewIsScout(w *store.Workspace, project, crew string, meta map[string]strin
 	}
 	_, found := brief.SectionText(string(raw), brief.Deliverable)
 	return found
+}
+
+// spawnLane is the lane a spawn holds: the repo's unless `--lane` said
+// `none` or named another one word.
+func spawnLane(req SpawnCrewRequest, repoCfg store.RepoConfig) (string, error) {
+	lane := strings.TrimSpace(req.Lane)
+	switch {
+	case lane == "":
+		return repoCfg.Lane, nil
+	case lane == "none":
+		return "", nil
+	case strings.ContainsAny(lane, " \t\n\r:"):
+		return "", errUsage("crew spawn: --lane is one word, such as xcode, or none")
+	}
+	return lane, nil
 }

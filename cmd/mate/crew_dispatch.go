@@ -248,6 +248,11 @@ func cmdCrewDispatch(args []string, stdout, stderr io.Writer) error {
 	writeDispatchTable(stdout, t, view)
 	snap, qerr := readQuota(context.Background())
 	writeQuota(stdout, snap, qerr)
+	rows, err := laneRows(w)
+	if err != nil {
+		return err
+	}
+	writeLanes(stdout, rows)
 	return nil
 }
 
