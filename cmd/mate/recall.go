@@ -284,7 +284,7 @@ func assembleRecall(head string, parts []recallPart, project string, opts recall
 	return out.String()
 }
 
-// recallLive is part 1: the mode, the crews, the inbox and the outbox.
+// recallLive is part 1: the mode, the next-work setting, the crews, the inbox and the outbox.
 func recallLive(w *store.Workspace, project string, cfg store.ProjectConfig, now time.Time) (recallPart, error) {
 	var b strings.Builder
 	mode := "manual"
@@ -292,6 +292,7 @@ func recallLive(w *store.Workspace, project string, cfg store.ProjectConfig, now
 		mode = "auto"
 	}
 	fmt.Fprintf(&b, "mode: %s\n", mode)
+	b.WriteString(nextWorkLine(cfg) + "\n")
 
 	fmt.Fprintf(&b, "crews (mate backlog %s):\n", project)
 	if err := printBacklog(w, project, false, now, &b); err != nil {

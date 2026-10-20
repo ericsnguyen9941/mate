@@ -1226,6 +1226,12 @@ Captain chốt 2026-10-13. Thực tế ở `hellovietnam`: captain bấm `m` lú
 - Timeline: auto là chỗ project bắt đầu, nên lượt đầu trên project auto không ghi `mode.changed`; manual có ngày theo mtime của `.manual`.
 - Hệ quả: các project chưa từng bấm `m` (fusenlockscreen, matemarketing, reversegamefb, socialautomation) thành auto; project không có Mate chạy thì digest chỉ chờ trong outbox. Dashboard của corpus mẫu thành `auto`, nên `wait-mate` của nó là việc của Mate, không còn trong inbox captain.
 
+**2026-10-20 (CON-120). Mate tự lấy việc tiếp.** Thực tế 20/10: xong task nào là Mate mihuv2, plantrip, signal dừng và hỏi "làm gì tiếp". CON-110 chỉ đi tiếp trong một target, mà chưa project nào có target. mihuv2 còn ghi lựa chọn "[c] Dừng ở đây" thành lệnh cấm chung "other new work unasked". Captain chốt: thiết lập autopilot, mặc định tự làm.
+- `project.yaml` thêm `next_work: pick|ask`, để trống là `pick`. `mate project next-work <p> [pick|ask]` in hoặc ghi. Recall part 1 và `mate merge` của Mate in dòng `next work:`.
+- `pick`: task mở trên tracker, và dòng `## Queued` không gắn `unrequested`, coi như captain đã giao; Mate làm theo priority và blocked-by, song song tới mức lane cho phép. `ask`: hỏi như cũ.
+- Không tự làm dưới cả hai: task bị chặn, task chờ captain, task bị hoãn, dòng `unrequested`, việc đưa ra ngoài máy (tag, release, deploy).
+- Lệnh hoãn phải ghi tên task. Lệnh "dừng ở đây" không nêu task chỉ có hiệu lực tới lần captain giao việc kế tiếp. Mate không đưa "dừng ở đây" thành lựa chọn.
+
 ### Token review: task nào tốn, vì sao, sửa harness của project ở đâu
 
 Captain yêu cầu 2026-10-03, sau khi M15 đã giới hạn context của chính Mate: Mate cần chỉ ra được task nào tiêu thụ quá nhiều token và đề xuất skill, docs cho repo của project.

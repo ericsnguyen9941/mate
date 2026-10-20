@@ -79,6 +79,14 @@ func cmdMerge(args []string, stdout, stderr io.Writer) error {
 		}
 		fmt.Fprintf(stdout, "followups: %s (recorded as %s= in %s)\n", followups, store.MetaFollowups, w.CrewMeta(project, crew))
 	}
+	// A landed task is the moment the Mate decides what runs next (CON-120):
+	// the setting rides on the Mate's merge so it is in front of it then.
+	if spawn.NormaliseCaller(spawn.CallerFromEnv()) != spawn.CallerMate {
+		return nil
+	}
+	if cfg, err := w.LoadProject(project); err == nil {
+		fmt.Fprintln(stdout, nextWorkLine(cfg))
+	}
 	return nil
 }
 

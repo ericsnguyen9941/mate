@@ -47,6 +47,11 @@ type ProjectConfig struct {
 	// the Mate lands it (CON-101): ReviewOn or ReviewOff. Empty means the
 	// captain has not decided, and the Mate asks before it lands one.
 	Review string `yaml:"review,omitempty"`
+	// NextWork is what the Mate does when a task lands and nothing the
+	// captain asked for is left (CON-120): NextWorkPick, the default when
+	// empty, takes the tracker's next ready task without asking;
+	// NextWorkAsk asks the captain which work comes next.
+	NextWork string `yaml:"next_work,omitempty"`
 }
 
 // The values of ProjectConfig.Review.
@@ -57,6 +62,24 @@ const (
 
 // ValidReview reports whether s is a value project.yaml's review may hold.
 func ValidReview(s string) bool { return s == ReviewOn || s == ReviewOff }
+
+// The values of ProjectConfig.NextWork.
+const (
+	NextWorkPick = "pick"
+	NextWorkAsk  = "ask"
+)
+
+// ValidNextWork reports whether s is a value project.yaml's next_work may hold.
+func ValidNextWork(s string) bool { return s == NextWorkPick || s == NextWorkAsk }
+
+// NextWorkMode is NextWork with its default filled in: an empty or unknown
+// value picks, so a project the captain never configured keeps moving.
+func (c ProjectConfig) NextWorkMode() string {
+	if c.NextWork == NextWorkAsk {
+		return NextWorkAsk
+	}
+	return NextWorkPick
+}
 
 // MetaBudget is the crew `.meta` key holding the crew's own token budget
 // (CON-76): the dispatch rule's budget `mate crew spawn --budget` recorded,
