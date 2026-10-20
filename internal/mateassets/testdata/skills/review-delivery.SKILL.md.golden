@@ -46,7 +46,7 @@ Once the review passes, land the work yourself:
 ```
 
 With the project's review `off`, land it once the hand-back checks out, with `/usr/local/bin/mate merge shop <id>` and no `--review`.
-With `--review` it pins the commit the reviewer saw; either way it closes the Crew; report what it printed, in outcome words, and stop.
+With `--review` it pins the commit the reviewer saw; either way it closes the Crew; report what it printed, in outcome words, then keep the work moving, as AGENTS.md says.
 When memory `## Captain` says the captain merges this kind of work, report it as ready instead, naming the branch or the pull request.
 A review that passed but left findings standing must have them recorded first: add a line under `## Queued` with `mate backlog add`, or name the tracker issue, and merge again with `--followups backlog:<text>` or `--followups <TRACKER-id>`.
 A passing review's `## Notes` open no correction round: merge, and record a note worth keeping with `mate backlog add` or in the tracker, as you judge; it needs no `--followups`.
@@ -55,7 +55,7 @@ On `merge refused: needs-rebase`, send the Crew one line, "rebase onto <default 
 A pull request ship (`--deliver pr`) hands back with `pr-open:`; review its branch exactly as above. It fixes corrections on the same branch and pushes; the same pull request follows. `mate merge` runs `gh pr merge` for it.
 A watcher follows every open pull request and wakes you with `pr-merged:` or `pr-closed:`. When a Crew opened one without it and no console is open, start it: `/usr/local/bin/mate pr watch shop <id> <url>`.
 
-- **`pr-merged:`** - run `/usr/local/bin/mate crew stop shop <id>`, which takes the merged pull request as landed, even after a squash or rebase merge. If the line says the checkout was `skipped:`, tell the captain their copy of the default branch is behind. Then take the next task.
+- **`pr-merged:`** - run `/usr/local/bin/mate crew stop shop <id>`, which takes the merged pull request as landed, even after a squash or rebase merge. If the line says the checkout was `skipped:`, tell the captain their copy of the default branch is behind. Then keep the work moving.
 - **`pr-closed:`** - it was closed unmerged. Find out why (its comments, through a scout if they are long), then either send the Crew the rework, telling it to reopen the pull request (`gh pr reopen`) and run `pr watch` again, or tell the captain it was turned down.
 
 ## A scout
