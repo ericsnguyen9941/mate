@@ -23,10 +23,11 @@ type simDevice struct {
 	Name  string `json:"name"`
 	UDID  string `json:"udid"`
 	State string `json:"state"`
+	Size  int64  `json:"dataPathSize"`
 }
 
 // Sweep implements Sweep.
-func (s Simulators) Sweep(ctx context.Context, t Target) ([]string, error) {
+func (s Simulators) Sweep(ctx context.Context, targets []Target, dry bool) ([]string, error) {
 	res, err := s.run(ctx, "list", "devices", "-j")
 	if err != nil {
 		if missing(err) {
@@ -46,7 +47,7 @@ func (s Simulators) Sweep(ctx context.Context, t Target) ([]string, error) {
 	var owned []simDevice
 	for _, devices := range list.Devices {
 		for _, d := range devices {
-			if d.UDID != "" && t.NamedAfter(d.Name) {
+			if d.UDID != "" && namedAfter(targets, d.Name) {
 				owned = append(owned, d)
 			}
 		}
@@ -55,6 +56,10 @@ func (s Simulators) Sweep(ctx context.Context, t Target) ([]string, error) {
 
 	var removed, failed []string
 	for _, d := range owned {
+		if dry {
+			removed = append(removed, "simulator "+d.Name+sizeNote(d.Size))
+			continue
+		}
 		if d.State != "Shutdown" {
 			// A device that is already shut down answers with an error;
 			// only the delete below decides.
@@ -67,7 +72,7 @@ func (s Simulators) Sweep(ctx context.Context, t Target) ([]string, error) {
 		case res.ExitCode != 0:
 			failed = append(failed, fmt.Sprintf("simulator %s: delete exited %d%s", d.Name, res.ExitCode, lastLine(res.Stderr)))
 		default:
-			removed = append(removed, "simulator "+d.Name)
+			removed = append(removed, "simulator "+d.Name+sizeNote(d.Size))
 		}
 	}
 	if len(failed) > 0 {

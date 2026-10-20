@@ -52,30 +52,23 @@ func TestOwnsOnlyTheWorktreeAndBelow(t *testing.T) {
 	}
 }
 
-// docker answers like the real CLI for a machine with the crew's stack, a
-// reviewer's left-over volume set and the captain's own checkout stack.
-func dockerFake(t *testing.T, removed *[]string) *process.FakeRunner {
+// dockerFake answers the three listings like the real CLI and records
+// every removal.
+func dockerFake(t *testing.T, containers, volumes, networks string, removed *[]string) *process.FakeRunner {
 	return &process.FakeRunner{Handler: func(_ context.Context, s process.Spec) (process.Result, error) {
 		if s.Name != "docker" {
 			t.Fatalf("unexpected command %s", process.CommandKey(s))
 		}
 		args := strings.Join(s.Args, " ")
 		switch {
-		case strings.HasPrefix(args, "ps -a --filter label=com.docker.compose.project --format"):
-			return process.Result{Stdout: []byte(
-				"plantrip-pla-6\t" + wt + "\n" +
-					"plantrip-pla-6\t" + wt + "\n" +
-					"plantrip_api\t/ws/plantrip/plantrip_api\n")}, nil
-		case strings.HasPrefix(args, "ps -aq --filter label=com.docker.compose.project=plantrip-pla-6"):
-			return process.Result{Stdout: []byte("c1\nc2\n")}, nil
-		case strings.HasPrefix(args, "volume ls -q --filter label=com.docker.compose.project=plantrip-pla-6"):
-			return process.Result{Stdout: []byte("plantrip-pla-6_sail-pgsql\n")}, nil
-		case strings.HasPrefix(args, "network ls -q --filter label=com.docker.compose.project=plantrip-pla-6"):
-			return process.Result{Stdout: []byte("n1\n")}, nil
+		case strings.HasPrefix(args, "ps -a --filter"):
+			return process.Result{Stdout: []byte(containers)}, nil
+		case strings.HasPrefix(args, "volume ls"):
+			return process.Result{Stdout: []byte(volumes)}, nil
+		case strings.HasPrefix(args, "network ls"):
+			return process.Result{Stdout: []byte(networks)}, nil
 		case strings.HasPrefix(args, "rm -f"), strings.HasPrefix(args, "volume rm"), strings.HasPrefix(args, "network rm"):
 			*removed = append(*removed, args)
-			return process.Result{}, nil
-		case strings.Contains(args, "label=com.docker.compose.project="):
 			return process.Result{}, nil
 		}
 		t.Fatalf("unexpected docker %s", args)
@@ -85,7 +78,11 @@ func dockerFake(t *testing.T, removed *[]string) *process.FakeRunner {
 
 func TestDockerRemovesTheWorktreesStackByLabelAndLeavesOthers(t *testing.T) {
 	var removed []string
-	got, err := Docker{Runner: dockerFake(t, &removed)}.Sweep(context.Background(), Target{Worktree: wt})
+	run := dockerFake(t,
+		"c1\tplantrip-pla-6\t"+wt+"\nc2\tplantrip-pla-6\t"+wt+"\nc9\tplantrip_api\t/ws/plantrip/plantrip_api\n",
+		"plantrip-pla-6_sail-pgsql\tplantrip-pla-6\nplantrip_api_pg\tplantrip_api\n",
+		"n1\tplantrip-pla-6\nn9\tplantrip_api\n", &removed)
+	got, err := Docker{Runner: run}.Sweep(context.Background(), []Target{{Worktree: wt}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,17 +97,9 @@ func TestDockerRemovesTheWorktreesStackByLabelAndLeavesOthers(t *testing.T) {
 func TestDockerFindsAReviewersVolumesByTheWorktreeName(t *testing.T) {
 	// The reviewer's containers are gone; only its volumes carry the
 	// compose project compose derived from the worktree's directory.
-	run := &process.FakeRunner{Handler: func(_ context.Context, s process.Spec) (process.Result, error) {
-		args := strings.Join(s.Args, " ")
-		switch {
-		case strings.HasPrefix(args, "ps -a --filter"):
-			return process.Result{}, nil
-		case strings.HasPrefix(args, "volume ls -q --filter label=com.docker.compose.project=plantrip-pla-31-r1b"):
-			return process.Result{Stdout: []byte("plantrip-pla-31-r1b_sail-pgsql\nplantrip-pla-31-r1b_sail-redis\n")}, nil
-		}
-		return process.Result{}, nil
-	}}
-	got, err := Docker{Runner: run}.Sweep(context.Background(), Target{Worktree: "/ws/.worktrees/plantrip-pla-31-r1b"})
+	var removed []string
+	run := dockerFake(t, "", "plantrip-pla-31-r1b_sail-pgsql\tplantrip-pla-31-r1b\nplantrip-pla-31-r1b_sail-redis\tplantrip-pla-31-r1b\n", "", &removed)
+	got, err := Docker{Runner: run}.Sweep(context.Background(), []Target{{Worktree: "/ws/.worktrees/plantrip-pla-31-r1b"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,18 +109,21 @@ func TestDockerFindsAReviewersVolumesByTheWorktreeName(t *testing.T) {
 }
 
 func TestDockerLeavesAProjectWithAContainerElsewhere(t *testing.T) {
-	run := &process.FakeRunner{Handler: func(_ context.Context, s process.Spec) (process.Result, error) {
-		args := strings.Join(s.Args, " ")
-		if strings.HasPrefix(args, "ps -a --filter label=com.docker.compose.project --format") {
-			// Someone else's stack happens to carry the worktree's name.
-			return process.Result{Stdout: []byte("plantrip-pla-6\t/elsewhere/plantrip-pla-6\n")}, nil
-		}
-		t.Fatalf("touched a foreign project: docker %s", args)
-		return process.Result{}, nil
-	}}
-	got, err := Docker{Runner: run}.Sweep(context.Background(), Target{Worktree: wt})
-	if err != nil || len(got) != 0 {
-		t.Fatalf("removed %q, err %v; want nothing", got, err)
+	var removed []string
+	// Someone else's stack happens to carry the worktree's name.
+	run := dockerFake(t, "c1\tplantrip-pla-6\t/elsewhere/plantrip-pla-6\n", "v1\tplantrip-pla-6\n", "", &removed)
+	got, err := Docker{Runner: run}.Sweep(context.Background(), []Target{{Worktree: wt}}, false)
+	if err != nil || len(got) != 0 || len(removed) != 0 {
+		t.Fatalf("removed %q (calls %q), err %v; want nothing", got, removed, err)
+	}
+}
+
+func TestDockerDryRunRemovesNothing(t *testing.T) {
+	var removed []string
+	run := dockerFake(t, "c1\tplantrip-pla-6\t"+wt+"\n", "", "", &removed)
+	got, err := Docker{Runner: run}.Sweep(context.Background(), []Target{{Worktree: wt}}, true)
+	if err != nil || !slices.Equal(got, []string{"docker plantrip-pla-6 (1 container)"}) || len(removed) != 0 {
+		t.Fatalf("dry: %q, calls %q, %v", got, removed, err)
 	}
 }
 
@@ -139,11 +131,11 @@ func TestDockerNotInstalledIsNothingAndDaemonDownIsPending(t *testing.T) {
 	notFound := &process.FakeRunner{Handler: func(context.Context, process.Spec) (process.Result, error) {
 		return process.Result{}, fmt.Errorf("process docker: %w", exec.ErrNotFound)
 	}}
-	if got, err := (Docker{Runner: notFound}).Sweep(context.Background(), Target{Worktree: wt}); err != nil || got != nil {
+	if got, err := (Docker{Runner: notFound}).Sweep(context.Background(), []Target{Target{Worktree: wt}}, false); err != nil || got != nil {
 		t.Fatalf("no docker: %q, %v; want nothing", got, err)
 	}
 	down := &process.FakeRunner{Default: process.Result{ExitCode: 1, Stderr: []byte("Cannot connect to the Docker daemon")}}
-	_, err := Docker{Runner: down}.Sweep(context.Background(), Target{Worktree: wt})
+	_, err := Docker{Runner: down}.Sweep(context.Background(), []Target{Target{Worktree: wt}}, false)
 	if err == nil || !strings.Contains(err.Error(), "Cannot connect to the Docker daemon") {
 		t.Fatalf("daemon down: err %v, want docker's own words", err)
 	}
@@ -159,7 +151,7 @@ func TestSimulatorsDeletesOnlyTheOneNamedAfterTheWorktree(t *testing.T) {
 	run := &process.FakeRunner{Responses: map[string]process.Result{
 		"xcrun simctl list devices -j": {Stdout: []byte(simJSON)},
 	}}
-	got, err := Simulators{Runner: run}.Sweep(context.Background(), Target{Worktree: wt})
+	got, err := Simulators{Runner: run}.Sweep(context.Background(), []Target{Target{Worktree: wt}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,11 +196,11 @@ func TestDerivedDataDeletesTheFoldersXcodeMadeForTheWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := DerivedData{Root: root}.Sweep(context.Background(), Target{Worktree: wt})
+	got, err := DerivedData{Root: root}.Sweep(context.Background(), []Target{Target{Worktree: wt}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"DerivedData HelloVietnam-mine"}; !slices.Equal(got, want) {
+	if want := []string{"DerivedData HelloVietnam-mine (1 KB)"}; !slices.Equal(got, want) {
 		t.Fatalf("removed = %q, want %q", got, want)
 	}
 	for name, want := range map[string]bool{"HelloVietnam-mine": false, "HelloVietnam-other": true, "HelloVietnam-primary": true, "CompilationCache.noindex": true} {
@@ -241,7 +233,7 @@ func TestProcessesStopsWhatRunsInTheWorktreeButNotAShell(t *testing.T) {
 		}
 		return nil
 	}
-	got, err := Processes{Runner: run, Signal: signal, Grace: 50 * time.Millisecond}.Sweep(context.Background(), Target{Worktree: wt})
+	got, err := Processes{Runner: run, Signal: signal, Grace: 50 * time.Millisecond}.Sweep(context.Background(), []Target{Target{Worktree: wt}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,9 +246,11 @@ func TestProcessesStopsWhatRunsInTheWorktreeButNotAShell(t *testing.T) {
 	}
 }
 
-type sweepFunc func(context.Context, Target) ([]string, error)
+type sweepFunc func(context.Context, []Target, bool) ([]string, error)
 
-func (f sweepFunc) Sweep(ctx context.Context, t Target) ([]string, error) { return f(ctx, t) }
+func (f sweepFunc) Sweep(ctx context.Context, ts []Target, dry bool) ([]string, error) {
+	return f(ctx, ts, dry)
+}
 
 func TestCleanRunsTheHookInTheWorktreeThenEverySweep(t *testing.T) {
 	dir := t.TempDir()
@@ -273,7 +267,7 @@ func TestCleanRunsTheHookInTheWorktreeThenEverySweep(t *testing.T) {
 		return process.Result{Stdout: []byte("stack down\n")}, nil
 	}}
 	sweep := func(name string, err error) Sweep {
-		return sweepFunc(func(context.Context, Target) ([]string, error) {
+		return sweepFunc(func(context.Context, []Target, bool) ([]string, error) {
 			order = append(order, name)
 			return []string{name + " gone"}, err
 		})
@@ -299,7 +293,7 @@ func TestCleanRunsTheHookInTheWorktreeThenEverySweep(t *testing.T) {
 func TestCleanReportsAFailedHookAndStillSweeps(t *testing.T) {
 	run := &process.FakeRunner{Default: process.Result{ExitCode: 2, Stderr: []byte("make: *** No rule to make target 'down'.")}}
 	swept := false
-	c := Cleaner{Runner: run, Sweeps: []Sweep{sweepFunc(func(context.Context, Target) ([]string, error) { swept = true; return nil, nil })}}
+	c := Cleaner{Runner: run, Sweeps: []Sweep{sweepFunc(func(context.Context, []Target, bool) ([]string, error) { swept = true; return nil, nil })}}
 	r := c.Clean(context.Background(), Target{Worktree: t.TempDir(), Hook: "make down"})
 	if !swept || r.Hook != "failed" || len(r.Pending) != 1 || !strings.Contains(r.Pending[0], "No rule to make target") {
 		t.Fatalf("swept %v, report %+v", swept, r)
@@ -329,5 +323,34 @@ func TestCleanStopsAHookAtItsTimeout(t *testing.T) {
 func TestComposeProjectNameFollowsCompose(t *testing.T) {
 	if got := ComposeProjectName("PlanTrip.pla-6_x"); got != "plantrippla-6_x" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// Orphans are the worktrees docker and Xcode still name under the root
+// that are gone; one that exists, or a path outside the root, is not.
+func TestOrphansAreGoneWorktreesStillPointedAt(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".worktrees")
+	if err := os.MkdirAll(filepath.Join(root, "shop-live"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := &process.FakeRunner{Default: process.Result{Stdout: []byte(
+		root + "/shop-gone\n" + root + "/shop-gone\n" + root + "/shop-live\n/ws/shop\n")}}
+	derived := t.TempDir()
+	for name, ws := range map[string]string{"A-1": root + "/hv-old/HV.xcodeproj", "A-2": root + "/shop-live/X.xcodeproj", "A-3": "/ws/hv/HV.xcodeproj"} {
+		dir := filepath.Join(derived, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		plist := `<plist version="1.0"><dict><key>WorkspacePath</key><string>` + ws + `</string></dict></plist>`
+		if err := os.WriteFile(filepath.Join(dir, "info.plist"), []byte(plist), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var got []string
+	for _, tg := range Orphans(context.Background(), root, run, derived) {
+		got = append(got, tg.Name())
+	}
+	if want := []string{"hv-old", "shop-gone"}; !slices.Equal(got, want) {
+		t.Fatalf("orphans = %q, want %q", got, want)
 	}
 }

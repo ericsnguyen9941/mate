@@ -104,12 +104,22 @@ func (f sleepFunc) Sleep(ctx context.Context, d time.Duration) error { return f(
 // consoleAutoPilot is the auto daemon over ws, queueing into ws's outbox and
 // making its one immediate attempt through a sender over the same handle.
 func consoleAutoPilot(ws *store.Workspace, deps spawn.Deps) *autopilot.Pilot {
+	// What closed tasks left behind is collected once at start and every
+	// GCEvery after (CON-114) - by a console with the real teardown only,
+	// so a test's fake deps never reach docker or simctl.
+	var gc *gcSchedule
+	if deps.Cleaner != nil {
+		gc = consoleGC(ws, liveGCDeps())
+	}
 	return autopilot.New(ws, autopilot.Deps{
 		Outbox: consoleOutbox(ws, deps),
 		Maintain: func(ctx context.Context, project string) (bool, error) {
 			return contextRefresh(ctx, ws, deps, project, true)
 		},
-		Sweep:  func(context.Context) { prwatch.Sweep(ws, prStarter) },
+		Sweep: func(ctx context.Context) {
+			prwatch.Sweep(ws, prStarter)
+			gc.Tick(ctx)
+		},
 		Budget: consoleBudgetActions(ws, deps),
 	})
 }

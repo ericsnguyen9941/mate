@@ -33,7 +33,7 @@ type Processes struct {
 }
 
 // Sweep implements Sweep.
-func (p Processes) Sweep(ctx context.Context, t Target) ([]string, error) {
+func (p Processes) Sweep(ctx context.Context, targets []Target, dry bool) ([]string, error) {
 	run := p.Runner
 	if run == nil {
 		run = process.ExecRunner{}
@@ -65,7 +65,7 @@ func (p Processes) Sweep(ctx context.Context, t Target) ([]string, error) {
 		case 'c':
 			cur.name = line[1:]
 		case 'n':
-			if cur.pid > 1 && cur.pid != self && cur.pid != parent && !interactive[cur.name] && t.Owns(line[1:]) {
+			if cur.pid > 1 && cur.pid != self && cur.pid != parent && !interactive[cur.name] && owns(targets, line[1:]) {
 				owned = append(owned, cur)
 			}
 		}
@@ -80,6 +80,10 @@ func (p Processes) Sweep(ctx context.Context, t Target) ([]string, error) {
 	}
 	var removed, failed []string
 	for _, pr := range owned {
+		if dry {
+			removed = append(removed, fmt.Sprintf("process %s %d", pr.name, pr.pid))
+			continue
+		}
 		if err := signal(pr.pid, syscall.SIGTERM); err != nil {
 			continue // already gone
 		}
