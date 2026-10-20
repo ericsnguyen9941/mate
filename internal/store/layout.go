@@ -49,6 +49,10 @@ func (w *Workspace) Root() string { return w.root }
 // StateDir is `<root>/.mate`.
 func (w *Workspace) StateDir() string { return filepath.Join(w.root, StateDirName) }
 
+// GCLog is `.mate/gc.log`, where the console's periodic `mate gc` writes
+// what it removed and what it could not (CON-114).
+func (w *Workspace) GCLog() string { return filepath.Join(w.StateDir(), "gc.log") }
+
 // WorkspaceFile is `<root>/.mate/workspace.yaml`.
 func (w *Workspace) WorkspaceFile() string { return filepath.Join(w.StateDir(), workspaceFileName) }
 

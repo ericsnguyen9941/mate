@@ -21,7 +21,7 @@ type DerivedData struct {
 }
 
 // Sweep implements Sweep.
-func (d DerivedData) Sweep(_ context.Context, t Target) ([]string, error) {
+func (d DerivedData) Sweep(_ context.Context, targets []Target, dry bool) ([]string, error) {
 	if d.Root == "" {
 		return nil, nil
 	}
@@ -38,14 +38,19 @@ func (d DerivedData) Sweep(_ context.Context, t Target) ([]string, error) {
 			continue
 		}
 		dir := filepath.Join(d.Root, e.Name())
-		if !t.Owns(WorkspacePath(filepath.Join(dir, "info.plist"))) {
+		if !owns(targets, WorkspacePath(filepath.Join(dir, "info.plist"))) {
+			continue
+		}
+		size := dirSize(dir)
+		if dry {
+			removed = append(removed, "DerivedData "+e.Name()+sizeNote(size))
 			continue
 		}
 		if err := os.RemoveAll(dir); err != nil {
 			failed = append(failed, fmt.Sprintf("DerivedData %s: %v", e.Name(), err))
 			continue
 		}
-		removed = append(removed, "DerivedData "+e.Name())
+		removed = append(removed, "DerivedData "+e.Name()+sizeNote(size))
 	}
 	if len(failed) > 0 {
 		return removed, fmt.Errorf("%s", strings.Join(failed, "; "))
@@ -91,4 +96,18 @@ func WorkspacePath(plist string) string {
 			wantValue = false
 		}
 	}
+}
+
+// dirSize is the bytes of the regular files under dir.
+func dirSize(dir string) int64 {
+	var n int64
+	_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			if info, err := d.Info(); err == nil {
+				n += info.Size()
+			}
+		}
+		return nil
+	})
+	return n
 }

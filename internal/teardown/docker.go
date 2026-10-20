@@ -27,45 +27,75 @@ type Docker struct {
 	Runner process.Runner
 }
 
-// Sweep implements Sweep.
-func (d Docker) Sweep(ctx context.Context, t Target) ([]string, error) {
-	rows, err := d.lines(ctx, "ps", "-a", "--filter", "label="+composeProjectLabel,
-		"--format", `{{.Label "`+composeProjectLabel+`"}}`+"\t"+`{{.Label "`+composeDirLabel+`"}}`)
+// Sweep implements Sweep. It lists containers, volumes and networks once
+// each, whatever the number of targets, and removes by id.
+func (d Docker) Sweep(ctx context.Context, targets []Target, dry bool) ([]string, error) {
+	containers, err := d.lines(ctx, "ps", "-a", "--filter", "label="+composeProjectLabel,
+		"--format", "{{.ID}}\t"+labelFormat(composeProjectLabel)+"\t"+labelFormat(composeDirLabel))
 	if err != nil {
 		if missing(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("docker: %v", err)
 	}
-	// A project is the worktree's when its containers all record a working
-	// directory inside it. One with a container anywhere else is shared
-	// and left alone, even when it carries the worktree's name.
+	volumes, err := d.lines(ctx, "volume", "ls", "--filter", "label="+composeProjectLabel, "--format", "{{.Name}}\t"+labelFormat(composeProjectLabel))
+	if err != nil {
+		return nil, fmt.Errorf("docker: %v", err)
+	}
+	networks, err := d.lines(ctx, "network", "ls", "--filter", "label="+composeProjectLabel, "--format", "{{.ID}}\t"+labelFormat(composeProjectLabel))
+	if err != nil {
+		return nil, fmt.Errorf("docker: %v", err)
+	}
+
+	// A project is the targets' when its containers all record a working
+	// directory inside one of them. One with a container anywhere else is
+	// shared and left alone, even when it carries a target's name.
 	inside, outside := map[string]bool{}, map[string]bool{}
-	for _, row := range rows {
-		project, dir, _ := strings.Cut(row, "\t")
-		if project == "" {
+	byProject := map[string]*composeProject{}
+	get := func(name string) *composeProject {
+		if byProject[name] == nil {
+			byProject[name] = &composeProject{}
+		}
+		return byProject[name]
+	}
+	for _, row := range containers {
+		f := strings.SplitN(row, "\t", 3)
+		if len(f) < 2 || f[1] == "" {
 			continue
 		}
-		if t.Owns(dir) {
-			inside[project] = true
+		dir := ""
+		if len(f) == 3 {
+			dir = f[2]
+		}
+		if owns(targets, dir) {
+			inside[f[1]] = true
 		} else {
-			outside[project] = true
+			outside[f[1]] = true
+		}
+		get(f[1]).containers = append(get(f[1]).containers, f[0])
+	}
+	for _, row := range volumes {
+		if id, project, ok := strings.Cut(row, "\t"); ok && project != "" {
+			get(project).volumes = append(get(project).volumes, id)
 		}
 	}
-	if name := ComposeProjectName(t.Name()); name != "" {
-		inside[name] = true
+	for _, row := range networks {
+		if id, project, ok := strings.Cut(row, "\t"); ok && project != "" {
+			get(project).networks = append(get(project).networks, id)
+		}
 	}
-	owned := map[string]bool{}
-	for name := range inside {
-		if !outside[name] {
-			owned[name] = true
+	for _, t := range targets {
+		if name := ComposeProjectName(t.Name()); name != "" && byProject[name] != nil {
+			inside[name] = true
 		}
 	}
 
-	var removed []string
-	var failed []string
-	for _, name := range sortedKeys(owned) {
-		n, err := d.removeProject(ctx, name)
+	var removed, failed []string
+	for _, name := range sortedKeys(inside) {
+		if outside[name] {
+			continue
+		}
+		n, err := d.removeProject(ctx, byProject[name], dry)
 		if err != nil {
 			failed = append(failed, fmt.Sprintf("docker %s: %v", name, err))
 		}
@@ -79,33 +109,39 @@ func (d Docker) Sweep(ctx context.Context, t Target) ([]string, error) {
 	return removed, nil
 }
 
-// removeProject removes everything labelled with the compose project and
-// says what, like "4 containers, 2 volumes, 1 network"; "" when there was
-// nothing.
-func (d Docker) removeProject(ctx context.Context, name string) (string, error) {
-	filter := "label=" + composeProjectLabel + "=" + name
+// composeProject is what docker holds under one compose project label.
+type composeProject struct {
+	containers, volumes, networks []string
+}
+
+// removeProject removes a project's containers, then volumes, then
+// networks, and says what, like "4 containers, 2 volumes, 1 network".
+func (d Docker) removeProject(ctx context.Context, p *composeProject, dry bool) (string, error) {
 	var counts []string
 	for _, kind := range []struct {
-		list, rm []string
-		noun     string
+		ids  []string
+		rm   []string
+		noun string
 	}{
-		{[]string{"ps", "-aq", "--filter", filter}, []string{"rm", "-f"}, "container"},
-		{[]string{"volume", "ls", "-q", "--filter", filter}, []string{"volume", "rm", "-f"}, "volume"},
-		{[]string{"network", "ls", "-q", "--filter", filter}, []string{"network", "rm"}, "network"},
+		{p.containers, []string{"rm", "-f"}, "container"},
+		{p.volumes, []string{"volume", "rm", "-f"}, "volume"},
+		{p.networks, []string{"network", "rm"}, "network"},
 	} {
-		ids, err := d.lines(ctx, kind.list...)
-		if err != nil {
-			return strings.Join(counts, ", "), err
-		}
-		if len(ids) == 0 {
+		if len(kind.ids) == 0 {
 			continue
 		}
-		if _, err := d.lines(ctx, append(kind.rm, ids...)...); err != nil {
-			return strings.Join(counts, ", "), err
+		if !dry {
+			if _, err := d.lines(ctx, append(kind.rm, kind.ids...)...); err != nil {
+				return strings.Join(counts, ", "), err
+			}
 		}
-		counts = append(counts, plural(len(ids), kind.noun))
+		counts = append(counts, plural(len(kind.ids), kind.noun))
 	}
 	return strings.Join(counts, ", "), nil
+}
+
+func labelFormat(label string) string {
+	return `{{.Label "` + label + `"}}`
 }
 
 // lines runs `docker args...` and returns its non-empty output lines. A

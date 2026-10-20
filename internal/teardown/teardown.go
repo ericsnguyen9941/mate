@@ -162,10 +162,32 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// A Sweep finds and removes one kind of resource a worktree owns. A tool
-// that is not installed is not an error: it cannot have started anything.
+// A Sweep finds and removes one kind of resource the targets own, listing
+// what exists once for all of them. With dry set it only says what it
+// would remove. A tool that is not installed is not an error: it cannot
+// have started anything.
 type Sweep interface {
-	Sweep(ctx context.Context, t Target) (removed []string, err error)
+	Sweep(ctx context.Context, targets []Target, dry bool) (removed []string, err error)
+}
+
+// owns reports whether some target owns path.
+func owns(targets []Target, path string) bool {
+	for _, t := range targets {
+		if t.Owns(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// namedAfter reports whether name carries some target's directory name.
+func namedAfter(targets []Target, name string) bool {
+	for _, t := range targets {
+		if t.NamedAfter(name) {
+			return true
+		}
+	}
+	return false
 }
 
 // Cleaner runs a target's hook, then its sweeps in order.
@@ -182,16 +204,24 @@ type Cleaner struct {
 // has the tools for.
 func Live() Cleaner {
 	run := process.ExecRunner{}
-	home, _ := os.UserHomeDir()
 	return Cleaner{
 		Runner: run,
 		Sweeps: []Sweep{
 			Processes{Runner: run},
 			Docker{Runner: run},
-			DerivedData{Root: filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")},
+			DerivedData{Root: XcodeDerivedData()},
 			Simulators{Runner: run},
 		},
 	}
+}
+
+// XcodeDerivedData is Xcode's default DerivedData directory.
+func XcodeDerivedData() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
 }
 
 // Clean tears the target down and reports what happened. It never fails:
@@ -211,14 +241,31 @@ func (c Cleaner) Clean(ctx context.Context, t Target) Report {
 			}
 		}
 	}
-	for _, s := range c.Sweeps {
-		removed, err := s.Sweep(ctx, t)
+	r.sweep(ctx, c.Sweeps, []Target{t}, false)
+	return r
+}
+
+// Collect runs the sweeps over many targets at once, without their hooks:
+// `mate gc` over worktrees that are already gone, where there is no
+// checkout left to run a hook in. With dry set nothing is removed and
+// Removed says what would be.
+func (c Cleaner) Collect(ctx context.Context, targets []Target, dry bool) Report {
+	var r Report
+	if len(targets) == 0 {
+		return r
+	}
+	r.sweep(ctx, c.Sweeps, targets, dry)
+	return r
+}
+
+func (r *Report) sweep(ctx context.Context, sweeps []Sweep, targets []Target, dry bool) {
+	for _, s := range sweeps {
+		removed, err := s.Sweep(ctx, targets, dry)
 		r.Removed = append(r.Removed, removed...)
 		if err != nil {
 			r.Pending = append(r.Pending, err.Error())
 		}
 	}
-	return r
 }
 
 func (c Cleaner) runner() process.Runner {
@@ -285,4 +332,19 @@ func missing(err error) bool {
 
 func sortedKeys(m map[string]bool) []string {
 	return slices.Sorted(maps.Keys(m))
+}
+
+// sizeNote is " (1.4 GB)" for a size worth naming, "" for none.
+func sizeNote(bytes int64) string {
+	if bytes <= 0 {
+		return ""
+	}
+	const unit = 1024
+	if bytes < unit*unit {
+		return fmt.Sprintf(" (%d KB)", (bytes+unit-1)/unit)
+	}
+	if bytes < unit*unit*unit {
+		return fmt.Sprintf(" (%.0f MB)", float64(bytes)/(unit*unit))
+	}
+	return fmt.Sprintf(" (%.1f GB)", float64(bytes)/(unit*unit*unit))
 }
