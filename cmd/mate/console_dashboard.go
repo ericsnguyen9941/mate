@@ -24,12 +24,18 @@ import (
 //
 // addr is the bind address, the dashboard's default when empty; a test
 // passes its own so it never depends on what this machine already serves.
-func startConsoleDashboard(ctx context.Context, ws *store.Workspace, addr string) (string, func(), error) {
+// allowRemote is .mate/console.yaml's dashboard.allow_remote: without it a
+// routable addr is refused the way `mate dashboard` refuses one.
+//
+// The returned URL is the loopback one; when the bind is reachable from the
+// LAN it is followed by that address too, so the status line shows what a
+// phone on the same network opens.
+func startConsoleDashboard(ctx context.Context, ws *store.Workspace, addr string, allowRemote bool) (string, func(), error) {
 	handle, err := db.OpenRead(ws)
 	if err != nil {
 		return "", nil, err
 	}
-	opts := dashboard.Options{Workspace: ws, DB: handle, Deps: dashboardDeps(ws), Addr: addr}
+	opts := dashboard.Options{Workspace: ws, DB: handle, Deps: dashboardDeps(ws), Addr: addr, AllowRemote: allowRemote}
 	server, err := dashboard.New(opts)
 	if err != nil {
 		_ = handle.Close()
@@ -55,5 +61,9 @@ func startConsoleDashboard(ctx context.Context, ws *store.Workspace, addr string
 			_ = handle.Close()
 		})
 	}
-	return dashboard.URL(ln), stop, nil
+	url := dashboard.URL(ln)
+	if lan := dashboard.LANURL(ln); lan != "" {
+		url += " " + lan
+	}
+	return url, stop, nil
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,18 @@ type Binding struct {
 
 type Config struct {
 	Bindings []Binding `yaml:"bindings"`
+	// Dashboard says where the console serves its read-only dashboard.
+	Dashboard Dashboard `yaml:"dashboard,omitempty"`
+}
+
+// Dashboard is the console's dashboard bind. Addr empty is the dashboard's
+// own default, loopback on port 7777. A routable Addr (0.0.0.0:7777 for the
+// LAN) also needs AllowRemote, because the timeline quotes everything the
+// captain typed; without it the console says so on its status line and
+// serves no dashboard rather than quietly serving loopback.
+type Dashboard struct {
+	Addr        string `yaml:"addr,omitempty"`
+	AllowRemote bool   `yaml:"allow_remote,omitempty"`
 }
 
 // Load reads optional console.yaml. Unknown fields and extra YAML documents
@@ -47,6 +60,11 @@ func Load(path string) (Config, error) {
 	var extra any
 	if err := d.Decode(&extra); err != io.EOF {
 		return Config{}, fmt.Errorf("%s: expected one YAML document", path)
+	}
+	if addr := cfg.Dashboard.Addr; strings.TrimSpace(addr) != "" {
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			return Config{}, fmt.Errorf("%s: dashboard.addr %q is not a host:port address", path, addr)
+		}
 	}
 	for i := range cfg.Bindings {
 		b := &cfg.Bindings[i]

@@ -66,6 +66,8 @@ func TestLoadRefusesInvalidCommands(t *testing.T) {
 		"crew variable on project": strings.Replace(valid, "scope: crew", "scope: project", 1),
 		"unclosed variable":        strings.Replace(valid, "{report_path}", "{report_path", 1),
 		"multiple documents":       valid + "---\nbindings: []\n",
+		"dashboard addr no port":   valid + "dashboard:\n  addr: 0.0.0.0\n",
+		"dashboard typo":           valid + "dashboard:\n  allow_remot: true\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "console.yaml")
@@ -76,5 +78,26 @@ func TestLoadRefusesInvalidCommands(t *testing.T) {
 				t.Fatal("invalid config accepted")
 			}
 		})
+	}
+}
+
+// The dashboard bind is read as given; absent it is the dashboard's default.
+func TestLoadDashboard(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "console.yaml")
+	if err := os.WriteFile(path, []byte("dashboard:\n  addr: 0.0.0.0:7777\n  allow_remote: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Dashboard.Addr != "0.0.0.0:7777" || !cfg.Dashboard.AllowRemote {
+		t.Fatalf("dashboard = %+v", cfg.Dashboard)
+	}
+	if err := os.WriteFile(path, []byte("bindings: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err := Load(path); err != nil || cfg.Dashboard != (Dashboard{}) {
+		t.Fatalf("default dashboard = %+v, %v", cfg.Dashboard, err)
 	}
 }

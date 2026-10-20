@@ -169,6 +169,58 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	return err
 }
 
+// LANURL is the address a device on the same network opens, or "" when the
+// bind is not reachable from one: a loopback bind, or an unspecified bind on
+// a machine with no private IPv4 address. It picks the first private IPv4
+// of a non-loopback interface that is up, which on a laptop is the Wi-Fi
+// address; a bind to one specific routable address is reported as itself.
+func LANURL(ln net.Listener) string {
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok || addr.IP == nil || addr.IP.IsLoopback() {
+		return ""
+	}
+	host := ""
+	if addr.IP.IsUnspecified() {
+		ip := firstPrivateIPv4()
+		if ip == nil {
+			return ""
+		}
+		host = ip.String()
+	} else {
+		host = addr.IP.String()
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
+	}
+	return fmt.Sprintf("http://%s:%d/", host, addr.Port)
+}
+
+func firstPrivateIPv4() net.IP {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipn, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if ip := ipn.IP.To4(); ip != nil && ip.IsPrivate() {
+				return ip
+			}
+		}
+	}
+	return nil
+}
+
 // URL is the address a reader opens, for the line `mate dashboard` prints.
 func URL(ln net.Listener) string {
 	addr, ok := ln.Addr().(*net.TCPAddr)
