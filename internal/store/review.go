@@ -34,8 +34,9 @@ func ReviewVerdict(report string) string {
 }
 
 // A review report lists its material findings under `## Findings`, one
-// list item per finding (or the word none). A scoped review (`mate review
-// --since`) answers the earlier review's findings under `## Prior
+// top-level list item per finding (or the word none); what does not block
+// goes under `## Notes`, which nothing here reads. A scoped review (`mate
+// review --since`) answers the earlier review's findings under `## Prior
 // findings`: one list item per finding, starting with `F<n> closed` or
 // `F<n> open`, where n is the finding's position in the list the brief
 // gave, followed by the evidence. Both sections are what `mate review
@@ -94,9 +95,12 @@ func ReviewPriorFindings(report string) map[int]string {
 	return out
 }
 
-// reportItems are the list items of the report's `## <name>` section, each
-// joined with its indented continuation lines, fences skipped. A section
-// whose body has no list marker is one item.
+// reportItems are the top-level list items of the report's `## <name>`
+// section, each joined with its indented continuation lines, fences
+// skipped. A list item indented deeper than the section's first one is a
+// sub-bullet of the item above it, not an item of its own (CON-106): a
+// finding with three supporting bullets is one finding. A section whose
+// body has no list marker is one item.
 func reportItems(report, name string) []string {
 	body, ok := reportSection(report, name)
 	if !ok {
@@ -104,6 +108,7 @@ func reportItems(report, name string) []string {
 	}
 	var items []string
 	fenced := false
+	top := -1
 	for _, line := range strings.Split(body, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "```") || strings.HasPrefix(strings.TrimSpace(line), "~~~") {
 			fenced = !fenced
@@ -116,7 +121,11 @@ func reportItems(report, name string) []string {
 		if trimmed == "" {
 			continue
 		}
-		if text, isItem := stripListMarker(trimmed); isItem {
+		text, isItem := stripListMarker(trimmed)
+		if isItem && top < 0 {
+			top = indentWidth(line)
+		}
+		if isItem && indentWidth(line) <= top {
 			items = append(items, text)
 		} else if len(items) > 0 {
 			items[len(items)-1] += " " + trimmed
@@ -125,6 +134,22 @@ func reportItems(report, name string) []string {
 		}
 	}
 	return items
+}
+
+// indentWidth is how far line is indented, a tab counting as four spaces.
+func indentWidth(line string) int {
+	n := 0
+	for _, r := range line {
+		switch r {
+		case ' ':
+			n++
+		case '\t':
+			n += 4
+		default:
+			return n
+		}
+	}
+	return n
 }
 
 var listMarkerPattern = regexp.MustCompile(`^(?:[-*+]|\d+[.)])\s+`)
