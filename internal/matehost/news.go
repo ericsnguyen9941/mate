@@ -43,6 +43,10 @@ const (
 	opClose   = "close"
 	opDrop    = "drop"
 	opArchive = "archive"
+	// opSession records the fork a news's session runs in (session.go).
+	opSession = "session"
+	// opPropose is a session proposing the captain's answer.
+	opPropose = "propose"
 )
 
 // NewsOption is one answer the Mate offers.
@@ -79,6 +83,11 @@ type News struct {
 	Answer     string    `json:"answer,omitempty"`
 	AnsweredAt time.Time `json:"answered_at,omitzero"`
 	Archived   bool      `json:"archived,omitempty"`
+	// Session is the fork the news's session runs in, once it has run.
+	Session string `json:"session,omitempty"`
+	// Proposal is the answer a session proposed and the captain has not
+	// sent yet (ProposeNews).
+	Proposal string `json:"proposal,omitempty"`
 }
 
 // Owed reports whether the news waits on the captain.
@@ -169,6 +178,17 @@ func UpdateNews(path string, id int, text string, ask bool, now time.Time) error
 		op = opAsk
 	}
 	return newsOp(path, newsEvent{At: now, Op: op, ID: id, Text: text}, false)
+}
+
+// ProposeNews records the answer a topic's session proposes for news id
+// (CON-104): the captain sends it to the Mate with ^S, or edits it first.
+// It answers nothing by itself, and a later proposal replaces it.
+func ProposeNews(path string, id int, text string, now time.Time) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return errors.New("a proposal needs the answer it proposes")
+	}
+	return newsOp(path, newsEvent{At: now, Op: opPropose, ID: id, Text: text}, false)
 }
 
 // CloseNews ends a news: done once it is settled, dropped when what it was
@@ -282,7 +302,7 @@ func LoadNews(path string) ([]News, error) {
 			}
 			continue
 		case opAnswer:
-			n.Answer, n.Status, n.AnsweredAt = ev.Text, NewsWorking, ev.At
+			n.Answer, n.Status, n.AnsweredAt, n.Proposal = ev.Text, NewsWorking, ev.At, ""
 		case opFailed:
 			if n.Status == NewsWorking {
 				n.Status = NewsWaiting
@@ -297,6 +317,12 @@ func LoadNews(path string) ([]News, error) {
 			}
 		case opArchive:
 			n.Archived = true
+			continue
+		case opSession:
+			n.Session = ev.Text
+			continue
+		case opPropose:
+			n.Proposal = ev.Text
 			continue
 		default:
 			continue

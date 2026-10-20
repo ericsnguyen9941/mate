@@ -22,3 +22,12 @@ func TestNewsOpenOptionKeys(t *testing.T) {
 		}
 	}
 }
+
+// A session proposes one answer to one news (CON-104).
+func TestNewsProposeArgs(t *testing.T) {
+	for _, args := range [][]string{{"p", "3"}, {"p", "x", "chọn a"}, {"p", "3", "a", "b"}} {
+		if err := cmdNewsPropose(args, io.Discard, io.Discard); err == nil {
+			t.Errorf("%q: proposed", args)
+		}
+	}
+}

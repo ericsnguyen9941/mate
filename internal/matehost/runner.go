@@ -85,15 +85,18 @@ func (r *Runner) Start(text string) (*Run, error) {
 	if !ok {
 		return nil, ErrBusy
 	}
-	opened := r.Opened
-	if opened == nil {
-		opened = r.Turns.SessionOpened
-	}
 	l := r.Launch
-	cmd := exec.Command(l.Program, r.Turns.TurnArgs(l.Args, l.SessionID, opened(l.Dir, l.SessionID))...)
-	cmd.Dir = l.Dir
 	r.turns++
-	cmd.Env = turnEnv(os.Environ(), l, r.turns)
+	return startRun(l, r.Turns.TurnArgs(l.Args, l.SessionID, r.opened(l.Dir, l.SessionID)), r.turns, text, r.Turns, r.Grace, release)
+}
+
+// startRun starts one harness run of args in the launch's directory and
+// environment, with text on its stdin. release is called when the run's
+// Wait returns, or now when it fails to start.
+func startRun(l Launch, args []string, turn int, text string, turns harness.HeadlessTurns, grace time.Duration, release func()) (*Run, error) {
+	cmd := exec.Command(l.Program, args...)
+	cmd.Dir = l.Dir
+	cmd.Env = turnEnv(os.Environ(), l, turn)
 	cmd.Stdin = strings.NewReader(text)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout, err := cmd.StdoutPipe()
@@ -107,11 +110,19 @@ func (r *Runner) Start(text string) (*Run, error) {
 		release()
 		return nil, fmt.Errorf("matehost: start %s: %w", l.Program, err)
 	}
-	grace := r.Grace
 	if grace <= 0 {
 		grace = 10 * time.Second
 	}
-	return &Run{cmd: cmd, stdout: stdout, stderr: stderr, release: release, grace: grace, turns: r.Turns}, nil
+	return &Run{cmd: cmd, stdout: stdout, stderr: stderr, release: release, grace: grace, turns: turns}, nil
+}
+
+// opened reports whether the harness has created the session sessionID
+// in dir.
+func (r *Runner) opened(dir, sessionID string) bool {
+	if r.Opened != nil {
+		return r.Opened(dir, sessionID)
+	}
+	return r.Turns != nil && r.Turns.SessionOpened(dir, sessionID)
 }
 
 // turnEnv is the run's environment: the host's own, without what the

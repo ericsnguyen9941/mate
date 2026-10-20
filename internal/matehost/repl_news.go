@@ -40,6 +40,8 @@ type viewMode int
 const (
 	viewChat viewMode = iota
 	viewTopics
+	// viewSession shows the session of the news openID (repl_session.go).
+	viewSession
 )
 
 // pendingAnswer is an answer waiting out its undo delay.
@@ -138,6 +140,8 @@ func (m Model) draftKey() int {
 	switch {
 	case m.mode == viewChat:
 		return 0
+	case m.mode == viewSession:
+		return sessionDraft + m.openID
 	case m.openID > 0:
 		return m.openID
 	}
@@ -317,6 +321,9 @@ func (m Model) newsKey(k tea.KeyMsg) (Model, bool) {
 		m.undo()
 		return m, true
 	}
+	if m.mode == viewSession {
+		return m.sessionKey(k)
+	}
 	if m.mode != viewTopics {
 		return m, false
 	}
@@ -372,6 +379,15 @@ func (m Model) topicKey(k tea.KeyMsg) (Model, bool) {
 			m.moveCursor(-1)
 		case r == "?":
 			m.help = true
+		case r == "f":
+			// The open frame's session, or the one under the cursor.
+			id := m.openID
+			if i := m.selected(list); id == 0 && i >= 0 {
+				id = list[i].ID
+			}
+			if id > 0 {
+				m.openSession(id)
+			}
 		case len(r) == 1 && r >= "1" && r <= "9":
 			if i, _ := strconv.Atoi(r); i <= len(list) {
 				m.selID = list[i-1].ID
@@ -563,7 +579,7 @@ func (m Model) topicRows() int {
 
 // topicBelow is the strip under the page: the answer waiting out its
 // undo delay.
-func (m Model) topicBelow(int) []string { return m.answerLine() }
+func (m Model) topicBelow(w int) []string { return append(m.answerLine(), m.backgroundLine(w)...) }
 
 // topicView is the page as rows lines: the frames, scrolled so the frame
 // under the cursor shows from its top, and for each line the index of its
@@ -664,6 +680,9 @@ func (m Model) topicFrame(n News, selected bool, w int) []string {
 	}
 	if w >= ageFrom {
 		state += styleMuted.Render(" · " + age(m.now().Sub(since)))
+	}
+	if mark := m.sessionMark(n.ID); mark != "" {
+		state = mark + styleMuted.Render(" · ") + state
 	}
 	room := max(4, w-8-ansi.StringWidth(state))
 	if ansi.StringWidth(left) > room {
@@ -862,6 +881,13 @@ func (m Model) frameBottom(n News, border lipgloss.Style, w int) string {
 		hints = []keyHint{{"Tab", "gõ"}, {"Enter", "thu gọn"}}
 	default:
 		hints = []keyHint{{"Tab", "ghi thêm"}, {"Enter", "thu gọn"}}
+	}
+	if !n.Closed() && !m.typing {
+		does := "bàn trong session"
+		if _, ok := m.findSession(n.ID); ok {
+			does = "về session"
+		}
+		hints = append(hints, keyHint{"f", does})
 	}
 	if thread, from := m.settled(n.ID); from > 0 || (m.roundsOpen && len(thread) > 1) {
 		hints = append(hints, keyHint{"^O", "lượt cũ"})

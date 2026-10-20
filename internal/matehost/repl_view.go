@@ -117,12 +117,18 @@ func (m Model) body(w int) []string {
 	if m.help {
 		return helpLines()
 	}
+	if m.mode == viewSession {
+		return m.sessionConversation(w)
+	}
 	return m.conversation(w)
 }
 
 // --- header and footer ---
 
 func (m Model) header(w int) []string {
+	if m.mode == viewSession {
+		return m.sessionHeader(w)
+	}
 	left := " " + styleBold.Inherit(styleAccent).Render("mate") + styleMuted.Render(" · "+m.cfg.Project)
 	if m.mode == viewTopics {
 		left += styleMuted.Render(" › ") + styleBold.Inherit(styleAttention).Render("Topic")
@@ -168,6 +174,14 @@ func (m Model) footer(w int) []string {
 	switch {
 	case m.help:
 		hints = []keyHint{{"Esc", "đóng"}, {"PgUp PgDn", "cuộn"}}
+	case m.mode == viewSession:
+		hints = []keyHint{{"Enter", "hỏi"}, {"^J", "xuống dòng"}, {"Esc", "về topic"}, {"^X", "đóng session"}, {"↑↓ PgUp", "cuộn"}}
+		if s, ok := m.findSession(m.openID); ok && s.Busy() {
+			hints = append(hints[:3], append([]keyHint{{"^C", "ngắt"}}, hints[3:]...)...)
+		}
+		if n, ok := m.findNews(m.openID); ok && n.Proposal != "" {
+			hints = append([]keyHint{{"^S", "chốt"}}, hints...)
+		}
 	case m.mode == viewTopics && m.typing:
 		hints = []keyHint{{"Enter", "gửi"}, {"^J", "xuống dòng"}, {"Tab", "về lựa chọn"}, {"Esc", "về chat"}}
 	case m.mode == viewTopics && w >= 100:
@@ -229,11 +243,15 @@ func (m Model) failed() bool {
 // --- the strip under the conversation ---
 
 func (m Model) below(w int) []string {
+	if m.mode == viewSession {
+		return append(m.proposalFrame(w), m.backgroundLine(w)...)
+	}
 	var out []string
 	if a := m.activity(); a != "" {
 		out = append(out, styleFaint.Render(ansi.Truncate(a, w-1, "…")))
 	}
 	out = append(out, m.tray(w)...)
+	out = append(out, m.backgroundLine(w)...)
 	return append(out, m.queueLines(w)...)
 }
 
@@ -292,7 +310,10 @@ func (m Model) composer(w int) []string {
 	// A blank line keeps the composer off the conversation above it.
 	out := []string{"", styleBorder.Render("┌─ ") + status + " " + styleBorder.Render(strings.Repeat("─", fill)) + tail}
 	hint := "Nhắn cho Mate…"
-	if m.state.Busy {
+	switch {
+	case m.mode == viewSession:
+		hint = "Hỏi tiếp session…"
+	case m.state.Busy:
 		hint = "Gõ tiếp, tin sẽ xếp hàng…"
 	}
 	for _, l := range m.inputLines(inner, hint) {
@@ -304,6 +325,9 @@ func (m Model) composer(w int) []string {
 // status is what the composer's border says the Mate is doing, and the key
 // that stops it.
 func (m Model) status() (string, string) {
+	if m.mode == viewSession {
+		return m.sessionStatus()
+	}
 	spin := spinnerFrames[m.frame%len(spinnerFrames)]
 	switch {
 	case m.state.Stopping:
@@ -586,6 +610,8 @@ func helpLines() []string {
 		{"↑↓ · j k (Topic)", "dời con trỏ · Enter/Space mở, thu"},
 		{"1–9 (Topic)", "nhảy tới khung thứ n và mở"},
 		{"a b c d (khung mở)", "chọn đáp án · Tab gõ tự do"},
+		{"f (Topic)", "bàn topic trong session: fork chỉ đọc của Mate"},
+		{"Esc · ^X (session)", "về Topic, session chạy tiếp · đóng session"},
 		{"u", "hoàn tác câu trả lời trong 5 giây"},
 		{"PgUp PgDn · ⇧↑ ⇧↓", "cuộn trang · dòng"},
 		{"↑ ↓ (ô trống)", "cuộn một dòng"},

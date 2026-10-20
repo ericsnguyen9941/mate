@@ -11,14 +11,14 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/matehost"
 )
 
-// cmdNews implements `mate news <open|update|close|list> <project> ...`
+// cmdNews implements `mate news <open|update|close|list|propose> <project> ...`
 // (CON-78): how a headless Mate tells the captain something outside the
 // chat - a crew's question only the captain can answer, a key, a review, a
 // failure - and closes it once settled. The REPL shows the news and turns
 // the captain's answer into a `[news #n]` turn.
 func cmdNews(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return newUsageError("usage: mate news <open|update|close|list> <project> ...")
+		return newUsageError("usage: mate news <open|update|close|list|propose> <project> ...")
 	}
 	switch args[0] {
 	case "open":
@@ -29,8 +29,10 @@ func cmdNews(args []string, stdout, stderr io.Writer) error {
 		return cmdNewsClose(args[1:], stdout, stderr)
 	case "list":
 		return cmdNewsList(args[1:], stdout, stderr)
+	case "propose":
+		return cmdNewsPropose(args[1:], stdout, stderr)
 	default:
-		return newUsageErrorf("unknown news subcommand %q (want open, update, close or list)", args[0])
+		return newUsageErrorf("unknown news subcommand %q (want open, update, close, list or propose)", args[0])
 	}
 }
 
@@ -175,6 +177,38 @@ func cmdNewsClose(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	return matehost.CloseNews(path, id, *reason, *dropped, time.Now())
+}
+
+// cmdNewsPropose is how a topic's session (CON-104) proposes the answer the
+// captain and it agreed on; the captain sends it to the Mate with ^S. It is
+// the one thing a session may write.
+func cmdNewsPropose(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("news propose", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, `usage: mate news propose <project> <id> "<the answer>" [--workspace <dir>]`)
+	}
+	workspaceFlag := fs.String("workspace", "", "workspace directory")
+	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
+		return &usageError{err}
+	}
+	if fs.NArg() != 3 {
+		fs.Usage()
+		return newUsageError("mate news propose: want exactly 3 arguments: <project> <id> <answer>")
+	}
+	id, err := newsID(fs.Arg(1))
+	if err != nil {
+		return err
+	}
+	path, err := newsLog(*workspaceFlag, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if err := matehost.ProposeNews(path, id, fs.Arg(2), time.Now()); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "proposed for #%d; the captain sends it with ^S\n", id)
+	return nil
 }
 
 func cmdNewsList(args []string, stdout, stderr io.Writer) error {

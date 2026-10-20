@@ -69,7 +69,13 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 		Turns:  turns,
 		Lock:   func() (func(), bool, error) { return w.TryMateLock(project, matehost.TurnLock) },
 	}
-	opts := matehost.Options{History: matehost.HistoryPath(mateDir), News: matehost.NewsPath(mateDir)}
+	opts := matehost.Options{History: matehost.HistoryPath(mateDir), News: matehost.NewsPath(mateDir), Topics: matehost.TopicsPath(mateDir)}
+	if forks, ok := profile.(harness.ForkTurns); ok {
+		// A topic's session (CON-104) runs the binary the Mate's manual
+		// names, which is this one.
+		bin, _ := os.Executable()
+		opts.Forks, opts.MateBin, opts.Allow = forks, bin, matehost.ForkAllow(bin, project)
+	}
 	reporter, inHerdr := matehost.NewHerdrReporter(launch.Agent)
 	if inHerdr {
 		opts.Reporter = reporter

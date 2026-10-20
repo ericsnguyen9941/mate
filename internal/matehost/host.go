@@ -92,6 +92,8 @@ type Event struct {
 	Note string
 	// Focus is a news the console asked the REPL to open.
 	Focus int
+	// Sessions are the open topic sessions, by news.
+	Sessions []SessionInfo
 	// State is the host's state after the event.
 	State State
 }
@@ -121,6 +123,13 @@ type Host struct {
 	draft    string
 	stopping bool
 	idle     chan struct{}
+
+	// Sessions (session.go): the open ones by news, and what they run with.
+	sessions  map[int]*session
+	forks     harness.ForkTurns
+	allow     []string
+	mateBin   string
+	topicsDir string
 }
 
 // Options configure a Host.
@@ -131,11 +140,20 @@ type Options struct {
 	News     string
 	Reporter Reporter
 	Now      func() time.Time
+	// Topics is where sessions keep their files (TopicsPath); Forks runs
+	// them, nil when the harness cannot; Allow are the commands a session
+	// may run (ForkAllow); MateBin is the mate binary the Mate's manual
+	// names.
+	Topics  string
+	Forks   harness.ForkTurns
+	Allow   []string
+	MateBin string
 }
 
 // New makes a host for runner.
 func New(runner *Runner, opts Options) *Host {
-	h := &Host{runner: runner, history: opts.History, newsPath: opts.News, reporter: opts.Reporter, now: opts.Now, idle: make(chan struct{})}
+	h := &Host{runner: runner, history: opts.History, newsPath: opts.News, reporter: opts.Reporter, now: opts.Now, idle: make(chan struct{}),
+		sessions: map[int]*session{}, forks: opts.Forks, allow: opts.Allow, mateBin: opts.MateBin, topicsDir: opts.Topics}
 	if h.now == nil {
 		h.now = time.Now
 	}
@@ -475,6 +493,11 @@ func (h *Host) Stop(wait time.Duration, force bool) (killed bool) {
 	h.stopping = true
 	h.queue = nil
 	run, idle := h.run, h.idle
+	for _, s := range h.sessions {
+		if s.run != nil {
+			s.run.Kill()
+		}
+	}
 	ev := h.eventLocked(nil)
 	h.mu.Unlock()
 	h.emit(ev)
@@ -601,7 +624,7 @@ func paragraph(reply string) string {
 // eventLocked is an event carrying a copy of item (which may be nil), the
 // queue and the state.
 func (h *Host) eventLocked(item *Item) Event {
-	ev := Event{State: h.stateLocked(), News: h.news}
+	ev := Event{State: h.stateLocked(), News: h.news, Sessions: h.sessionsLocked()}
 	for _, q := range h.queue {
 		text := q.Text
 		if q.News != 0 {
@@ -652,6 +675,7 @@ func (h *Host) WatchNews(ctx context.Context, every time.Duration) {
 			return
 		case <-t.C:
 		}
+		h.reapSessions()
 		fi, err := os.Stat(h.newsPath)
 		h.mu.Lock()
 		seen := h.newsSeen
@@ -723,11 +747,16 @@ func (h *Host) appendHistory(it Item) {
 	if h.history == "" {
 		return
 	}
+	appendItemFile(h.history, it)
+}
+
+// appendItemFile adds it to the history file at path, one item per line.
+func appendItemFile(path string, it Item) {
 	data, err := json.Marshal(it)
 	if err != nil {
 		return
 	}
-	f, err := os.OpenFile(h.history, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}

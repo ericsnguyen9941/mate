@@ -58,3 +58,17 @@ type ToolResult struct {
 	ID      string
 	IsError bool
 }
+
+// ForkTurns is what a harness offers to talk a topic over with the captain
+// in a read-only fork of the Mate's session (CON-104): a fork knows all the
+// Mate knows, writes nothing and runs none of the Mate's hooks, and its
+// runs go on beside the Mate's own turns. Claude Code is the only one
+// today.
+type ForkTurns interface {
+	// ForkTurnArgs is one fork run's argv after the program, built from
+	// the Mate's launch args (Launcher.Build). The first run (fork empty)
+	// forks the session the launch names; later runs resume fork. allow
+	// are the only commands the fork may run, as the harness's permission
+	// rules; dir is where the run's own files go.
+	ForkTurnArgs(launch []string, fork string, allow []string, dir string) ([]string, error)
+}

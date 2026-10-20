@@ -85,6 +85,13 @@ type Model struct {
 	pending   *pendingAnswer
 	confirm   string
 	confirmAt time.Time
+
+	// sessions are the open topic sessions; sessSeen counts the items of
+	// each the captain has seen. editProposal is the captain editing a
+	// session's proposal in its composer; ^S sends the edit.
+	sessions     []SessionInfo
+	sessSeen     map[int]int
+	editProposal bool
 }
 
 // NewModel shows history (oldest first) and then what the host does.
@@ -196,6 +203,15 @@ func (m *Model) applyEvent(ev Event) {
 	m.state = ev.State
 	m.queue = ev.Queue
 	m.news = ev.News
+	m.sessions = ev.Sessions
+	if m.mode == viewSession {
+		if s, ok := m.findSession(m.openID); ok {
+			m.seeSession(s)
+		} else {
+			// Closed for idling, or by the host stopping.
+			m.leaveSession()
+		}
+	}
 	if ev.Note != "" {
 		m.note = ev.Note
 	}
