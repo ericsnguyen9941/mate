@@ -218,3 +218,18 @@ func (f *fixture) openSessions() int {
 	defer f.host.mu.Unlock()
 	return len(f.host.sessions)
 }
+
+// The fork's first message carries the whole topic (CON-122): its context
+// and its options, not only the title and the question.
+func TestSessionPromptCarriesContextAndOptions(t *testing.T) {
+	n := News{ID: 7, Title: "E3 xong", Question: "Làm tiếp phần nào?",
+		Context: []string{"PLA-46 đã merge.", "Kế tiếp là E4, E5, E6."},
+		Options: []NewsOption{{Key: "a", Text: "Làm E4", Recommended: true}, {Key: "b", Text: "Tạm dừng"}}}
+	got := sessionPrompt(n, "plantrip", "", "a có ổn không?")
+	for _, want := range []string{"Question: Làm tiếp phần nào?", "Context:\n- PLA-46 đã merge.\n- Kế tiếp là E4, E5, E6.",
+		"Options:\n- [a] Làm E4 (recommended)\n- [b] Tạm dừng", "mate news propose plantrip 7", "\n\na có ổn không?"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt lacks %q:\n%s", want, got)
+		}
+	}
+}

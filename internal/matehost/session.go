@@ -121,6 +121,21 @@ func sessionPrompt(n News, project, bin, text string) string {
 	if q := strings.TrimSpace(n.Question); q != "" {
 		fmt.Fprintf(&b, " Question: %s", q)
 	}
+	if len(n.Context) > 0 {
+		b.WriteString("\nContext:")
+		for _, c := range n.Context {
+			b.WriteString("\n- " + strings.TrimSpace(c))
+		}
+	}
+	if len(n.Options) > 0 {
+		b.WriteString("\nOptions:")
+		for _, o := range n.Options {
+			fmt.Fprintf(&b, "\n- [%s] %s", o.Key, o.Text)
+			if o.Recommended {
+				b.WriteString(" (recommended)")
+			}
+		}
+	}
 	b.WriteString("\nYou cannot act here: spawning, sending, merging, closing news and editing files are all blocked, and the Mate does not see this conversation. ")
 	b.WriteString("Read what helps (files, git, `mate diff|report|peek|state|recall`), explain, and help the captain decide. ")
 	fmt.Fprintf(&b, "When you two agree on an answer, propose it in one line with `%s news propose %s %d \"<the answer>\"`; the captain sends it to the Mate with ^S. ", bin, project, n.ID)
