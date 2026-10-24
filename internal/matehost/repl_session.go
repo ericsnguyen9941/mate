@@ -169,20 +169,63 @@ func (m Model) sessionHeader(w int) []string {
 	}
 }
 
-// sessionConversation is what was said in the session shown.
+// sessionConversation is the topic the session is about, in full, then
+// what was said in the session shown.
 func (m Model) sessionConversation(w int) []string {
 	s, _ := m.findSession(m.openID)
+	n, _ := m.findNews(m.openID)
+	out := topicBrief(n, w)
 	if len(s.Items) == 0 && s.Running == nil {
-		return []string{"", styleMuted.Render(" Session này là bản fork của Mate: biết mọi thứ Mate biết, chỉ đọc, không làm gì."),
-			styleMuted.Render(" Hỏi gì về topic này cũng được. Mate chính không thấy cuộc bàn này cho tới khi anh chốt.")}
+		return append(out, "", styleMuted.Render(" Session này là bản fork của Mate: biết mọi thứ Mate biết, chỉ đọc, không làm gì."),
+			styleMuted.Render(" Hỏi gì về topic này cũng được. Mate chính không thấy cuộc bàn này cho tới khi anh chốt."))
 	}
-	var out []string
 	for i, it := range s.Items {
 		last := i == len(s.Items)-1 && s.Running == nil
 		out = append(append(out, ""), m.itemLines(it, w, last)...)
 	}
 	if it := s.Running; it != nil {
 		out = append(append(out, ""), m.itemLines(*it, w, true)...)
+	}
+	return out
+}
+
+// topicBrief is the topic in full at the top of its session: the question,
+// its context and notes, and its options, to read, not to choose (the
+// answer goes to the Mate with ^S). The question is also pinned in the
+// header, so it stays while this scrolls away.
+func topicBrief(n News, w int) []string {
+	inner := max(10, w-2)
+	out := []string{""}
+	for _, l := range wrap(styleBold.Render(topicQuestion(n)), inner) {
+		out = append(out, " "+l)
+	}
+	if len(n.Context) > 0 || len(n.Notes) > 0 {
+		out = append(out, "")
+	}
+	for _, c := range n.Context {
+		for _, l := range wrap(c, max(4, inner-2)) {
+			out = append(out, " "+styleBorder.Render("│ ")+styleMuted.Render(l))
+		}
+	}
+	for _, note := range n.Notes {
+		out = append(out, " "+styleMuted.Render(ansi.Truncate(fmt.Sprintf("· %s  %s", note.At.Format("15:04"), note.Text), inner, "…")))
+	}
+	if len(n.Options) > 0 {
+		out = append(out, "")
+		for _, o := range n.Options {
+			key := styleMuted.Render(o.Key + ")")
+			text := o.Text
+			if o.Recommended {
+				text += " · " + styleSuccess.Render("khuyên dùng")
+			}
+			for j, l := range wrap(text, max(4, inner-4)) {
+				if j == 0 {
+					out = append(out, " "+key+" "+l)
+				} else {
+					out = append(out, "    "+l)
+				}
+			}
+		}
 	}
 	return out
 }

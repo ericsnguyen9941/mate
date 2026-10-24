@@ -42,7 +42,12 @@ func TestREPLSession(t *testing.T) {
 			t.Fatalf("f@%d: mode %v, news #%d", w, m.mode, m.openID)
 		}
 		empty := fits(t, "session", m)
-		for _, want := range []string{"mate · hellovietnam › Topic #3 › session s-mới", "Dark mode không áp dụng trên bản clone. Sửa theo cách nào?", "bản fork của Mate", "Hỏi tiếp session…", "○ session rảnh", "Esc về topic", "^X đóng session"} {
+		// The topic in full opens the session (CON-122): the question, its
+		// context and its options, to read; the chat's composer and the
+		// page's choosable options stay out.
+		for _, want := range []string{"mate · hellovietnam › Topic #3 › session s-mới", "Dark mode không áp dụng trên bản clone. Sửa theo cách nào?",
+			"Theme đọc từ THEME trong .env.local", "a) Thêm THEME=system vào .env.example", "khuyên dùng", "c) Chỉ ghi chú vào README",
+			"bản fork của Mate", "Hỏi tiếp session…", "○ session rảnh", "Esc về topic", "^X đóng session"} {
 			if !strings.Contains(empty, want) {
 				t.Errorf("session@%d lacks %q:\n%s", w, want, empty)
 			}
