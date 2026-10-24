@@ -99,7 +99,9 @@ func NewModel(host *Host, cfg Config, history []Item) Model {
 	return Model{host: host, cfg: cfg, now: time.Now, items: history, crews: -1}
 }
 
-// Program runs the REPL; the host's events reach it through Send.
+// Program runs the REPL; the host's events reach it through Send, behind a
+// queue so that a host call made from Update never waits on Update itself
+// (CON-121).
 func Program(m Model) *tea.Program {
 	// Mouse reporting makes the wheel scroll the view; without it the
 	// terminal turns the wheel into ↑/↓ keys.
@@ -108,7 +110,8 @@ func Program(m Model) *tea.Program {
 		opts = append(opts, tea.WithInput(in))
 	}
 	p := tea.NewProgram(m, opts...)
-	m.host.Subscribe(func(ev Event) { p.Send(hostMsg(ev)) })
+	f := newForwarder(func(ev Event) { p.Send(hostMsg(ev)) })
+	m.host.Subscribe(f.Put)
 	return p
 }
 
