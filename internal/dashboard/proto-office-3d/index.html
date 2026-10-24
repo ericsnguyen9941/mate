@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE · Mate Office 3D</title>
+<!--
+  PROTOTYPE, throwaway (2026-10-24). Three looks for a 3D Mate Office, to
+  answer one question for the captain: which direction is "màu mè, game,
+  Blender" enough for marketing? Switch with ?variant=A|B|C or the bar at
+  the bottom. Not served by the binary (this dir is outside ui/). Run:
+    ./fetch-vendor.sh && python3 -m http.server 4180 --directory .  (from this dir)
+  vendor/ is three.js 0.186.1 (MIT) copied from ~/app/threejsvideo;
+  models/ are the mascot GLBs from the same repo. Both gitignored.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #f5f3eb; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; }
+  #hud { position: fixed; top: 14px; left: 16px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  #hud .title { font-weight: 800; font-size: 20px; letter-spacing: -.01em; color: #24211d; }
+  #hud .title small { font-weight: 500; color: #7a736a; margin-left: 8px; font-size: 13px; }
+  #hud .legend { display: flex; gap: 6px; flex-wrap: wrap; max-width: 520px; }
+  #hud .pill { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: rgba(255,255,255,.85); color: #24211d; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  #hud .pill i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  #sw { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: #111; color: #fff; padding: 8px 10px 8px 14px; border-radius: 999px; box-shadow: 0 10px 30px rgba(0,0,0,.35); font-size: 13px; z-index: 10; }
+  #sw b { font-weight: 700; margin-right: 2px; }
+  #sw button { background: #333; color: #fff; border: 0; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 15px; }
+  #sw button:hover { background: #555; }
+  #sw .tag { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #ff9b7a; margin-right: 6px; }
+  #boot { position: fixed; inset: 0; display: grid; place-items: center; color: #7a736a; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="boot">loading three.js…</div>
+<div id="hud">
+  <div class="title">Mate Office <small id="vname"></small></div>
+  <div class="legend" id="legend"></div>
+</div>
+<div id="sw">
+  <span class="tag">prototype</span>
+  <button id="prev" title="←">‹</button>
+  <span><b id="vkey">A</b> <span id="vlabel"></span></span>
+  <button id="next" title="→">›</button>
+</div>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="./proto.js"></script>
+</body>
+</html>
