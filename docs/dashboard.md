@@ -127,6 +127,8 @@ The UI shows newest exchanges first and reveals older ones in batches of 20.
 
 `role` is what the task was for: `review` for a reviewer crew (it has `review.meta`), `scout` for a scout (crew meta `kind=scout`, or a brief with `## Deliverable` for a crew spawned before `kind` was recorded), else `ship`.
 
+`agents` is the kinds of agent the crew delegated to, first use first and each once: the `agent` of its `tool.called` events (docs/timeline.md), which is Claude's `subagent_type` - a project's `.claude/agents/<name>.md` such as `backend-reviewer`, or a built-in such as `Explore`, as written. One query per project serves the whole table. Absent for a crew that delegated to none, or only to agents of no named kind. Events ingested before the field existed carry no `agent`; `mate reindex` rebuilds them from the transcripts (CON-124).
+
 `inbox` is `box.Inbox` flattened through `query.LoadBox`, oldest first, the same rows in the same order the console's rail draws.
 A failed box read leaves `inbox` empty and puts the reason in `inbox_error` rather than failing the page.
 
@@ -699,5 +701,7 @@ Then a task the timeline saw merged is `merged`, a `failed` task is `discarded`,
 A row shows its final state as a glyph only, one per state, with the word and why as its tooltip and accessible name, because the column is too narrow for `changes requested`; the summary above the table names each glyph with its count.
 
 Each cabinet row, and each task in the cabinet's peek, starts with a glyph for its `role`: code brackets for a ship (coding), a compass for a scout, a checked clipboard for a review; its tooltip names the role, and a review names the task it reviewed. A row without `role` shows the unknown glyph rather than passing for a ship.
+
+A crew wears a badge for each kind of agent it delegated to (`agents`, CON-124): under its state chip at its desk and in the hallway, after its name in the cabinet's peek, the cabinet rows and the daily board's task rows, on its phone card, and as an `Agents` line in the crew drawer (`none delegated to` when there are none). The badge is the kind as written - `backend-reviewer`, `ios-reviewer`, `Explore` - with "delegated to the … agent" as its tooltip and accessible name; the page does not know which agents a project defines, so it does not sort or colour them by kind. A crew that delegated to none wears none.
 
 The Office filing cabinet includes a `Harness / model / effort` column. Harness comes from the recorded actor, model prefers `last_model` (observed) and falls back to `model` (requested launch setting), and `effort` is the requested launch setting retained in crew meta. These optional fields are omitted when unavailable; the cabinet displays `?` rather than guessing defaults. Requested effort is not proof of runtime effort. The cabinet is wider on desktop and its table scrolls horizontally on narrow screens.

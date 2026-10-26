@@ -551,6 +551,15 @@ svg.fc { position: absolute; left: 17%; top: 17%; width: 66%; height: 66%; fill:
 .rl-review { --rl: var(--slpT); --rl-bg: var(--slpB); }
 .rl-unknown { --rl: var(--goneT); --rl-bg: var(--goneB); }
 .rl.tip:hover::after, .rl.tip:focus-visible::after { left: 0; transform: none; }
+/* Agent badges: the kinds of agent a crew delegated to (CON-124), worn under
+   the state chip on a desk and after the name in a cabinet or board row. */
+.ags { display: inline-flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: 100%; min-width: 0; }
+.ag { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 5px; font-family: "Geist Mono", ui-monospace, monospace; font-size: 10.5px; font-weight: 600; letter-spacing: .01em; color: var(--infoT); background: var(--infoB); white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+.ag.tip:hover::after, .ag.tip:focus-visible::after { left: 0; transform: none; }
+.tk .ags, .btask .ags { justify-content: flex-start; flex: none; }
+.btask .ags { margin-top: 2px; }
+.kv .ags.inrow { justify-content: flex-start; }
+.mc .ags { margin-top: 2px; }
 .tn { font-family: "Geist Mono", ui-monospace, monospace; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ta { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .ta b { font-weight: 600; }

@@ -227,12 +227,17 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	agents, err := s.agentsUsed(ctx, project)
+	if err != nil {
+		return nil, err
+	}
 	for i, id := range ids {
 		n, err := s.toolCount(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		out[i].ToolCount = n
+		out[i].Agents = agents[id]
 		facts, _, err := s.actorFacts(ctx, id)
 		if err != nil {
 			return nil, err
@@ -270,6 +275,33 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 		}
 	}
 	return out, nil
+}
+
+// agentsUsed is Task.Agents for every actor of a project: the distinct
+// `agent` of its `tool.called` events, in the order each was first used. One
+// query serves the whole task table; the LIKE keeps json_extract off the
+// payloads that cannot have the key.
+func (s *Server) agentsUsed(ctx context.Context, project string) (map[string][]string, error) {
+	rows, err := s.db.SQL().QueryContext(ctx, `
+		SELECT actor_id, json_extract(payload, '$.agent') AS agent, MIN(at) AS first_at
+		  FROM event
+		 WHERE project = ? AND kind = ? AND payload LIKE '%"agent":%'
+		   AND json_extract(payload, '$.agent') IS NOT NULL
+		 GROUP BY actor_id, agent
+		 ORDER BY first_at, agent`, project, timeline.KindToolCalled)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var actor, agent, at string
+		if err := rows.Scan(&actor, &agent, &at); err != nil {
+			return nil, err
+		}
+		out[actor] = append(out[actor], agent)
+	}
+	return out, rows.Err()
 }
 
 // taskRole is Task.Role: a reviewer first, then a scout, else a ship.

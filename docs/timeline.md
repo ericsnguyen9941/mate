@@ -209,6 +209,13 @@ One pair per tool call, with the `action` row beside them.
 
 `target` is the file path for a read or an edit, and the first 80 runes of the command for a shell call.
 A path too long for that is shortened from the front (`…/shop-buybtn/README.md`), because a crew's files all live under the same long worktree path and truncating from the start names none of them.
+A delegation (class `agent`: Claude's `Agent`/`Task`, Codex's `spawn_agent`) whose input names the kind of agent it went to - Claude's `subagent_type`, a project's `.claude/agents/<name>.md` such as `backend-reviewer` or a built-in such as `Explore` - has that kind as its `target` and again as `agent` in the `tool.called` payload, and the story says "delegates to a backend-reviewer agent" (CON-124).
+A delegation that names no kind keeps its description as the target and has no `agent`, so a description never passes for a kind of agent; the story says "delegates to a subagent".
+The dashboard's task rows read `agent` for the Office's badges (docs/dashboard.md section 3).
+
+```json
+{"agent":"backend-reviewer","class":"agent","target":"backend-reviewer","tool":"Agent"}
+```
 
 Two shapes had to be unwrapped, both measured 2026-09-20 on codex-cli 0.154.
 Codex's `exec` tool is handed a JavaScript program, stored in the rollout as a JSON string: `"const r = await tools.exec_command({\"cmd\":\"…\"});"`.

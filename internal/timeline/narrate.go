@@ -55,6 +55,9 @@ func narratePhrase(e StoryEvent) string {
 		return fmt.Sprintf("%s ends a turn after %s (%s tool call(s), %s output tokens)",
 			who, durationPhrase(e.Field("duration_ms")), orZero(e.Field("tool_count")), orZero(e.Field("output_tokens")))
 	case KindToolCalled:
+		if agent := e.Field("agent"); agent != "" {
+			return fmt.Sprintf("%s delegates to a %s agent", who, agent)
+		}
 		return fmt.Sprintf("%s %s", who, toolPhrase(e.Field("class"), e.Field("tool"), e.Field("target")))
 	case KindToolFinished:
 		if e.Field("ok") == "false" {
