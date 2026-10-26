@@ -418,6 +418,29 @@ test("the cabinet says what a review concluded and tells a start that never came
   assert.ok(!app.drawer().text.includes("failed"), "no row reads failed");
 });
 
+test("a crew wears a badge for each kind of agent it delegated to", async () => {
+  const app = await boot({ hash: "#crew/shop/rd1" });
+  const desk = deskOf(app.root, "rd1");
+  assert.deepEqual(desk.querySelectorAll(".ag").map(b => b.text), ["fe-reviewer", "Explore"], "one badge per kind, first use first, as written");
+  assert.equal(desk.querySelector(".ag").getAttribute("aria-label"), "delegated to the fe-reviewer agent");
+  assert.equal(deskOf(app.root, "api-fix").querySelectorAll(".ag").length, 0, "a crew that delegated to none wears none");
+  const kv = app.drawer().querySelector("[aria-label=\"Task\"] .kv");
+  const dt = kv.children.findIndex(n => n.tagName === "dt" && n.text === "Agents");
+  assert.ok(dt >= 0, "the crew drawer has an Agents line");
+  assert.deepEqual(kv.children[dt + 1].querySelectorAll(".ag").map(b => b.text), ["fe-reviewer", "Explore"]);
+
+  const other = await boot({ hash: "#crew/shop/api-fix" });
+  const kv2 = other.drawer().querySelector("[aria-label=\"Task\"] .kv");
+  const dt2 = kv2.children.findIndex(n => n.tagName === "dt" && n.text === "Agents");
+  assert.equal(kv2.children[dt2 + 1].text, "none delegated to");
+
+  const cab = await boot({ hash: "#cabinet/shop" });
+  const row = cab.drawer().querySelectorAll(".tr").find(r => r.querySelector(".tn").text === "login-flow");
+  assert.deepEqual(row.querySelectorAll(".ag").map(b => b.text), ["backend-reviewer"], "a cabinet row wears the badge too");
+  const peek = roomOf(cab.root, "shop").querySelector(".cab .peek");
+  assert.deepEqual(peek.querySelectorAll(".pk .ag").map(b => b.text), ["backend-reviewer"], "and so does the cabinet's peek");
+});
+
 test("every cabinet row and the cabinet's peek show what the task was for", async () => {
   const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "testdata/office/busy.json"), "utf8"));
   const closed = fx.projects.shop.tasks.filter(t => t.closed);

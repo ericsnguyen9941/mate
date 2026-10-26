@@ -3,9 +3,11 @@ package dashboard
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -717,5 +719,49 @@ func TestProjectPageRollsReviewersIntoTheTask(t *testing.T) {
 	// task's own total, never less.
 	if task.TokensWithReviews != task.Tokens.Total || task.ReviewOf != "" {
 		t.Fatalf("tokens_with_reviews = %d (total %d), review_of = %q", task.TokensWithReviews, task.Tokens.Total, task.ReviewOf)
+	}
+}
+
+// A task names the kinds of agent its crew delegated to, first use first and
+// each once, from the `agent` of its tool.called events; a crew that
+// delegated to none has no list (CON-124). The Office badges a crew with them.
+func TestTaskNamesTheAgentsItDelegatedTo(t *testing.T) {
+	f := newFixture(t)
+	var before ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &before)
+	if before.Tasks[0].Agents != nil {
+		t.Fatalf("agents = %v before any delegation, want none", before.Tasks[0].Agents)
+	}
+	writer, err := db.Open(f.ws)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	actor := timeline.CrewActorID(fixtureProject, fixtureCrew)
+	for i, c := range []struct{ at, payload string }{
+		{"2026-09-19T10:45:10Z", `{"agent":"backend-reviewer","class":"agent","target":"backend-reviewer","tool":"Agent"}`},
+		{"2026-09-19T10:45:20Z", `{"agent":"Explore","class":"agent","target":"Explore","tool":"Agent"}`},
+		{"2026-09-19T10:45:30Z", `{"agent":"backend-reviewer","class":"agent","target":"backend-reviewer","tool":"Agent"}`},
+		{"2026-09-19T10:45:40Z", `{"class":"agent","target":"Find the checkout page","tool":"Task"}`},
+		{"2026-09-19T10:45:50Z", `{"class":"shell","target":"echo '\"agent\":'","tool":"Bash"}`},
+	} {
+		if _, err := writer.SQL().Exec(
+			`INSERT INTO event(dedup, project, at, actor_id, kind, payload) VALUES (?, ?, ?, ?, ?, ?)`,
+			fmt.Sprintf("agents-%d", i), fixtureProject, db.FormatTime(mustTime(c.at)), actor, timeline.KindToolCalled, c.payload); err != nil {
+			t.Fatalf("insert a tool.called: %v", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var got ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &got)
+	want := []string{"backend-reviewer", "Explore"}
+	if !reflect.DeepEqual(got.Tasks[0].Agents, want) {
+		t.Fatalf("agents = %v, want %v: first use first, each once, a delegation of no named kind and a shell echo left out", got.Tasks[0].Agents, want)
+	}
+	var one TaskResponse
+	f.get(t, "/api/projects/"+fixtureProject+"/tasks/"+fixtureCrew, http.StatusOK, &one)
+	if !reflect.DeepEqual(one.Ledger.Agents, want) {
+		t.Fatalf("task agents = %v, want %v", one.Ledger.Agents, want)
 	}
 }

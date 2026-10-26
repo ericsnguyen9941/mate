@@ -222,6 +222,13 @@ func (p *pass) toolAction(loc Located, sessionRow, turnID string,
 		"class":  string(class),
 		"target": target,
 	}
+	// A delegation names the kind of agent it went to (CON-124), so a page
+	// can badge a crew with the agents it used without reading every input.
+	// Only a known kind is written: a delegation whose input names none has
+	// no `agent`, rather than a description passing for one.
+	if agent := agentType(call); agent != "" {
+		payload["agent"] = agent
+	}
 	p.b.event(pendingEvent{
 		Dedup:   calledDedup,
 		Project: p.project, At: call.StartedAt, ActorID: loc.ActorID, Kind: KindToolCalled,
@@ -368,6 +375,14 @@ func toolTarget(kind harness.Kind, call harness.TranscriptToolCall) (target, sum
 		}
 		if pattern != "" {
 			return truncateRunes(pattern, targetRunes), truncateRunes(oneLine(body), summaryRunes), class
+		}
+	}
+	// A delegation is about the kind of agent it went to (Claude's `Agent`
+	// and `Task` tools take `subagent_type`: `backend-reviewer`,
+	// `Explore`), not its description; the summary keeps the whole brief.
+	if class == harness.CommandAgent {
+		if agent := agentType(call); agent != "" {
+			return agent, truncateRunes(oneLine(body), summaryRunes), class
 		}
 	}
 	if path := firstField(fields, "file_path", "path", "notebook_path"); path != "" {
@@ -544,6 +559,20 @@ func firstField(fields map[string]string, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// agentType is the kind of agent a delegation went to, or "" when the call
+// is not a delegation or its input names none. Claude's `Agent`/`Task`
+// tools carry it as `subagent_type` (a project's `.claude/agents/<name>.md`
+// or a built-in such as `Explore`); `agent_type` is read too for a harness
+// that spells it so. The whole input is decoded for it because a Codex
+// `spawn_agent` is a JSON string around the object (toolBody).
+func agentType(call harness.TranscriptToolCall) string {
+	if call.CommandClass != harness.CommandAgent {
+		return ""
+	}
+	fields := decodeFields(toolBody(call.InputJSON))
+	return truncateRunes(oneLine(firstField(fields, "subagent_type", "agent_type")), targetRunes)
 }
 
 func oneLine(s string) string {

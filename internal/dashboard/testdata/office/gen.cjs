@@ -20,7 +20,8 @@ function task(o) {
 
 const shopTasks = [
   task({ crew: "rd1", text: "Cart summary redesign", state: "at_desk_working", since: at(6 * m), turns: 31, harness: "claude",
-    tokens: tokens(17300, 110800, 11500, 4300, 900), cost: 0.52, context_tokens_last: 82000, context_pct: 41 }),
+    tokens: tokens(17300, 110800, 11500, 4300, 900), cost: 0.52, context_tokens_last: 82000, context_pct: 41,
+    agents: ["fe-reviewer", "Explore"] }),
   task({ crew: "api-fix", text: "Retry order create on 409", state: "waiting_review", since: at(11 * m), target: "mate", detail: "handback",
     turns: 24, tokens: tokens(10600, 67900, 7100, 2600), cost: 0.32, context_tokens_last: 74000, context_pct: 37 }),
   task({ crew: "ui-polish", text: "Button and spacing polish", state: "waiting_at_ceo", since: at(3 * m), target: "mate", detail: "question",
@@ -28,7 +29,7 @@ const shopTasks = [
   task({ crew: "db-migrate", text: "Order indexes and backfill", state: "blocked", since: at(23 * m), detail: "stale",
     turns: 57, tokens: tokens(41200, 228600, 30100, 10500), cost: 1.12, context_tokens_last: 176000, context_pct: 88 }),
   task({ crew: "login-flow", text: "Login flow", state: "gone", since: at(2 * d), detail: "merged", closed: true, close_state: "finished",
-    closed_at: at(2 * d), merged_at: at(2 * d), tokens: tokens(40000, 340000, 15000, 7000), cost: 1.4 }),
+    closed_at: at(2 * d), merged_at: at(2 * d), tokens: tokens(40000, 340000, 15000, 7000), cost: 1.4, agents: ["backend-reviewer"] }),
   task({ crew: "search-facets", text: "Search facets", state: "gone", since: at(4 * d), detail: "failed", closed: true, close_state: "failed",
     closed_at: at(4 * d), tokens: tokens(13000, 110000, 7000, 3000), cost: null }),
   task({ crew: "order-email", text: "Order email", state: "gone", since: at(9 * d), closed: true, close_state: "finished",

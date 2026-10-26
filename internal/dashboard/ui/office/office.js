@@ -663,6 +663,21 @@
     return el("span", { class: "rl tip rl-" + (ROLES[t.role] ? t.role : "unknown"), "data-tip": label, role: "img", "aria-label": label }, icon(r.icon));
   }
 
+  // The kinds of agent a crew delegated to (Task.agents, CON-124): a badge
+  // each, in the order they were first used, worn beside the crew wherever
+  // it is drawn. The kind is the project's own name for the agent
+  // (backend-reviewer, ios-reviewer) or a harness built-in (Explore), shown
+  // as written: the page does not know which agents a project defines. A
+  // crew that delegated to none wears none.
+  function agentBadges(t, extra) {
+    var list = t && t.agents ? t.agents : [];
+    if (!list.length) return null;
+    return el("span", { class: "ags" + (extra ? " " + extra : ""), role: "list", "aria-label": "Agents delegated to" }, list.map(function (name) {
+      var label = "delegated to the " + name + " agent";
+      return el("span", { class: "ag tip", role: "listitem", "data-tip": label, "aria-label": label, text: String(name) });
+    }));
+  }
+
   // A cabinet row's final state is its glyph alone: the column is narrow
   // and "changes requested" does not fit it. Every final state has its own
   // glyph, the summary above the table names each one, and the word and why
@@ -914,7 +929,8 @@
         asks ? null : el("span", { class: "f-motion" }, [el("i"), el("i"), el("i")])
       ]),
       el("span", { class: "lbl" }, [el("span", { class: "id", text: t.crew }), el("span", { class: "tok", text: age(t.since) })]),
-      asks ? null : chip(s)
+      asks ? null : chip(s),
+      agentBadges(t)
     ]);
     return pickable(fig, key);
   }
@@ -1035,6 +1051,7 @@
       el("span", { class: "art", "aria-hidden": "true" }, art),
       el("span", { class: "lbl" }, [el("span", { class: "id", text: t.crew }), el("span", { class: "tok", text: tok(t.tokens ? t.tokens.total : null) })]),
       chip(s),
+      agentBadges(t),
       st === "blocked" ? el("span", { class: "quiet", text: (detailWord(t.detail) || "cannot be reached") + " · " + age(t.since) }) : null
     ]);
     return pickable(btn, key);
@@ -1047,7 +1064,7 @@
       closed.length ? closed.slice(0, 3).map(function (t) {
         var f = finalState(t);
         return el("span", { class: "pk" }, [
-          el("span", { class: "tk" }, [roleMark(t), el("span", { class: "tn", text: t.crew })]),
+          el("span", { class: "tk" }, [roleMark(t), el("span", { class: "tn", text: t.crew }), agentBadges(t)]),
           el("span", { class: "pk-s " + f.tone, text: f.word }),
           el("span", { class: "tok", text: age(closedAt(t)) + " ago · " + tokensWithReviews(t) })
         ]);
@@ -1093,7 +1110,8 @@
       "aria-label": t.crew + ", " + s.word }, [
       el("span", { class: "tile" + (standing ? " tstand" : ""), "aria-hidden": "true" }, parts),
       el("span", { class: "id", text: t.crew }),
-      el("span", { class: "mw " + s.tone, text: s.word })
+      el("span", { class: "mw " + s.tone, text: s.word }),
+      agentBadges(t)
     ]);
     return pickable(btn, key);
   }
@@ -1440,6 +1458,9 @@
         el("dd", { class: "mono" + (branch && !branch.exists ? " gone" : ""), title: branch && branch.reason ? branch.reason : null,
           text: (t.branch || "none recorded") + (branch && t.branch && !branch.exists ? " · gone" : "") }),
         el("dt", { text: "Turns" }), el("dd", { text: String(t.turns) }),
+        el("dt", { text: "Agents" }),
+        el("dd", { title: "the kinds of agent this crew delegated to, first use first" },
+          t.agents && t.agents.length ? [agentBadges(t, "inrow")] : [el("span", { class: "muted", text: "none delegated to" })]),
         el("dt", { text: "Skills" }),
         el("dd", { title: "a skill counts when the agent loaded it; loading is not proof it was followed",
           text: skills == null ? "?" : skills.length ? skills.map(function (k) { return k.name + (k.count > 1 ? " ×" + k.count : ""); }).join(", ") : "none loaded" })
@@ -1501,7 +1522,7 @@
         el("ul", { class: "tl" }, g.items.map(function (t) {
           var f = finalState(t);
           return el("li", { class: "tr", title: t.text || null }, [
-            el("span", { class: "tk" }, [roleMark(t), el("span", { class: "tn", text: t.crew })]),
+            el("span", { class: "tk" }, [roleMark(t), el("span", { class: "tn", text: t.crew }), agentBadges(t)]),
             el("span", { class: "ta", "aria-label": "Harness / model / effort" }, [
               el("b", { text: harnessInfo(t.harness).name }),
               el("span", { class: "mono", text: t.last_model || t.model || "model ?",
@@ -1974,7 +1995,8 @@
             el("th", { scope: "row" }, el("span", { class: "btask" }, [roleMark(t), el("span", null, [
               el("button", { type: "button", class: "bday", "data-focus": "board-task:" + t.project + "/" + t.crew,
                 "aria-label": "Open " + t.crew + " in " + t.project, text: t.crew }),
-              el("small", { text: t.text || "no task text recorded" })])]))
+              el("small", { text: t.text || "no task text recorded" }),
+              agentBadges(t)])]))
           ].concat(all ? [el("td", { class: "btl", text: t.project })] : [], [
             el("td", { class: "btl" }, el("span", { class: "ta" }, [
               el("b", { text: harnessInfo(t.harness).name }),

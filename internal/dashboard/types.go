@@ -183,6 +183,13 @@ type Task struct {
 	// has none, which is how a page tells a broken start from work thrown
 	// away.
 	FailedReason string `json:"failed_reason,omitempty"`
+	// Agents are the kinds of agent the crew delegated to, first use first:
+	// the `agent` of its `tool.called` events (docs/timeline.md), which is
+	// Claude's `subagent_type` - a project's `.claude/agents/<name>.md` such
+	// as `backend-reviewer`, or a built-in such as `Explore`. Absent for a
+	// crew that delegated to none, or only to agents of no named kind
+	// (CON-124). The Office badges a crew with them.
+	Agents []string `json:"agents,omitempty"`
 }
 
 // InboxItem is one thing still waiting on a decision, flattened from
