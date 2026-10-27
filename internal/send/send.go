@@ -159,9 +159,9 @@ const (
 	DefaultRetrySleep = 400 * time.Millisecond
 	// DefaultLines is the pane snapshot size every classification uses.
 	DefaultLines = 40
-	// DefaultWaitTimeout bounds the optional post-send confirmation that
+	// defaultWaitTimeout bounds the optional post-send confirmation that
 	// the harness picked the line up.
-	DefaultWaitTimeout = 5 * time.Second
+	defaultWaitTimeout = 5 * time.Second
 	// tailLines is how much screen an error quotes.
 	tailLines = 12
 )
@@ -255,7 +255,6 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 		return report, err
 	}
 	screens := profile.Screen()
-	source := screens.ReadSource()
 	if strings.ContainsAny(text, "\r\n") {
 		return report, observability.NewError(observability.CodeUsage,
 			"send refuses a multi-line message: one line per send, long content goes in a file the agent is pointed at")
@@ -276,7 +275,10 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 	}
 
 	// The styled read, not the plain one: see the Runtime interface above.
-	screen, err := deps.Runtime.ReadAgentStyled(ctx, target, source, opts.Lines)
+	read := func() (string, error) {
+		return deps.Runtime.ReadAgentStyled(ctx, target, screens.ReadSource(), opts.Lines)
+	}
+	screen, err := read()
 	if err != nil {
 		return report, err
 	}
@@ -293,12 +295,12 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 	if d := observed.Dialog; d != screenpkg.DialogNone && d != "" && (d != screenpkg.DialogUnknown || before.State != StateUnknown) {
 		return report, sendError(observability.CodeStateConflict, ErrDialogOpen,
 			fmt.Sprintf("a dialog is open: %s; nothing typed", d),
-			map[string]any{"dialog": string(d), "screen_tail": ScreenTail(StripSGR(screen), tailLines)})
+			map[string]any{"dialog": string(d), "screen_tail": tail(screen)})
 	}
 	if opts.ResumePending && (before.State != StatePending || !pendingMatches(screens, screen, payload)) {
 		return report, sendError(observability.CodeStateConflict, ErrSubmissionUnconfirmed,
 			"recorded send no longer matches the whole pending composer; inspect the pane, do not retype",
-			map[string]any{"screen_tail": ScreenTail(StripSGR(screen), tailLines)})
+			map[string]any{"screen_tail": tail(screen)})
 	}
 
 	switch before.State {
@@ -318,7 +320,7 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 	case StateUnknown:
 		return report, sendError(observability.CodeStateConflict, ErrComposerUnknown,
 			fmt.Sprintf("agent %s is showing a screen mate cannot name; nothing was typed", target.Name),
-			map[string]any{"screen_tail": ScreenTail(StripSGR(screen), tailLines)})
+			map[string]any{"screen_tail": tail(screen)})
 	}
 
 	if opts.ResumePending {
@@ -335,7 +337,7 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 		// typed, and the caller may retry. With the fixture observer the
 		// read-to-type gap is what it always was.
 		if deps.slowObserver() {
-			if err := stillTypeable(ctx, deps, target, source, screens, opts); err != nil {
+			if err := stillTypeable(read, screens, opts.QueueWhileBusy); err != nil {
 				return report, err
 			}
 		}
@@ -359,7 +361,7 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 	if opts.ResumePending {
 		// A human can edit during the settle interval. Do not submit the
 		// earlier snapshot's text without reading the composer again.
-		screen, err = deps.Runtime.ReadAgentStyled(ctx, target, source, opts.Lines)
+		screen, err = read()
 		if err != nil {
 			return report, err
 		}
@@ -367,12 +369,11 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 
 	// Enter only, never the text again: a swallowed enter leaves the line in
 	// the composer, so retyping would submit it twice.
-	var after Classification
 	for attempt := 1; attempt <= opts.Retries; attempt++ {
 		if (attempt > 1 || opts.ResumePending) && !pendingMatches(screens, screen, payload) {
 			return report, sendError(observability.CodeStateConflict, ErrSubmissionUnconfirmed,
 				"pending composer changed or cannot be fully read; no further Enter sent",
-				map[string]any{"screen_tail": ScreenTail(StripSGR(screen), tailLines)})
+				map[string]any{"screen_tail": tail(screen)})
 		}
 		if err := deps.Runtime.SendKeys(ctx, target, []string{"enter"}); err != nil {
 			return report, err
@@ -381,31 +382,30 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 		if err := sleep(ctx, deps, opts.RetrySleep); err != nil {
 			return report, err
 		}
-		screen, err = deps.Runtime.ReadAgentStyled(ctx, target, source, opts.Lines)
+		screen, err = read()
 		if err != nil {
 			return report, err
 		}
-		after = ClassifyComposer(screens, screen)
-		report.After = after
+		report.After = ClassifyComposer(screens, screen)
 		report.Steps = append(report.Steps, Step{
 			What:     "enter",
-			State:    after.State,
-			Evidence: after.Evidence,
+			State:    report.After.State,
+			Evidence: report.After.Evidence,
 			Detail:   fmt.Sprintf("press %d of %d", attempt, opts.Retries),
 		})
-		if after.State != StatePending {
+		if report.After.State != StatePending {
 			break
 		}
 	}
-	if after.State == StatePending {
+	if report.After.State == StatePending {
 		return report, sendError(observability.CodeStateConflict, ErrEnterSwallowed,
-			fmt.Sprintf("typed into %s but %d enter(s) did not submit it; the line is still in the composer (%q)", target.Name, report.Presses, after.Pending),
-			map[string]any{"pending": after.Pending, "screen_tail": ScreenTail(StripSGR(screen), tailLines)})
+			fmt.Sprintf("typed into %s but %d enter(s) did not submit it; the line is still in the composer (%q)", target.Name, report.Presses, report.After.Pending),
+			map[string]any{"pending": report.After.Pending, "screen_tail": tail(screen)})
 	}
 	if !report.Delivered() {
 		return report, sendError(observability.CodeStateConflict, ErrSubmissionUnconfirmed,
 			"text was typed but submission is unconfirmed; inspect the pane, do not retype",
-			map[string]any{"screen_tail": ScreenTail(StripSGR(screen), tailLines)})
+			map[string]any{"screen_tail": tail(screen)})
 	}
 
 	if opts.WaitForWorking {
@@ -413,12 +413,11 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 			Until:   []runtime.AgentStatus{runtime.AgentWorking},
 			Timeout: opts.WaitTimeout,
 		})
-		switch {
-		case err != nil:
+		if err != nil {
 			report.Warnings = append(report.Warnings,
 				fmt.Sprintf("the composer cleared but Herdr did not report %s working within %s: %v", target.Name, opts.WaitTimeout, err))
 			report.Steps = append(report.Steps, Step{What: "wait", Detail: "unconfirmed"})
-		default:
+		} else {
 			report.Steps = append(report.Steps, Step{What: "wait", Detail: string(obs.Status)})
 		}
 	}
@@ -428,20 +427,20 @@ func Send(ctx context.Context, deps Deps, target runtime.AgentHandle, kind harne
 // stillTypeable reads the pane again and refuses with ErrPaneChanged unless
 // the fixture reads a composer the send may type into: empty, or busy when
 // the caller queues behind the turn.
-func stillTypeable(ctx context.Context, deps Deps, target runtime.AgentHandle, source harness.ReadSource, screens harness.ScreenProfile, opts Options) error {
-	again, err := deps.Runtime.ReadAgentStyled(ctx, target, source, opts.Lines)
+func stillTypeable(read func() (string, error), screens harness.ScreenProfile, queueWhileBusy bool) error {
+	again, err := read()
 	if err != nil {
 		return err
 	}
 	// The fixture's own classifier: what fixture.Observe reads as
 	// Deterministic.
 	now := ClassifyComposer(screens, again).State
-	if now == StateEmpty || (opts.QueueWhileBusy && now == StateBusy) {
+	if now == StateEmpty || (queueWhileBusy && now == StateBusy) {
 		return nil
 	}
 	return sendError(observability.CodeStateConflict, ErrPaneChanged,
 		"pane changed while it was being read; nothing typed",
-		map[string]any{"composer": ComposerLabel(now), "screen_tail": ScreenTail(StripSGR(again), tailLines)})
+		map[string]any{"composer": ComposerLabel(now), "screen_tail": tail(again)})
 }
 
 // withDefaults fills the measured defaults, including the longer settle a
@@ -463,7 +462,7 @@ func (o Options) withDefaults(text string) Options {
 		o.Lines = DefaultLines
 	}
 	if o.WaitTimeout <= 0 {
-		o.WaitTimeout = DefaultWaitTimeout
+		o.WaitTimeout = defaultWaitTimeout
 	}
 	return o
 }
@@ -481,6 +480,11 @@ func sleep(ctx context.Context, deps Deps, d time.Duration) error {
 	case <-time.After(d):
 		return nil
 	}
+}
+
+// tail is the end of a screen an error quotes, without its styling.
+func tail(screen string) string {
+	return ScreenTail(StripSGR(screen), tailLines)
 }
 
 // sendError wraps a sentinel in the coded taxonomy, so errors.Is finds the
