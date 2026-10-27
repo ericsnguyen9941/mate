@@ -109,6 +109,10 @@ type ProjectCard struct {
 	// InboxWaiting is box.Inbox's length: how many things are still waiting
 	// on a decision, the same number the console's rail header shows.
 	InboxWaiting int `json:"inbox_waiting"`
+	// Repos names the project's repos, in project.yaml order; empty when it
+	// has none or its project.yaml cannot be read. Agent City draws one tent
+	// per repo (CON-125).
+	Repos []string `json:"repos"`
 	// Error is why this card is thin - an unreadable box, a project with no
 	// timeline yet. The card is still returned: one broken project must not
 	// blank the workspace.
@@ -159,6 +163,11 @@ type Task struct {
 	// LastModel is the observed model; absent settings remain unknown.
 	Model  string `json:"model,omitempty"`
 	Effort string `json:"effort,omitempty"`
+	// Repo is the repo the crew works in: crew meta repo=, or the project's
+	// sole repo for a meta written before M9 (store.CrewRepo). Absent when
+	// neither answers, so a page can place a crew without one request per
+	// task (CON-125).
+	Repo string `json:"repo,omitempty"`
 	// Review is set only for a reviewer crew (`mate review`, which leaves
 	// review.meta beside the crew's report): the first line of the report's
 	// Verdict section - pass, changes-requested or incomplete - or

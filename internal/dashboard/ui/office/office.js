@@ -772,6 +772,7 @@
   function segNav() {
     return el("nav", { class: "seg", "aria-label": "View" }, [
       el("a", { class: "on", href: "./", "aria-current": "page", text: "Office" }),
+      el("a", { href: "../city/", text: "City", title: "the same workspace drawn as a 3D city" }),
       el("a", { href: adminHref(), text: "Admin", title: "the admin dashboard" })
     ]);
   }

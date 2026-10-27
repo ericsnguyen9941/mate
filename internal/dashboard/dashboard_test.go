@@ -765,3 +765,46 @@ func TestTaskNamesTheAgentsItDelegatedTo(t *testing.T) {
 		t.Fatalf("task agents = %v, want %v", one.Ledger.Agents, want)
 	}
 }
+
+// Agent City draws a tent per repo and puts each crew in its repo's tent
+// (CON-125), from the workspace card and the task row alone.
+func TestWorkspaceAndTasksNameTheirRepos(t *testing.T) {
+	f := newFixture(t)
+	cfg, err := f.ws.LoadProject(fixtureProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := cfg.RepoNames()
+	if len(want) != 1 {
+		t.Fatalf("fixture repos = %v, want one", want)
+	}
+	var ws WorkspaceResponse
+	f.get(t, "/api/workspace", http.StatusOK, &ws)
+	if got := ws.Projects[0].Repos; len(got) != 1 || got[0] != want[0] {
+		t.Errorf("card repos = %v, want project.yaml's %v", got, want)
+	}
+	// The fixture crew's meta names no repo (written before M9), so it works
+	// in the project's sole repo.
+	var p ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &p)
+	if got := p.Tasks[0].Repo; got != want[0] {
+		t.Errorf("task repo = %q, want the sole repo %q", got, want[0])
+	}
+}
+
+func TestTaskRepoIsAbsentWhenTheMetaNamesAGoneRepo(t *testing.T) {
+	f := newFixture(t)
+	meta, err := f.ws.ReadCrewMeta(fixtureProject, fixtureCrew)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta["repo"] = "removed"
+	if err := f.ws.WriteCrewMeta(fixtureProject, fixtureCrew, meta); err != nil {
+		t.Fatal(err)
+	}
+	var p ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &p)
+	if got := p.Tasks[0].Repo; got != "" {
+		t.Errorf("task repo = %q, want none for a repo the project no longer has", got)
+	}
+}

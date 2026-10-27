@@ -121,7 +121,10 @@ func (s *Server) respond(build builder, cacheable bool) http.HandlerFunc {
 func (s *Server) handleWorkspace(ctx context.Context, _ *http.Request, env envelope) (any, error) {
 	out := WorkspaceResponse{envelope: env, Root: s.ws.Root(), Projects: []ProjectCard{}}
 	for _, ref := range s.ws.Projects() {
-		card := ProjectCard{Name: ref.Name, Mode: modeWord(s.ws, ref.Name), CrewsByState: map[string]int{}}
+		card := ProjectCard{Name: ref.Name, Mode: modeWord(s.ws, ref.Name), CrewsByState: map[string]int{}, Repos: []string{}}
+		if cfg, err := s.ws.LoadProject(ref.Name); err == nil {
+			card.Repos = append(card.Repos, cfg.RepoNames()...)
+		}
 		scenes, err := s.sceneRows(ctx, ref.Name)
 		if err != nil {
 			return nil, err
