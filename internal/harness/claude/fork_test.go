@@ -33,7 +33,7 @@ func TestForkTurnArgsLockTheForkDown(t *testing.T) {
 			t.Errorf("fork args keep %q: %s", gone, line)
 		}
 	}
-	for _, want := range []string{"--strict-mcp-config", "--setting-sources project", "--model opus", "--tools " + ForkTools, "--permission-mode dontAsk", "--allowedTools Bash(git diff*) Bash(mate news propose *)", "--resume mate-sid --fork-session", "-p --output-format stream-json"} {
+	for _, want := range []string{"--strict-mcp-config", "--setting-sources project", "--model opus", "--tools " + ForkTools, "--permission-mode dontAsk", "--allowedTools Read Glob Grep Bash(git diff*) Bash(mate news propose *)", "--resume mate-sid --fork-session", "-p --output-format stream-json"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("fork args lack %q: %s", want, line)
 		}

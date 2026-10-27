@@ -20,10 +20,16 @@ import (
 //     and `a && b` included, and --tools without Write or Edit leaves no
 //     way to change a file;
 //   - --strict-mcp-config without --mcp-config loads no MCP server, so the
-//     plugins' write tools are gone too.
+//     plugins' write tools are gone too;
+//   - dontAsk also denies Read, Glob and Grep outside the Mate's dir, so a
+//     fork could read neither the project's repo nor a screenshot the
+//     captain pasted (2026-10-27); ForkReadTools are allowed everywhere.
 
 // ForkTools are the only tools a fork has.
 const ForkTools = "Read,Glob,Grep,Bash"
+
+// ForkReadTools are the fork's tools allowed on any path: they read only.
+var ForkReadTools = []string{"Read", "Glob", "Grep"}
 
 // ForkSettingsFile is the fork's settings file, in the dir ForkTurnArgs is
 // given.
@@ -73,11 +79,9 @@ func ForkTurnArgs(launch []string, fork string, allow []string, dir string) ([]s
 	if err != nil {
 		return nil, err
 	}
-	out = append(out, "--settings", path, "--tools", ForkTools, "--permission-mode", "dontAsk")
-	if len(allow) > 0 {
-		out = append(out, "--allowedTools")
-		out = append(out, allow...)
-	}
+	out = append(out, "--settings", path, "--tools", ForkTools, "--permission-mode", "dontAsk", "--allowedTools")
+	out = append(out, ForkReadTools...)
+	out = append(out, allow...)
 	if fork == "" {
 		out = append(out, "--resume", from, "--fork-session")
 	} else {
