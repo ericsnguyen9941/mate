@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -764,6 +765,27 @@ func TestTaskNamesTheAgentsItDelegatedTo(t *testing.T) {
 	if !reflect.DeepEqual(one.Ledger.Agents, want) {
 		t.Fatalf("task agents = %v, want %v", one.Ledger.Agents, want)
 	}
+
+	// The server keeps what it has read and reads only the events past it
+	// (CON-126): one ingested later but used earlier still comes first.
+	writer, err = db.Open(f.ws)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	if _, err := writer.SQL().Exec(
+		`INSERT INTO event(dedup, project, at, actor_id, kind, payload) VALUES (?, ?, ?, ?, ?, ?)`,
+		"agents-late", fixtureProject, db.FormatTime(mustTime("2026-09-19T10:45:00Z")), actor, timeline.KindToolCalled,
+		`{"agent":"Explore","class":"agent","target":"Explore","tool":"Agent"}`); err != nil {
+		t.Fatalf("insert a late tool.called: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var later ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &later)
+	if want := []string{"Explore", "backend-reviewer"}; !reflect.DeepEqual(later.Tasks[0].Agents, want) {
+		t.Fatalf("agents after a late event = %v, want %v", later.Tasks[0].Agents, want)
+	}
 }
 
 // Agent City draws a tent per repo and puts each crew in its repo's tent
@@ -807,4 +829,29 @@ func TestTaskRepoIsAbsentWhenTheMetaNamesAGoneRepo(t *testing.T) {
 	if got := p.Tasks[0].Repo; got != "" {
 		t.Errorf("task repo = %q, want none for a repo the project no longer has", got)
 	}
+}
+
+// The summary view is the full task answer's ledger, status lines and
+// decisions, and none of its turns, branch or performance (CON-126).
+func TestTaskSummaryIsTheFullAnswerWithoutTurnsOrPerformance(t *testing.T) {
+	f := newFixture(t)
+	path := "/api/projects/" + fixtureProject + "/tasks/" + fixtureCrew
+	var full TaskResponse
+	f.get(t, path, http.StatusOK, &full)
+	var raw map[string]json.RawMessage
+	f.get(t, path+"?view=summary", http.StatusOK, &raw)
+	for _, gone := range []string{"turns", "branch", "performance"} {
+		if _, ok := raw[gone]; ok {
+			t.Errorf("the summary carries %q", gone)
+		}
+	}
+	var sum TaskSummaryResponse
+	f.get(t, path+"?view=summary", http.StatusOK, &sum)
+	if len(full.StatusLines) == 0 {
+		t.Fatal("the fixture crew has no status lines; the comparison would prove nothing")
+	}
+	if !reflect.DeepEqual(sum.Ledger, full.Ledger) || !reflect.DeepEqual(sum.StatusLines, full.StatusLines) || !reflect.DeepEqual(sum.Questions, full.Questions) {
+		t.Errorf("the summary's ledger, status lines or questions differ from the full answer's")
+	}
+	f.get(t, "/api/projects/"+fixtureProject+"/tasks/nosuch?view=summary", http.StatusNotFound, nil)
 }

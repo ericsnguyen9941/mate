@@ -59,7 +59,6 @@ let ws = null; // GET /api/workspace
 const tasks = new Map(); // project → task rows
 const boardStatsOf = new Map(); // project → the signboard's numbers, or null
 let lastEventID = 0;
-let first = true;
 const start = performance.now();
 const now = () => (performance.now() - start) / 1000; // the city's clock, in seconds
 
@@ -98,46 +97,97 @@ function buildCity(projects) {
     camera.position.copy(home.position);
   }
   $('#hidden').textContent = city.hidden ? `${city.hidden} more project${city.hidden === 1 ? '' : 's'} than the city has blocks` : '';
-  first = true;
 }
 
-async function loadAll() {
-  const [wsBody, board, news] = await Promise.all([
-    api('/api/workspace'),
-    api(`/api/board?days=${BOARD_DAYS}`).catch(() => null),
-    api('/api/news').catch(() => null),
-  ]);
-  const projects = wsBody.projects ?? [];
-  const bodies = await Promise.all(projects.map((p) => api(`/api/projects/${enc(p.name)}`).catch(() => null)));
-  ws = wsBody;
-  const next = JSON.stringify(projects.map((p) => [p.name, p.repos ?? []]));
-  if (next !== shape) {
-    shape = next;
-    buildCity(projects);
-  }
-  const t = now();
-  const fresh = !first;
-  projects.forEach((p, i) => {
-    const body = bodies[i];
-    if (body) tasks.set(p.name, body.tasks ?? []);
-    const rows = tasks.get(p.name) ?? [];
-    city.setMate(p.name, p.mate ?? {}, t);
-    city.setCrews(p.name, rows.filter((r) => r.state !== 'gone').map((r) => ({ ...r })), t, { fresh });
-    for (const repo of tentRepos(p)) city.setMerged(p.name, repo, rows.filter((r) => r.role === 'ship' && r.merged_at && onTent(p, repo)(r)).length, t);
-    const bp = board?.projects?.find((x) => x.name === p.name);
-    boardStatsOf.set(p.name, bp ? boardStats(bp, board.days) : null);
-    city.setBoard(p.name, boardStatsOf.get(p.name), t);
-  });
-  city.setHall(projects.map((p) => {
+// What has been read. The city is drawn as soon as /api/workspace answers;
+// each project fills in as its own page arrives, and the board and the news,
+// which are slower and change less, are read beside them and never hold the
+// city up.
+let board = null; // GET /api/board
+let boardAt = -Infinity; // when it was last asked for (performance.now())
+let boardBusy = false;
+const BOARD_EVERY = 5 * 60e3; // the board counts days; minutes-old numbers are fine
+const loaded = new Set(); // projects whose crews are placed; a new crew there says its name
+
+function applyProject(p, t) {
+  const rows = tasks.get(p.name);
+  if (!rows) return;
+  city.setCrews(p.name, rows.filter((r) => r.state !== 'gone'), t, { fresh: loaded.has(p.name) });
+  for (const repo of tentRepos(p)) city.setMerged(p.name, repo, rows.filter((r) => r.role === 'ship' && r.merged_at && onTent(p, repo)(r)).length, t);
+  loaded.add(p.name);
+}
+
+function applyHall() {
+  city.setHall((ws.projects ?? []).map((p) => {
     const bp = board?.projects?.find((x) => x.name === p.name);
     const working = (tasks.get(p.name) ?? []).filter((r) => r.state !== 'gone').length;
     return { name: p.name, running: Boolean(p.mate?.running), working, tokens: bp?.days?.at(-1)?.tokens?.total ?? p.mate?.tokens_today ?? 0 };
   }));
-  city.setMailbox(waitingNews(news), t);
+}
+
+function applyBoard(t) {
+  for (const p of ws.projects ?? []) {
+    const bp = board?.projects?.find((x) => x.name === p.name);
+    boardStatsOf.set(p.name, bp ? boardStats(bp, board.days) : null);
+    city.setBoard(p.name, boardStatsOf.get(p.name), t);
+  }
+  applyHall();
+}
+
+/**
+ * Read the workspace, redraw the city if its projects or repos changed, then
+ * read the pages of `only` (a set of project names; every project when
+ * null), applying each as it arrives.
+ */
+async function loadAll(only = null) {
+  const wsBody = await api('/api/workspace');
+  ws = wsBody;
+  // Polling from the id the workspace was built at can only read an event twice, never miss one.
   lastEventID = wsBody.last_event_id ?? 0;
-  first = false;
+  const projects = wsBody.projects ?? [];
+  const next = JSON.stringify(projects.map((p) => [p.name, p.repos ?? []]));
+  const t = now();
+  if (next !== shape) {
+    shape = next;
+    buildCity(projects);
+    loaded.clear();
+    for (const p of projects) applyProject(p, t);
+    if (board) applyBoard(t);
+    only = null;
+  }
+  for (const p of projects) city.setMate(p.name, p.mate ?? {}, t);
+  applyHall();
   setLive('live', 'live');
   $('#boot').hidden = true;
+  await Promise.all(projects.filter((p) => !only || only.has(p.name)).map((p) =>
+    api(`/api/projects/${enc(p.name)}`).then((body) => {
+      if (ws !== wsBody) return;
+      tasks.set(p.name, body.tasks ?? []);
+      applyProject(p, now());
+    }, () => {}),
+  ));
+  if (ws === wsBody) applyHall();
+}
+
+function refreshBoard() {
+  if (boardBusy || performance.now() - boardAt < BOARD_EVERY) return;
+  boardBusy = true;
+  boardAt = performance.now();
+  api(`/api/board?days=${BOARD_DAYS}`)
+    .then((body) => {
+      board = body;
+      if (city) applyBoard(now());
+    }, () => (boardAt = -Infinity))
+    .finally(() => (boardBusy = false));
+}
+
+let newsBusy = false;
+function refreshNews() {
+  if (newsBusy) return;
+  newsBusy = true;
+  api('/api/news')
+    .then((body) => city?.setMailbox(waitingNews(body), now()), () => {})
+    .finally(() => (newsBusy = false));
 }
 
 function boardStats(bp, days) {
@@ -158,21 +208,24 @@ function waitingNews(news) {
 }
 
 // One long poll on /api/events, as the admin UI and Office keep themselves
-// live. An event reloads everything; a quiet poll still reads the news,
-// which is a file the REPL writes, not an event.
+// live. An event reloads the workspace and the pages of the projects it
+// names; every answer, quiet or not, reads the news again (a file the REPL
+// writes, not an event) and the board once it is BOARD_EVERY old.
 async function poll() {
   for (;;) {
     try {
       const body = await api(`/api/events?since=${lastEventID}&wait=20`);
       const id = body.last_event_id ?? 0;
-      const moved = body.events?.length || body.now?.length;
+      const moved = [...(body.events ?? []), ...(body.now ?? [])];
       // A smaller id is a `mate reindex` under us: the old cursor will never come round again.
-      if (id < lastEventID || moved) await loadAll();
-      else {
-        lastEventID = id;
-        city?.setMailbox(waitingNews(await api('/api/news').catch(() => null)), now());
-        setLive('live', 'live');
-      }
+      if (id < lastEventID) await loadAll();
+      else if (moved.length) {
+        const names = new Set(moved.map((x) => x.project));
+        await loadAll(names.has('') || names.has(undefined) ? null : names);
+      } else lastEventID = id;
+      setLive('live', 'live');
+      refreshNews();
+      refreshBoard();
     } catch (e) {
       setLive('stale', e.message);
       await new Promise((r) => setTimeout(r, 3000));
@@ -193,6 +246,24 @@ const panel = $('#room');
 const feed = $('#feed');
 const KIND = { spawn: 'spawn', status: 'status', ask: 'ask', answer: 'answer', handback: 'hand back', review: 'review', verdict: 'verdict', merge: 'merge', sleep: 'idle' };
 
+// Episodes read so far, by tent: kept while the tent's newest merged task is
+// the same one, so a second visit, or a click after a hover, opens at once.
+const episodes = new Map(); // tentKey → { newest, promise }
+function episodeFor(key) {
+  const tent = city?.tents.get(key);
+  const p = ws?.projects.find((x) => x.name === tent?.project);
+  if (!tent || !p) return Promise.resolve({ episode: null, recent: [] });
+  const rows = tasks.get(tent.project) ?? [];
+  const mine = onTent(p, tent.repo);
+  const newest = rows.filter((t) => t.role === 'ship' && t.merged_at && mine(t)).reduce((a, t) => (!a || t.merged_at > a.merged_at ? t : a), null)?.crew ?? '';
+  const have = episodes.get(key);
+  if (have && have.newest === newest) return have.promise;
+  const promise = readEpisode(api, tent.project, rows, mine);
+  episodes.set(key, { newest, promise });
+  promise.catch(() => episodes.delete(key));
+  return promise;
+}
+
 async function enterRoom(key) {
   const tent = city?.tents.get(key);
   if (!tent) return;
@@ -208,7 +279,9 @@ async function enterRoom(key) {
   if (location.hash !== `#tent=${key}`) history.replaceState(null, '', `#tent=${key}`);
   let ep = { episode: null, recent: [] };
   try {
-    ep = await readEpisode(api, tent.project, tasks.get(tent.project) ?? [], onTent(p, tent.repo));
+    // A click before the project's page arrived reads it first.
+    if (!tasks.has(tent.project)) tasks.set(tent.project, (await api(`/api/projects/${enc(tent.project)}`)).tasks ?? []);
+    ep = await episodeFor(key);
   } catch (e) {
     $('#room-dept').textContent = `project ${tent.project} · ${e.message}`;
   }
@@ -333,9 +406,13 @@ function describe(target) {
   const tokens = p.reduce((n, x) => n + (x.mate?.tokens_today ?? 0), 0);
   return ['City Hall · captain', `${waiting} waiting in the inbox · Mates ${formatTokens(tokens)} tokens today · click for the captain's desk`];
 }
+let hoverTimer = 0;
 canvas.addEventListener('pointermove', (e) => {
   const target = pick(e);
   const words = target && describe(target);
+  // Read a tent's episode while the pointer rests on it, so the click opens at once.
+  clearTimeout(hoverTimer);
+  if (target?.tent && tasks.has(city.tents.get(target.tent)?.project)) hoverTimer = setTimeout(() => episodeFor(target.tent).catch(() => {}), 150);
   canvas.style.cursor = words ? 'pointer' : '';
   if (words) showTip(e, ...words);
   else tip.style.display = 'none';
@@ -376,6 +453,7 @@ const bar = $('#bar');
 const ease = (x) => x * x * x * (x * (x * 6 - 15) + 10);
 let shown = -1;
 let last = performance.now();
+const drawn = new WeakSet();
 renderer.setAnimationLoop((ms) => {
   if (!city) return;
   const dt = (ms - last) / 1000;
@@ -403,6 +481,11 @@ renderer.setAnimationLoop((ms) => {
   }
   controls.update();
   renderer.render(room ? roomScene : scene, camera);
+  // Marks for the browser's performance timeline: the first frame of the city, and of each tent.
+  if (!drawn.has(room ?? city)) {
+    drawn.add(room ?? city);
+    performance.mark(room ? `city:tent ${room.project}/${room.repo}` : 'city:drawn');
+  }
 });
 
 Object.assign(controls, CITY_LIMITS);
@@ -411,3 +494,5 @@ loadAll().then(fromHash, (e) => {
   setLive('stale', e.message);
   $('#boot').textContent = `Agent City could not load: ${e.message}`;
 }).finally(poll);
+refreshNews();
+refreshBoard();

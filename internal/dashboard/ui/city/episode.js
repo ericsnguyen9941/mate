@@ -86,7 +86,8 @@ export async function readEpisode(api, project, tasks, onTent) {
   const score = (t) => 2 * ((t.reviews?.length ?? 0) > 0) + (t.question_count > 0);
   const best = Math.max(...look.map(score));
   const pick = look.find((t) => score(t) === best);
-  const path = (crew) => `/api/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(crew)}`;
+  // The summary view: no turns or performance, which are most of a full task's bytes and time.
+  const path = (crew) => `/api/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(crew)}?view=summary`;
   const [detail, ...reviews] = await Promise.all([pick.crew, ...(pick.reviews ?? [])].map((c) => api(path(c))));
   return {
     episode: build(detail, reviews),

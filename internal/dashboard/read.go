@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/db"
@@ -179,9 +181,42 @@ func (s *Server) toolCount(ctx context.Context, actorID string) (int64, error) {
 	return n, err
 }
 
+// toolCounts is toolCount for every actor of a project in one query, for
+// the task table, which would otherwise ask once per crew.
+func (s *Server) toolCounts(ctx context.Context, project string) (map[string]int64, error) {
+	rows, err := s.db.SQL().QueryContext(ctx, `
+		SELECT t.actor_id, COALESCE(SUM(t.tool_count),0)
+		  FROM turn t JOIN actor a ON a.id = t.actor_id
+		 WHERE a.project = ?
+		 GROUP BY t.actor_id`, project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var id string
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}
+
 // tasks reads `v_task_ledger` for a project, oldest spawn first, and hangs
 // each crew's current scene state on it.
 func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Task, error) {
+	return s.taskRows(ctx, project, now, "")
+}
+
+// taskRows is tasks, filled in for every crew, or for `only` alone when it
+// is set: what a row gathers beyond the ledger - files under the crew's
+// directory, its tool calls - is most of the table's time, and one task's
+// page needs one row. Every row still carries the ledger's tokens, which a
+// task's tokens_with_reviews sums over its reviewers.
+func (s *Server) taskRows(ctx context.Context, project string, now time.Time, only string) ([]Task, error) {
 	scenes, err := s.sceneRows(ctx, project)
 	if err != nil {
 		return nil, err
@@ -231,13 +266,26 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 	if err != nil {
 		return nil, err
 	}
-	cfg, cfgErr := s.ws.LoadProject(project)
-	for i, id := range ids {
-		n, err := s.toolCount(ctx, id)
-		if err != nil {
+	var tools map[string]int64
+	if only == "" {
+		if tools, err = s.toolCounts(ctx, project); err != nil {
 			return nil, err
 		}
-		out[i].ToolCount = n
+	}
+	cfg, cfgErr := s.ws.LoadProject(project)
+	for i, id := range ids {
+		if only != "" && out[i].Crew != only {
+			continue
+		}
+		if only != "" {
+			if tools == nil {
+				tools = map[string]int64{}
+			}
+			if tools[id], err = s.toolCount(ctx, id); err != nil {
+				return nil, err
+			}
+		}
+		out[i].ToolCount = tools[id]
 		out[i].Agents = agents[id]
 		facts, _, err := s.actorFacts(ctx, id)
 		if err != nil {
@@ -284,30 +332,82 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 }
 
 // agentsUsed is Task.Agents for every actor of a project: the distinct
-// `agent` of its `tool.called` events, in the order each was first used. One
-// query serves the whole task table; the LIKE keeps json_extract off the
-// payloads that cannot have the key.
+// `agent` of its `tool.called` events, in the order each was first used.
+//
+// Finding them reads the payload of every `tool.called` event, which on a
+// real workspace is over a second, and every task table, task page and board
+// asks for it. So the server keeps them (agentIndex): the first call reads
+// every event, each later one only the events appended since (CON-126).
 func (s *Server) agentsUsed(ctx context.Context, project string) (map[string][]string, error) {
-	rows, err := s.db.SQL().QueryContext(ctx, `
-		SELECT actor_id, json_extract(payload, '$.agent') AS agent, MIN(at) AS first_at
-		  FROM event
-		 WHERE project = ? AND kind = ? AND payload LIKE '%"agent":%'
-		   AND json_extract(payload, '$.agent') IS NOT NULL
-		 GROUP BY actor_id, agent
-		 ORDER BY first_at, agent`, project, timeline.KindToolCalled)
-	if err != nil {
+	return s.agents.used(ctx, s.db.SQL(), project)
+}
+
+// agentIndex is the first time each actor used each kind of agent, kept for
+// the whole workspace and brought up to date from the event ids past `seen`.
+type agentIndex struct {
+	mu    sync.Mutex
+	seen  int64                                   // highest event id read
+	first map[string]map[string]map[string]string // project → actor → agent → first at
+}
+
+func (x *agentIndex) used(ctx context.Context, q *sql.DB, project string) (map[string][]string, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	var top int64
+	if err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM event`).Scan(&top); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := map[string][]string{}
-	for rows.Next() {
-		var actor, agent, at string
-		if err := rows.Scan(&actor, &agent, &at); err != nil {
+	// A smaller highest id is a `mate reindex` under us: read it all again.
+	if top < x.seen || x.first == nil {
+		x.seen, x.first = 0, map[string]map[string]map[string]string{}
+	}
+	if top > x.seen {
+		// `+kind` keeps the planner on the id range rather than the kind
+		// index, which would read every tool call ever recorded again.
+		rows, err := q.QueryContext(ctx, `
+			SELECT project, actor_id, json_extract(payload, '$.agent'), at
+			  FROM event
+			 WHERE id > ? AND id <= ? AND +kind = ? AND payload LIKE '%"agent":%'
+			   AND json_extract(payload, '$.agent') IS NOT NULL`, x.seen, top, timeline.KindToolCalled)
+		if err != nil {
 			return nil, err
 		}
-		out[actor] = append(out[actor], agent)
+		defer rows.Close()
+		for rows.Next() {
+			var p, actor, agent, at string
+			if err := rows.Scan(&p, &actor, &agent, &at); err != nil {
+				return nil, err
+			}
+			if x.first[p] == nil {
+				x.first[p] = map[string]map[string]string{}
+			}
+			if x.first[p][actor] == nil {
+				x.first[p][actor] = map[string]string{}
+			}
+			if was, ok := x.first[p][actor][agent]; !ok || at < was {
+				x.first[p][actor][agent] = at
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		x.seen = top
 	}
-	return out, rows.Err()
+	out := map[string][]string{}
+	for actor, agents := range x.first[project] {
+		list := make([]string, 0, len(agents))
+		for agent := range agents {
+			list = append(list, agent)
+		}
+		sort.Slice(list, func(i, j int) bool {
+			if a, b := agents[list[i]], agents[list[j]]; a != b {
+				return a < b
+			}
+			return list[i] < list[j]
+		})
+		out[actor] = list
+	}
+	return out, nil
 }
 
 // taskRole is Task.Role: a reviewer first, then a scout, else a ship.
@@ -339,7 +439,7 @@ func (s *Server) reviewVerdict(project, crew string) string {
 
 // task is one crew's ledger row, or a 404 naming the crew.
 func (s *Server) task(ctx context.Context, project, crew string, now time.Time) (Task, error) {
-	all, err := s.tasks(ctx, project, now)
+	all, err := s.taskRows(ctx, project, now, crew)
 	if err != nil {
 		return Task{}, err
 	}
