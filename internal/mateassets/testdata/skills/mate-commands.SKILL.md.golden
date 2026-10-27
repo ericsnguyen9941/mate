@@ -71,7 +71,8 @@ That is a refusal to destroy work: get the branch merged, or ask the captain whe
 - `is closed, not open` or `is merged, not open` - nothing to merge; a merged one needs `crew stop`.
 - `gh could not merge <url>` - read the reason, send the Crew one line to fix it on the same branch, and merge after its next hand-back.
 
-**`brief append`** refuses a Crew with no live agent and leaves the brief alone.
+**`brief append` / `brief revise`** refuse a Crew with no live agent and leaves the brief alone.
+A revision file is a complete task with the existing captain words unchanged; `append --revision` saves it together with new words. Neither command changes the worker rules outside `# Task`.
 When the brief changed but the send was refused, stderr prints the exact `mate send` line to run once the Crew is free: run that, never `brief append` again, or the words land twice.
 
 **`mate send`** refusals are in `crew-recovery`.

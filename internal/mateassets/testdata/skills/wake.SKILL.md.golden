@@ -16,7 +16,7 @@ Do not tail status files, cat hand-backs, peek, or run `crew list` to find out a
 Work through the items in this order, because it follows what happens to a Crew you do not reach: a blocked Crew may be dying, a Crew that asked is idle and waiting on you, and a Crew that handed back is going nowhere.
 
 1. **`blocked` first.** The Crew cannot speak for itself. Load `crew-recovery` and follow it. Never send a blocked Crew a question.
-2. **`needs-decision` second.** Decide it as below, and answer with one `/usr/local/bin/mate send shop <crew> "<line>"`, which is what closes the question.
+2. **`needs-decision` second.** Decide it as below. For a specification change, use `new-task`'s Updating a running task procedure; its notification closes the question. For an operational answer that changes no requirement, use one `/usr/local/bin/mate send shop <crew> "<line>"`.
 3. **`wait-mate` third.** Load `review-delivery`.
 
 Any other item (`no turn`, `context high`, `budget 50%`) carries its own `next:` line; do what it says. An `over budget` or `budget hard ceiling` item is the Budget section below.
@@ -62,7 +62,7 @@ An expansion question to the captain states five things, evidence first and brie
 
 Do not relay the Crew's labels or wording as if they settled it.
 Record the question under `## Held for the captain` before your turn ends.
-When the captain answers, put their words into the brief with `/usr/local/bin/mate brief append shop <crew>`, which also tells the Crew.
+When the captain answers, follow `new-task`'s Updating a running task procedure so their words and the current specification agree before the Crew resumes.
 
 ## Budget
 

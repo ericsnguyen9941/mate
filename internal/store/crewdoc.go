@@ -84,10 +84,9 @@ func readRules(path string) (string, error) {
 	return strings.Trim(StripComments(string(data)), "\n \t"), nil
 }
 
-// ReplaceCrewBrief rewrites `crews/<crew>/brief.md` atomically. Its one
-// caller is `mate brief append`, the only edit the app makes to a brief
-// after spawn; the brief must already exist, because appending the
-// captain's words to a crew that was never briefed has no meaning.
+// ReplaceCrewBrief atomically saves an append or task revision in
+// `crews/<crew>/brief.md`. The brief must already exist; a crew that was
+// never briefed has no contract to update.
 func (w *Workspace) ReplaceCrewBrief(project, crew string, data []byte) error {
 	if err := ValidateProjectName(project); err != nil {
 		return err

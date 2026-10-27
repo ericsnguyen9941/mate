@@ -39,6 +39,8 @@ The fix after a review is reviewed from the commit that review saw, never from s
 
 ## Landing
 
+Run `task-learning` for the delivered revision and review evidence before landing, including when reviews are off.
+
 Once the review passes, land the work yourself:
 
 ```text
@@ -56,7 +58,7 @@ On `merge refused: needs-rebase`, send the Crew one line, "rebase onto <default 
 A pull request ship (`--deliver pr`) hands back with `pr-open:`; review its branch exactly as above. It fixes corrections on the same branch and pushes; the same pull request follows. `mate merge` runs `gh pr merge` for it.
 A watcher follows every open pull request and wakes you with `pr-merged:` or `pr-closed:`. When a Crew opened one without it and no console is open, start it: `/usr/local/bin/mate pr watch shop <id> <url>`.
 
-- **`pr-merged:`** - run `/usr/local/bin/mate crew stop shop <id>`, which takes the merged pull request as landed, even after a squash or rebase merge. If the line says the checkout was `skipped:`, tell the captain their copy of the default branch is behind. Then keep the work moving.
+- **`pr-merged:`** - run `task-learning` first (reuse the result if this revision has no new evidence), then run `/usr/local/bin/mate crew stop shop <id>`, which takes the merged pull request as landed, even after a squash or rebase merge. If the line says the checkout was `skipped:`, tell the captain their copy of the default branch is behind. Then keep the work moving.
 - **`pr-closed:`** - it was closed unmerged. Find out why (its comments, through a scout if they are long), then either send the Crew the rework, telling it to reopen the pull request (`gh pr reopen`) and run `pr watch` again, or tell the captain it was turned down.
 
 ## A scout
@@ -67,11 +69,12 @@ A scout is done when its report answers every question under `## Deliverable`. T
 1. Add to `/ws/.mate/projects/shop/PROJECT.md` what its `## Durable facts` says that the file does not, with the report as source, as `stow` says.
    When they name a command that removes what a repo starts per worktree (a `make down`, a `worktree-destroy`), record it so every crew stop runs it: `/usr/local/bin/mate project repo teardown shop <repo> "<command>"`, and say so to the captain in one line.
 2. Relay the findings to the captain as findings, not "it's done".
-3. Close it with `/usr/local/bin/mate crew stop shop <id>`. Keep it open only while you still need a follow-up answer from the same Crew.
+3. Run `task-learning`, then close it with `/usr/local/bin/mate crew stop shop <id>`. Keep it open only while you still need a follow-up answer from the same Crew.
 
 ## Closing a task
 
 A Crew's task ends when you or the captain decide, never when the Crew says so; until `crew stop` or `mate merge` runs, it stays in flight.
 A ship is closed when its work has landed. When the captain merged it, run `crew stop`; it finds the work landed.
 Unlanded work is thrown away with `--discard` only on the captain's explicit word, and that records the Crew `failed`.
+Before teardown or marking any task closed (ship, scout, failed or abandoned), run `task-learning` if this evidence revision has no result yet.
 Then `/usr/local/bin/mate backlog done shop <id>`, and update the captain's tracker when the task lives there. When the task taught you something, `stow` says where it goes.
