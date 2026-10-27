@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent City</title>
+<!--
+  Agent City: the workspace drawn as a 3D city, beside the admin UI at / and
+  Mate Office at /office/ (docs/dashboard.md section 12). It reads the same
+  read-only JSON API and nothing else.
+
+  Everything it loads is embedded in the binary and served from this origin:
+  no build step, no CDN. three.js is vendored as one prebuilt ES module
+  (vendor/three.js, its header says how it was built).
+-->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="city.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<header>
+  <div class="title">
+    <h1>Agent <span>City</span></h1>
+    <p class="city-only">City Hall in the middle · one block per project · one tent per repo · click a tent to step in</p>
+  </div>
+  <div class="tools">
+    <nav class="seg" aria-label="View">
+      <a href="../" title="the admin dashboard">Admin</a>
+      <a href="../office/" title="the same workspace drawn as an office">Office</a>
+      <a class="on" href="./" aria-current="page">City</a>
+    </nav>
+    <span class="live" id="live" data-state="loading" role="status" aria-live="polite"><span class="dot" aria-hidden="true">&#9679;</span><span class="text">loading</span></span>
+    <button id="home" type="button">Whole view</button>
+  </div>
+</header>
+<p class="boot" id="boot">loading&#8230;</p>
+<p class="hidden-note" id="hidden"></p>
+<aside id="room">
+  <div>
+    <button id="back" type="button">&#8592; Back to the city</button>
+    <h2 id="room-title"></h2>
+    <small id="room-dept"></small>
+    <h3>HOW ITS AGENTS WORKED TOGETHER · LATEST MERGED TASK</h3>
+  </div>
+  <ol id="feed"></ol>
+</aside>
+<div id="tip"></div>
+<div id="clock" class="room-only"><div id="bar"></div></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -231,6 +231,7 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 	if err != nil {
 		return nil, err
 	}
+	cfg, cfgErr := s.ws.LoadProject(project)
 	for i, id := range ids {
 		n, err := s.toolCount(ctx, id)
 		if err != nil {
@@ -247,6 +248,11 @@ func (s *Server) tasks(ctx context.Context, project string, now time.Time) ([]Ta
 		if err == nil {
 			out[i].Model, out[i].Effort = meta["model"], meta["effort"]
 			out[i].FailedReason = meta["failed_reason"]
+		}
+		if cfgErr == nil {
+			if repo, err := cfg.CrewRepo(meta); err == nil {
+				out[i].Repo = repo.Name
+			}
 		}
 		out[i].Review = s.reviewVerdict(project, out[i].Crew)
 		out[i].Role = taskRole(s.ws, project, out[i].Crew, out[i].Review, meta)

@@ -19,7 +19,10 @@
       "crews_by_state": {
         "waiting_review": 1
       },
-      "inbox_waiting": 0
+      "inbox_waiting": 0,
+      "repos": [
+        "shop"
+      ]
     }
   ]
 }
@@ -105,6 +108,7 @@
       "waited_ms": 86721,
       "tool_count": 9,
       "harness": "codex",
+      "repo": "shop",
       "role": "ship",
       "tokens_with_reviews": 233968
     }
@@ -1221,6 +1225,7 @@
     "waited_ms": 86721,
     "tool_count": 9,
     "harness": "codex",
+    "repo": "shop",
     "role": "ship",
     "tokens_with_reviews": 233968
   },

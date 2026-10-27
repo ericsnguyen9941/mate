@@ -70,6 +70,7 @@ Tier 1: one card per registered project.
 `crews_by_state` counts this project's crew actors by their `v_now` scene state, and a crew no projection has placed counts under `"unknown"` rather than being dropped.
 `inbox_waiting` is the length of `box.Inbox` through `query.LoadBox`, the same loader and the same number the console's rail header shows.
 `mode` is `store.Auto`: `"auto"` or `"manual"`.
+`repos` names the project's repos in `project.yaml` order (`RepoNames`), and is empty when it has none or its `project.yaml` cannot be read; Agent City draws one tent per repo (section 12, CON-125).
 
 ```json
 {
@@ -89,7 +90,8 @@ Tier 1: one card per registered project.
         "context_pct": 29.2
       },
       "crews_by_state": {"waiting_review": 1},
-      "inbox_waiting": 1
+      "inbox_waiting": 1,
+      "repos": ["shop"]
     }
   ]
 }
@@ -124,6 +126,8 @@ The UI shows newest exchanges first and reveals older ones in batches of 20.
 `review` is set only for a reviewer crew, one `mate review` started and so left `review.meta` beside its report: the first line of the report's `## Verdict` section (`pass`, `changes-requested`, `incomplete`), or `pending` while there is none. A reviewer is closed `finished` or `failed` like any crew; `review` is what it concluded.
 `failed_reason` is crew meta's `failed_reason=`, written when a spawn never came up; a crew closed with `crew stop --discard` is `failed` with none. A reviewer that delivered its Verdict is closed `reviewed` instead (CON-75).
 `reviews` names the reviewers `mate review` started for the task (crew meta `reviews=`, or a reviewer's `review.meta` naming the crew); `review_of` is the task a reviewer row reviewed; `tokens_with_reviews` is `tokens.total` plus every reviewer's total, so a task's cost with its reviews is one number (CON-75). The Office's cabinet peek reads it.
+
+`repo` is the repo the crew worked in: crew meta `repo=`, or the project's sole repo, resolved through `project.yaml` as `mate crew spawn` does (`CrewRepo`); absent when that does not resolve, for a crew whose repo has left `project.yaml` or a project whose `project.yaml` cannot be read (CON-125).
 
 `role` is what the task was for: `review` for a reviewer crew (it has `review.meta`), `scout` for a scout (crew meta `kind=scout`, or a brief with `## Deliverable` for a crew spawned before `kind` was recorded), else `ship`.
 
@@ -625,7 +629,7 @@ One loop, one request at a time: `GET /api/events?since=<the last_event_id the p
 On any `events` or `now` the page re-fetches only the endpoint the current tier reads and re-renders, keeping scroll position, the expanded turns and keyboard focus.
 Because the API is cached per `last_event_id` and the page always polls from the id its own bytes carry, a re-fetch after an event that changed nothing it shows costs the server a cache hit.
 
-The header links to Mate Office (section 11), opened on the crew drawer for a task page, the Mate drawer for a Mate page, and the whole floor otherwise.
+The header links to Mate Office (section 11), opened on the crew drawer for a task page, the Mate drawer for a Mate page, and the whole floor otherwise, and beside it to Agent City (section 12).
 The header carries the state as words: `live · HH:MM:SS` after every answered poll, `stale · <reason>` when one fails, where the reason is the API's own `reason` or, for a transport failure, "the dashboard is not answering".
 A failed poll retries every 3 seconds rather than spinning.
 
@@ -660,6 +664,7 @@ A room's door light is the project's, not only its Mate's: `stopped` when the Ma
 The nameplate of each room shows how many tokens that project has consumed: the Mate's own turns plus every task, open and closed, which is the total line of `mate usage`.
 A room whose project page has not been read, or whose sum is missing a part, shows `?`.
 It holds to every rule of section 10 - same origin only, GET only, text set with `textContent`, no build step, `null` shown as `?`.
+Its view switch is `Office | City | Admin`.
 
 | Hash | Opens |
 | --- | --- |
@@ -705,3 +710,46 @@ Each cabinet row, and each task in the cabinet's peek, starts with a glyph for i
 A crew wears a badge for each kind of agent it delegated to (`agents`, CON-124): under its state chip at its desk and in the hallway, after its name in the cabinet's peek, the cabinet rows and the daily board's task rows, on its phone card, and as an `Agents` line in the crew drawer (`none delegated to` when there are none). The badge is the kind as written - `backend-reviewer`, `ios-reviewer`, `Explore` - with "delegated to the … agent" as its tooltip and accessible name; the page does not know which agents a project defines, so it does not sort or colour them by kind. A crew that delegated to none wears none.
 
 The Office filing cabinet includes a `Harness / model / effort` column. Harness comes from the recorded actor, model prefers `last_model` (observed) and falls back to `model` (requested launch setting), and `effort` is the requested launch setting retained in crew meta. These optional fields are omitted when unavailable; the cabinet displays `?` rather than guessing defaults. Requested effort is not proof of runtime effort. The cabinet is wider on desktop and its table scrolls horizontally on narrow screens.
+
+## 12. Agent City
+
+A third read-only face on the same API, served at `/city/` from `internal/dashboard/ui/city/` (CON-125): the workspace as a 3D city, the same scene as the Agent City promo, built from the live API instead of a snapshot.
+It is linked from the admin header (`Agent City`, beside `Mate Office`) and from the Office's view switch.
+
+| File | Holds |
+| --- | --- |
+| `index.html`, `city.css` | the page: title, view switch, live pill, the tent panel and its feed |
+| `app.js` | reads the API, keeps the city live, hover and click |
+| `city.js` | the city: island, streets, City Hall, one block per project, one tent per repo, the setters `setCrews`, `setMate`, `setMerged`, `setBoard`, `setHall`, `setMailbox` |
+| `room.js` | one tent up close, replaying an episode |
+| `episode.js` | the episode a tent replays, read from the task endpoints |
+| `agent-mascot.js`, `bubble.js`, `harnesses.js` | the AgentMascot component, as in the promo |
+| `vendor/three.js` | three.js 0.186.1 and the addons the page uses, prebuilt into one ES module; its header carries the MIT licence and the command that built it |
+
+The pages are ES modules rather than classic scripts, the one way this UI departs from section 10's letter; there is still no build step at serve time, no framework fetched and no CDN.
+`TestUIMakesNoOffOriginRequest` walks the vendored file too: the only URLs in it are the XHTML and XLink namespaces `createElementNS` and `getAttributeNS` take as identifiers, exempt beside the SVG one.
+`internal/dashboard/ui_city_test.go` proves the page is the embedded file, follows every relative `import` from `app.js` and checks each module is served as JavaScript, and checks both other UIs link here.
+
+The city is a grid of blocks, 3×3 or 5×5 past eight projects, with City Hall at the centre; projects take the blocks in workspace order, the ones beside the hall first, and the blocks left over are parks. A workspace with more than 24 projects draws the first 24 and says how many it left out.
+
+| Thing | From |
+| --- | --- |
+| a tent per repo | `repos` (section 2); a project with none gets one tent named after it |
+| a tent's sign: `N merged` | ship tasks with a `merged_at` whose `repo` is the tent's (a task whose repo is unknown or no longer in `project.yaml` counts in the project's first tent); a rise pops the sign |
+| the crews in a tent | the project's tasks whose scene `state` is not `gone`, posed by state: `at_desk_working` works, `walking_to_ceo`, `waiting_at_ceo` and `blocked` think, `asleep` sleeps, the rest stand idle; a new crew says its name, a changed state says a word |
+| the Mate on the plaza | the card's `mate`: asleep when not running, else posed by `state` |
+| the project's signboard | `/api/board?days=7` for the project: tokens, `closed.finished`, `reviews.pass`, tokens per task |
+| City Hall's screen | each project: Mate running, crews not `gone`, tokens today (the board's last day, else the Mate's `tokens_today`) |
+| the mailbox | news with `status` `new` or `waiting` across `/api/news`; the flag is up while there is any |
+
+An unknown harness (one AgentMascot has no preset for) is a plain grey mascot with a ring for a logo, named after the harness.
+
+Hovering a mascot names it - crew and role, harness, model, effort, state - a tent its repo, merged count and crews at work, City Hall the inbox and the Mates' tokens today.
+Clicking a crew opens `../office/#crew/<project>/<crew>`, a Mate `../office/#mate/<project>`, City Hall or its mailbox `../office/#captain`.
+Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, replaying the repo's latest merged ship task (of its last six, the newest that went through review and asked a question) from `/api/projects/{p}/tasks/{crew}` for it and each of its `reviews`.
+The replay is the spawn, the crew's status lines (each agent keeps its first, middle and last), its questions and the answers, its hand-backs, each review with its verdict (`review` of the reviewer row; the reviewer's last hand-back is where it lands), and the merge, one every three seconds, looping; the panel lists them with their real local times. A repo with no merged task shows a sleeping Mate.
+`Escape` or `Back to the city` leaves the tent.
+
+Reads: `/api/workspace`, `/api/projects/{p}` per project, `/api/board?days=7`, `/api/news`, and the task endpoints above while a tent is open.
+It long-polls `/api/events?since=<last_event_id>&wait=20`, re-reads everything when anything moved or the id went backwards (a `mate reindex`), and re-reads `/api/news` on a quiet poll; the pill says `live` or `stale` with the reason, and a failed poll retries every 3 seconds.
+The scene is one light palette whatever the system theme.
