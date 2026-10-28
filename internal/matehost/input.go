@@ -17,8 +17,9 @@ import (
 // Tea only chunks that end on a sequence boundary.
 
 // seqWait is how long a chunk that ends inside an escape sequence waits for
-// the rest of it. A lone Esc key waits this long too.
-const seqWait = 50 * time.Millisecond
+// the rest of it. A lone Esc key waits this long too. A variable so a test
+// can make the wait outlast its own scheduling on a loaded machine.
+var seqWait = 50 * time.Millisecond
 
 // seqRoom is what a read leaves free in the caller's buffer for the rest of
 // a sequence: an SGR mouse report is at most 16 bytes.

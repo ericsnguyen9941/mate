@@ -69,16 +69,22 @@ func runSplit(t *testing.T, wrap func(*os.File) io.Reader) inputLog {
 		m, _ := p.Run()
 		done <- m
 	}()
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	w.Write([]byte("\x1b[<64;35"))
 	time.Sleep(5 * time.Millisecond)
 	w.Write([]byte(";39M\x1b[<64;35;39M"))
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	p.Quit()
 	return (<-done).(inputLog)
 }
 
 func TestSeqInputKeepsSplitMouseReport(t *testing.T) {
+	// The 5ms gap between the two writes is a sleep, which a loaded machine
+	// stretches past the 50ms production wait (CON-132); the wait is not
+	// what is tested, the joining is.
+	wait := seqWait
+	seqWait = 2 * time.Second
+	t.Cleanup(func() { seqWait = wait })
 	// The bare pipe shows the bug: the split report types into the model.
 	bare := runSplit(t, func(f *os.File) io.Reader { return f })
 	if len(bare.keys) == 0 {

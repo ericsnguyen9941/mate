@@ -65,7 +65,17 @@ func TestIngestBoundsEachProjectsPass(t *testing.T) {
 	}
 
 	git.hang.Store(false)
-	if err := ing.Ingest(context.Background()); err != nil {
+	// The next poll gets the production bound: the 100ms one was for the
+	// hung git, and a real git on a loaded machine takes longer than that
+	// (CON-132). The cursors are the database's, so a new Ingester is the
+	// same next pass.
+	next := timeline.New(f.ws, f.db, timeline.Deps{
+		Now:             func() time.Time { return fixtureNow },
+		Harnesses:       catalog.Default(),
+		TranscriptRoots: transcriptRoots(filepath.Join(f.root, "no-claude-projects"), filepath.Join(f.root, "no-codex-sessions")),
+		Git:             gitx.Git{Runner: git},
+	})
+	if err := next.Ingest(context.Background()); err != nil {
 		t.Fatalf("Ingest after git answered again: %v", err)
 	}
 	if len(f.story(t)) == 0 {
