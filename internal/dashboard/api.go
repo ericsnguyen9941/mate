@@ -185,6 +185,9 @@ func (s *Server) handleTask(ctx context.Context, r *http.Request, env envelope) 
 		return nil, err
 	}
 	crew := r.PathValue("crew")
+	if r.URL.Query().Get("view") == "summary" {
+		return s.taskSummary(ctx, env, project, crew)
+	}
 	ledger, turns, questions, performance, err := s.taskPerformance(ctx, project, crew)
 	if err != nil {
 		return nil, err
@@ -199,6 +202,27 @@ func (s *Server) handleTask(ctx context.Context, r *http.Request, env envelope) 
 		Branch:      s.branch(ctx, project, crew, ledger.Branch),
 		Performance: performance,
 	}, nil
+}
+
+// taskSummary is GET /api/projects/{p}/tasks/{crew}?view=summary: the
+// ledger row, status lines and decisions, without the turns, the branch
+// check and the performance projection, which are most of the full
+// answer's time and bytes. Agent City's tent replay reads it (CON-126).
+func (s *Server) taskSummary(ctx context.Context, env envelope, project, crew string) (any, error) {
+	ledger, err := s.task(ctx, project, crew, s.deps.now())
+	if err != nil {
+		return nil, err
+	}
+	actorID := timeline.CrewActorID(project, crew)
+	questions, err := s.questions(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	lines, err := s.statusLines(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	return TaskSummaryResponse{envelope: env, Project: project, Crew: crew, Ledger: ledger, StatusLines: lines, Questions: decisionsOnly(questions)}, nil
 }
 
 func (s *Server) handleMate(ctx context.Context, r *http.Request, env envelope) (any, error) {

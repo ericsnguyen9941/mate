@@ -131,7 +131,7 @@ The UI shows newest exchanges first and reveals older ones in batches of 20.
 
 `role` is what the task was for: `review` for a reviewer crew (it has `review.meta`), `scout` for a scout (crew meta `kind=scout`, or a brief with `## Deliverable` for a crew spawned before `kind` was recorded), else `ship`.
 
-`agents` is the kinds of agent the crew delegated to, first use first and each once: the `agent` of its `tool.called` events (docs/timeline.md), which is Claude's `subagent_type` - a project's `.claude/agents/<name>.md` such as `backend-reviewer`, or a built-in such as `Explore`, as written. One query per project serves the whole table. Absent for a crew that delegated to none, or only to agents of no named kind. Events ingested before the field existed carry no `agent`; `mate reindex` rebuilds them from the transcripts (CON-124).
+`agents` is the kinds of agent the crew delegated to, first use first and each once: the `agent` of its `tool.called` events (docs/timeline.md), which is Claude's `subagent_type` - a project's `.claude/agents/<name>.md` such as `backend-reviewer`, or a built-in such as `Explore`, as written. Finding them reads every `tool.called` payload, so the server keeps them in memory, reads only the events past the highest id it has seen, and starts over when that id goes backwards (a `mate reindex`) (CON-126). Absent for a crew that delegated to none, or only to agents of no named kind. Events ingested before the field existed carry no `agent`; `mate reindex` rebuilds them from the transcripts (CON-124).
 
 `inbox` is `box.Inbox` flattened through `query.LoadBox`, oldest first, the same rows in the same order the console's rail draws.
 A failed box read leaves `inbox` empty and puts the reason in `inbox_error` rather than failing the page.
@@ -313,6 +313,8 @@ prompt-level timelines and the segments using the most tokens. Model calls,
 status lines, questions and the branch remain available as supporting evidence.
 
 `ledger` is the same task object as tier 2's row.
+
+`?view=summary` answers with `ledger`, `status_lines` and `questions` only - no `turns`, `branch` or `performance`, which are most of the full answer's time and bytes. Agent City's tent replay reads it (section 12, CON-126).
 
 `turns` is one object per model call, oldest first.
 `trigger_kind` is the `kind` of the event named by `turn.trigger_event_id`, joined on because a page showing a bare id would be showing the reader a number they cannot read.
@@ -746,10 +748,13 @@ An unknown harness (one AgentMascot has no preset for) is a plain grey mascot wi
 
 Hovering a mascot names it - crew and role, harness, model, effort, state - a tent its repo, merged count and crews at work, City Hall the inbox and the Mates' tokens today.
 Clicking a crew opens `../office/#crew/<project>/<crew>`, a Mate `../office/#mate/<project>`, City Hall or its mailbox `../office/#captain`.
-Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, replaying the repo's latest merged ship task (of its last six, the newest that went through review and asked a question) from `/api/projects/{p}/tasks/{crew}` for it and each of its `reviews`.
+Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, replaying the repo's latest merged ship task (of its last six, the newest that went through review and asked a question) from `/api/projects/{p}/tasks/{crew}?view=summary` for it and each of its `reviews`.
+The episode is kept per tent until a newer task merges there, and read ahead while the pointer rests on a tent, so a click opens it at once.
 The replay is the spawn, the crew's status lines (each agent keeps its first, middle and last), its questions and the answers, its hand-backs, each review with its verdict (`review` of the reviewer row; the reviewer's last hand-back is where it lands), and the merge, one every three seconds, looping; the panel lists them with their real local times. A repo with no merged task shows a sleeping Mate.
 `Escape` or `Back to the city` leaves the tent.
 
-Reads: `/api/workspace`, `/api/projects/{p}` per project, `/api/board?days=7`, `/api/news`, and the task endpoints above while a tent is open.
-It long-polls `/api/events?since=<last_event_id>&wait=20`, re-reads everything when anything moved or the id went backwards (a `mate reindex`), and re-reads `/api/news` on a quiet poll; the pill says `live` or `stale` with the reason, and a failed poll retries every 3 seconds.
+Reads: `/api/workspace`, `/api/projects/{p}` per project, `/api/board?days=7`, `/api/news`, and the task endpoints above for a tent.
+The city is drawn as soon as `/api/workspace` answers; each project's crews and signs fill in as its page arrives, and the board and the news are read beside them and never hold the city up (CON-126).
+It long-polls `/api/events?since=<last_event_id>&wait=20`; an answer with events re-reads the workspace and the pages of the projects they name, an id that went backwards (a `mate reindex`) re-reads every project, and every answer re-reads `/api/news` and, once it is five minutes old, `/api/board`. The pill says `live` or `stale` with the reason, and a failed poll retries every 3 seconds.
+The page marks `city:drawn` and `city:tent <project>/<repo>` on the browser's performance timeline at the first frame of each.
 The scene is one light palette whatever the system theme.

@@ -68,11 +68,12 @@ type Options struct {
 
 // Server is a bound-but-not-yet-serving dashboard.
 type Server struct {
-	ws    *store.Workspace
-	db    *db.DB
-	deps  Deps
-	cache *cache
-	mux   *http.ServeMux
+	ws     *store.Workspace
+	db     *db.DB
+	deps   Deps
+	cache  *cache
+	agents *agentIndex
+	mux    *http.ServeMux
 }
 
 // New builds the server and its routes. It reads nothing yet: a dashboard
@@ -91,7 +92,7 @@ func New(opts Options) (*Server, error) {
 		// would also keep the console out of its own timeline.
 		return nil, errors.New("dashboard: the database handle must be read-only (db.OpenRead)")
 	}
-	s := &Server{ws: opts.Workspace, db: opts.DB, deps: opts.Deps, cache: newCache(), mux: http.NewServeMux()}
+	s := &Server{ws: opts.Workspace, db: opts.DB, deps: opts.Deps, cache: newCache(), agents: &agentIndex{}, mux: http.NewServeMux()}
 	s.routes()
 	return s, nil
 }

@@ -343,6 +343,17 @@ type TaskResponse struct {
 	Performance diagnostics.Performance `json:"performance"`
 }
 
+// TaskSummaryResponse is GET /api/projects/{project}/tasks/{crew}?view=summary:
+// TaskResponse without Turns, Branch and Performance (CON-126).
+type TaskSummaryResponse struct {
+	envelope
+	Project     string       `json:"project"`
+	Crew        string       `json:"crew"`
+	Ledger      Task         `json:"ledger"`
+	StatusLines []StatusLine `json:"status_lines"`
+	Questions   []Question   `json:"questions"`
+}
+
 // Action is one tool call inside a turn.
 type Action struct {
 	ID         string `json:"id"`
