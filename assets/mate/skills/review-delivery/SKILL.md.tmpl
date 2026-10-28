@@ -39,7 +39,7 @@ The fix after a review is reviewed from the commit that review saw, never from s
 
 ## Landing
 
-Run `task-learning` for the delivered revision and review evidence before landing, including when reviews are off.
+Run `task-learning` for the delivered revision and review evidence before landing, including when reviews are off. `wake` prints `learning:` under the hand-back: `none recorded` or `not for <revision>` is the app telling you the record is still missing for this evidence.
 
 Once the review passes, land the work yourself:
 
@@ -58,7 +58,7 @@ On `merge refused: needs-rebase`, send the Crew one line, "rebase onto <default 
 A pull request ship (`--deliver pr`) hands back with `pr-open:`; review its branch exactly as above. It fixes corrections on the same branch and pushes; the same pull request follows. `mate merge` runs `gh pr merge` for it.
 A watcher follows every open pull request and wakes you with `pr-merged:` or `pr-closed:`. When a Crew opened one without it and no console is open, start it: `{{.MatevBin}} pr watch {{.ProjectName}} <id> <url>`.
 
-- **`pr-merged:`** - run `task-learning` first (reuse the result if this revision has no new evidence), then run `{{.MatevBin}} crew stop {{.ProjectName}} <id>`, which takes the merged pull request as landed, even after a squash or rebase merge. If the line says the checkout was `skipped:`, tell the captain their copy of the default branch is behind. Then keep the work moving.
+- **`pr-merged:`** - `wake` lists the Crew as a `landed` item with its `learning:` line until it is closed. Run `task-learning` first (reuse the result if this revision has no new evidence), then run `{{.MatevBin}} crew stop {{.ProjectName}} <id>`, which takes the merged pull request as landed, even after a squash or rebase merge. If the line says the checkout was `skipped:`, tell the captain their copy of the default branch is behind. Then keep the work moving.
 - **`pr-closed:`** - it was closed unmerged. Find out why (its comments, through a scout if they are long), then either send the Crew the rework, telling it to reopen the pull request (`gh pr reopen`) and run `pr watch` again, or tell the captain it was turned down.
 
 ## A scout
