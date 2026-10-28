@@ -60,6 +60,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdCheckpoint(args[1:], stdout, stderr)
 	case "recall":
 		return cmdRecall(args[1:], stdout, stderr)
+	case "learnings":
+		return cmdLearnings(args[1:], stdout, stderr)
 	case "wake":
 		return cmdWake(args[1:], stdout, stderr)
 	case "hook":

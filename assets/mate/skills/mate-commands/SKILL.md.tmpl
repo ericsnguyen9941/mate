@@ -54,6 +54,11 @@ Cite it as a source in `## What we already know`. The `(anchor ...)` is exactly 
 A missing file prints `ABSENT` and an empty one `(empty)`, which mean different things.
 `--live` prints part 1 only. `--part <n>[,<n>...]` reprints whole parts. `--max-bytes <n>` cuts from the bottom, part 1 always survives whole, and the last line names what was left out.
 
+## Learnings
+
+- `{{.MatevBin}} learnings open {{.ProjectName}}` - every open prediction of `{{.MateDir}}/learnings/*.md`, as `<crew> <id>: <claim>`; `new-task` reads it, nothing else does.
+- `{{.MatevBin}} learnings close {{.ProjectName}} <crew> <id> improved|unchanged|inconclusive|not comparable --evidence "<task/revision: what it showed>"` - rewrites that one item's outcome, dated; `task-learning` runs it for each `Prediction` line a brief carried. An unknown id or outcome word is exit 2.
+
 ## Refusals
 
 **`crew spawn`** creates nothing when it refuses.

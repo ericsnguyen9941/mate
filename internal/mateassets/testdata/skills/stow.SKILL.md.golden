@@ -25,6 +25,7 @@ Every entry is one line: the fact, a perishable entry's `(expires: <condition>)`
 - `aging`: a lesson marked `<!--a:YYYY-MM-DD-->`, its last-reinforced date. It is stale 30 days after it: 30 days since its last-reinforced date it re-proves itself or is archived.
 - `perishable`: a lesson whose truth ends with a checkable condition (a backlog id, a version, a fix landing), marked `<!--p:YYYY-MM-DD-->` and stale after 7: 7 days since its last-reinforced date its condition is checked again. A lesson with no such condition is aging.
 
+A lesson that came from a learning record's prediction is withdrawn once `/usr/local/bin/mate learnings open shop` no longer lists it and its record shows `unchanged` twice; keep it only with new evidence.
 A stale entry whose truth still holds is refreshed, never lost. Choose the section by what the entry is about, never by the tier you want: a Crew rule proposed for CREW.md stays a lesson until the captain adds it.
 The file's header line, `<!-- memory tiers: see the stow skill -->`, is the only pointer to these rules.
 
