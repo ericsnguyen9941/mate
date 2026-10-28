@@ -283,6 +283,9 @@ func cmdCrewStop(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	writeCrewStopReport(stdout, project, crew, res, spawn.CallerFromEnv())
+	if !res.AlreadyClosed {
+		writeLearningUsageLine(stdout, context.Background(), w, project, crew, "crew stop")
+	}
 	return nil
 }
 

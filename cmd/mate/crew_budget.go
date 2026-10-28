@@ -174,7 +174,7 @@ func consoleBudgetActions(ws *store.Workspace, deps spawn.Deps) *autopilot.Budge
 func budgetStop(ctx context.Context, ws *store.Workspace, deps spawn.Deps, project, crew string) (string, error) {
 	res, err := spawn.StopCrew(ctx, ws, deps, project, crew, false)
 	if err == nil {
-		return "crew stopped, state " + res.State, nil
+		return "crew stopped, state " + res.State + "; " + recordUsageAtClose(ctx, ws, project, crew, "budget stop"), nil
 	}
 	if !errors.Is(err, spawn.ErrUnlandedWork) {
 		return "", err

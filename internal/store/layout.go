@@ -240,6 +240,11 @@ func (w *Workspace) CrewLearning(project, crew string) string {
 	return filepath.Join(w.MateDir(project), learningsDirName, crew+".md")
 }
 
+// LearningUsageSection is the `## ` heading of the one section of a
+// learning record the app writes at a crew's close (CON-130): the crew's
+// usage as the ledger has it. The Mate's skill names it and leaves it alone.
+const LearningUsageSection = "Usage (app)"
+
 // CrewSessionInput is `projects/<project>/crews/<crew>/session-<n>.md`: the
 // opening input of the crew's n-th session (CON-73), composed by a fresh
 // relaunch out of the brief, the last hand-back, the Mate's message and

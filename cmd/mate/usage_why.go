@@ -43,17 +43,8 @@ func printCrewWhy(ctx context.Context, handle *db.DB, w *store.Workspace, stdout
 	}
 
 	fmt.Fprintf(stdout, "usage why %s %s\n", project, crew)
-	if ledger.Text != "" {
-		fmt.Fprintf(stdout, "task: %s\n", oneLine(ledger.Text, whyTextWidth))
-	}
-	fmt.Fprintf(stdout, "run: %s\n", strings.Join(whyRun(ledger, perf), " · "))
+	writeWhyHead(stdout, ledger, turns, perf)
 	t := ledger.Tokens
-	fmt.Fprintf(stdout, "tokens: %s total = %s in + %s cache-read + %s cache-write + %s out · cost %s\n",
-		query.HumanizeTokens(t.Total), query.HumanizeTokens(t.Input), query.HumanizeTokens(t.CacheRead),
-		query.HumanizeTokens(t.CacheWrite), query.HumanizeTokens(t.Output), whyCost(ledger.Cost))
-	fmt.Fprintf(stdout, "shape: %d model call(s) over %d prompt(s) · context %s · asked %d · waited %s\n",
-		len(turns), len(perf.PromptTurns), whyContext(turns), ledger.QuestionCount, waitedWord(ledger.WaitedMs))
-	whyTime(stdout, perf.Time)
 	if len(turns) == 0 {
 		fmt.Fprintf(stdout, "\nno model calls recorded for %s; there is nothing to explain yet\n", crew)
 		return nil
@@ -71,6 +62,24 @@ func printCrewWhy(ctx context.Context, handle *db.DB, w *store.Workspace, stdout
 		}
 	}
 	return nil
+}
+
+// writeWhyHead is the digest's head - the task, its run, the token buckets,
+// the call shape and the timing lanes - shared with the usage section the
+// app writes into a crew's learning record at its close (CON-130), so the
+// two never say a number differently.
+func writeWhyHead(stdout io.Writer, ledger dashboard.Task, turns []dashboard.Turn, perf diagnostics.Performance) {
+	if ledger.Text != "" {
+		fmt.Fprintf(stdout, "task: %s\n", oneLine(ledger.Text, whyTextWidth))
+	}
+	fmt.Fprintf(stdout, "run: %s\n", strings.Join(whyRun(ledger, perf), " · "))
+	t := ledger.Tokens
+	fmt.Fprintf(stdout, "tokens: %s total = %s in + %s cache-read + %s cache-write + %s out · cost %s\n",
+		query.HumanizeTokens(t.Total), query.HumanizeTokens(t.Input), query.HumanizeTokens(t.CacheRead),
+		query.HumanizeTokens(t.CacheWrite), query.HumanizeTokens(t.Output), whyCost(ledger.Cost))
+	fmt.Fprintf(stdout, "shape: %d model call(s) over %d prompt(s) · context %s · asked %d · waited %s\n",
+		len(turns), len(perf.PromptTurns), whyContext(turns), ledger.QuestionCount, waitedWord(ledger.WaitedMs))
+	whyTime(stdout, perf.Time)
 }
 
 func whyRun(ledger dashboard.Task, perf diagnostics.Performance) []string {

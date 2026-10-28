@@ -78,6 +78,11 @@ func TestCmdMergePrintsOneLineAndFinishesTheCrew(t *testing.T) {
 	if n := len(strings.Split(line, "\n")); n != 1 {
 		t.Fatalf("merge printed %d lines, want exactly one:\n%s", n, line)
 	}
+	// The learning record gets its usage section on the merge (CON-130),
+	// silently: without a timeline it says unknown.
+	if rec, err := os.ReadFile(w.CrewLearning("shop", "k3")); err != nil || !strings.Contains(string(rec), "## Usage (app)\nunknown: db: no timeline") {
+		t.Fatalf("learning record after merge: %v\n%s", err, rec)
+	}
 
 	meta, err := w.ReadCrewMeta("shop", "k3")
 	if err != nil {

@@ -253,7 +253,8 @@ var headingMention = regexp.MustCompile("`## ([^`]+)`")
 // a review section no code reads (CON-106), so it has no store constant.
 var templateHeadings = func() map[string]bool {
 	m := map[string]bool{"Deviations from Build": true, "Still open": true, "Durable facts": true, "For the next crew": true,
-		store.VerdictSection: true, store.FindingsSection: true, store.PriorFindingsSection: true, "Notes": true}
+		store.VerdictSection: true, store.FindingsSection: true, store.PriorFindingsSection: true, "Notes": true,
+		store.LearningUsageSection: true}
 	for _, set := range [][]string{memory.Sections, memory.ProjectSections, memory.BacklogSections} {
 		for _, s := range set {
 			m[s] = true
