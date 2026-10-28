@@ -237,8 +237,18 @@ func (w *Workspace) CrewHandback(project, crew string) string {
 // It lives under the Mate's own directory, not the crew's: the Mate writes
 // it, and `mate wake` reads it to say whether a hand-back has one.
 func (w *Workspace) CrewLearning(project, crew string) string {
-	return filepath.Join(w.MateDir(project), learningsDirName, crew+".md")
+	return filepath.Join(w.LearningsDir(project), crew+".md")
 }
+
+// LearningsDir is `projects/<project>/mate/learnings`, one record per crew.
+func (w *Workspace) LearningsDir(project string) string {
+	return filepath.Join(w.MateDir(project), learningsDirName)
+}
+
+// LearningPredictionsSection is the `## ` heading of a learning record under
+// which the Mate lists what its lessons predict, one bullet each with an
+// `outcome:` (CON-131); internal/learnings reads and closes them.
+const LearningPredictionsSection = "Predictions"
 
 // LearningUsageSection is the `## ` heading of the one section of a
 // learning record the app writes at a crew's close (CON-130): the crew's
