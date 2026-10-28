@@ -247,9 +247,12 @@ export class AgentMascot {
    * @param {number} [options.bubbleScale] speech bubble size; 1 sets the font at 2.4% of the viewport height
    * @param {number} [options.bubbleAlign] 0 centres the bubble over the head, 1 grows it rightward, -1 leftward
    * @param {number} [options.bubbleNear] camera distance past which bubbles shrink with distance (default: never)
+   * @param {boolean} [options.keep] keep the whole timeline, for a page that scrubs back through it; by default
+   *   segments and lines more than ten seconds older than the newest are dropped
    */
-  constructor({ harness = 'claude', color, logo, logoColor, accent, glow, size = 1, position = [0, 0, 0], heading = 0, phase = 0, shadow = true, bubbleScale = 1, bubbleAlign = 0, bubbleNear = Infinity } = {}) {
+  constructor({ harness = 'claude', color, logo, logoColor, accent, glow, size = 1, position = [0, 0, 0], heading = 0, phase = 0, shadow = true, bubbleScale = 1, bubbleAlign = 0, bubbleNear = Infinity, keep = false } = {}) {
     this.size = size;
+    this.keep = keep;
     this.heading = heading;
     this.phase = phase;
     this.segments = [{ state: 'idle', start: -Infinity }];
@@ -365,7 +368,7 @@ export class AgentMascot {
     if (!STATES[then]?.loop) throw new Error(`then must be a looping state, got ${then}`);
     this.segments = this.segments.filter((s) => s.start < at);
     // Keep history only as long as a packet or ring from it could still show.
-    while (this.segments.length > 2 && this.segments[1].start < at - 10) this.segments.shift();
+    while (!this.keep && this.segments.length > 2 && this.segments[1].start < at - 10) this.segments.shift();
     this.segments.push({ state, start: at, target, from, then, turn });
     return this;
   }
@@ -377,7 +380,7 @@ export class AgentMascot {
    */
   say(text, { at = this.lastT, cps = SPEECH.cps, hold = SPEECH.hold, duration, style = BUBBLE_STYLE } = {}) {
     const typing = Array.from(text).length / cps;
-    this.speeches = this.speeches.filter((s) => s.at < at && s.at + s.duration > at - 10);
+    this.speeches = this.speeches.filter((s) => s.at < at && (this.keep || s.at + s.duration > at - 10));
     this.speeches.push({ text, at, cps, typing, duration: duration ?? SPEECH.typeDelay + typing + hold, style });
     return this;
   }

@@ -2,6 +2,7 @@ import * as THREE from './vendor/three.js';
 import { RoundedBoxGeometry } from './vendor/three.js';
 import { AgentMascot, handoff } from './agent-mascot.js';
 import { HARNESSES } from './harnesses.js';
+import { CHAT_STYLE, GAP, lineFor, seeded } from './chatter.js';
 import { PALETTE, LiveTexture, matte, textTexture, valanceGeometry, harnessLook, harnessName, poseOf } from './city.js';
 
 // One repo's tent seen up close: a big open tent (front and roof cut away)
@@ -323,7 +324,7 @@ export function createTentRoom({ project, repo, floor, mateHarness, mateState, h
     const z = TABLE.z - R * Math.cos(phi);
     const own = stays.filter((st) => st.seat === k);
     const look = own[0].task.harness;
-    const m = new AgentMascot({ ...harnessLook(look), size: CREW_SIZE, position: [x, 0.14, z], heading: -0.55 * phi, phase: (k * 1.37) % 4 });
+    const m = new AgentMascot({ ...harnessLook(look), size: CREW_SIZE, position: [x, 0.14, z], heading: -0.55 * phi, phase: (k * 1.37) % 4, keep: true });
     m.id = `${project}/seat-${k}`;
     m.play('idle', { at: 0 });
     group.add(m.root);
@@ -344,7 +345,7 @@ export function createTentRoom({ project, repo, floor, mateHarness, mateState, h
     }
     return { m, own, look, laptop, pad: pad(x, z, CREW_SIZE, padMat) };
   });
-  const mate = new AgentMascot({ ...harnessLook(mateHarness), size: MATE_SIZE, position: [-1.3, 0.14, 1.0], heading: 0.35, phase: 0.5 });
+  const mate = new AgentMascot({ ...harnessLook(mateHarness), size: MATE_SIZE, position: [-1.3, 0.14, 1.0], heading: 0.35, phase: 0.5, keep: true });
   mate.id = `${project}:mate`;
   group.add(mate.root);
   mascots.set(mate.id, mate);
@@ -353,7 +354,9 @@ export function createTentRoom({ project, repo, floor, mateHarness, mateState, h
   const mascotOf = (crew) => chairs[stayOf.get(crew)?.seat]?.m;
 
   // ---- Playing it out -------------------------------------------------------------
-  // A mascot's plays must go in time order, which the event order gives.
+  // A mascot's plays must go in time order, which the event order gives. Its
+  // lines must too, and small talk goes between them, so lines are gathered
+  // first and said in order once the small talk is in.
   const feed = []; // { at, clock, iso, who, kind, text, crew }
   const clockFmt = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
   const clock = (iso) => clockFmt.format(new Date(iso));
@@ -362,7 +365,8 @@ export function createTentRoom({ project, repo, floor, mateHarness, mateState, h
     const t = byCrew.get(crew);
     return `${harnessName(t?.harness)} · ${ticket(crew).key}${t?.role === 'review' ? ' review' : ''}`;
   };
-  const say = (m, text, at) => m.say(text, { at, hold: 0.7 });
+  const lines = []; // { m, text, at, hold, style? }
+  const say = (m, text, at) => lines.push({ m, text, at, hold: 0.7 });
   const pass = (from, to, at, then, receiverThen) => to && handoff(from, to, at, { then, receiverThen, turn: 0.6 });
   const notes = new Map(); // crew → [room time, words] for its card on the board
   const note = (crew, at, words) => notes.set(crew, [...(notes.get(crew) ?? []), [at, words]]);
@@ -429,6 +433,54 @@ export function createTentRoom({ project, repo, floor, mateHarness, mateState, h
   for (const st of stays) if (!st.task.closed && st.task.state) mascotOf(st.task.crew)?.play(poseOf(st.task.state), { at: end });
   if (n && mateState) mate.play(mateState === 'asleep' ? 'sleeping' : poseOf(mateState), { at: end });
 
+  // Small talk (chatter.js): a crew at the table, or the Mate, says a line
+  // that fits its pose when it has said nothing real for a moment, seeded by
+  // its name so a rebuilt tent chats the same. Past the history it goes on
+  // as long as the room is watched, a chunk at a time.
+  const spoke = new Map(); // mascot → room times of its real lines
+  for (const l of lines) spoke.set(l.m, [...(spoke.get(l.m) ?? []), l.at]);
+  const quiet = (m, at) => !(spoke.get(m) ?? []).some((x) => x > at - 2 && x < at + 4);
+  function chat(m, rand, from, to, out) {
+    let at = from;
+    for (; at < to; at += GAP[0] + rand() * GAP[1]) {
+      const text = quiet(m, at) && lineFor(m.stateAt(at), rand);
+      if (text) out.push({ m, text, at, hold: 1.2, style: CHAT_STYLE });
+    }
+    return at;
+  }
+  const tail = []; // { m, rand, next }: who goes on chatting past the history
+  for (const st of stays) {
+    const m = chairs[st.seat].m;
+    const rand = seeded(st.task.crew);
+    const next = chat(m, rand, st.from + 2 + rand() * GAP[1], Math.min(st.to, duration), lines);
+    if (st.to === Infinity) tail.push({ m, rand, next });
+  }
+  const mateRand = seeded(project);
+  tail.push({ m: mate, rand: mateRand, next: chat(mate, mateRand, 3 + mateRand() * GAP[1], duration, lines) });
+  // One piece of small talk at a time in the room: a line within CHAT_APART
+  // of the last one kept is dropped.
+  const CHAT_APART = 5;
+  let lastChat = -Infinity;
+  const sayAll = (list) => {
+    list.sort((a, b) => a.at - b.at);
+    for (const l of list) {
+      if (l.style === CHAT_STYLE) {
+        if (l.at - lastChat < CHAT_APART) continue;
+        lastChat = l.at;
+      }
+      l.m.say(l.text, { at: l.at, hold: l.hold, style: l.style });
+    }
+  };
+  sayAll(lines);
+  let horizon = duration;
+  function chatOn(t) {
+    if (t < horizon - 30) return;
+    horizon = t + 120;
+    const more = [];
+    for (const c of tail) c.next = chat(c.m, c.rand, Math.max(c.next, duration), horizon, more);
+    sayAll(more);
+  }
+
   // ---- The board --------------------------------------------------------------------
   const ships = stays.filter((st) => st.task.role === 'ship');
   const noteAt = (crew, t) => {
@@ -457,6 +509,7 @@ export function createTentRoom({ project, repo, floor, mateHarness, mateState, h
   }
 
   function update(t) {
+    chatOn(t);
     for (const ch of chairs) {
       const st = ch.own.find((o) => o.from <= t && t < o.to);
       ch.m.root.visible = ch.pad.visible = Boolean(st);

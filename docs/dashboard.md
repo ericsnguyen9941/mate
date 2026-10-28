@@ -731,6 +731,7 @@ It is linked from the admin header (`Agent City`, beside `Mate Office`) and from
 | `city.js` | the city: island, streets, City Hall, one block per project, one tent per repo, the setters `setCrews`, `setMate`, `setMerged`, `setBoard`, `setHall`, `setMailbox` |
 | `room.js` | one tent up close, playing back its history |
 | `history.js` | what a tent's agents did, read from the history endpoint |
+| `chatter.js` | the small talk mascots say now and then, by pose |
 | `agent-mascot.js`, `bubble.js`, `harnesses.js` | the AgentMascot component, as in the promo |
 | `vendor/three.js` | three.js 0.186.1 and the addons the page uses, prebuilt into one ES module; its header carries the MIT licence and the command that built it |
 
@@ -752,6 +753,8 @@ The city is a grid of blocks, 3×3 or 5×5 past eight projects, with City Hall a
 
 An unknown harness (one AgentMascot has no preset for) is a plain grey mascot with a ring for a logo, named after the harness.
 
+Every mascot, in the city and in a tent, now and then says a line going round Vietnamese social media that fits its pose - working, thinking, idle, done or asleep - from `chatter.js`, every 12 to 34 seconds at random, and only when it is not already talking (CON-128). Small talk is for fun and says nothing about the work: it comes in a yellow bubble, never the paper one real lines use, and never in a tent's feed. In a tent it falls only where the mascot has said nothing real for a moment, one line at a time in the room, seeded by the crew's name so a rebuilt tent says the same lines at the same times; past the history it goes on while the tent is watched.
+
 Hovering a mascot names it - crew and role, harness, model, effort, state - a tent its repo, merged count and crews at work, City Hall the inbox and the Mates' tokens today.
 Clicking a crew opens `../office/#crew/<project>/<crew>`, a Mate `../office/#mate/<project>`, City Hall or its mailbox `../office/#captain`.
 Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, playing back what its agents did (CON-127).
@@ -759,6 +762,7 @@ Its tasks are the project's rows on the tent spawned since midnight UTC seven da
 The playback is every task's spawn (or, for a reviewer, the Mate asking it to review), all its status lines, its questions and the answers, its hand-backs, each reviewer's verdict (`review` of the reviewer row; the reviewer's last hand-back is where it lands), and the merge, or the close of a task that was not merged, in the order they happened, one every 2.5 seconds whatever the real gap; the panel lists them with their real local times.
 A crew sits at the round table from its spawn until just before the first event after its task closed; seats are reused, and past seven a second arc forms behind the first. The task board shows each ship task as it stood at that moment: `Doing` from its spawn, `Review` while a reviewer of it is at the table, `Done` once merged, with its latest status line or the PR.
 The scrub bar under the tent runs from the first event to now, with the days and the merges marked: drag it, or click a line in the panel, to go there. Play runs at 1×, 4×, 16× or 64× until it reaches now; `Live` jumps to now and follows. A tent opens live, three events before now. Live and caught up, the open crews and the Mate end posed by their scene states, and a new event on the project reads the history again and plays it; scrubbed back, the view stays on the same event. `Space` plays and pauses.
+A tent's mascots keep their whole timeline (AgentMascot's `keep`), so a pose or a line scrubbed back to is the one played there; by default a mascot drops what is more than ten seconds older than its newest.
 The history is kept per tent while the project's rows are the same, and read ahead while the pointer rests on a tent, so a click opens it at once. A repo with no task shows a sleeping Mate.
 `Escape` or `Back to the city` leaves the tent.
 
