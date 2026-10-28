@@ -1,17 +1,18 @@
 ---
 name: new-task
-description: From the captain's words to a running Crew in one turn - ship or scout, one repo, overlap, the brief and its check, the profile from `mate crew dispatch`, the spawn. Load it when the captain asks for work, before you dispatch queued work or spawn any Crew, and before you pass the captain's later words to a Crew in flight.
+description: Settle intake, then dispatch a ready task - ship or scout, one repo, overlap, the brief and its check, the profile from `mate crew dispatch`, the spawn. Load it when the captain asks for work, before you dispatch queued work or spawn any Crew, and before you pass the captain's later words to a Crew in flight.
 ---
 
 # new-task
 
-A task the captain asks for is dispatched in the same turn you accept it; never answer with a plan and wait.
+Dispatch ready work in the same turn. When scope is not ready, settle the missing decision first; accepting a request does not make it ready to build.
 
 ## Before you dispatch
 
 Read the evidence you have first: PROJECT.md, memory, and earlier Crews' reports and hand-backs (`{{.MatevBin}} backlog {{.ProjectName}} --all` lists them).
 When it already answers the question, relay it; no scout.
-When the captain's intent is unclear, ask one short implementation question rather than dispatching speculative design work.
+For this task's area, follow only prediction pointers already in PROJECT.md, lessons or the preceding handback; carry relevant baseline/next-check links into the brief. Do not scan the whole learning archive.
+When the captain's intent is unclear, ask the smallest question that settles the intended behaviour or boundary, with the evidence and your recommendation.
 A diagnosis is evidence: a fix that serves a goal the captain already set is yours to dispatch, and you tell them; a fix beyond it is a proposal.
 Record the work in the captain's tracker when one is configured, otherwise in the backlog, before you dispatch it.
 
@@ -31,10 +32,15 @@ When the task's repo is in a lane the output calls full, do not spawn: queue it 
 New work, or a large change of spec mid-task, goes to a new Crew, never into the running one.
 A UI task whose design the captain has not settled waits for the design.
 
-**Open questions.** A gap in the request (which page, which name, how far) is usually not a reason to stop, and not yours to settle by looking.
-Write it into `## Open decisions` with who decides, dispatch, and let the Crew stop on it with `needs-decision:`; the question then waits in the captain's inbox at no cost to them.
-Ask the captain first only when your evidence says the gap will probably change whether or what gets built ("add a button to the landing page" when `project facts` shows an empty tree): one question, evidence first, or a scout proposal.
-Refuse only a request you cannot shape into a brief at all, in one line.
+**Ready to ship.** Before spawning, the brief must state the observable outcome, what is in and out of scope, existing behaviour to preserve, and evidence that will demonstrate acceptance. Every remaining unknown must be resolvable without changing that contract. This is your judgement, not something `brief check` certifies.
+
+Classify each gap by what its answer could change:
+- **Implementation fact** (which file, symbol, test or local pattern): put it in `Unknown:` for the ship to inspect. You need not enumerate all files or inspect code yourself.
+- **Product decision** (which page, behaviour, state, exclusion or acceptance): settle it from the captain's words and recorded decisions; ask the captain only where their authority is needed. Keep the task queued with the exact unresolved choice until answered.
+- **Feasibility that could change scope**: use existing evidence first; otherwise dispatch a focused scout with the question, bounded investigation and required evidence, then settle scope before ship. Ordinary implementation uncertainty stays inside the ship.
+
+For example, a known design path belongs in the brief. If a requested loading state has no known user path, establish whether it should exist before promising it; finding the component that renders an agreed state belongs to the ship.
+`## Open decisions` is for conditional choices discovered during execution, with an explicit trigger and owner; it is not a place to park a known scope blocker while starting a ship.
 
 ## Name the crew
 
@@ -60,8 +66,8 @@ Write it to `{{.MateDir}}/briefs/<id>.md`; it is the Crew's whole task, since a 
 The file is the brief's `# Task`: exactly these sections, each a `##` heading, in this order.
 
 - `## Captain's words` - every word the captain said about this task, verbatim, always: their language, spelling and examples, no speaker label, no paraphrase. It is the contract. When the words point at a report or an earlier decision, copy its substance below them with its source. Never widen them into a general goal.
-- `## What we already know` - one fact per line with its source: PROJECT.md and its heading, a report path, `project facts`, a hand-back, the captain. Never invent the repository's state. The last line starts `Unknown:`.
-- `## Build` - only what the captain's words require, one line each, and an `Out of scope:` line. A sweep or hardening nobody asked for is follow-up, not scope; a product choice the words do not settle is an open decision.
+- `## What we already know` - one fact per line with its source: PROJECT.md and its heading, a report path, `project facts`, a hand-back, the captain. Transfer only relevant known entry points, design/artifact paths, commands, constraints and prior failed attempts, with usable paths and the source heading or revision. Separate verified facts from assumptions and stale evidence. The last line starts `Unknown:` and names the implementation facts the Crew still needs to find. Never invent the repository's state or dump all memory.
+- `## Build` - only what the captain's words require, one line each, the existing behaviour to preserve, and an `Out of scope:` line. A sweep or hardening nobody asked for is follow-up, not scope; a product choice the words do not settle is an open decision.
 - `## Acceptance` - one observable result per line, traceable to the captain's words, each with `verify:` and the exact command when a document gives one, else "find the project's own check for this, run it, and quote the command and its output".
   A `verify:` is the check an independent reviewer would run, in a clean environment, not the Crew's warm one:
   - a gate that depends on state (a simulator, caches, a database, DerivedData) runs from the clean state the repo provides;
@@ -99,10 +105,10 @@ A lesson from memory that applies to Crews goes into `## Build` until the captai
 
 **Settle before you spawn**; a guess in a brief costs more than the question:
 
-- A criterion checked by a string or a number is tried first, on an earlier hand-back, report or log, or the default branch through one read-only command. One you cannot make pass goes to `## Open decisions` or the captain.
+- Check that the proposed verification can observe the requested behaviour, using earlier evidence or a bounded read-only check. A new feature need not pass before implementation. An unreachable state or contradictory expectation is a scope question to settle before ship.
 - A diagnosis in the captain's words goes under `## What we already know` labelled `verified (<source>)` or `unverified`; unverified, it is never a criterion.
 - "Try both ways" carries a cap and a stop condition: "B failed before (ios-gotchas:25); one build each, stop and record it if the trap repeats".
-- A design conflict you can foresee goes in `## Open decisions` as `decides: mate`, "follow the proposal and record it under Deviations from Build".
+- Resolve a foreseeable design conflict before ship when it changes behaviour or acceptance. Record an authorised resolution and its source in the facts and reflect it in Build and Acceptance; a conditional fallback names its trigger and decision owner.
 
 Then `{{.MatevBin}} brief check {{.MateDir}}/briefs/<id>.md` (`--scout` for a scout), and fix every line it prints. Passing means the shape is right, not that the brief is good.
 
@@ -137,7 +143,15 @@ A spawn can take minutes: give it at least a five-minute timeout, and never kill
 
 Then `{{.MatevBin}} backlog add {{.ProjectName}} <id> --section "In flight" --text "<repo>, <branch>: <what it is for>"` (`backlog move` when it was queued; `--tracker <tracker-id>` for a tracker's task), tell the captain in one line that it started, with the profile in outcome words ("on the strong profile, because it touches every caller of the API"), and end your turn.
 
-**Later words.** When the captain adds to a task in flight, pass their words verbatim to `{{.MatevBin}} brief append {{.ProjectName}} <crew>` on stdin, never paraphrased into a `mate send`. Your own constraints go as one `mate send` line.
+## Updating a running task
+
+A decision must leave one current specification. Copy the current `# Task` from `{{.CrewsDir}}/<crew>/brief.md` into your `briefs/` directory, keeping `## Captain's words` unchanged, including earlier appended words. Update Build, Acceptance, Out of scope and Open decisions together; remove resolved choices and record the decision, who made it and its source under What we already know. Keep `Unknown:` last. Use this current copy, not the original spawn draft.
+
+- Captain's answer changes the specification: pass their exact new words on stdin to `{{.MatevBin}} brief append {{.ProjectName}} <crew> --revision <file>`. The file contains the old captain words; the app appends the new ones and saves the revision together before notifying the Crew.
+- Your own authorised decision changes the specification: `{{.MatevBin}} brief revise {{.ProjectName}} <crew> <file>`. It preserves captain words and notifies the Crew to reread the task; your decision is never attributed to the captain.
+- Additional captain words that need no specification change: `{{.MatevBin}} brief append {{.ProjectName}} <crew>` on stdin. An operational hint that changes no requirement can use `mate send`.
+
+Both revision paths check shape and refuse a changed captain history. You check semantic consistency before sending. If notification fails after saving, use the printed retry line; do not append the words twice. New work or a large scope change follows the new-Crew rule above.
 
 ## Scouts
 
@@ -151,4 +165,4 @@ A scout that diagnoses a bug asks in `## Deliverable` for each of these, one lin
 - the disconfirming evidence sought, and what it showed.
 
 Before acting on a diagnosis, check its cause explains both the reproduction and the proven path; when a load-bearing element is missing, dispatch a focused follow-up scout. The reproduction becomes the fixing ship's regression test, in `## Build` and `## Acceptance`.
-A ship built on a scout's report carries its findings with their source in `## What we already know`, takes acceptance lines from its proposals only where they trace to the captain's words, and moves every question it left open into `## Open decisions`.
+A ship built on a scout's report carries its findings with their source in `## What we already know`, takes acceptance lines from its proposals only where they trace to the captain's words, and classifies each unanswered question using the readiness rules above before dispatching the ship.

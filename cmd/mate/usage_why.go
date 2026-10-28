@@ -53,6 +53,7 @@ func printCrewWhy(ctx context.Context, handle *db.DB, w *store.Workspace, stdout
 		query.HumanizeTokens(t.CacheWrite), query.HumanizeTokens(t.Output), whyCost(ledger.Cost))
 	fmt.Fprintf(stdout, "shape: %d model call(s) over %d prompt(s) · context %s · asked %d · waited %s\n",
 		len(turns), len(perf.PromptTurns), whyContext(turns), ledger.QuestionCount, waitedWord(ledger.WaitedMs))
+	whyTime(stdout, perf.Time)
 	if len(turns) == 0 {
 		fmt.Fprintf(stdout, "\nno model calls recorded for %s; there is nothing to explain yet\n", crew)
 		return nil
@@ -137,7 +138,7 @@ func whyWork(stdout io.Writer, perf diagnostics.Performance, total int64) {
 	sort.SliceStable(categories, func(i, j int) bool { return owned(categories[i]) > owned(categories[j]) })
 	fmt.Fprintln(stdout, "\nwork by kind (each model call is counted once, under the kind of work it ran):")
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "KIND\tCALLS\tEXECS\tTOTAL\tOUT\tSHARE")
+	fmt.Fprintln(tw, "KIND\tCALLS\tEXECS\tTOTAL\tOUT\tSHARE\tELAPSED")
 	for _, c := range categories {
 		if c.ModelCalls == 0 && c.ExecutionCount == 0 {
 			continue
@@ -149,7 +150,7 @@ func whyWork(stdout io.Writer, perf diagnostics.Performance, total int64) {
 				share = fmt.Sprintf("%.0f%%", float64(c.Tokens.Total)*100/float64(total))
 			}
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%s\t%s\t%s\n", c.Label, c.ModelCalls, c.ExecutionCount, tokens, out, share)
+		fmt.Fprintf(tw, "%s\t%d\t%d\t%s\t%s\t%s\t%s\n", c.Label, c.ModelCalls, c.ExecutionCount, tokens, out, share, whyDuration(c.ElapsedMs))
 	}
 	_ = tw.Flush()
 	if perf.Overview.Coverage != "" {
@@ -258,4 +259,18 @@ func oneLine(s string, n int) string {
 		return string(r[:n]) + "…"
 	}
 	return string(r)
+}
+
+// Time lanes come from the existing projection, not sums of tool durations.
+func whyTime(w io.Writer, t diagnostics.TimeSummary) {
+	fmt.Fprintf(w, "time: prompt elapsed %s · tool elapsed %s · tool invocation sum %s · decision/handback wait %s · unallocated %s\n",
+		whyDuration(t.PromptElapsedMs), whyDuration(t.ToolElapsedMs), whyDuration(t.InvocationMs), whyDuration(t.DecisionWaitMs), whyDuration(t.UnallocatedMs))
+	fmt.Fprintln(w, "time coverage: recorded intervals only; lanes and category times can overlap, never add them up; unallocated is not model latency; ? is unknown")
+}
+
+func whyDuration(ms *int64) string {
+	if ms == nil {
+		return "?"
+	}
+	return (time.Duration(*ms) * time.Millisecond).String()
 }

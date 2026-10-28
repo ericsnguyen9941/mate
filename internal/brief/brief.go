@@ -1,8 +1,8 @@
 // Package brief owns the shape of the `# Task` part of a Crew brief: the
 // sections the Mate fills (docs/mvp.md M7, schema from
 // docs/research/firstmate-prompting-2026-09-24.md section 11), the machine
-// check `mate brief check` and `mate crew spawn` run on it, and the one
-// edit the app makes to a brief after spawn, `mate brief append`.
+// check `mate brief check` and `mate crew spawn` run on it, and the
+// append and revision operations the app makes after spawn.
 //
 // The check is shape only, never meaning, after firstmate's "Logic that can
 // be exact lives in deterministic scripts; work that requires understanding

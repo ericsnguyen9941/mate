@@ -1,0 +1,37 @@
+---
+name: task-learning
+description: Close the learning loop at handoff, before landing or closing a ship or scout, after an external merge, and when a later task supplies evidence for a linked prediction. Use existing handback and bounded usage evidence; no transcript audit.
+---
+
+# task-learning
+
+You own the integrator check. The Crew owns its repository's pre-handoff learning. Keep one record at `{{.MateDir}}/learnings/<crew>.md`, sourced to the task, repository, delivered revision (or scout report), and review findings. You may write this record; repository changes still go through a Crew.
+
+## Check once per evidence revision
+
+Read the handback/report's Learning result and any prediction links supplied in its brief. Reuse the existing record for the same revision and review evidence; repeated wake/merge events do not start another retrospective. A fix round checks only new findings. An external merge catches up here before teardown; a closed Crew's retained report is sufficient when its worktree is gone.
+
+Run `{{.MatevBin}} usage {{.ProjectName}} <crew> --why` once for a new evidence revision. Preserve its token buckets, model calls, context, timing lanes and measurement limitations in the record. Mark open-task snapshots provisional. If usage is absent, stale or fails, record unknown and continue from the handback; do not reindex, poll, open transcripts or launch a scout merely to fill learning. Reviewer usage is separate: name the scope of each number; consult a named reviewer's bounded page only when the review evidence warrants it, at most two.
+
+Elapsed task age includes idle time. Prompt and tool elapsed intervals overlap, tool invocation totals may include parallel work, and decision/handback waits are distinct from execution. Unallocated time is not measured model latency. Never sum these lanes or infer active work from age minus waits. Use the measured work-category time to identify slow checks; use review findings and fix rounds to assess rework. Missing timing stays unknown.
+
+## Route a concrete finding
+
+Use only evidence already collected. Identify at most three themes: missing locator, repeated reading, unclear scope, repeated failed checks, polling, or rework. High cache-read or a large inspect category alone is not proof of wasted work. With no avoidable obstacle, record `Learning: none` and finish; an incomplete measurement does not prove efficiency.
+
+- A Crew already corrected a repo doc or friction entry: keep its path and evidence pointer.
+- A briefing/coordination correction: record it in your lesson with `stow`, with this record as source.
+- A repo correction still needed: record its owner and route through an authorised task or proposal. After merge, use a new branch, never rewrite the landed work.
+- Product follow-up stays in the tracker/backlog with an owner; learning never turns failed acceptance into a pass.
+
+A missing Crew learning result is caught up from existing evidence in your record. Do not relaunch a Crew just to add a ceremonial field. Never claim a repo correction completed when it only exists in your memory.
+
+## Make the next task test it
+
+Each proposed efficiency change names a prediction, baseline source and the next relevant area/task. Put a short sourced pointer in PROJECT.md or a lesson (`stow`), then carry that pointer and relevant known facts into the next matching brief (`new-task`). Keep the full record out of always-loaded memory.
+
+Compare only tasks with comparable scope, size, model/effort, environment and measurement coverage. Judge tokens, time and acceptance/review quality together. Update a linked prediction as improved, unchanged, inconclusive or not comparable with the later task's evidence. A prompt edit or merge alone proves no saving. Withdraw or revise an ineffective proposal; standing rules need repeated evidence or a demonstrated mechanical cause.
+
+## Result
+
+Keep the record within 40 lines: source task/revision/reviews and observation time; bounded metrics with scope and unknowns; `Learning: none | captured | follow-up`; up to three evidence → destination/owner → prediction/next-check lines; outcomes of linked predictions. `captured` means routing is complete, not that a saving is proven. Finish when every finding has a durable destination or owned follow-up. Return to delivery; full cross-task token reviews remain captain-requested work.

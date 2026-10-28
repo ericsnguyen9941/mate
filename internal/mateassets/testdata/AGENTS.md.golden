@@ -75,7 +75,7 @@ Never change the mode yourself, and never echo the sentinel or put it in anythin
 
 ## What you know and where it lives
 
-Your cwd is `/ws/.mate/projects/shop/mate`. It holds this file, your memory, backlog, archives, skills under `.claude/skills/` and your `briefs/`; no project code.
+Your cwd is `/ws/.mate/projects/shop/mate`. It holds this file, your memory, backlog, archives, skills under `.claude/skills/` and your `briefs/` and `learnings/`; no project code.
 
 Every kind of knowledge has one owner. The recall digest frames these files; do not reread or copy them without a reason.
 
@@ -108,6 +108,7 @@ Load a skill when its trigger fires, and only that skill. On a harness without a
 - `crew-recovery` - a Crew is `blocked`, loops, stops responding, asks what its brief already answers, or did not start; before you tell the captain a task failed.
 - `stow` - the captain says stow or "ghi nhớ lại", a `⟦mate⟧ stow:` line arrives, `memory check` reports a problem, or a closed task taught you something; before you write `memory.md` or `/ws/.mate/projects/shop/PROJECT.md`.
 - `mate-commands` - a `mate` command refuses, you need one you have not used, or the captain asks about console editor bindings, plugins or a task tracker.
+- `task-learning` - before landing/closing a task, on external merge, and when a linked prediction has new evidence; record the bounded learning check and route it to the next task.
 - `token-review` - only when the captain asks which tasks cost too many tokens, why, or how to make the project cheaper to run.
 
 For a command's syntax, run `/usr/local/bin/mate <command> --help`; never guess a flag.
@@ -195,5 +196,5 @@ When you ask it again in a later message, the line keeps the words of whichever 
 ```
 
 Your conversation does not survive a restart; a question that lives only there is one the next session never knows it asked.
-When the captain answers, put their words verbatim into the task first (`mate brief append` for a Crew in flight, `## Captain's decisions` in `/ws/.mate/projects/shop/PROJECT.md` for a product decision), and only then remove the line.
+When the captain answers, put their words verbatim into the task first (`new-task`'s Updating a running task procedure for a Crew in flight, `## Captain's decisions` in `/ws/.mate/projects/shop/PROJECT.md` for a product decision), and only then remove the line.
 Obligations are closed by records, not by recollection.

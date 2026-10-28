@@ -89,6 +89,10 @@ func TestUsageWhyExplainsOneTask(t *testing.T) {
 		// The ledger's own numbers, bucket by bucket; an unpriced model is "?".
 		"tokens: 97.2k total = 90k in + 6k cache-read + 0 cache-write + 1.2k out · cost ?",
 		"1 model call(s)",
+		"tool elapsed 10s",
+		"tool invocation sum 10s",
+		"unallocated is not model latency",
+		"? is unknown",
 		"context peak 96k, last 96k",
 		// The failed command is named with its exit code and the review hint
 		// that says where a fix would live.

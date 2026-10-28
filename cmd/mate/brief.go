@@ -16,16 +16,18 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// cmdBrief dispatches `mate brief <check|append>` (docs/mvp.md M7 task 32).
+// cmdBrief dispatches `mate brief <check|append|revise>` (docs/mvp.md M7 task 32).
 func cmdBrief(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return newUsageError("usage: mate brief <check|append> ...")
+		return newUsageError("usage: mate brief <check|append|revise> ...")
 	}
 	switch args[0] {
 	case "check":
 		return cmdBriefCheck(args[1:], stdout, stderr)
 	case "append":
 		return cmdBriefAppend(args[1:], stdin, stdout, stderr)
+	case "revise":
+		return cmdBriefRevise(args[1:], stdout, stderr)
 	default:
 		return newUsageErrorf("unknown brief subcommand %q", args[0])
 	}
@@ -79,9 +81,10 @@ func cmdBriefAppend(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 	fs := flag.NewFlagSet("brief append", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate brief append <project> <crew> [-] [--fresh] [--workspace <dir>]   (the captain's words on stdin)")
+		fmt.Fprintln(stderr, "usage: mate brief append <project> <crew> [-] [--revision <file>] [--fresh] [--workspace <dir>]   (the captain's words on stdin)")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
+	revisionPath := fs.String("revision", "", "complete revised task, with existing captain words unchanged; saved together with the new words")
 	fresh := fs.Bool("fresh", false, "open a fresh session for the crew with the appended words as the Mate's message, even if it is still working")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
@@ -97,6 +100,10 @@ func cmdBriefAppend(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 	if strings.TrimSpace(words) == "" {
 		return newUsageError("mate brief append: stdin is empty; pipe the captain's words in")
 	}
+	revision, err := readBriefRevision(*revisionPath)
+	if err != nil {
+		return err
+	}
 	w, err := resolveWorkspace(*workspaceFlag)
 	if err != nil {
 		return err
@@ -105,19 +112,26 @@ func cmdBriefAppend(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 	if err != nil {
 		return err
 	}
-	res, err := briefAppend(context.Background(), w, liveDeps(w, stderr), fs.Arg(0), fs.Arg(1), words, source, time.Now(), *fresh)
+	res, err := briefUpdate(context.Background(), w, liveDeps(w, stderr), fs.Arg(0), fs.Arg(1), words, revision, source, time.Now(), *fresh)
+	return reportBriefUpdate(stdout, stderr, fs.Arg(0), fs.Arg(1), source, res, err)
+}
+
+func reportBriefUpdate(stdout, stderr io.Writer, project, crew, source string, res briefAppendResult, err error) error {
+	if res.Revised {
+		fmt.Fprintf(stdout, "revised the task in %s\n", res.BriefPath)
+	}
 	if res.Appended {
 		fmt.Fprintf(stdout, "appended the captain's words to %s %s\n", res.BriefPath, res.Added)
 	}
 	if err != nil {
-		if res.Appended {
+		if res.Appended || res.Revised {
 			printSendRefusalDetails(stderr, err)
-			fmt.Fprintf(stderr, "the words are in the brief but the crew was not told; once it is free, run: mate send %s %s %q\n", fs.Arg(0), fs.Arg(1), res.Line)
+			fmt.Fprintf(stderr, "the update is in the brief but the crew was not told; once it is free, run: mate send %s %s %q\n", project, crew, res.Line)
 		}
 		return err
 	}
 	if res.Fresh != nil {
-		writeFreshSessionReport(stdout, fs.Arg(0), fs.Arg(1), res.Verb, source, *res.Fresh)
+		writeFreshSessionReport(stdout, project, crew, res.Verb, source, *res.Fresh)
 		return nil
 	}
 	fmt.Fprintln(stdout, sendSummaryLine(res.Report))
@@ -128,6 +142,7 @@ func cmdBriefAppend(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 // the caller can say that the brief changed while the send did not.
 type briefAppendResult struct {
 	Appended  bool
+	Revised   bool
 	BriefPath string
 	Added     string
 	Line      string
@@ -150,6 +165,12 @@ type briefAppendResult struct {
 // session whose third part is the appended text, not a line in its old
 // pane; fresh forces the same on a crew still working.
 func briefAppend(ctx context.Context, w *store.Workspace, deps spawn.Deps, project, crew, words, source string, now time.Time, fresh bool) (briefAppendResult, error) {
+	return briefUpdate(ctx, w, deps, project, crew, words, "", source, now, fresh)
+}
+
+// briefUpdate validates the whole change before saving once, then notifies
+// the crew. A failed notification leaves a saved update and a retry pointer.
+func briefUpdate(ctx context.Context, w *store.Workspace, deps spawn.Deps, project, crew, words, revision, source string, now time.Time, fresh bool) (briefAppendResult, error) {
 	res := briefAppendResult{BriefPath: w.CrewBrief(project, crew)}
 	if err := store.ValidateProjectName(project); err != nil {
 		return res, err
@@ -169,9 +190,26 @@ func briefAppend(ctx context.Context, w *store.Workspace, deps spawn.Deps, proje
 	if err != nil {
 		return res, fmt.Errorf("brief append: %w", err)
 	}
-	updated, err := brief.AppendCaptainsWords(string(current), words, now)
+	meta, err := w.ReadCrewMeta(project, crew)
 	if err != nil {
-		return res, fmt.Errorf("brief append: %s: %w", res.BriefPath, err)
+		return res, err
+	}
+	updated := string(current)
+	if revision != "" {
+		kind := brief.Ship
+		if spawn.CrewIsScout(w, project, crew, meta) {
+			kind = brief.Scout
+		}
+		updated, err = brief.ReviseTask(updated, revision, kind)
+		if err != nil {
+			return res, err
+		}
+	}
+	if words != "" || revision == "" {
+		updated, err = brief.AppendCaptainsWords(updated, words, now)
+		if err != nil {
+			return res, fmt.Errorf("brief append: %s: %w", res.BriefPath, err)
+		}
 	}
 	// Only crews/<id>/brief.md changes. A Codex crew's AGENTS.override.md
 	// copy in the worktree is its launch context and stays as launched; the
@@ -180,12 +218,11 @@ func briefAppend(ctx context.Context, w *store.Workspace, deps spawn.Deps, proje
 	if err := w.ReplaceCrewBrief(project, crew, []byte(updated)); err != nil {
 		return res, err
 	}
-	res.Appended = true
+	res.Appended, res.Revised = words != "", revision != ""
 	res.Added = brief.AddedLine(now)
 	res.Line = briefAppendLine(res.BriefPath, res.Added)
-	meta, err := w.ReadCrewMeta(project, crew)
-	if err != nil {
-		return res, err
+	if res.Revised {
+		res.Line = fmt.Sprintf("The task specification was revised in %s; reread the whole # Task, including Captain's words, Build, Acceptance and Open decisions, before continuing.", res.BriefPath)
 	}
 	resting, verb, err := restingCrew(w, project, crew, meta)
 	if err != nil {
@@ -195,7 +232,11 @@ func briefAppend(ctx context.Context, w *store.Workspace, deps spawn.Deps, proje
 		verb = "spec change"
 	}
 	if fresh || resting {
-		session, err := freshSession(ctx, w, deps, project, crew, strings.TrimSpace(words), source)
+		message := strings.TrimSpace(words)
+		if res.Revised {
+			message = res.Line
+		}
+		session, err := freshSession(ctx, w, deps, project, crew, message, source)
 		if err != nil {
 			return res, err
 		}
@@ -210,4 +251,54 @@ func briefAppend(ctx context.Context, w *store.Workspace, deps spawn.Deps, proje
 func briefAppendLine(briefPath, added string) string {
 	return fmt.Sprintf("The captain added to your task: read the words marked %s at the end of ## %s in %s, then carry on with them.",
 		added, brief.CaptainsWords, briefPath)
+}
+
+// cmdBriefRevise updates the Mate's derived specification without attributing
+// the Mate's decision to the captain. Provenance belongs in the task's facts.
+func cmdBriefRevise(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("brief revise", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "usage: mate brief revise <project> <crew> <file> [--fresh] [--workspace <dir>]")
+	}
+	workspace := fs.String("workspace", "", "workspace directory")
+	fresh := fs.Bool("fresh", false, "open a fresh session even if the crew is still working")
+	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
+		return &usageError{err}
+	}
+	if fs.NArg() != 3 {
+		fs.Usage()
+		return newUsageError("mate brief revise: want <project> <crew> <file>")
+	}
+	revision, err := readBriefRevision(fs.Arg(2))
+	if err != nil {
+		return err
+	}
+	if revision == "" {
+		return newUsageError("mate brief revise: revision file is required")
+	}
+	w, err := resolveWorkspace(*workspace)
+	if err != nil {
+		return err
+	}
+	source, err := resolveSendSource("")
+	if err != nil {
+		return err
+	}
+	res, err := briefUpdate(context.Background(), w, liveDeps(w, stderr), fs.Arg(0), fs.Arg(1), "", revision, source, time.Now(), *fresh)
+	return reportBriefUpdate(stdout, stderr, fs.Arg(0), fs.Arg(1), source, res, err)
+}
+
+func readBriefRevision(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("brief revision: %w", err)
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		return "", newUsageError("brief revision: file is empty")
+	}
+	return string(data), nil
 }

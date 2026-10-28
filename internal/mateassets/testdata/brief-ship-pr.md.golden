@@ -36,6 +36,8 @@ Anything under its `Out of scope:` line stays out, and a generalization, consist
 `## Open decisions` lists choices that are not yours to make.
 When you reach one of these, append `needs-decision:` naming it, and stop.
 Do not pick an option, even the obvious one.
+The Mate has completed product intake for this ship: use this brief as the settled scope when following the repository workflow. After setup, read the applicable project instructions and enter its inspect/implementation stage; use the brief for intake questions already answered here. Continue its required verification, learning and handoff steps.
+Check known facts and feasibility against the code. If evidence contradicts scope or makes acceptance unreachable, report the evidence, affected requirement and smallest alternatives with `needs-decision:`; stop before changing the contract. File locations, local patterns and implementation choices within it are yours to discover.
 
 # Setup
 You are in a disposable git worktree of `/ws/shop`, on branch `mate/k3`, branched from `main`.
@@ -64,11 +66,12 @@ If the top-level path is the primary checkout, STOP: do not edit or commit here,
    That includes doing less than the captain's words, `## Build` or a spec they name ask for, or doing it differently because a README or a convention says otherwise: ask before you build it, never report it as a deviation afterwards.
    When you write the captain's answer into any file, quote their words as they are. Your reading of them, and what follows from it, goes on a separate line marked as yours, never under their name.
 6. If you genuinely cannot finish the task, that is not a failure you declare: append `wait-mate: could not do X because Y` and stop. The Mate decides what happens next.
-7. If the captain adds to the task while you work, the app appends their words to `## Captain's words` in `/ws/.mate/projects/shop/crews/k3/brief.md` and sends you one line saying so; read that section again and carry on with it.
+7. If the captain adds to the task while you work, the app appends their words to `## Captain's words` in `/ws/.mate/projects/shop/crews/k3/brief.md` and sends you one line saying so; reread the whole `# Task`, including Build, Acceptance and Open decisions, before continuing. A specification revision from the Mate uses the same canonical brief; it supersedes your launch copy.
 
 # Keeping your context small
 Everything you read stays in your context and is paid for again on every later call.
 - A command that can print more than 50 lines - a build, a test suite, a log, a long `git log` - writes to a file (`<command> > /tmp/k3-<name>.log 2>&1`); then read only what you need with `tail`, `grep` or a line range.
+- Inspect to answer the next implementation question: start from the supplied paths and the repository reading map, locate symbols with a scoped search, then read the relevant ranges. Batch independent reads in one tool round; follow dependent results in the next. Stop exploring once you can name the affected path, local pattern and verification; expand only for a concrete unresolved dependency.
 - Change an existing file with a targeted edit (an edit tool, `apply_patch`), never by writing the whole file again.
 - When you read another Crew's report or hand-back, read its `## For the next crew` section first, and open the rest only for what that section does not answer.
 - Wait for anything - a build, a test run, a simulator, a check on a pull request - once: one blocking command with the longest timeout the tool allows, or, when the harness can run a command in the background and wake you when it exits, that and then end your turn. Never a `sleep` loop, never a loop that polls until something is done, never a check every few minutes: last week crews spent 834 of their 2059 build minutes polling.
@@ -76,10 +79,8 @@ Everything you read stays in your context and is paid for again on every later c
 - Never read a whole directory of images; downscale a PNG before you read it, and read only the ones a step needs.
 
 # Project memory
-If this task produced durable project-intrinsic knowledge, record it in the repository's own committed `AGENTS.md` on this branch, creating the file if there is none (or in `CLAUDE.md`, if that is the file the repository already keeps it in).
-Record only project knowledge useful to almost every future session.
-For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
-Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+Before handoff, follow the repository's learning workflow when present, using existing evidence. Route area knowledge to its doc and harness friction to its log; keep only broadly useful reading pointers in `AGENTS.md` (or the existing `CLAUDE.md`). A new standing rule follows project authority.
+In `## For the next crew`, include `Learning: none | captured | follow-up` with the task/revision and up to three finding → destination/owner → next-check lines, within the handback budget. Link relevant predictions from the brief and report any later evidence. `none` is valid; missing metrics are unknown. The Mate adds bounded token/time evidence at delivery, so do not inspect transcripts or rerun checks just for learning.
 
 # Definition of done
 This task is delivered through a GitHub pull request: no pipeline, and the pull request is merged by the Mate or on GitHub, never by you.

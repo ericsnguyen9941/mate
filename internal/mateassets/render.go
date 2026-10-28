@@ -21,7 +21,7 @@ var (
 // order Write lays them down. Each
 // one is `assets/mate/skills/<name>/SKILL.md.tmpl` in the embedded FS and
 // `<mate>/<SkillsDir>/<name>/SKILL.md` on disk.
-var SkillNames = []string{"new-task", "wake", "review-delivery", "crew-recovery", "stow", "mate-commands", "token-review"}
+var SkillNames = []string{"new-task", "wake", "review-delivery", "crew-recovery", "stow", "mate-commands", "task-learning", "token-review"}
 
 // RetiredSkillNames are built-in skills an older mate installed and this one
 // no longer does (CON-69 merged fourteen into SkillNames). Write removes
