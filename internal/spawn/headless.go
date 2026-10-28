@@ -2,6 +2,7 @@ package spawn
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -69,42 +70,13 @@ func startHostInTab(ctx context.Context, w *store.Workspace, deps Deps, project 
 	if !ok {
 		return StartResult{}, errUsage("spawn: this runtime cannot run a headless Mate's host in a pane")
 	}
-	env, err := mateEnv(deps.Harnesses, project, session)
-	if err != nil {
-		return StartResult{}, err
-	}
-	cfg, err := w.LoadProject(project)
-	if err != nil {
-		return StartResult{}, err
-	}
-	launch, err := buildLaunchSpec(ctx, profile, project, mateDir, decision, prep, servers, env, deps.Harnesses.EnvKeys(), cfg.Mate)
-	if err != nil {
-		return StartResult{}, err
-	}
 	reservation, err := runtime.AllocateAgentName(deps.Names, session.Name, AgentNamePrefix, project, runtime.FailOnCollision)
 	if err != nil {
 		return StartResult{}, err
 	}
-	turns, ok := profile.(harness.HeadlessTurns)
-	if !ok {
-		return StartResult{}, errUsage(fmt.Sprintf("the %s harness cannot run a headless Mate", profile.Kind()))
-	}
-	sessionID := turns.LaunchSessionID(launch.Args())
-	if sessionID == "" {
-		sessionID = prep.SessionID
-	}
-	hostLaunch := matehost.Launch{
-		Project:   project,
-		Agent:     reservation.Name(),
-		Harness:   string(profile.Kind()),
-		Program:   launch.Kind(),
-		Args:      launch.Args(),
-		Dir:       mateDir,
-		UnsetEnv:  launch.UnsetEnv(),
-		SessionID: sessionID,
-	}
-	for _, v := range launch.Env() {
-		hostLaunch.Env = append(hostLaunch.Env, v.Key+"="+v.Value)
+	hostLaunch, launch, err := buildHostLaunch(ctx, w, deps, project, profile, mateDir, decision, prep, servers, session, reservation.Name())
+	if err != nil {
+		return StartResult{}, err
 	}
 	if err := matehost.WriteLaunch(mateDir, hostLaunch); err != nil {
 		return StartResult{}, err
@@ -122,7 +94,133 @@ func startHostInTab(ctx context.Context, w *store.Workspace, deps Deps, project 
 	if err != nil {
 		return StartResult{}, err
 	}
-	return recordHeadless(w, deps, project, profile.Kind(), mateDir, decision, session, tab, observed, sessionID, launchedAt, launch)
+	return recordHeadless(w, deps, project, profile.Kind(), mateDir, decision, session, tab, observed, hostLaunch.SessionID, launchedAt, launch)
+}
+
+// buildHostLaunch is the launch the host of agent runs each message with:
+// the argv a pane launch of the harness would use, and its session id.
+func buildHostLaunch(ctx context.Context, w *store.Workspace, deps Deps, project string, profile harness.Profile, mateDir string, decision resumeDecision, prep harness.Prepared, servers []harness.MCPServer, session runtime.SessionHandle, agent string) (matehost.Launch, harness.LaunchSpec, error) {
+	env, err := mateEnv(deps.Harnesses, project, session)
+	if err != nil {
+		return matehost.Launch{}, harness.LaunchSpec{}, err
+	}
+	cfg, err := w.LoadProject(project)
+	if err != nil {
+		return matehost.Launch{}, harness.LaunchSpec{}, err
+	}
+	launch, err := buildLaunchSpec(ctx, profile, project, mateDir, decision, prep, servers, env, deps.Harnesses.EnvKeys(), cfg.Mate)
+	if err != nil {
+		return matehost.Launch{}, harness.LaunchSpec{}, err
+	}
+	turns, ok := profile.(harness.HeadlessTurns)
+	if !ok {
+		return matehost.Launch{}, harness.LaunchSpec{}, errUsage(fmt.Sprintf("the %s harness cannot run a headless Mate", profile.Kind()))
+	}
+	sessionID := turns.LaunchSessionID(launch.Args())
+	if sessionID == "" {
+		sessionID = prep.SessionID
+	}
+	hostLaunch := matehost.Launch{
+		Project:   project,
+		Agent:     agent,
+		Harness:   string(profile.Kind()),
+		Program:   launch.Kind(),
+		Args:      launch.Args(),
+		Dir:       mateDir,
+		UnsetEnv:  launch.UnsetEnv(),
+		SessionID: sessionID,
+	}
+	for _, v := range launch.Env() {
+		hostLaunch.Env = append(hostLaunch.Env, v.Key+"="+v.Value)
+	}
+	return hostLaunch, launch, nil
+}
+
+// ErrNoReload is a Mate ReloadMate cannot give a fresh session in place: it
+// runs in its pane rather than headless, or its host does not answer, or
+// is too old to know the op. The caller stops and starts it instead.
+var ErrNoReload = errors.New("the Mate cannot change session in place")
+
+// ReloadMate gives a live headless Mate a fresh harness session without
+// leaving its pane (context refresh, CON-133): the directory is rendered
+// again and a fresh launch prepared, as a fresh StartMate would, and the
+// host switches to it between turns. Herdr's pane, terminal and agent name
+// stay as they were, so whoever is attached to the Mate stays attached;
+// stopping and starting it closed the pane and ended every attach with
+// "terminal ... not found".
+//
+// A *matehost.BusyError means a turn runs or waits: nothing changed.
+// ErrNoReload means the caller must stop and start the Mate instead.
+func ReloadMate(ctx context.Context, w *store.Workspace, deps Deps, project string) (StartResult, error) {
+	if w == nil {
+		return StartResult{}, errUsage("spawn: a workspace is required")
+	}
+	if err := store.ValidateProjectName(project); err != nil {
+		return StartResult{}, err
+	}
+	meta, err := w.ReadMateMeta(project)
+	if err != nil {
+		return StartResult{}, err
+	}
+	if meta[MetaMode] != ModeHeadless || meta[MetaAgent] == "" || meta[MetaPane] == "" {
+		return StartResult{}, ErrNoReload
+	}
+	mateDir := w.MateDir(project)
+	client := matehost.Dial(mateDir)
+	if err := client.Ping(ctx); err != nil {
+		return StartResult{}, fmt.Errorf("%w: the host does not answer (%v)", ErrNoReload, err)
+	}
+	kind, err := deps.Harnesses.Parse(meta[MetaHarness])
+	if err != nil {
+		return StartResult{}, err
+	}
+	profile, err := deps.Harnesses.Lookup(kind)
+	if err != nil {
+		return StartResult{}, err
+	}
+	if _, ok := profile.(harness.HeadlessTurns); !ok {
+		return StartResult{}, ErrNoReload
+	}
+	cfg, err := w.LoadProject(project)
+	if err != nil {
+		return StartResult{}, err
+	}
+	plugins, err := resolveMatePlugins(w, project)
+	if err != nil {
+		return StartResult{}, err
+	}
+	if err := prepareMateDir(w, deps, project, cfg, profile, mateDir, plugins.skills, true); err != nil {
+		return StartResult{}, err
+	}
+	fresh := resumeDecision{}
+	prep, err := prepareMateLaunch(ctx, w, deps, profile, mateDir, fresh, plugins.servers)
+	if err != nil {
+		return StartResult{}, err
+	}
+	session := runtime.SessionHandle{Name: meta[MetaSession]}
+	if session.Name == "" {
+		session.Name = w.Session()
+	}
+	hostLaunch, launch, err := buildHostLaunch(ctx, w, deps, project, profile, mateDir, fresh, prep, plugins.servers, session, meta[MetaAgent])
+	if err != nil {
+		return StartResult{}, err
+	}
+	launchedAt := deps.now()
+	if err := client.Reload(ctx, hostLaunch); err != nil {
+		var busy *matehost.BusyError
+		if errors.As(err, &busy) {
+			return StartResult{}, err
+		}
+		return StartResult{}, fmt.Errorf("%w: %v", ErrNoReload, err)
+	}
+	// After the host switched: a host started again later reads its
+	// session from here (adoptInterruptedHost too).
+	if err := matehost.WriteLaunch(mateDir, hostLaunch); err != nil {
+		return StartResult{}, err
+	}
+	tab := runtime.TabHandle{Session: session, WorkspaceID: meta[MetaWorkspace], TabID: meta[MetaTab], PaneID: meta[MetaPane], Cwd: mateDir, Label: MateTabLabel}
+	observed := runtime.ObservedAgent{Handle: runtime.AgentHandle{Session: session, Name: meta[MetaAgent], RawID: project, Kind: kind, Tab: tab}}
+	return recordHeadless(w, deps, project, kind, mateDir, fresh, session, tab, observed, hostLaunch.SessionID, launchedAt, launch)
 }
 
 // waitHost waits, within the readiness timeout, for the host to answer on

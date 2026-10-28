@@ -20,6 +20,7 @@ const (
 	OpStop       = "stop"
 	OpHistory    = "history"
 	OpClearDraft = "clear-draft"
+	OpReload     = "reload"
 )
 
 type request struct {
@@ -29,6 +30,8 @@ type request struct {
 	// WaitMS bounds a stop's wait for the turn in flight.
 	WaitMS int64 `json:"wait_ms,omitempty"`
 	N      int   `json:"n,omitempty"`
+	// Launch is what a reload switches the host to.
+	Launch *Launch `json:"launch,omitempty"`
 }
 
 type response struct {
@@ -117,6 +120,15 @@ func (h *Host) answer(req request) response {
 		return response{OK: true, Items: History(h.history, req.N)}
 	case OpClearDraft:
 		h.ClearDraft()
+		return response{OK: true}
+	case OpReload:
+		if req.Launch == nil {
+			return response{Error: "a reload names no launch"}
+		}
+		if err := h.Reload(*req.Launch); err != nil {
+			busy := errors.Is(err, ErrBusy) || errors.Is(err, ErrQueued) || errors.Is(err, ErrStopping)
+			return response{Error: err.Error(), Busy: busy}
+		}
 		return response{OK: true}
 	}
 	return response{Error: fmt.Sprintf("unknown op %q", req.Op)}
@@ -209,5 +221,13 @@ func (c Client) History(ctx context.Context, n int) ([]Item, error) {
 // ClearDraft drops the captain's unsent draft.
 func (c Client) ClearDraft(ctx context.Context) error {
 	_, err := c.do(ctx, request{Op: OpClearDraft}, 0)
+	return err
+}
+
+// Reload switches the host to l between turns (Host.Reload); a *BusyError
+// means a turn runs or waits. A host older than the op answers it as
+// unknown.
+func (c Client) Reload(ctx context.Context, l Launch) error {
+	_, err := c.do(ctx, request{Op: OpReload, Launch: &l}, 0)
 	return err
 }

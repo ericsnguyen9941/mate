@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/outbox"
 	"github.com/nguyenngocanh94/mate/internal/send"
@@ -186,6 +188,23 @@ func contextRefresh(ctx context.Context, w *store.Workspace, deps spawn.Deps, pr
 		return false, err
 	}
 	if err := w.ArchiveMateSession(project, current); err != nil {
+		return false, err
+	}
+	// A headless Mate changes session in its own pane: stopping it closed
+	// the pane, and every attach to it - the console's stage among them -
+	// ended with "terminal ... not found" (CON-133).
+	switch _, err := spawn.ReloadMate(ctx, w, deps, project); {
+	case err == nil:
+		// The host switched between turns, so no turn writes the old
+		// transcript any more.
+		if err := w.FreezeMateSession(project, current); err != nil {
+			return false, fmt.Errorf("Mate refreshed with checkpoint saved; archive failed: %w", err)
+		}
+		err = w.AppendSent(project, store.SentEntry{Source: store.SourceApp, Target: store.TargetMate, Text: "context refreshed from checkpoint; previous session " + session})
+		return true, err
+	case errors.As(err, new(*matehost.BusyError)):
+		return false, fmt.Errorf("refresh postponed: %w", err)
+	case !errors.Is(err, spawn.ErrNoReload):
 		return false, err
 	}
 	stopped, err := spawn.StopMate(ctx, w, deps, project)

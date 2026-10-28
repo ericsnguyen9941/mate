@@ -1058,7 +1058,10 @@ Captain chốt implement 2026-09-27; triển khai 2026-09-28, từ hai research 
   composer trống. `mate.refresh_context` đổi ngưỡng; số âm tắt tự động. Codex
   chưa có tín hiệu quiet tương đương nên không tự refresh.
 - Refresh là stow → checkpoint receipt → Stop thật → fresh start → recall;
-  không dùng resume. `mate mate refresh <project>` dùng cùng đường an toàn,
+  không dùng resume. Mate headless không Stop: host nhận launch mới qua socket
+  (`reload`) và đổi sang session mới giữa hai lượt, giữ pane, terminal và tên
+  agent, nên attach của console không đứt (CON-133); host không trả lời hoặc
+  không biết `reload` thì vẫn Stop rồi start. `mate mate refresh <project>` dùng cùng đường an toàn,
   bỏ điều kiện ngưỡng/5 phút vì captain chủ động gọi. Restart thường vẫn resume.
   Thiếu receipt, không có turn-end, file đổi sau receipt, captain nói thêm hoặc
   giành lại manual thì giữ phiên cũ. Retry tự động cách nhau ít nhất 30 phút.

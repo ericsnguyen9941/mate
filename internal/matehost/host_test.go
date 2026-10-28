@@ -516,3 +516,58 @@ func TestHostRunFailingAfterItsResult(t *testing.T) {
 		t.Fatalf("item = %+v, want reply %q and no error", it, want)
 	}
 }
+
+func TestHostReloadSwitchesSessionBetweenTurns(t *testing.T) {
+	f := newFixture(t)
+	sock, err := os.MkdirTemp("/tmp", "mh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(sock)
+	path := filepath.Join(sock, SocketName)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = f.host.Serve(ctx, path, nil) }()
+	c := Client{Path: path}
+	deadline := time.Now().Add(5 * time.Second)
+	for c.Ping(ctx) != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("socket never answered")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	next := f.host.runner.Launch
+	next.Args = []string{"--model", "opus", "--session-id", "s2"}
+	next.SessionID = "s2"
+
+	f.host.Submit("slow")
+	waitBusy(t, f.host)
+	var busy *BusyError
+	if err := c.Reload(ctx, next); !errors.As(err, &busy) {
+		t.Fatalf("reload during a turn = %v, want *BusyError", err)
+	}
+	f.done(t, 1)
+	other := next
+	other.Project = "q"
+	if err := c.Reload(ctx, other); err == nil || errors.As(err, &busy) {
+		t.Fatalf("reload for another Mate = %v, want a refusal", err)
+	}
+	if err := c.Reload(ctx, next); err != nil {
+		t.Fatalf("reload when idle: %v", err)
+	}
+	f.host.Submit("after")
+	f.done(t, 2)
+	argv := strings.Split(strings.TrimSpace(f.read(t, "argv.log")), "\n")
+	if len(argv) != 2 || !strings.Contains(argv[0], "--session-id s1") || !strings.Contains(argv[1], "--session-id s2") || strings.Contains(argv[1], "s1") {
+		t.Fatalf("argv = %q, want the second turn on a fresh s2", argv)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var noted bool
+	for _, ev := range f.events {
+		noted = noted || strings.Contains(ev.Note, "s2")
+	}
+	if !noted {
+		t.Fatal("the REPL was not told the session changed")
+	}
+}
