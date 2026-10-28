@@ -83,7 +83,7 @@ func TestCityModulesAreServed(t *testing.T) {
 			queue = append(queue, dir.ResolveReference(&url.URL{Path: m[1]}).Path)
 		}
 	}
-	for _, want := range []string{"/city/app.js", "/city/city.js", "/city/room.js", "/city/history.js", "/city/agent-mascot.js", "/city/vendor/three.js"} {
+	for _, want := range []string{"/city/app.js", "/city/city.js", "/city/room.js", "/city/history.js", "/city/chatter.js", "/city/agent-mascot.js", "/city/vendor/three.js"} {
 		found := false
 		for _, m := range modules {
 			found = found || m == want

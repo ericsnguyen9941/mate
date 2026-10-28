@@ -2,6 +2,7 @@ import * as THREE from './vendor/three.js';
 import { RoundedBoxGeometry, RoomEnvironment } from './vendor/three.js';
 import { AgentMascot } from './agent-mascot.js';
 import { HARNESSES } from './harnesses.js';
+import { CHAT_STYLE, GAP as CHAT_GAP, lineFor } from './chatter.js';
 
 // Agent City: the workspace as a floating diorama island laid out as a grid
 // of blocks (3×3, or 5×5 past eight projects). The centre block is City Hall,
@@ -991,13 +992,26 @@ export function createCity(projects) {
     countChip.scale.setScalar(0.42 * (since < 0.4 ? Math.max(0.001, backOut(since / 0.4)) : 1));
   }
 
+  // Now and then a mascot that is not talking says a line from chatter.js
+  // that fits its pose; each keeps its own random rhythm.
+  function chat(m, t) {
+    m.chatAt ??= t + 3 + Math.random() * CHAT_GAP[1];
+    if (t < m.chatAt) return;
+    m.chatAt = t + CHAT_GAP[0] + Math.random() * CHAT_GAP[1];
+    const line = m.speechAt(t) ? null : lineFor(m.stateAt(t));
+    if (line) m.say(line, { at: t, hold: 1.4, style: CHAT_STYLE });
+  }
+
   function update(t) {
     for (const b of tents.values()) poseTent(b, t);
     for (const b of boards.values()) {
       const k = clamp01((t - b.nodAt) / 0.6);
       b.panel.scale.setScalar(1 + 0.08 * Math.sin(Math.PI * k) * (k < 1 ? 1 : 0));
     }
-    for (const m of mascots.values()) m.update(t);
+    for (const m of mascots.values()) {
+      chat(m, t);
+      m.update(t);
+    }
     updateMailbox(t);
     for (const c of clouds) {
       const { x, y, z, i } = c.userData;
