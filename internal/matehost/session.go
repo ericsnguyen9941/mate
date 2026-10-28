@@ -252,15 +252,19 @@ func (h *Host) waitSession(s *session, run *Run, item *Item) {
 	if s.fork == "" && reply.SessionID != "" && reply.SessionID != h.runner.Launch.SessionID {
 		s.fork, forked = reply.SessionID, reply.SessionID
 	}
-	s.items = append(s.items, *item)
-	s.run, s.cur, s.active = nil, nil, h.now()
 	h.mu.Unlock()
+	// The files before the session in memory: a session closed the moment
+	// it answered and opened again reads its fork from the news and its
+	// turns from the session file, so neither may lag the turn's end
+	// (CON-132). Until then the run is still in flight to AskSession.
 	if forked != "" && h.newsPath != "" {
 		_ = newsOp(h.newsPath, newsEvent{At: h.now(), Op: opSession, ID: s.news, Text: forked}, true)
 		h.RefreshNews()
 	}
 	h.appendItem(h.sessionFile(s.news), *item)
 	h.mu.Lock()
+	s.items = append(s.items, *item)
+	s.run, s.cur, s.active = nil, nil, h.now()
 	ev := h.eventLocked(nil)
 	h.mu.Unlock()
 	h.emit(ev)
