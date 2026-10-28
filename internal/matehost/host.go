@@ -485,6 +485,41 @@ func (h *Host) stateLocked() State {
 	return s
 }
 
+// Reload makes every turn from now on run l: a fresh session for the same
+// Mate, in the pane the host already runs in (context refresh, CON-133).
+// Closing the pane to start again ended every `herdr agent attach` on it,
+// the console's stage among them. It is refused while a turn runs or
+// waits, so no turn is split across two sessions and nothing writes the
+// old transcript once it returns.
+func (h *Host) Reload(l Launch) error {
+	if err := l.valid(); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	cur := h.runner.Launch
+	switch {
+	case h.stopping:
+		h.mu.Unlock()
+		return ErrStopping
+	case h.run != nil:
+		h.mu.Unlock()
+		return ErrBusy
+	case len(h.queue) > 0:
+		h.mu.Unlock()
+		return ErrQueued
+	case l.Project != cur.Project || l.Agent != cur.Agent || l.Harness != cur.Harness:
+		h.mu.Unlock()
+		return fmt.Errorf("matehost: a reload is for %s as %s on %s, this host runs %s as %s on %s",
+			l.Project, l.Agent, l.Harness, cur.Project, cur.Agent, cur.Harness)
+	}
+	h.runner.Launch, h.runner.turns = l, 0
+	ev := h.eventLocked(nil)
+	ev.Note = "context refreshed; new session " + l.SessionID
+	h.mu.Unlock()
+	h.emit(ev)
+	return nil
+}
+
 // Stop refuses every new message and waits up to wait for the turn in
 // flight; force, or a turn still running when wait is up, kills it. Queued
 // captain messages are dropped. It reports whether a turn had to be killed.

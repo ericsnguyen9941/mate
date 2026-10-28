@@ -2,6 +2,7 @@ package spawn_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -44,7 +45,7 @@ func shortWorkspace(t *testing.T, project string) *store.Workspace {
 // playHost makes the fake runtime play `mate mate host`: when the start
 // runs it in the pane, a host answers on the Mate's socket and Herdr lists
 // it under the reserved name; when the host is asked to stop, it leaves.
-func playHost(t *testing.T, w *store.Workspace, rt *runtime.Fake, project string) {
+func playHost(t *testing.T, w *store.Workspace, rt *runtime.Fake, project string, onHost ...func(*matehost.Host)) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -55,6 +56,9 @@ func playHost(t *testing.T, w *store.Workspace, rt *runtime.Fake, project string
 			return err
 		}
 		host := matehost.New(&matehost.Runner{Launch: l, Turns: claude.Claude{}}, matehost.Options{})
+		for _, fn := range onHost {
+			fn(host)
+		}
 		handle := runtime.AgentHandle{Session: tab.Session, Name: l.Agent, RawID: project, Kind: claude.KindClaude, Tab: tab}
 		rt.SeedAgent(handle, runtime.AgentIdle)
 		go func() {
@@ -173,5 +177,87 @@ func TestStartMateHeadlessRefusesOtherHarnesses(t *testing.T) {
 	_, err := spawn.StartMate(context.Background(), w, fakeDeps(t, rt), spawn.StartRequest{Project: "shop", Harness: "codex", Mode: spawn.ModeHeadless})
 	if err == nil || !strings.Contains(err.Error(), "cannot run a headless Mate") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestReloadMateKeepsThePaneAndStartsAFreshSession(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(claude.ClaudeConfigDirEnv, "")
+	w := shortWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	deps.NewSessionID = idSequence(t, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")
+	notes := make(chan string, 4)
+	playHost(t, w, rt, "shop", func(h *matehost.Host) {
+		h.Subscribe(func(ev matehost.Event) {
+			if ev.Note != "" {
+				notes <- ev.Note
+			}
+		})
+	})
+	start, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Mode: spawn.ModeHeadless})
+	if err != nil {
+		t.Fatalf("StartMate: %v", err)
+	}
+	before, _ := w.ReadMateMeta("shop")
+	calls := len(rt.Calls)
+
+	res, err := spawn.ReloadMate(context.Background(), w, deps, "shop")
+	if err != nil {
+		t.Fatalf("ReloadMate: %v", err)
+	}
+	const fresh = "22222222-2222-2222-2222-222222222222"
+	if res.SessionID != fresh || res.SessionID == start.SessionID || res.Pane != start.Pane || res.Agent != start.Agent || res.Resumed {
+		t.Fatalf("reload = %+v, want a fresh session in pane %s", res, start.Pane)
+	}
+	if len(rt.PaneRuns) != 1 {
+		t.Fatalf("pane runs = %q, want the host started once", rt.PaneRuns)
+	}
+	for _, c := range rt.Calls[calls:] {
+		if c == "RemoveTab" || c == "CreateAgentTab" || strings.HasPrefix(c, "StopAgent") || c == "RunInPane" {
+			t.Fatalf("the reload called %s: %q", c, rt.Calls[calls:])
+		}
+	}
+	meta, _ := w.ReadMateMeta("shop")
+	for _, key := range []string{spawn.MetaAgent, spawn.MetaPane, spawn.MetaTab, spawn.MetaWorkspace, spawn.MetaSession, spawn.MetaMode} {
+		if meta[key] != before[key] {
+			t.Errorf("meta %s = %q, was %q", key, meta[key], before[key])
+		}
+	}
+	if meta[spawn.MetaSessionID] != fresh {
+		t.Fatalf("meta session_id = %q, want %s", meta[spawn.MetaSessionID], fresh)
+	}
+	l, err := matehost.ReadLaunch(w.MateDir("shop"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.SessionID != fresh || claude.LaunchSessionID(l.Args) != fresh || l.Agent != start.Agent {
+		t.Fatalf("launch = %+v", l)
+	}
+	select {
+	case note := <-notes:
+		if !strings.Contains(note, fresh) {
+			t.Fatalf("host note = %q", note)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the host was not switched")
+	}
+}
+
+func TestReloadMateRefusesWhatItCannotSwitch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	w := shortWorkspace(t, "shop")
+	deps := fakeDeps(t, runtime.NewFake())
+	for name, meta := range map[string]map[string]string{
+		"pane mode":      {spawn.MetaHarness: "claude", spawn.MetaAgent: "mate-shop", spawn.MetaPane: "w1:p1", spawn.MetaSessionID: "s"},
+		"stopped":        {spawn.MetaHarness: "claude", spawn.MetaMode: spawn.ModeHeadless, spawn.MetaSessionID: "s"},
+		"host not there": {spawn.MetaHarness: "claude", spawn.MetaMode: spawn.ModeHeadless, spawn.MetaAgent: "mate-shop", spawn.MetaPane: "w1:p1", spawn.MetaSessionID: "s"},
+	} {
+		if err := w.WriteMateMeta("shop", meta); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := spawn.ReloadMate(context.Background(), w, deps, "shop"); !errors.Is(err, spawn.ErrNoReload) {
+			t.Errorf("%s: reload = %v, want ErrNoReload", name, err)
+		}
 	}
 }
