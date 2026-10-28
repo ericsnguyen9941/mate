@@ -748,7 +748,7 @@ An unknown harness (one AgentMascot has no preset for) is a plain grey mascot wi
 
 Hovering a mascot names it - crew and role, harness, model, effort, state - a tent its repo, merged count and crews at work, City Hall the inbox and the Mates' tokens today.
 Clicking a crew opens `../office/#crew/<project>/<crew>`, a Mate `../office/#mate/<project>`, City Hall or its mailbox `../office/#captain`.
-Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, replaying the repo's latest merged ship task (of its last six, the newest that went through review and asked a question) from `/api/projects/{p}/tasks/{crew}?view=summary` for it and each of its `reviews`.
+Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, replaying the repo's latest merged ship task from `/api/projects/{p}/tasks/{crew}?view=summary` for it and each of its `reviews`.
 The episode is kept per tent until a newer task merges there, and read ahead while the pointer rests on a tent, so a click opens it at once.
 The replay is the spawn, the crew's status lines (each agent keeps its first, middle and last), its questions and the answers, its hand-backs, each review with its verdict (`review` of the reviewer row; the reviewer's last hand-back is where it lands), and the merge, one every three seconds, looping; the panel lists them with their real local times. A repo with no merged task shows a sleeping Mate.
 `Escape` or `Back to the city` leaves the tent.

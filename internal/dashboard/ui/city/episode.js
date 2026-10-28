@@ -1,10 +1,8 @@
 // One real episode for a tent room to replay, read from the dashboard's API:
-// the repo's latest merged ship task (preferring, among the last few, one
-// that went through review and asked the Mate something), with the crew's
-// status lines, its questions and the Mate's answers, the reviewers' status
-// lines and verdicts, and the merge.
+// the repo's latest merged ship task, with the crew's status lines, its
+// questions and the Mate's answers, the reviewers' status lines and verdicts,
+// and the merge.
 
-const CANDIDATES = 6; // latest merged ship tasks looked at
 const RECENT = 4; // earlier merged tasks listed under Done
 const STATUS_KEEP = 3; // plain status lines kept per agent: first, middle, last
 
@@ -82,15 +80,14 @@ function build(d, reviews) {
 export async function readEpisode(api, project, tasks, onTent) {
   const merged = tasks.filter((t) => t.role === 'ship' && t.merged_at && onTent(t)).sort((a, b) => b.merged_at.localeCompare(a.merged_at));
   if (!merged.length) return { episode: null, recent: [] };
-  const look = merged.slice(0, CANDIDATES);
-  const score = (t) => 2 * ((t.reviews?.length ?? 0) > 0) + (t.question_count > 0);
-  const best = Math.max(...look.map(score));
-  const pick = look.find((t) => score(t) === best);
+  // The newest, whatever it went through: an older task with more to show
+  // would read as the tent falling behind the Office.
+  const pick = merged[0];
   // The summary view: no turns or performance, which are most of a full task's bytes and time.
   const path = (crew) => `/api/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(crew)}?view=summary`;
   const [detail, ...reviews] = await Promise.all([pick.crew, ...(pick.reviews ?? [])].map((c) => api(path(c))));
   return {
     episode: build(detail, reviews),
-    recent: merged.filter((t) => t !== pick).slice(0, RECENT).map((t) => ({ id: t.crew, text: short(t.text, 60) })),
+    recent: merged.slice(1, RECENT + 1).map((t) => ({ id: t.crew, text: short(t.text, 60) })),
   };
 }
