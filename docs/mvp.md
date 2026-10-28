@@ -787,6 +787,8 @@ Quyết định giữa task cập nhật cùng một bản brief chuẩn: `mate 
 
 `mate wake` kiểm bản ghi đó bằng máy (CON-129, 2026-10-28): dưới mỗi hand-back và mục `landed` (crew đã merge PR nhưng chưa `crew stop`) in dòng `learning:` — `none recorded`, `recorded, but not for <revision>` hay `recorded for <revision>` — với revision là merge commit khi đã merge, else head nhánh; scout chỉ kiểm tồn tại. Chỉ in và nói bước kế, không chặn; bài học bị bỏ quên nằm trong tool output chứ không chỉ trong skill.
 
+Số đo cũng do app ghi (CON-130, 2026-10-28): `crew stop`, `mate merge`, stop/merge từ console và stop ở trần budget đều ghi mục `## Usage (app)` vào `mate/learnings/<crew>.md` - cùng dòng run/tokens/shape/time của `usage --why`, hoặc `unknown` kèm lý do khi timeline chưa đọc được - thay đúng mục đó, giữ nguyên phần Mate viết, và mở record với `Learning: pending` khi Mate chưa viết. Mate không còn phải nhớ chạy `usage --why` để record có số; chạy nó trước landing chỉ khi một finding cần con số để quyết.
+
 `usage --why` in các timing lane sẵn có của diagnostics (prompt/tool elapsed, invocation sum, decision/handback wait, unallocated) và elapsed theo loại việc. Lane có thể chồng nhau; không cộng chúng, không gọi unallocated là model latency. So hiệu suất phải xét scope/model/effort/môi trường/coverage và chất lượng acceptance/rework. Đây là quy trình agent dùng công cụ deterministic, không phải semantic merge gate hoặc một watcher learning mới.
 
 Đợt 2 (sau M7): thăng scout thành ship tại chỗ (`crew promote`), relaunch giữ worktree (`crew relaunch`), chăm `memory.md` có ngày và nguồn, `--effort` khi spawn.

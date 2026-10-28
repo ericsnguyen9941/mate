@@ -71,6 +71,10 @@ func cmdMerge(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	fmt.Fprintln(stdout, res.Line())
+	// The record is written on every merge (CON-130); the merge's own
+	// output stays its one line, and `wake` is where the Mate reads the
+	// record's state.
+	recordUsageAtClose(context.Background(), w, project, crew, "mate merge")
 	if followups != "" {
 		// Recorded after the merge, on the closed crew's meta: a refused
 		// merge leaves no claim behind that the findings were followed up.

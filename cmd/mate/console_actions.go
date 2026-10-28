@@ -111,7 +111,11 @@ func stopCrewAction(ctx context.Context, ws *store.Workspace, deps spawn.Deps, r
 	if err != nil {
 		return "", err
 	}
-	return crewStopReport(req.Target, req.Crew, res), nil
+	line := crewStopReport(req.Target, req.Crew, res)
+	if !res.AlreadyClosed {
+		line += "\n" + recordUsageAtClose(ctx, ws, req.Target, req.Crew, "console stop")
+	}
+	return line, nil
 }
 
 // removeProjectAction is the Project row's `Remove project…` entry (mvp.md
@@ -234,7 +238,7 @@ func mergeCrewAction(ctx context.Context, ws *store.Workspace, deps spawn.Deps, 
 	if err != nil {
 		return "", err
 	}
-	return res.Line(), nil
+	return res.Line() + "\n" + recordUsageAtClose(ctx, ws, req.Target, req.Crew, "console merge"), nil
 }
 
 // toggleModeAction flips `mate/.auto` (mvp.md section 5). The flag is the
