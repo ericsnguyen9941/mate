@@ -314,7 +314,7 @@ status lines, questions and the branch remain available as supporting evidence.
 
 `ledger` is the same task object as tier 2's row.
 
-`?view=summary` answers with `ledger`, `status_lines` and `questions` only - no `turns`, `branch` or `performance`, which are most of the full answer's time and bytes. Agent City's tent replay reads it (section 12, CON-126).
+`?view=summary` answers with `ledger`, `status_lines` and `questions` only - no `turns`, `branch` or `performance`, which are most of the full answer's time and bytes (CON-126).
 
 `turns` is one object per model call, oldest first.
 `trigger_kind` is the `kind` of the event named by `turn.trigger_event_id`, joined on because a page showing a bare id would be showing the reader a number they cannot read.
@@ -449,6 +449,12 @@ Mate grouping uses confirmed native response aliases when a legacy call has
 no prompt ID. Otherwise that call stays isolated. Native prompts and their
 work remain visible before the first usage record; message-only prompts show
 an empty overview until activity arrives. The overview adds no model calls.
+
+## 4b. `GET /api/projects/{project}/history?since=<RFC3339>`
+
+Every crew's `status_lines` and decision `questions`, as section 4 carries them, from `since` on, by crew name: `{ "project", "since", "crews": { "<crew>": { "status_lines": [...], "questions": [...] } } }`. A crew with neither since then is absent. Two queries for the whole project, where section 4 takes two a crew, so Agent City's tent reads a week of a busy project in one request (section 12, CON-127).
+
+`since` is required; a missing or unparsable one is a 400. The answer is cached per `last_event_id` like section 2's, keyed by the query, so a reader that keeps `since` fixed for the day is answered from the cache.
 
 ## 5. `GET /api/projects/{project}/tasks/{crew}/turns/{turn}`
 
@@ -723,8 +729,8 @@ It is linked from the admin header (`Agent City`, beside `Mate Office`) and from
 | `index.html`, `city.css` | the page: title, view switch, live pill, the tent panel and its feed |
 | `app.js` | reads the API, keeps the city live, hover and click |
 | `city.js` | the city: island, streets, City Hall, one block per project, one tent per repo, the setters `setCrews`, `setMate`, `setMerged`, `setBoard`, `setHall`, `setMailbox` |
-| `room.js` | one tent up close, replaying an episode |
-| `episode.js` | the episode a tent replays, read from the task endpoints |
+| `room.js` | one tent up close, playing back its history |
+| `history.js` | what a tent's agents did, read from the history endpoint |
 | `agent-mascot.js`, `bubble.js`, `harnesses.js` | the AgentMascot component, as in the promo |
 | `vendor/three.js` | three.js 0.186.1 and the addons the page uses, prebuilt into one ES module; its header carries the MIT licence and the command that built it |
 
@@ -748,12 +754,15 @@ An unknown harness (one AgentMascot has no preset for) is a plain grey mascot wi
 
 Hovering a mascot names it - crew and role, harness, model, effort, state - a tent its repo, merged count and crews at work, City Hall the inbox and the Mates' tokens today.
 Clicking a crew opens `../office/#crew/<project>/<crew>`, a Mate `../office/#mate/<project>`, City Hall or its mailbox `../office/#captain`.
-Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, replaying the repo's latest merged ship task from `/api/projects/{p}/tasks/{crew}?view=summary` for it and each of its `reviews`.
-The episode is kept per tent until a newer task merges there, and read ahead while the pointer rests on a tent, so a click opens it at once.
-The replay is the spawn, the crew's status lines (each agent keeps its first, middle and last), its questions and the answers, its hand-backs, each review with its verdict (`review` of the reviewer row; the reviewer's last hand-back is where it lands), and the merge, one every three seconds, looping; the panel lists them with their real local times. A repo with no merged task shows a sleeping Mate.
+Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, playing back what its agents did (CON-127).
+Its tasks are the project's rows on the tent spawned since midnight UTC seven days ago, or still open; a tent with no ship task among them takes its last three merged ship tasks and their reviews instead, and `since` moves back to the earliest spawn. Their lines are one read of section 4b with that `since`.
+The playback is every task's spawn (or, for a reviewer, the Mate asking it to review), all its status lines, its questions and the answers, its hand-backs, each reviewer's verdict (`review` of the reviewer row; the reviewer's last hand-back is where it lands), and the merge, or the close of a task that was not merged, in the order they happened, one every 2.5 seconds whatever the real gap; the panel lists them with their real local times.
+A crew sits at the round table from its spawn until just before the first event after its task closed; seats are reused, and past seven a second arc forms behind the first. The task board shows each ship task as it stood at that moment: `Doing` from its spawn, `Review` while a reviewer of it is at the table, `Done` once merged, with its latest status line or the PR.
+The scrub bar under the tent runs from the first event to now, with the days and the merges marked: drag it, or click a line in the panel, to go there. Play runs at 1×, 4×, 16× or 64× until it reaches now; `Live` jumps to now and follows. A tent opens live, three events before now. Live and caught up, the open crews and the Mate end posed by their scene states, and a new event on the project reads the history again and plays it; scrubbed back, the view stays on the same event. `Space` plays and pauses.
+The history is kept per tent while the project's rows are the same, and read ahead while the pointer rests on a tent, so a click opens it at once. A repo with no task shows a sleeping Mate.
 `Escape` or `Back to the city` leaves the tent.
 
-Reads: `/api/workspace`, `/api/projects/{p}` per project, `/api/board?days=7`, `/api/news`, and the task endpoints above for a tent.
+Reads: `/api/workspace`, `/api/projects/{p}` per project, `/api/board?days=7`, `/api/news`, and `/api/projects/{p}/history` for a tent.
 The city is drawn as soon as `/api/workspace` answers; each project's crews and signs fill in as its page arrives, and the board and the news are read beside them and never hold the city up (CON-126).
 It long-polls `/api/events?since=<last_event_id>&wait=20`; an answer with events re-reads the workspace and the pages of the projects they name, an id that went backwards (a `mate reindex`) re-reads every project, and every answer re-reads `/api/news` and, once it is five minutes old, `/api/board`. The pill says `live` or `stale` with the reason, and a failed poll retries every 3 seconds.
 The page marks `city:drawn` and `city:tent <project>/<repo>` on the browser's performance timeline at the first frame of each.

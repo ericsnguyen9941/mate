@@ -2,20 +2,21 @@ import * as THREE from './vendor/three.js';
 import { RoundedBoxGeometry } from './vendor/three.js';
 import { AgentMascot, handoff } from './agent-mascot.js';
 import { HARNESSES } from './harnesses.js';
-import { PALETTE, LiveTexture, matte, textTexture, valanceGeometry, harnessLook, harnessName, formatTokens } from './city.js';
+import { PALETTE, LiveTexture, matte, textTexture, valanceGeometry, harnessLook, harnessName, poseOf } from './city.js';
 
 // One repo's tent seen up close: a big open tent (front and roof cut away)
 // with a task board, a round table where the crews sit with their laptops,
-// and the project's Mate between the two. It replays one real episode that
-// episode.js read from the dashboard: the Mate hands a task to a ship crew,
-// the crew reports status, asks the Mate and gets its answers, hands back, a
-// reviewer reads the diff and gives its verdict, the Mate merges. Bubbles
-// show the lines shortened; `events` carries them in full with their real
-// times for the page's feed. update(t) is a pure function of t, so the
-// replay loops by calling it with t modulo `duration`.
+// and the project's Mate between the two. It plays out what history.js read
+// from the dashboard, in order: the Mate spawns crews, they report status,
+// ask the Mate and get its answers, hand back; reviewers come, read the diff
+// and give their verdicts; the Mate merges or closes. Bubbles show the lines
+// shortened; `events` carries them in full with their real times for the
+// page's feed. update(t) is a pure function of t, so the page can scrub to
+// any time; past `duration` the room shows things as they are now.
 
-export const ROOM_LOOP = 18; // a room with nothing to replay
-const STEP = 3.0; // seconds per replayed event
+export const ROOM_LOOP = 18; // a room with nothing to play
+const STEP = 2.5; // room seconds per event
+const LEAD = 1; // room seconds before the first one
 const W = 15; // floor width
 const D = 10.5; // floor depth
 const EAVE = 3.6;
@@ -32,11 +33,6 @@ export function ticket(id) {
   return m ? { key: m[1].toUpperCase(), title: m[2].replace(/-/g, ' ') } : { key: id, title: '' };
 }
 
-function summary(ep) {
-  const s = ep.ship;
-  return [s.id, `${formatTokens(s.tokens)} tokens`, `${s.turns} turns`, s.questions ? `${s.questions} question${s.questions === 1 ? '' : 's'}` : null, s.pr ? `PR #${s.pr}` : null].filter(Boolean).join(' · ');
-}
-
 function fit(ctx, text, w) {
   if (ctx.measureText(text).width <= w) return text;
   let s = text;
@@ -44,7 +40,7 @@ function fit(ctx, text, w) {
   return `${s.trimEnd()}…`;
 }
 
-function drawTaskBoard(ctx, { repo, color, columns, done, finished, merged, days }, w, h) {
+function drawTaskBoard(ctx, { repo, color, columns, done, merged, since }, w, h) {
   const font = (weight, px) => `${weight} ${px}px ${FONT}`;
   ctx.fillStyle = PALETTE.pad;
   ctx.beginPath();
@@ -78,7 +74,7 @@ function drawTaskBoard(ctx, { repo, color, columns, done, finished, merged, days
     ctx.font = font(800, 32);
     ctx.fillText(title, x + 24, 196);
     ctx.textAlign = 'right';
-    ctx.fillText(String(id === 'done' ? finished : cards.length), x + colW - 24, 196);
+    ctx.fillText(String(id === 'done' ? merged : cards.length), x + colW - 24, 196);
     let y = 236;
     if (id === 'done') {
       ctx.fillStyle = PALETTE.pad;
@@ -88,21 +84,17 @@ function drawTaskBoard(ctx, { repo, color, columns, done, finished, merged, days
       ctx.textAlign = 'left';
       ctx.fillStyle = PALETTE.ink;
       ctx.font = font(800, 76);
-      ctx.fillText(String(finished), x + 40, y + 62);
+      ctx.fillText(String(merged), x + 40, y + 62);
       ctx.fillStyle = PALETTE.muted;
       ctx.font = font(700, 28);
-      ctx.fillText(`tasks done · last ${days} days`, x + 40, y + 118);
+      ctx.fillText(`merged since ${since}`, x + 40, y + 118);
       y += 170;
-      ctx.fillStyle = PALETTE.ink;
-      ctx.font = font(700, 30);
-      ctx.fillText(`${merged} merged on ${fit(ctx, repo, colW - 220)}`, x + 28, y + 14);
-      y += 50;
     }
     if (!cards.length && id === 'doing') {
       ctx.textAlign = 'left';
       ctx.fillStyle = PALETTE.muted;
       ctx.font = font(600, 30);
-      ctx.fillText(columns.review.length || done.length ? 'Empty' : 'No crew yet', x + 28, y + 30);
+      ctx.fillText(columns.review.length || done.length ? 'Empty' : 'Nothing yet', x + 28, y + 30);
     }
     for (const card of cards) {
       if (y + 112 > h - 50) break;
@@ -137,15 +129,10 @@ function drawTaskBoard(ctx, { repo, color, columns, done, finished, merged, days
  * @param {string} o.repo
  * @param {string} o.floor the block colour
  * @param {string} o.mateHarness
- * @param {object|null} o.episode from episode.js, or null when the repo has no merged task
- * @param {{ id: string, text: string }[]} o.recent earlier merged tasks on the repo
- * @param {number} o.finished tasks done in the project over the board's days
- * @param {number} o.merged tasks merged on the repo
- * @param {number} o.days
+ * @param {string} [o.mateState] the Mate's scene state now
+ * @param {{ since: string, tasks: object[], events: object[] }} o.history from history.js
  */
-export function createTentRoom({ project, repo, floor, mateHarness, episode: ep, recent = [], finished = 0, merged = 0, days = 7 }) {
-  const crews = ep ? [ep.ship, ...ep.reviewers] : [];
-  const key = ep ? ticket(ep.ship.id).key : '';
+export function createTentRoom({ project, repo, floor, mateHarness, mateState, history: { since, tasks, events } }) {
   const stripe = new THREE.Color(floor).offsetHSL(0, -0.05, -0.12).getStyle();
   const accent = (h) => HARNESSES[h]?.accent ?? '#8E857A';
 
@@ -262,150 +249,250 @@ export function createTentRoom({ project, repo, floor, mateHarness, episode: ep,
   leaves.castShadow = true;
   group.add(leaves);
 
-  // Mascots: crews on the far arc of the table, turned partly to the room;
-  // the Mate between the board and the table.
+
+  // ---- The cast -----------------------------------------------------------------
+  // Each event takes STEP seconds of the room's clock, oldest first, so a quiet
+  // night and a busy hour read at the same pace; the feed and the scrub bar
+  // carry the real times. A crew takes a seat when the Mate spawns it and
+  // leaves just before the first event after its task closed. Seats are
+  // reused, so the table holds as many crews as were ever there at once.
+  const n = events.length;
+  const tau = (i) => LEAD + i * STEP;
+  const duration = n ? tau(n - 1) + STEP : ROOM_LOOP;
+  const ats = events.map((e) => e.at);
+  // The first event after `iso`, by binary search; n when none came yet.
+  function after(iso) {
+    let lo = 0;
+    let hi = n;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ats[mid] <= iso) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+  const byCrew = new Map(tasks.map((t) => [t.crew, t]));
+  const stays = []; // { task, from, to, seat }, by arrival
+  const stayOf = new Map();
+  events.forEach((e, i) => {
+    const t = byCrew.get(e.crew);
+    if ((e.kind !== 'spawn' && e.kind !== 'review') || !t || stayOf.has(e.crew)) return;
+    let to = Infinity;
+    if (t.closed) {
+      const k = after(t.closed_at || t.merged_at || e.at);
+      to = k < n ? tau(k) - 0.6 : duration - 0.4;
+    }
+    const st = { task: t, from: tau(i), to: Math.max(to, tau(i) + 1.6), seat: 0 };
+    stays.push(st);
+    stayOf.set(e.crew, st);
+  });
+  const freeAt = [];
+  for (const st of stays) {
+    let k = freeAt.findIndex((f) => f <= st.from);
+    if (k < 0) k = freeAt.push(0) - 1;
+    st.seat = k;
+    freeAt[k] = st.to + 0.5;
+  }
+
+  // Seats on the far arc of the table, turned partly to the room; past seven,
+  // a second arc behind the first.
   const mascots = new Map();
-  const seats = new Map(); // id → { project, kind, crew?, role, harness, model, effort }
+  const seats = new Map(); // mascot id → { project, kind, crew?, role, harness, model, effort, text }
   const padGeo = keep(new THREE.CylinderGeometry(1, 1, 0.08, 40));
   const padMat = keep(matte('#EFE7DA'));
   const laptopBase = keep(new RoundedBoxGeometry(0.62, 0.04, 0.42, 2, 0.015));
   const laptopLid = keep(new RoundedBoxGeometry(0.62, 0.4, 0.03, 2, 0.012));
   const laptopMat = keep(matte('#5A5148'));
-  function seat(id, s, kind, x, z, size, heading) {
-    const m = new AgentMascot({ ...harnessLook(s.harness), size, position: [x, 0.14, z], heading, phase: (mascots.size * 1.37) % 4 });
-    m.id = id;
-    group.add(m.root);
-    const pad = new THREE.Mesh(padGeo, kind === 'mate' ? keep(matte('#F2A285')) : padMat);
-    pad.scale.set(0.62 * size + 0.06, 1, 0.62 * size + 0.06);
-    pad.position.set(x, 0.1, z);
-    pad.receiveShadow = true;
-    group.add(pad);
-    mascots.set(id, m);
-    seats.set(id, kind === 'mate' ? { project, kind, harness: s.harness } : { project, kind, crew: s.id, role: s.role, harness: s.harness, model: s.model, effort: s.effort, text: s.text });
+  const lidMat = keep(matte('#5A5148', { emissive: '#F2EFE8', emissiveIntensity: 0.15 }));
+  function pad(x, z, size, mat) {
+    const m = new THREE.Mesh(padGeo, mat);
+    m.scale.set(0.62 * size + 0.06, 1, 0.62 * size + 0.06);
+    m.position.set(x, 0.1, z);
+    m.receiveShadow = true;
+    group.add(m);
     return m;
   }
-  const n = crews.length;
-  const crewMascots = crews.map((c, k) => {
-    const phi = n === 1 ? 0 : -1.2 + (2.4 * k) / (n - 1);
-    const R = TABLE.r + 0.7;
+  const PER_ARC = 7;
+  const chairs = freeAt.map((_, k) => {
+    const arc = Math.floor(k / PER_ARC);
+    const count = Math.min(PER_ARC, freeAt.length - arc * PER_ARC);
+    const j = k % PER_ARC;
+    const phi = count === 1 ? 0 : -1.2 + (2.4 * j) / (count - 1);
+    const R = TABLE.r + 0.7 + arc * 1.25;
     const x = TABLE.x + R * Math.sin(phi);
     const z = TABLE.z - R * Math.cos(phi);
-    // Laptop in front of the seat, screen toward it.
-    const lx = TABLE.x + (TABLE.r - 0.55) * Math.sin(phi);
-    const lz = TABLE.z - (TABLE.r - 0.55) * Math.cos(phi);
-    const laptop = new THREE.Group();
-    laptop.position.set(lx, TABLE.h + 0.07, lz);
-    laptop.rotation.y = -phi;
-    const lb = new THREE.Mesh(laptopBase, laptopMat);
-    laptop.add(lb);
-    const lid = new THREE.Mesh(laptopLid, keep(matte('#5A5148', { emissive: accent(c.harness), emissiveIntensity: 0.15 })));
-    lid.position.set(0, 0.2, 0.2);
-    lid.rotation.x = 0.25;
-    laptop.add(lid);
-    laptop.traverse((o) => (o.castShadow = true));
-    group.add(laptop);
-    return seat(`${project}/${c.id}`, c, 'crew', x, z, CREW_SIZE, -0.55 * phi);
+    const own = stays.filter((st) => st.seat === k);
+    const look = own[0].task.harness;
+    const m = new AgentMascot({ ...harnessLook(look), size: CREW_SIZE, position: [x, 0.14, z], heading: -0.55 * phi, phase: (k * 1.37) % 4 });
+    m.id = `${project}/seat-${k}`;
+    m.play('idle', { at: 0 });
+    group.add(m.root);
+    mascots.set(m.id, m);
+    let laptop = null;
+    if (!arc) {
+      // Laptop in front of the seat, screen toward it.
+      laptop = new THREE.Group();
+      laptop.position.set(TABLE.x + (TABLE.r - 0.55) * Math.sin(phi), TABLE.h + 0.07, TABLE.z - (TABLE.r - 0.55) * Math.cos(phi));
+      laptop.rotation.y = -phi;
+      laptop.add(new THREE.Mesh(laptopBase, laptopMat));
+      const lid = new THREE.Mesh(laptopLid, lidMat);
+      lid.position.set(0, 0.2, 0.2);
+      lid.rotation.x = 0.25;
+      laptop.add(lid);
+      laptop.traverse((o) => (o.castShadow = true));
+      group.add(laptop);
+    }
+    return { m, own, look, laptop, pad: pad(x, z, CREW_SIZE, padMat) };
   });
-  const mate = seat(`${project}:mate`, { harness: mateHarness }, 'mate', -1.3, 1.0, MATE_SIZE, 0.35);
+  const mate = new AgentMascot({ ...harnessLook(mateHarness), size: MATE_SIZE, position: [-1.3, 0.14, 1.0], heading: 0.35, phase: 0.5 });
+  mate.id = `${project}:mate`;
+  group.add(mate.root);
+  mascots.set(mate.id, mate);
+  seats.set(mate.id, { project, kind: 'mate', harness: mateHarness });
+  pad(-1.3, 1.0, MATE_SIZE, keep(matte('#F2A285')));
+  const mascotOf = (crew) => chairs[stayOf.get(crew)?.seat]?.m;
 
-  // ---- Replaying the episode -------------------------------------------------
-  // One event per STEP seconds, in the episode's real order; the feed carries
-  // the real clock times. A mascot's plays must go in time order, which the
-  // event order gives, and each hand-off lands before the next event.
-  const events = []; // feed entries: { at, clock, who, kind, text }
-  const moves = []; // { at, to: doing|review|done, note }
-  const byId = new Map(crews.map((c, k) => [c.id, crewMascots[k]]));
-  const shipM = ep && byId.get(ep.ship.id);
-  const label = (id) => {
-    if (id === 'mate') return 'Mate';
-    const c = id === 'ship' ? ep.ship : crews.find((x) => x.id === id);
-    return c.role === 'review' ? `${harnessName(c.harness)} · reviewer` : `${harnessName(c.harness)} · ${key}`;
-  };
+  // ---- Playing it out -------------------------------------------------------------
+  // A mascot's plays must go in time order, which the event order gives.
+  const feed = []; // { at, clock, iso, who, kind, text, crew }
   const clockFmt = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
   const clock = (iso) => clockFmt.format(new Date(iso));
+  const label = (crew) => {
+    if (crew === 'mate') return 'Mate';
+    const t = byCrew.get(crew);
+    return `${harnessName(t?.harness)} · ${ticket(crew).key}${t?.role === 'review' ? ' review' : ''}`;
+  };
   const say = (m, text, at) => m.say(text, { at, hold: 0.7 });
-  const pass = (from, to, at, then, receiverThen) => handoff(from, to, at, { then, receiverThen, turn: 0.6 });
-  let duration = ROOM_LOOP;
+  const pass = (from, to, at, then, receiverThen) => to && handoff(from, to, at, { then, receiverThen, turn: 0.6 });
+  const notes = new Map(); // crew → [room time, words] for its card on the board
+  const note = (crew, at, words) => notes.set(crew, [...(notes.get(crew) ?? []), [at, words]]);
+  const merges = new Map(); // ship crew → { at, pr }
+  const reviewsOf = new Map(); // ship crew → reviewer stays
 
   mate.play('idle', { at: 0 });
-  if (!ep) {
+  if (!n) {
     mate.play('sleeping', { at: 0 });
-    events.push({ at: 0, clock: '', who: 'Mate', kind: 'sleep', text: 'No task has been merged on this repo yet, so there is nothing to replay.' });
-  } else {
-    shipM.play('sleeping', { at: 0 });
-    for (const r of ep.reviewers) byId.get(r.id).play('sleeping', { at: 0 });
-    ep.events.forEach((ev, i) => {
-      const at = 1 + i * STEP;
-      const m = ev.who === 'mate' ? mate : ev.who === 'ship' ? shipM : byId.get(ev.who);
-      events.push({ at, clock: clock(ev.at), who: label(ev.who), kind: ev.kind, text: ev.text });
-      switch (ev.kind) {
-        case 'spawn':
-          say(mate, ev.short, at);
-          pass(mate, shipM, at + 0.8, 'idle', 'working');
-          moves.push({ at: at + 2.3, to: 'doing' });
-          break;
-        case 'status':
-          m.play('working', { at });
-          say(m, ev.short, at);
-          break;
-        case 'ask':
-          shipM.play('thinking', { at });
-          say(shipM, ev.short, at);
-          pass(shipM, mate, at + 1.0, 'thinking', 'thinking');
-          break;
-        case 'answer':
-          say(mate, ev.short, at);
-          pass(mate, shipM, at + 1.0, 'idle', 'working');
-          break;
-        case 'handback':
-          m.play('completed', { at });
-          say(m, ev.short, at);
-          pass(m, mate, at + 1.0, m === shipM ? 'idle' : 'thinking', 'thinking');
-          break;
-        case 'review': {
-          const r = byId.get(ev.reviewer) ?? crewMascots[1];
-          say(mate, ev.short, at);
-          pass(mate, r, at + 0.8, 'idle', 'working');
-          moves.push({ at: at + 2.3, to: 'review', note: `${harnessName(crews.find((c) => byId.get(c.id) === r).harness)} reviewing` });
-          break;
-        }
-        case 'verdict': {
-          const ok = ev.pass;
-          m.play(ok ? 'completed' : 'thinking', { at });
-          say(m, ev.short, at);
-          pass(m, mate, at + 1.0, 'sleeping', 'thinking');
-          moves.push({ at: at + 2.5, to: ok ? 'review' : 'doing', note: ok ? 'review passed' : 'fixing after review' });
-          break;
-        }
-        case 'merge':
-          mate.play('completed', { at });
-          say(mate, ev.short, at);
-          moves.push({ at: at + 0.3, to: 'done', note: ep.ship.pr ? `PR #${ep.ship.pr}` : 'merged' });
-          break;
-      }
-    });
-    duration = 1 + (ep.events.length - 1) * STEP + STEP + 3;
+    feed.push({ at: 0, clock: '', who: 'Mate', kind: 'sleep', text: 'No task has worked on this repo yet.' });
   }
+  events.forEach((ev, i) => {
+    const at = tau(i);
+    const m = ev.who === 'mate' ? mate : mascotOf(ev.who);
+    const c = mascotOf(ev.crew);
+    feed.push({ at, clock: clock(ev.at), iso: ev.at, who: label(ev.who), kind: ev.kind, text: ev.text, crew: ev.crew });
+    switch (ev.kind) {
+      case 'spawn':
+      case 'review':
+        say(mate, ev.short, at);
+        pass(mate, c, at + 0.8, 'idle', 'working');
+        note(ev.crew, at, ev.kind === 'review' ? 'reviewing' : 'starting');
+        if (ev.kind === 'review' && ev.of) reviewsOf.set(ev.of, [...(reviewsOf.get(ev.of) ?? []), stayOf.get(ev.crew)]);
+        break;
+      case 'status':
+        m?.play('working', { at });
+        if (m) say(m, ev.short, at);
+        note(ev.crew, at, ev.short);
+        break;
+      case 'ask':
+        m?.play('thinking', { at });
+        if (m) say(m, ev.short, at);
+        if (m) pass(m, mate, at + 1.0, 'thinking', 'thinking');
+        note(ev.crew, at, 'asking the Mate');
+        break;
+      case 'answer':
+        say(mate, ev.short, at);
+        pass(mate, c, at + 1.0, 'idle', 'working');
+        break;
+      case 'handback':
+      case 'verdict':
+        m?.play(ev.kind === 'verdict' && !ev.pass ? 'thinking' : 'completed', { at });
+        if (m) say(m, ev.short, at);
+        if (m) pass(m, mate, at + 1.0, 'idle', 'thinking');
+        note(ev.crew, at, ev.kind === 'verdict' ? (ev.pass ? 'review passed' : 'changes requested') : 'handed back');
+        if (ev.kind === 'verdict') {
+          const ship = byCrew.get(ev.crew) && events.find((e) => e.kind === 'review' && e.crew === ev.crew)?.of;
+          if (ship) note(ship, at, ev.pass ? 'review passed' : 'fixing after review');
+        }
+        break;
+      case 'merge':
+        mate.play('completed', { at });
+        say(mate, ev.short, at);
+        c?.play('completed', { at: at + 0.3 });
+        merges.set(ev.crew, { at, pr: ev.pr });
+        break;
+      case 'close':
+        say(mate, ev.short, at);
+        break;
+    }
+  });
+  // Live, the open crews and the Mate end posed as they are now.
+  const end = Math.max(0, duration - 0.2);
+  for (const st of stays) if (!st.task.closed && st.task.state) mascotOf(st.task.crew)?.play(poseOf(st.task.state), { at: end });
+  if (n && mateState) mate.play(mateState === 'asleep' ? 'sleeping' : poseOf(mateState), { at: end });
 
-  const recentCards = recent.map((r) => ({ key: ticket(r.id).key, title: r.text, accent: '#B8AFA3' }));
+  // ---- The board --------------------------------------------------------------------
+  const ships = stays.filter((st) => st.task.role === 'ship');
+  const noteAt = (crew, t) => {
+    const list = notes.get(crew) ?? [];
+    let words = '';
+    for (const [at, w] of list) if (at <= t) words = w;
+    return words;
+  };
+  const sinceLabel = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: '2-digit' }).format(new Date(since));
   function boardState(t) {
     const columns = { doing: [], review: [] };
     const done = [];
-    const last = moves.filter((m) => m.at <= t).at(-1);
-    if (ep && last) {
-      const card = { key, title: ep.ship.text, accent: accent(ep.ship.harness), note: last.note };
-      (last.to === 'done' ? done : columns[last.to]).push(card);
+    for (const st of ships) {
+      if (st.from > t) continue;
+      const crew = st.task.crew;
+      const card = { key: ticket(crew).key, title: st.task.text, accent: accent(st.task.harness) };
+      const mg = merges.get(crew);
+      if (mg && mg.at <= t) done.push({ ...card, note: mg.pr ? `PR #${mg.pr}` : 'merged', at: mg.at });
+      else if (t < st.to) {
+        const inReview = (reviewsOf.get(crew) ?? []).some((r) => r && r.from <= t && t < r.to);
+        (inReview ? columns.review : columns.doing).push({ ...card, note: noteAt(crew, t) || card.title });
+      }
     }
-    done.push(...recentCards);
-    return JSON.stringify({ repo, color: floor, columns, done, finished, merged, days });
+    done.sort((a, b) => b.at - a.at);
+    return JSON.stringify({ repo, color: floor, columns, done: done.map(({ at, ...c }) => c), merged: done.length, since: sinceLabel });
   }
 
   function update(t) {
+    for (const ch of chairs) {
+      const st = ch.own.find((o) => o.from <= t && t < o.to);
+      ch.m.root.visible = ch.pad.visible = Boolean(st);
+      if (ch.laptop) ch.laptop.visible = Boolean(st);
+      if (st) {
+        if (st.task.harness !== ch.look) {
+          const look = harnessLook(st.task.harness);
+          ch.m.setHarness(look.harness, look);
+          ch.look = st.task.harness;
+        }
+        // Pop in on arrival, shrink away on leaving.
+        const k = Math.min(1, (t - st.from) / 0.4, (st.to - t) / 0.4);
+        ch.m.root.scale.setScalar(Math.max(0.001, 1 - (1 - k) ** 3));
+        const x = st.task;
+        seats.set(ch.m.id, { project, kind: 'crew', crew: x.crew, role: x.role, harness: x.harness, model: x.model, effort: x.effort, text: x.text });
+        ch.m.update(t);
+      } else seats.delete(ch.m.id);
+    }
+    mate.update(t);
     boardTex.set(boardState(t));
-    for (const m of mascots.values()) m.update(t);
     group.updateMatrixWorld(true);
   }
 
+  // The feed entry showing at room time t: the last one at or before it.
+  function indexAt(t) {
+    let lo = 0;
+    let hi = feed.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (feed[mid].at <= t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo - 1;
+  }
+
+  const shipCount = ships.length;
   const target = new THREE.Vector3(-0.8, 1.2, -1.0);
   const view = target.clone().add(new THREE.Vector3(Math.sin(0.1), 0.62, Math.cos(0.1)).setLength(27));
   return {
@@ -414,11 +501,13 @@ export function createTentRoom({ project, repo, floor, mateHarness, episode: ep,
     repo,
     mascots,
     seats,
-    events,
+    events: feed,
     duration,
-    summary: ep ? summary(ep) : 'no merged task on this repo yet',
+    since: n ? sinceLabel : '',
+    summary: n ? `${shipCount} task${shipCount === 1 ? '' : 's'} · ${merges.size} merged · since ${sinceLabel}` : 'nothing has worked on this repo yet',
     view: { target, position: view },
     update,
+    indexAt,
     dispose() {
       for (const m of mascots.values()) m.dispose();
       for (const d of disposables) d.dispose();

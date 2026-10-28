@@ -354,6 +354,23 @@ type TaskSummaryResponse struct {
 	Questions   []Question   `json:"questions"`
 }
 
+// HistoryResponse is GET /api/projects/{project}/history?since=<RFC3339>:
+// every crew's status lines and decisions since a time, by crew name, for
+// Agent City's tent to play back (CON-127). Crews with neither are absent.
+type HistoryResponse struct {
+	envelope
+	Project string                  `json:"project"`
+	Since   string                  `json:"since"`
+	Crews   map[string]*CrewHistory `json:"crews"`
+}
+
+// CrewHistory is one crew's part of HistoryResponse: what its task page
+// carries as status_lines and questions, from Since on.
+type CrewHistory struct {
+	StatusLines []StatusLine `json:"status_lines"`
+	Questions   []Question   `json:"questions"`
+}
+
 // Action is one tool call inside a turn.
 type Action struct {
 	ID         string `json:"id"`

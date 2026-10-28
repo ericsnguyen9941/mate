@@ -833,6 +833,41 @@ func TestTaskRepoIsAbsentWhenTheMetaNamesAGoneRepo(t *testing.T) {
 
 // The summary view is the full task answer's ledger, status lines and
 // decisions, and none of its turns, branch or performance (CON-126).
+func TestHistoryIsEveryCrewsLinesAndDecisionsSinceATime(t *testing.T) {
+	f := newFixture(t)
+	var sum TaskSummaryResponse
+	f.get(t, "/api/projects/"+fixtureProject+"/tasks/"+fixtureCrew+"?view=summary", http.StatusOK, &sum)
+	if len(sum.StatusLines) < 2 {
+		t.Fatal("the fixture crew needs two status lines for a since between them to mean anything")
+	}
+	path := "/api/projects/" + fixtureProject + "/history?since="
+	var all HistoryResponse
+	f.get(t, path+"2000-01-01T00:00:00Z", http.StatusOK, &all)
+	got := all.Crews[fixtureCrew]
+	if got == nil || !reflect.DeepEqual(got.StatusLines, sum.StatusLines) || !reflect.DeepEqual(got.Questions, sum.Questions) {
+		t.Fatalf("the history's %s differs from its task summary: %+v", fixtureCrew, got)
+	}
+
+	// A since between two lines keeps the later ones only.
+	cut := sum.StatusLines[len(sum.StatusLines)-1].At
+	var late HistoryResponse
+	f.get(t, path+db.FormatTime(db.ParseTime(cut)), http.StatusOK, &late)
+	for crew, h := range late.Crews {
+		for _, l := range h.StatusLines {
+			if l.At < cut {
+				t.Errorf("%s: a line at %s came back for since %s", crew, l.At, cut)
+			}
+		}
+	}
+	if n := len(late.Crews[fixtureCrew].StatusLines); n == 0 || n >= len(sum.StatusLines) {
+		t.Errorf("since the last line kept %d of %d lines", n, len(sum.StatusLines))
+	}
+
+	f.get(t, "/api/projects/"+fixtureProject+"/history", http.StatusBadRequest, nil)
+	f.get(t, path+"yesterday", http.StatusBadRequest, nil)
+	f.get(t, "/api/projects/nosuch/history?since=2000-01-01T00:00:00Z", http.StatusNotFound, nil)
+}
+
 func TestTaskSummaryIsTheFullAnswerWithoutTurnsOrPerformance(t *testing.T) {
 	f := newFixture(t)
 	path := "/api/projects/" + fixtureProject + "/tasks/" + fixtureCrew
