@@ -15,6 +15,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/autopilot"
 	"github.com/nguyenngocanh94/mate/internal/box"
 	"github.com/nguyenngocanh94/mate/internal/brief"
+	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -103,13 +104,17 @@ func wake(ctx context.Context, w *store.Workspace, git gitx.Git, project string,
 	out.WriteString("Contract: this is what woke you, read once. Act on part 1 in its order; do not tail status files, cat hand-backs, peek or run crew list to find what is already here. Peek a blocked Crew; read a file below only for what its excerpt does not answer.\n")
 
 	items := wakeItems(autopilot.Gather(view, nil, now))
-	fmt.Fprintf(&out, "\n== 1. To act on (%d) ==\n", len(items))
-	if len(items) == 0 {
+	landed := landedCrews(crews, w, project)
+	fmt.Fprintf(&out, "\n== 1. To act on (%d) ==\n", len(items)+len(landed))
+	if len(items)+len(landed) == 0 {
 		out.WriteString("nothing open\n")
 	}
 	reviews := reviewsByTarget(w, project, crews)
 	for _, it := range items {
 		writeWakeItem(ctx, &out, w, git, project, it, reviews)
+	}
+	for _, c := range landed {
+		writeLanded(ctx, &out, w, git, project, c)
 	}
 
 	fresh, next := newStatusLines(view, cursor)
@@ -282,13 +287,99 @@ func writeHandBack(ctx context.Context, out *strings.Builder, w *store.Workspace
 		if !scout {
 			out.WriteString("  reviews: none yet; " + projectReviewWord(w, project) + "\n")
 		}
+	} else {
+		var parts []string
+		for _, r := range reviewers {
+			parts = append(parts, r+" "+reviewVerdictWord(w, project, r))
+		}
+		fmt.Fprintf(out, "  reviews: %s\n", strings.Join(parts, ", "))
+	}
+	fmt.Fprintf(out, "  learning: %s\n", learningWord(ctx, w, git, project, crew, meta, "review-delivery's next step"))
+}
+
+// landedCrews are the open crews whose pull request the watcher saw merged
+// (CON-129). Each is a part-1 item until `crew stop` closes it: the merge
+// is the one event the learning skill catches up on, and on mihuv2
+// (2026-10-27/28) nothing in a wake said whether that had happened.
+func landedCrews(crews []spawn.CrewSummary, w *store.Workspace, project string) []spawn.CrewSummary {
+	var out []spawn.CrewSummary
+	for _, c := range crews {
+		if c.Closed {
+			continue
+		}
+		meta, err := w.ReadCrewMeta(project, c.Crew)
+		if err != nil || meta[crewstate.MetaPRState] != crewstate.PRStateMerged {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+func writeLanded(ctx context.Context, out *strings.Builder, w *store.Workspace, git gitx.Git, project string, c spawn.CrewSummary) {
+	meta, err := w.ReadCrewMeta(project, c.Crew)
+	if err != nil {
 		return
 	}
-	var parts []string
-	for _, r := range reviewers {
-		parts = append(parts, r+" "+reviewVerdictWord(w, project, r))
+	fmt.Fprintf(out, "landed %s: pull request merged (%s), crew still open\n", c.Crew, dashIfEmpty(meta[crewstate.MetaPRURL]))
+	fmt.Fprintf(out, "  learning: %s\n", learningWord(ctx, w, git, project, c.Crew, meta, "mate crew stop "+project+" "+c.Crew))
+}
+
+// learningWord is whether the Mate's learning record for a crew covers the
+// crew's current evidence revision (skill task-learning): `none recorded`,
+// `recorded for <rev>`, or recorded but naming no such revision. A ship's
+// revision is its merge commit once merged, else its branch head; a scout
+// has only its report, so its record is checked for existence alone. The
+// record is the Mate's prose, so "covers" means the short revision appears
+// in it. then is what follows the task-learning step in the `next:`.
+func learningWord(ctx context.Context, w *store.Workspace, git gitx.Git, project, crew string, meta map[string]string, then string) string {
+	path := w.CrewLearning(project, crew)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Sprintf("none recorded; next: skill task-learning (writes %s), then %s", path, then)
 	}
-	fmt.Fprintf(out, "  reviews: %s\n", strings.Join(parts, ", "))
+	rev := crewRevision(ctx, w, git, project, meta)
+	if rev == "" {
+		return fmt.Sprintf("recorded (%s); next: %s", path, then)
+	}
+	if !strings.Contains(string(data), rev) {
+		return fmt.Sprintf("recorded, but not for %s (%s); next: skill task-learning for this revision, then %s", rev, path, then)
+	}
+	return fmt.Sprintf("recorded for %s (%s); next: %s", rev, path, then)
+}
+
+// crewRevision is the short revision a ship's evidence is about: the merge
+// commit once its pull request merged, else the head of its branch; "" for
+// a scout, a crew without a branch, or a branch git cannot resolve.
+func crewRevision(ctx context.Context, w *store.Workspace, git gitx.Git, project string, meta map[string]string) string {
+	if meta[spawn.MetaKind] == "scout" {
+		return ""
+	}
+	if merge := meta[crewstate.MetaMergeCommit]; meta[crewstate.MetaPRState] == crewstate.PRStateMerged && merge != "" {
+		return shortRevision(merge)
+	}
+	branch := meta[spawn.MetaBranch]
+	cfg, err := w.LoadProject(project)
+	if err != nil || branch == "" {
+		return ""
+	}
+	repoCfg, err := cfg.CrewRepo(meta)
+	if err != nil {
+		return ""
+	}
+	head, err := git.HeadCommit(ctx, w.RepoDir(repoCfg.Path), branch)
+	if err != nil {
+		return ""
+	}
+	return shortRevision(head)
+}
+
+func shortRevision(rev string) string {
+	rev = strings.TrimSpace(rev)
+	if len(rev) > 7 {
+		return rev[:7]
+	}
+	return rev
 }
 
 // branchSummary is one line on a ship's branch: commits beyond the default

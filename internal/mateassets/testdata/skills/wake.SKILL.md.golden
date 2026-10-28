@@ -20,7 +20,8 @@ Work through the items in this order, because it follows what happens to a Crew 
 3. **`wait-mate` third.** Load `review-delivery`.
 
 Any other item (`no turn`, `context high`, `budget 50%`) carries its own `next:` line; do what it says. An `over budget` or `budget hard ceiling` item is the Budget section below.
-A `pr-merged:` or `pr-closed:` line is `review-delivery`'s too.
+A `pr-merged:` or `pr-closed:` line is `review-delivery`'s too. A `landed` item is a Crew whose pull request merged while it is still open: it stays listed until `crew stop` closes it.
+Every hand-back and `landed` item carries a `learning:` line, the app's check of your record for that revision (`task-learning`): `none recorded` or `not for <revision>` means run `task-learning` before the step its `next:` names; `recorded for` means that step alone.
 
 A `resolve:` line is a Crew's question the captain handed to you: it is the `needs-decision` item `wake` prints in full.
 `resolve: incident <kind> <crew>` is the app reporting trouble with a Crew, not a question: treat it as `blocked`.

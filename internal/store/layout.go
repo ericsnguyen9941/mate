@@ -22,6 +22,7 @@ const (
 	sentLogName       = "sent.log"
 	incidentsLogName  = "incidents.log"
 	mateDirName       = "mate"
+	learningsDirName  = "learnings"
 	mateMetaName      = "mate.meta"
 	autoFlagName      = ".auto"
 	manualHoldName    = ".manual"
@@ -229,6 +230,14 @@ func (w *Workspace) CrewReport(project, crew string) string {
 // outlives the Crew.
 func (w *Workspace) CrewHandback(project, crew string) string {
 	return filepath.Join(w.CrewDir(project, crew), handbackFileName)
+}
+
+// CrewLearning is `projects/<project>/mate/learnings/<crew>.md`, the one
+// learning record the Mate keeps per crew (skill task-learning, CON-129).
+// It lives under the Mate's own directory, not the crew's: the Mate writes
+// it, and `mate wake` reads it to say whether a hand-back has one.
+func (w *Workspace) CrewLearning(project, crew string) string {
+	return filepath.Join(w.MateDir(project), learningsDirName, crew+".md")
 }
 
 // CrewSessionInput is `projects/<project>/crews/<crew>/session-<n>.md`: the

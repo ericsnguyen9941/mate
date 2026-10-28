@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/box"
+	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -247,5 +249,82 @@ func TestWakePrintsANoTurnIncidentWithTheBlocked(t *testing.T) {
 	}
 	if !strings.Contains(text, "busy-k5 working · codex · running the test suite\n") {
 		t.Errorf("a no-turn item changed the crew's state:\n%s", text)
+	}
+}
+
+func writeLearning(t *testing.T, w *store.Workspace, crew, body string) {
+	t.Helper()
+	path := w.CrewLearning("shop", crew)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Under a hand-back the wake says whether the Mate's learning record covers
+// the crew's revision (CON-129): the check is in the tool output, not only
+// in a skill. A record that names an older revision counts as missing for
+// this one.
+func TestWakeSaysWhetherLearningIsRecorded(t *testing.T) {
+	w := wakeFixture(t)
+	head := strings.TrimSpace(gitOutput(t, w.WorktreeDir("shop", "k3"), "rev-parse", "--short=7", "HEAD"))
+	path := w.CrewLearning("shop", "k3")
+	for _, step := range []struct{ record, want string }{
+		{"", "  learning: none recorded; next: skill task-learning (writes " + path + "), then review-delivery's next step\n"},
+		{"# k3\nSource: mate/k3 @ 0000000\nLearning: none\n", "  learning: recorded, but not for " + head + " (" + path + "); next: skill task-learning for this revision, then review-delivery's next step\n"},
+		{"# k3\nSource: mate/k3 @ " + head + "\nLearning: captured\n", "  learning: recorded for " + head + " (" + path + "); next: review-delivery's next step\n"},
+	} {
+		if step.record != "" {
+			writeLearning(t, w, "k3", step.record)
+		}
+		text := runWake(t, w)
+		if !strings.Contains(text, step.want) {
+			t.Errorf("wake lacks %q:\n%s", step.want, text)
+		}
+		if strings.Contains(text, "wait-mate rev-k3") && strings.Contains(text, "learning: none recorded; next: skill task-learning (writes "+w.CrewLearning("shop", "rev-k3")) {
+			t.Errorf("a review crew's hand-back got a learning line:\n%s", text)
+		}
+	}
+}
+
+// A crew whose pull request merged while it is still open is a part-1 item
+// until `crew stop` closes it, with the learning check made against the
+// merge commit rather than the branch head (a squash merge is not on the
+// branch at all).
+func TestWakeListsAMergedCrewStillOpen(t *testing.T) {
+	w := wakeFixture(t)
+	meta, err := w.ReadCrewMeta("shop", "k3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta[crewstate.MetaPRURL] = "https://github.com/x/shop/pull/9"
+	meta[crewstate.MetaPRState] = crewstate.PRStateMerged
+	meta[crewstate.MetaMergeCommit] = "abcdef0123456789abcdef0123456789abcdef01"
+	if err := w.WriteCrewMeta("shop", "k3", meta); err != nil {
+		t.Fatal(err)
+	}
+	path := w.CrewLearning("shop", "k3")
+	text := runWake(t, w)
+	for _, want := range []string{
+		"== 1. To act on (3) ==\n",
+		"landed k3: pull request merged (https://github.com/x/shop/pull/9), crew still open\n  learning: none recorded; next: skill task-learning (writes " + path + "), then mate crew stop shop k3\n",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("wake lacks %q:\n%s", want, text)
+		}
+	}
+	writeLearning(t, w, "k3", "Source: PR #9 @ abcdef0, review none\nLearning: none\n")
+	text = runWake(t, w)
+	if want := "  learning: recorded for abcdef0 (" + path + "); next: mate crew stop shop k3\n"; !strings.Contains(text, want) {
+		t.Errorf("wake lacks %q:\n%s", want, text)
+	}
+	meta[spawn.MetaState] = "finished"
+	if err := w.WriteCrewMeta("shop", "k3", meta); err != nil {
+		t.Fatal(err)
+	}
+	if text := runWake(t, w); strings.Contains(text, "landed k3") {
+		t.Errorf("a closed crew is still listed as landed:\n%s", text)
 	}
 }
