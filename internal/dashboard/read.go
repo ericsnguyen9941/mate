@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -573,28 +574,35 @@ func (s *Server) turnEvents(ctx context.Context, project, turnID string) ([]time
 // out of the payload (docs/timeline.md section 4).
 func (s *Server) statusLines(ctx context.Context, actorID string) ([]StatusLine, error) {
 	rows, err := s.db.SQL().QueryContext(ctx, `
-		SELECT id, at, turn_id, payload, ref_path, ref_offset
+		SELECT actor_id, id, at, turn_id, payload, ref_path, ref_offset
 		  FROM event WHERE actor_id = ? AND kind = ? ORDER BY at, id`,
 		actorID, timeline.KindStatusAppend)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
 	out := []StatusLine{}
+	return out, scanStatusLines(rows, func(_ string, line StatusLine) { out = append(out, line) })
+}
+
+// scanStatusLines reads rows of (actor_id, id, at, turn_id, payload,
+// ref_path, ref_offset) into status lines, handing each to add with its
+// actor, and closes rows.
+func scanStatusLines(rows *sql.Rows, add func(actorID string, line StatusLine)) error {
+	defer rows.Close()
 	for rows.Next() {
+		var actorID string
 		var line StatusLine
 		var turnID, payload sql.NullString
-		if err := rows.Scan(&line.EventID, &line.At, &turnID, &payload,
+		if err := rows.Scan(&actorID, &line.EventID, &line.At, &turnID, &payload,
 			&line.Ref.Path, &line.Ref.Offset); err != nil {
-			return nil, err
+			return err
 		}
 		line.TurnID = turnID.String
 		ev := timeline.StoryEvent{Payload: []byte(payloadOrEmpty(payload))}
 		line.Verb, line.Text, line.Line = ev.Field("verb"), ev.Field("text"), ev.Field("line")
-		out = append(out, line)
+		add(actorID, line)
 	}
-	return out, rows.Err()
+	return rows.Err()
 }
 
 // questions are what the crew stopped and asked, with the answer joined on.
@@ -611,27 +619,35 @@ func (s *Server) statusLines(ctx context.Context, actorID string) ([]StatusLine,
 // `message` keeps the page showing the line as sent even if the payload
 // were ever trimmed.
 func (s *Server) questions(ctx context.Context, actorID string) ([]Question, error) {
-	rows, err := s.db.SQL().QueryContext(ctx, `
-		SELECT q.id, q.kind, q.asked_event_id, q.asked_at, q.text, q.answered_event_id, q.answered_at,
-		       a.name, m.text, e.payload, q.waited_ms
-		  FROM question q
-		  LEFT JOIN actor a ON a.id = q.answered_by_actor_id
-		  LEFT JOIN message m ON m.event_id = q.answered_event_id
-		  LEFT JOIN event e ON e.id = q.answered_event_id
+	rows, err := s.db.SQL().QueryContext(ctx, questionSelect+`
 		 WHERE q.crew_actor_id = ? ORDER BY q.asked_at, q.id`, actorID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
 	out := []Question{}
+	return out, scanQuestions(rows, func(_ string, q Question) { out = append(out, q) })
+}
+
+const questionSelect = `
+		SELECT q.crew_actor_id, q.id, q.kind, q.asked_event_id, q.asked_at, q.text, q.answered_event_id, q.answered_at,
+		       a.name, m.text, e.payload, q.waited_ms
+		  FROM question q
+		  LEFT JOIN actor a ON a.id = q.answered_by_actor_id
+		  LEFT JOIN message m ON m.event_id = q.answered_event_id
+		  LEFT JOIN event e ON e.id = q.answered_event_id`
+
+// scanQuestions reads rows of questionSelect, handing each question to add
+// with the crew that asked it, and closes rows.
+func scanQuestions(rows *sql.Rows, add func(crewActorID string, q Question)) error {
+	defer rows.Close()
 	for rows.Next() {
+		var crewActorID string
 		var q Question
 		var answeredEvent, waited sql.NullInt64
 		var answeredAt, answeredBy, answer, payload sql.NullString
-		if err := rows.Scan(&q.ID, &q.Kind, &q.AskedEventID, &q.AskedAt, &q.Text,
+		if err := rows.Scan(&crewActorID, &q.ID, &q.Kind, &q.AskedEventID, &q.AskedAt, &q.Text,
 			&answeredEvent, &answeredAt, &answeredBy, &answer, &payload, &waited); err != nil {
-			return nil, err
+			return err
 		}
 		q.AnsweredEventID, q.AnsweredAt = answeredEvent.Int64, answeredAt.String
 		q.AnsweredBy, q.Answer = answeredBy.String, answer.String
@@ -642,9 +658,57 @@ func (s *Server) questions(ctx context.Context, actorID string) ([]Question, err
 			v := waited.Int64
 			q.WaitedMs = &v
 		}
-		out = append(out, q)
+		add(crewActorID, q)
 	}
-	return out, rows.Err()
+	return rows.Err()
+}
+
+// history is the status lines and decisions of every crew in a project
+// since a time, by crew: what a tent in Agent City plays back (CON-127).
+// Two queries for the whole project, where the task endpoint takes two a
+// crew.
+func (s *Server) history(ctx context.Context, project, since string) (map[string]*CrewHistory, error) {
+	prefix := timeline.CrewActorID(project, "")
+	out := map[string]*CrewHistory{}
+	of := func(actorID string) *CrewHistory {
+		crew := strings.TrimPrefix(actorID, prefix)
+		if out[crew] == nil {
+			out[crew] = &CrewHistory{StatusLines: []StatusLine{}, Questions: []Question{}}
+		}
+		return out[crew]
+	}
+	rows, err := s.db.SQL().QueryContext(ctx, `
+		SELECT actor_id, id, at, turn_id, payload, ref_path, ref_offset
+		  FROM event WHERE project = ? AND at >= ? AND +kind = ? AND actor_id LIKE ? ESCAPE '\'
+		 ORDER BY at, id`,
+		project, since, timeline.KindStatusAppend, likePrefix(prefix))
+	if err != nil {
+		return nil, err
+	}
+	if err := scanStatusLines(rows, func(actorID string, line StatusLine) {
+		h := of(actorID)
+		h.StatusLines = append(h.StatusLines, line)
+	}); err != nil {
+		return nil, err
+	}
+	rows, err = s.db.SQL().QueryContext(ctx, questionSelect+`
+		 WHERE q.crew_actor_id LIKE ? ESCAPE '\' AND q.asked_at >= ? ORDER BY q.asked_at, q.id`,
+		likePrefix(prefix), since)
+	if err != nil {
+		return nil, err
+	}
+	err = scanQuestions(rows, func(actorID string, q Question) {
+		if q.Kind == "" || q.Kind == timeline.QuestionDecision {
+			h := of(actorID)
+			h.Questions = append(h.Questions, q)
+		}
+	})
+	return out, err
+}
+
+// likePrefix is a LIKE pattern matching strings that start with prefix.
+func likePrefix(prefix string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix) + "%"
 }
 
 // inbox is the project's waiting decisions, through query.LoadBox - the

@@ -40,12 +40,21 @@
     <button id="back" type="button">&#8592; Back to the city</button>
     <h2 id="room-title"></h2>
     <small id="room-dept"></small>
-    <h3>HOW ITS AGENTS WORKED TOGETHER · LATEST MERGED TASK</h3>
+    <h3 id="room-h3">WHAT ITS AGENTS DID</h3>
   </div>
   <ol id="feed"></ol>
 </aside>
 <div id="tip"></div>
-<div id="clock" class="room-only"><div id="bar"></div></div>
+<div id="scrub">
+  <button id="play" type="button" aria-label="Pause">&#10074;&#10074;</button>
+  <button id="speed" type="button" title="Playback speed">1&#215;</button>
+  <div class="track">
+    <div id="ticks"></div>
+    <input id="seek" type="range" min="0" max="1" step="any" value="1" aria-label="Time in the tent's history">
+  </div>
+  <span id="when"></span>
+  <button id="golive" type="button" title="Jump to now and follow">Live</button>
+</div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

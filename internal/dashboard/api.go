@@ -22,6 +22,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/workspace", s.cached(s.handleWorkspace))
 	s.mux.HandleFunc("GET /api/projects/{project}", s.cached(s.handleProject))
 	s.mux.HandleFunc("GET /api/projects/{project}/mate", s.respond(s.handleMate, false))
+	s.mux.HandleFunc("GET /api/projects/{project}/history", s.cached(s.handleHistory))
 	s.mux.HandleFunc("GET /api/projects/{project}/tasks/{crew}", s.respond(s.handleTask, false))
 	s.mux.HandleFunc("GET /api/projects/{project}/tasks/{crew}/turns/{turn}", s.cached(s.handleTurn))
 	s.mux.HandleFunc("GET /api/projects/{project}/tasks/{crew}/diff", s.cached(s.handleDiff))
@@ -223,6 +224,26 @@ func (s *Server) taskSummary(ctx context.Context, env envelope, project, crew st
 		return nil, err
 	}
 	return TaskSummaryResponse{envelope: env, Project: project, Crew: crew, Ledger: ledger, StatusLines: lines, Questions: decisionsOnly(questions)}, nil
+}
+
+// handleHistory is GET /api/projects/{p}/history?since=<RFC3339>: what
+// every crew wrote and asked since then. since is required, so a reader
+// cannot ask for the whole timeline by accident.
+func (s *Server) handleHistory(ctx context.Context, r *http.Request, env envelope) (any, error) {
+	project, err := s.project(r)
+	if err != nil {
+		return nil, err
+	}
+	at, err := time.Parse(time.RFC3339, r.URL.Query().Get("since"))
+	if err != nil {
+		return nil, errBadRequest{"since must be an RFC 3339 time, such as 2026-10-21T00:00:00Z"}
+	}
+	since := db.FormatTime(at.UTC())
+	crews, err := s.history(ctx, project, since)
+	if err != nil {
+		return nil, err
+	}
+	return HistoryResponse{envelope: env, Project: project, Since: since, Crews: crews}, nil
 }
 
 func (s *Server) handleMate(ctx context.Context, r *http.Request, env envelope) (any, error) {

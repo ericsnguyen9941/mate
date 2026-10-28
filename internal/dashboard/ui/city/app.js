@@ -2,14 +2,15 @@ import * as THREE from './vendor/three.js';
 import { OrbitControls } from './vendor/three.js';
 import { createCity, lights, PALETTE, harnessName, formatTokens } from './city.js';
 import { createTentRoom } from './room.js';
-import { readEpisode } from './episode.js';
+import { readHistory } from './history.js';
 
 // Agent City's page: the workspace drawn as a city (city.js), kept live from
 // the dashboard's read-only API the way Mate Office is - one long poll on
 // /api/events, and a reload of what it reads when an event lands. Hover a
 // mascot, a tent or City Hall for what it is; click a mascot or City Hall to
 // open it in Mate Office, a tent (or open #tent=<project>/<repo>) to step
-// into it and replay its latest merged task (room.js, episode.js).
+// into it and play back what its agents did, with a bar to scrub through it
+// (room.js, history.js).
 
 const BOARD_DAYS = 7;
 const $ = (s) => document.querySelector(s);
@@ -115,6 +116,7 @@ function applyProject(p, t) {
   city.setCrews(p.name, rows.filter((r) => r.state !== 'gone'), t, { fresh: loaded.has(p.name) });
   for (const repo of tentRepos(p)) city.setMerged(p.name, repo, rows.filter((r) => r.role === 'ship' && r.merged_at && onTent(p, repo)(r)).length, t);
   loaded.add(p.name);
+  if (room?.project === p.name) refreshRoom();
 }
 
 function applyHall() {
@@ -244,31 +246,34 @@ roomScene.background = new THREE.Color(PALETTE.paper);
 lights(roomScene, renderer);
 const panel = $('#room');
 const feed = $('#feed');
-const KIND = { spawn: 'spawn', status: 'status', ask: 'ask', answer: 'answer', handback: 'hand back', review: 'review', verdict: 'verdict', merge: 'merge', sleep: 'idle' };
+const KIND = { spawn: 'spawn', status: 'status', ask: 'ask', answer: 'answer', handback: 'hand back', review: 'review', verdict: 'verdict', merge: 'merge', close: 'close', sleep: 'idle' };
 
-// Episodes read so far, by tent: kept while the tent's newest merged task is
-// the same one, so a second visit, or a click after a hover, opens at once.
-const episodes = new Map(); // tentKey → { newest, promise }
-function episodeFor(key) {
+// Histories read so far, by tent: kept while the project's task rows are the
+// same ones, so a second visit, or a click after a hover, opens at once.
+const histories = new Map(); // tentKey → { rows, promise }
+function historyFor(key) {
   const tent = city?.tents.get(key);
   const p = ws?.projects.find((x) => x.name === tent?.project);
-  if (!tent || !p) return Promise.resolve({ episode: null, recent: [] });
+  if (!tent || !p) return Promise.resolve({ since: '', tasks: [], events: [] });
   const rows = tasks.get(tent.project) ?? [];
-  const mine = onTent(p, tent.repo);
-  const newest = rows.filter((t) => t.role === 'ship' && t.merged_at && mine(t)).reduce((a, t) => (!a || t.merged_at > a.merged_at ? t : a), null)?.crew ?? '';
-  const have = episodes.get(key);
-  if (have && have.newest === newest) return have.promise;
-  const promise = readEpisode(api, tent.project, rows, mine);
-  episodes.set(key, { newest, promise });
-  promise.catch(() => episodes.delete(key));
+  const have = histories.get(key);
+  if (have && have.rows === rows) return have.promise;
+  const promise = readHistory(api, tent.project, rows, onTent(p, tent.repo));
+  histories.set(key, { rows, promise });
+  promise.catch(() => histories.delete(key));
   return promise;
 }
+
+// Playback: 'live' runs at 1x and stays at now once it gets there, 'play'
+// runs at `speed` until now, then goes live; 'pause' holds.
+let mode = 'live';
+let speed = 1;
+const SPEEDS = [1, 4, 16, 64];
 
 async function enterRoom(key) {
   const tent = city?.tents.get(key);
   if (!tent) return;
   const token = ++roomToken;
-  const p = ws.projects.find((x) => x.name === tent.project);
   if (!room) cityView = { target: controls.target.clone(), position: camera.position.clone() };
   document.body.classList.add('in-room');
   tip.style.display = 'none';
@@ -277,31 +282,44 @@ async function enterRoom(key) {
   feed.replaceChildren();
   resize();
   if (location.hash !== `#tent=${key}`) history.replaceState(null, '', `#tent=${key}`);
-  let ep = { episode: null, recent: [] };
+  const next = await buildRoom(key, token);
+  if (!next) return;
+  // Open on the last few events, playing up to now.
+  setMode('live');
+  roomT = next.events.at(-3)?.at ?? 0;
+  flight = null;
+  controls.target.copy(next.view.target);
+  camera.position.copy(next.view.position);
+  Object.assign(controls, ROOM_LIMITS);
+}
+
+// Read the tent's history and put up its room in place of the one showing;
+// null when another tent was asked for meanwhile.
+async function buildRoom(key, token) {
+  const tent = city.tents.get(key);
+  const p = ws.projects.find((x) => x.name === tent.project);
+  let h = { since: '', tasks: [], events: [] };
   try {
     // A click before the project's page arrived reads it first.
     if (!tasks.has(tent.project)) tasks.set(tent.project, (await api(`/api/projects/${enc(tent.project)}`)).tasks ?? []);
-    ep = await episodeFor(key);
+    h = await historyFor(key);
   } catch (e) {
     $('#room-dept').textContent = `project ${tent.project} · ${e.message}`;
   }
-  if (token !== roomToken) return;
-  if (room) {
-    roomScene.remove(room.group);
-    room.dispose();
+  if (token !== roomToken) return null;
+  const was = room;
+  if (was) {
+    roomScene.remove(was.group);
+    was.dispose();
   }
-  const bs = city.blocks.get(tent.project);
-  const stats = boardStatsOf.get(tent.project);
-  room = createTentRoom({ project: tent.project, repo: tent.repo, floor: bs.floor, mateHarness: p.mate?.harness, episode: ep.episode, recent: ep.recent, finished: stats?.finished ?? 0, merged: tent.merged ?? 0, days: BOARD_DAYS });
+  room = createTentRoom({ project: tent.project, repo: tent.repo, floor: city.blocks.get(tent.project).floor, mateHarness: p.mate?.harness, mateState: p.mate?.running ? p.mate.state : 'asleep', history: h });
+  room.key = key;
   roomScene.add(room.group);
-  roomT = 0;
+  if (!was) resize();
   shown = -1;
-  flight = null;
-  controls.target.copy(room.view.target);
-  camera.position.copy(room.view.position);
-  Object.assign(controls, ROOM_LIMITS);
   $('#room-dept').textContent = `project ${tent.project} · ${room.summary}`;
-  feed.replaceChildren(...room.events.map((ev) => {
+  $('#room-h3').textContent = room.since ? `WHAT ITS AGENTS DID · SINCE ${room.since}` : 'WHAT ITS AGENTS DID';
+  feed.replaceChildren(...room.events.map((ev, i) => {
     const li = document.createElement('li');
     const kind = document.createElement('i');
     kind.textContent = KIND[ev.kind];
@@ -311,8 +329,33 @@ async function enterRoom(key) {
     const text = document.createElement('span');
     text.textContent = ev.text;
     li.append(kind, by, text);
+    li.dataset.i = i;
     return li;
   }));
+  drawTicks();
+  return room;
+}
+
+// New events on the tent's project: read the history again and keep the
+// view where it was - at the same event when scrubbed back, or, live and
+// caught up, on the first new event so it plays out.
+let refreshTimer = 0;
+function refreshRoom() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(async () => {
+    if (!room) return;
+    const old = room;
+    const caughtUp = mode === 'live' && roomT >= old.duration;
+    const i = old.indexAt(roomT);
+    const at = old.events[i];
+    const next = await buildRoom(old.key, roomToken);
+    if (!next) return;
+    if (caughtUp) roomT = next.events[old.events.length]?.at ?? next.duration;
+    else if (at?.iso) {
+      const j = next.events.findIndex((e) => e.iso === at.iso && e.crew === at.crew && e.kind === at.kind);
+      if (j >= 0) roomT = next.events[j].at + (roomT - at.at);
+    }
+  }, 800);
 }
 
 function leaveRoom() {
@@ -332,6 +375,91 @@ function leaveRoom() {
   resize();
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 }
+
+// ---- The scrub bar ----------------------------------------------------------------
+
+const seek = $('#seek');
+const playBtn = $('#play');
+const speedBtn = $('#speed');
+const when = $('#when');
+let dragging = null; // the mode before a drag
+function setMode(next) {
+  mode = next;
+  playBtn.textContent = mode === 'pause' ? '\u25B6' : '\u275A\u275A';
+  playBtn.setAttribute('aria-label', mode === 'pause' ? 'Play' : 'Pause');
+  $('#golive').classList.toggle('on', mode === 'live');
+}
+playBtn.addEventListener('click', () => {
+  if (!room) return;
+  if (mode !== 'pause') return setMode('pause');
+  // Play from the start when already at now.
+  if (roomT >= room.duration) roomT = 0;
+  setMode('play');
+});
+speedBtn.addEventListener('click', () => {
+  speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+  speedBtn.textContent = `${speed}\u00D7`;
+  if (mode === 'live' && room && roomT < room.duration) setMode('play');
+});
+$('#golive').addEventListener('click', () => {
+  if (room) roomT = room.duration;
+  setMode('live');
+});
+seek.addEventListener('input', () => {
+  if (!room) return;
+  dragging ??= mode;
+  mode = 'pause';
+  roomT = Number(seek.value) * room.duration;
+});
+seek.addEventListener('change', () => {
+  setMode(dragging === 'pause' ? 'pause' : 'play');
+  dragging = null;
+});
+feed.addEventListener('click', (e) => {
+  const li = e.target.closest('li[data-i]');
+  if (!room || !li) return;
+  roomT = room.events[Number(li.dataset.i)].at;
+  if (mode === 'live') setMode('play');
+});
+addEventListener('keydown', (e) => {
+  if (e.key === ' ' && room && e.target === document.body) {
+    e.preventDefault();
+    playBtn.click();
+  }
+});
+// Day marks and merges along the bar.
+function drawTicks() {
+  const marks = [];
+  let day = '';
+  let lastDay = -Infinity;
+  // A day's label needs about 40px; one closer to the last is left out.
+  const gap = 4000 / Math.max(1, seek.clientWidth);
+  for (const ev of room.events) {
+    if (!ev.iso) continue;
+    const x = (100 * ev.at) / room.duration;
+    const pos = `${x}%`;
+    const d = ev.clock.slice(0, 5);
+    if (d !== day && x - lastDay < gap) day = d;
+    if (d !== day) {
+      lastDay = x;
+      day = d;
+      const m = document.createElement('span');
+      m.className = 'day';
+      m.style.left = pos;
+      m.textContent = d;
+      marks.push(m);
+    }
+    if (ev.kind === 'merge') {
+      const m = document.createElement('i');
+      m.className = 'merge';
+      m.style.left = pos;
+      m.title = ev.text;
+      marks.push(m);
+    }
+  }
+  $('#ticks').replaceChildren(...marks);
+}
+setMode('live');
 $('#back').addEventListener('click', leaveRoom);
 addEventListener('keydown', (e) => e.key === 'Escape' && leaveRoom());
 function fromHash() {
@@ -363,7 +491,7 @@ function aim(e) {
 // What is under the pointer: { mascot: id } | { tent: key } | { hall: true } | null.
 function pick(e) {
   aim(e);
-  const list = [...(room ? room.mascots : city?.mascots ?? new Map()).values()];
+  const list = [...(room ? room.mascots : city?.mascots ?? new Map()).values()].filter((m) => m.root.visible);
   const hit = ray.intersectObjects(list.map((m) => m.body))[0];
   if (hit) return { mascot: list.find((m) => m.body === hit.object).id };
   if (room || !city) return null;
@@ -410,9 +538,9 @@ let hoverTimer = 0;
 canvas.addEventListener('pointermove', (e) => {
   const target = pick(e);
   const words = target && describe(target);
-  // Read a tent's episode while the pointer rests on it, so the click opens at once.
+  // Read a tent's history while the pointer rests on it, so the click opens at once.
   clearTimeout(hoverTimer);
-  if (target?.tent && tasks.has(city.tents.get(target.tent)?.project)) hoverTimer = setTimeout(() => episodeFor(target.tent).catch(() => {}), 150);
+  if (target?.tent && tasks.has(city.tents.get(target.tent)?.project)) hoverTimer = setTimeout(() => historyFor(target.tent).catch(() => {}), 150);
   canvas.style.cursor = words ? 'pointer' : '';
   if (words) showTip(e, ...words);
   else tip.style.display = 'none';
@@ -449,7 +577,6 @@ addEventListener('resize', resize);
 
 // ---- Frame loop -----------------------------------------------------------------
 
-const bar = $('#bar');
 const ease = (x) => x * x * x * (x * (x * 6 - 15) + 10);
 let shown = -1;
 let last = performance.now();
@@ -459,19 +586,26 @@ renderer.setAnimationLoop((ms) => {
   const dt = (ms - last) / 1000;
   last = ms;
   if (room) {
-    roomT = (roomT + dt) % room.duration;
+    if (mode !== 'pause') roomT += Math.min(dt, 0.1) * (mode === 'play' ? speed : 1);
+    if (mode === 'play' && roomT >= room.duration) setMode('live');
     room.update(roomT);
-    bar.style.transform = `scaleX(${roomT / room.duration})`;
-    // Light up the feed up to now; the newest entry is marked.
-    const upto = room.events.filter((ev) => ev.at <= roomT).length;
+    if (dragging === null) seek.value = String(Math.min(1, roomT / room.duration));
+    // Light up the feed up to the playhead; its entry is marked.
+    const upto = room.indexAt(roomT) + 1;
     if (upto !== shown) {
-      [...feed.children].forEach((li, i) => {
-        li.classList.toggle('past', i < upto);
-        li.classList.toggle('now', i === upto - 1);
-      });
-      feed.querySelector('.now')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const items = feed.children;
+      const lo = Math.max(0, Math.min(shown, upto) - 1);
+      const hi = shown < 0 ? items.length : Math.min(items.length, Math.max(shown, upto) + 1);
+      for (let i = lo; i < hi; i++) {
+        items[i].classList.toggle('past', i < upto);
+        items[i].classList.toggle('now', i === upto - 1);
+      }
+      feed.querySelector('.now')?.scrollIntoView({ block: 'nearest', behavior: mode === 'play' && speed > 4 ? 'auto' : 'smooth' });
       shown = upto;
     }
+    const ev = room.events[shown - 1];
+    const words = mode === 'live' && roomT >= room.duration ? 'now' : ev?.clock ? `${ev.clock} · ${ev.who}` : '';
+    if (when.textContent !== words) when.textContent = words;
   } else city.update(now());
   if (flight) {
     const u = ease(Math.min(1, (ms - flight.t0) / 800));
