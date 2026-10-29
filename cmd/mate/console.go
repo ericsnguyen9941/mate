@@ -202,6 +202,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 		return cols
 	}})
 	notice := ""
+	dashboardURL := ""
 	// The dashboard comes up with the console, after the observer has made
 	// sure the database exists. It is a convenience: a failure is said on the
 	// status line and never stops the console.
@@ -210,12 +211,30 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	} else {
 		defer stopDashboard()
 		notice = "dashboard " + url
+		dashboardURL = url
 	}
 	addNotice := func(text string) {
 		if notice != "" {
 			notice += "; "
 		}
 		notice += text
+	}
+	stopNotifications, notificationStatus, notificationErr := startConsoleNotifications(ctx, dir, dashboardURL)
+	if notificationErr != nil {
+		addNotice("notifications: " + notificationErr.Error())
+	} else {
+		defer stopNotifications()
+		baseLoad := load
+		load = func(loadCtx context.Context) (query.Snapshot, error) {
+			snap, err := baseLoad(loadCtx)
+			if line := notificationStatus(); line != "" {
+				if snap.Runtime.Notice != "" {
+					snap.Runtime.Notice += "; "
+				}
+				snap.Runtime.Notice += line
+			}
+			return snap, err
+		}
 	}
 	// A plugin configuration problem is said on the status line too; the
 	// console runs on without plugin links.
