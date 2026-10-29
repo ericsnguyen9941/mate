@@ -19,7 +19,7 @@ Start from the item `{{.MatevBin}} wake {{.ProjectName}}` printed: the branch su
    With a tracker the review id is the issue and the round, `<issue>-r1`, then `-r2` for `--since` (`hvn-57-r1` reviews `hvn-57-trip-repo` and `hvn-57-f1` alike); without one, `<id>-r1`, shortening `<id>` to fit 24 characters.
    Without `--model` and `--effort` it picks the table's review profile by the size of the change; pass `--harness` alone to choose the reviewer's harness, and a full profile only when the change carries the blast radius `new-task` sizes as large.
 4. When the reviewer hands back, read `{{.MatevBin}} report {{.ProjectName}} <review-id> --summary`, then `{{.MatevBin}} review {{.ProjectName}} <id> --check <review-id>`.
-   A failed check is never approval: a stale review, an incomplete verdict or an unresolved finding needs a correction or a new review.
+   A failed check is never approval. Send demonstrated defects for correction; for incomplete verification, resolve the evidence gap and request a new review. Missing credentials or a skipped live test call for evidence, not an invented code fix. A stale review needs a fresh review of the current revision.
 
 A summary, a diff stat or your own impression is not approval. Read the full patch yourself (`mate diff {{.ProjectName}} <id> --full`) only when the captain asks you to review directly.
 Read-only git in the Crew's worktree is allowed for what `mate diff` does not print; anything that writes is not, and landing is `mate merge` alone.
@@ -51,7 +51,7 @@ With the project's review `off`, land it once the hand-back checks out, with `{{
 With `--review` it pins the commit the reviewer saw; either way it closes the Crew; report what it printed, in outcome words, then keep the work moving, as AGENTS.md says.
 The close also removes what the worktree started (its compose stack, simulators, build folders); a `left behind:` part names what could not go and why: tell the captain in one line, it does not hold the task.
 When memory `## Captain` says the captain merges this kind of work, report it as ready instead, naming the branch or the pull request.
-A review that passed but left findings standing must have them recorded first: add a line under `## Queued` with `mate backlog add`, or name the tracker issue, and merge again with `--followups backlog:<text>` or `--followups <TRACKER-id>`.
+New reviews pass only with Findings and Verification gaps both set to none; Notes never block. For a legacy review that passed but left findings standing, record them first: add a line under `## Queued` with `mate backlog add`, or name the tracker issue, and merge again with `--followups backlog:<text>` or `--followups <TRACKER-id>`.
 A passing review's `## Notes` open no correction round: merge, and record a note worth keeping with `mate backlog add` or in the tracker, as you judge; it needs no `--followups`.
 On `merge refused: needs-rebase`, send the Crew one line, "rebase onto <default branch> and hand back with wait-mate", and merge after its next hand-back. Any other refusal: `mate-commands`.
 
