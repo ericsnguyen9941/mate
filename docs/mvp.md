@@ -1,5 +1,7 @@
 # mate MVP
 
+> Tài liệu lịch sử: không còn cập nhật. Code vẫn trích các mục ở đây (`section 4b`, `M18`…) nên giữ nguyên tiêu đề và số mục.
+
 mate (tên cũ matev2, đổi tên 2026-09-24) là bản viết lại của mate v1 (nay chỉ còn ở repo archive `nguyenngocanh94/mate-v1`) với mục tiêu đơn giản hoá triệt để phần giao tiếp giữa Mate và Crew.
 Tài liệu này ghi các quyết định đã chốt và danh sách 24 task của MVP.
 Mỗi task là một PR review được trong một buổi và có tiêu chí xong đo được.
