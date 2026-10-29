@@ -243,7 +243,7 @@ func writeDecides(out *strings.Builder, w *store.Workspace, project, crew, quest
 	}
 	fmt.Fprintf(out, "  decides: %s (%s)\n", d.Decides, clipRunes(d.Text, wakeNoteRunes))
 	if d.Decides == brief.Deciders[0] {
-		out.WriteString("  next: ask the captain and record it under ## Held for the captain; send the Crew nothing until they answer\n")
+		out.WriteString("  next: ask the captain as news; send the Crew nothing until they answer\n")
 	}
 }
 

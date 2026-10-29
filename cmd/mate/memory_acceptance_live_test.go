@@ -20,6 +20,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/harness/claude"
 	"github.com/nguyenngocanh94/mate/internal/harness/codex"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/process"
 	"github.com/nguyenngocanh94/mate/internal/query"
@@ -264,17 +265,8 @@ func memoryAcceptance(t *testing.T, kind harness.Kind, fresh bool) {
 	}
 	mate, _ = mateHandleOrFatal(t, ctx, w, deps, memoryProject)
 
-	// The question as sent: the Mate may put it to the captain more than once
-	// (after the ship asks, and again when the captain hands that question
-	// over), so the held line must quote one of those messages.
-	var askedCaptain []string
-	for _, r := range voice.since(shipAsked) {
-		if r.at.Before(restartAt) {
-			askedCaptain = append(askedCaptain, r.text)
-		}
-	}
-	held := heldLine(t, w, memoryProject, askedCaptain)
-	t.Logf("EVIDENCE held line: %s", held)
+	held := heldNews(t, w, memoryProject)
+	t.Logf("EVIDENCE held news: %s", held)
 
 	// ---------- 3. after the restart, nobody repeats anything ----------
 
@@ -344,7 +336,7 @@ func memoryAcceptance(t *testing.T, kind harness.Kind, fresh bool) {
 	if !memoryLessonRE.MatchString(digest) {
 		t.Fatalf("recall carries no trace of the correction:\n%s", digest)
 	}
-	if nowHeld := heldLine(t, w, memoryProject, askedCaptain); !strings.Contains(digest, nowHeld) {
+	if nowHeld := recallClip(heldNews(t, w, memoryProject), 300); !strings.Contains(digest, nowHeld) {
 		t.Fatalf("recall does not carry the held question %q:\n%s", nowHeld, digest)
 	}
 	if now := strings.TrimSpace(gitOut(t, repo, "rev-parse", "main")); now != mainBefore {
@@ -635,75 +627,31 @@ func routedLesson(t *testing.T, w *store.Workspace, project string) string {
 	return ""
 }
 
-// heldLine is backlog.md's `## Held for the captain` line for the checkout
-// question: dated today, naming both pages, and carrying at least 40
-// characters of the question exactly as the Mate sent it in one of its
-// messages to the captain.
-func heldLine(t *testing.T, w *store.Workspace, project string, asked []string) string {
+// heldNews is the open news that asks the captain the checkout question
+// (CON-136: a question to the captain is a news, never a backlog line):
+// opened today, its question naming both pages. It returns the question.
+func heldNews(t *testing.T, w *store.Workspace, project string) string {
 	t.Helper()
-	text := readFileOr(w.BacklogFile(project))
+	list, err := matehost.LoadNews(matehost.NewsPath(w.MateDir(project)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	today := time.Now().Format(memory.DateLayout)
-	var section []string
-	in := false
-	for _, l := range strings.Split(text, "\n") {
-		if strings.HasPrefix(l, "## ") {
-			in = strings.TrimSpace(strings.TrimPrefix(l, "## ")) == memory.BacklogHeld
+	for _, n := range list {
+		low := strings.ToLower(n.Title + " " + n.Question)
+		if n.Closed() || !strings.Contains(low, "classic") || !strings.Contains(low, "express") {
 			continue
 		}
-		if in && strings.TrimSpace(l) != "" {
-			section = append(section, l)
+		if n.OpenedAt.Format(memory.DateLayout) != today {
+			t.Fatalf("the checkout news #%d was opened %s, not today", n.ID, n.OpenedAt)
 		}
+		if strings.TrimSpace(n.Question) == "" {
+			t.Fatalf("the checkout news #%d carries no question", n.ID)
+		}
+		return n.Question
 	}
-	for _, l := range section {
-		low := strings.ToLower(l)
-		if !strings.Contains(low, "classic") || !strings.Contains(low, "express") {
-			continue
-		}
-		if !strings.Contains(l, today) {
-			t.Fatalf("the held line for the checkout question carries no date %s: %s", today, l)
-		}
-		best := ""
-		for _, a := range asked {
-			if run := commonRun(normaliseQuote(l), normaliseQuote(a)); len([]rune(run)) > len([]rune(best)) {
-				best = run
-			}
-		}
-		// Verbatim is a long shared run, or a whole short question: "Which
-		// page should "Buy now" open?" copied exactly is 34 characters.
-		whole := strings.TrimSpace(best)
-		if len([]rune(best)) < 40 && !(len([]rune(whole)) >= 15 && strings.HasSuffix(whole, "?")) {
-			t.Fatalf("the held line does not carry the question verbatim (longest shared run %q):\nheld: %s\nasked:\n%s", best, l, strings.Join(asked, "\n---\n"))
-		}
-		return l
-	}
-	t.Fatalf("backlog.md ## %s holds no line for the checkout question:\n%s", memory.BacklogHeld, text)
+	t.Fatalf("no open news asks the checkout question:\n%s", readFileOr(matehost.NewsPath(w.MateDir(project))))
 	return ""
-}
-
-var quoteFolds = strings.NewReplacer("“", `"`, "”", `"`, "‘", "'", "’", "'", "`", "", "**", "")
-
-func normaliseQuote(s string) string {
-	return strings.Join(strings.Fields(quoteFolds.Replace(s)), " ")
-}
-
-// commonRun is the longest substring a and b share.
-func commonRun(a, b string) string {
-	ra, rb := []rune(a), []rune(b)
-	best, end := 0, 0
-	prev := make([]int, len(rb)+1)
-	for i := 1; i <= len(ra); i++ {
-		cur := make([]int, len(rb)+1)
-		for j := 1; j <= len(rb); j++ {
-			if ra[i-1] == rb[j-1] {
-				cur[j] = prev[j-1] + 1
-				if cur[j] > best {
-					best, end = cur[j], i
-				}
-			}
-		}
-		prev = cur
-	}
-	return string(ra[end-best : end])
 }
 
 // correctionLines are the lines the Mate sent a crew after its spawn that

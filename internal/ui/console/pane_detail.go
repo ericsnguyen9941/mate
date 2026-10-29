@@ -180,8 +180,6 @@ func (m Model) projectPeekFields(proj query.ProjectNode, vw int) []detailField {
 	}
 	if n := len(mate.OwedNews()); n > 0 {
 		out = append(out, detailField{label: "news", lines: text(fmt.Sprintf("%d waiting on you", n), tAmber)})
-	} else if n := len(mate.Held.Value); n > 0 && (!mate.News.IsKnown() || len(mate.News.Value) == 0) {
-		out = append(out, detailField{label: "asked", lines: text(fmt.Sprintf("%d waiting on you", n), tAmber)})
 	}
 	out = append(out, detailField{label: "mode", lines: one(m.modeLine(proj))})
 	out = append(out, m.repoFields(proj, vw)...)
@@ -355,12 +353,18 @@ func (m Model) mateDetailFields(vw int) []detailField {
 	return append(out, m.mateNewsFields(mate, vw)...)
 }
 
-// mateNewsFields are a headless Mate's open news when it has any - each
-// one's title, and whether it waits on the captain or on the Mate - and
-// the questions an interactive Mate held in its backlog otherwise.
+// mateNewsFields are the Mate's open news - each one's title, and whether
+// it waits on the captain or on the Mate. News is the only record of what
+// the Mate asked the captain (CON-136); backlog.md is the Mate's own.
 func (m Model) mateNewsFields(mate query.MateNode, vw int) []detailField {
-	if !mate.News.IsKnown() || len(mate.News.Value) == 0 {
-		return m.newsFields(mate.Held, vw)
+	switch {
+	case mate.News.State == query.Unknown:
+		return []detailField{{label: "news", lines: fieldState(mate.News, vw)}}
+	case !mate.News.IsKnown():
+		// No news log yet: the Mate never asked anything.
+		return nil
+	case len(mate.News.Value) == 0:
+		return []detailField{{label: "news", lines: text("none", tDim)}}
 	}
 	fw := vw + detailLabelWidth(nil) - detailFlushIndent
 	var out []detailField
@@ -380,55 +384,6 @@ func (m Model) mateNewsFields(mate query.MateNode, vw int) []detailField {
 		}
 		out = append(out, detailField{label: label, copy: n.Title, flush: true,
 			lines: append(one(head), wrapped(n.Title, tFg, fw)...)})
-	}
-	return out
-}
-
-// newsFields are the questions the Mate asked the captain and still waits
-// on (mvp.md section 5, "News"): the task, its age, and the question in
-// the words the Mate sent. They are labelled "asked", not "news": a
-// headless Mate's news is what the REPL's news list shows, and a question
-// only in the backlog is not there. They are read from the Mate's backlog, so a
-// captain who was away reads them here instead of spending a Mate turn
-// asking again. One field per question, so y copies one question.
-func (m Model) newsFields(held query.Field[[]query.HeldItem], vw int) []detailField {
-	switch {
-	case held.State == query.Unknown:
-		return []detailField{{label: "asked", lines: fieldState(held, vw)}}
-	case !held.IsKnown():
-		// No backlog yet: there is nothing the Mate could have asked.
-		return nil
-	case len(held.Value) == 0:
-		return []detailField{{label: "news", lines: text("none", tDim)}}
-	}
-	// The value column is vw wide behind an 11-cell lead; flush lines get
-	// the same right edge from their own indent.
-	fw := vw + detailLabelWidth(nil) - detailFlushIndent
-	var out []detailField
-	for i, it := range held.Value {
-		label := ""
-		if i == 0 {
-			label = "asked"
-		}
-		head := gl()
-		if it.Task != "" {
-			head = head.add(truncateEnd(it.Task, max0(vw-8), m.g), tAmber)
-		}
-		if day := m.daysSince(it.Date); day != "" {
-			if len(head.segs) > 0 {
-				head = head.add(" "+m.g.Dot+" ", tDim)
-			}
-			head = head.add(day, tDim)
-		}
-		f := detailField{label: label, copy: it.Question}
-		if len(head.segs) > 0 {
-			f.lines = append(one(head), wrapped(it.Question, tFg, fw)...)
-			f.flush = true
-		} else {
-			// No head to put beside the label: the question starts there.
-			f.lines = wrapped(it.Question, tFg, vw)
-		}
-		out = append(out, f)
 	}
 	return out
 }

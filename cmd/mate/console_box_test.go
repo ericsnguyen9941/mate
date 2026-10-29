@@ -147,7 +147,7 @@ func TestConsoleBoxResolveTypesTheResolveLineAndRecordsIt(t *testing.T) {
 		"read " + f.ws.CrewStatus("shop", "k3"),
 		`answer what the brief leaves to you with mate send shop k3 "<one line>"`,
 		// CON-93: the line hands over the question, not a captain's decision.
-		"a decides: captain choice goes to the captain and waits under Held",
+		"a decides: captain choice goes to the captain as news",
 	} {
 		if !strings.Contains(wantResolve, part) {
 			t.Errorf("resolve line %q does not carry %q", wantResolve, part)

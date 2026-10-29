@@ -5,16 +5,17 @@ package memory
 // Bare `mate backlog` is the live table it is reconciled against.
 const (
 	BacklogInFlight = "In flight"
-	// BacklogHeld holds every question sent to the captain and every
-	// promise the Mate made, each with the verbatim question, the date and
-	// what it waits on, so a restarted Mate knows what it asked.
-	BacklogHeld   = "Held for the captain"
-	BacklogQueued = "Queued"
-	BacklogDone   = "Done"
+	BacklogQueued   = "Queued"
+	BacklogDone     = "Done"
+	// BacklogHeld is a retired section (CON-136): it held the questions
+	// sent to the captain, which are news now, and the promises, which are
+	// Queued lines. Recall flags a backlog that still has it so the Mate
+	// moves its entries.
+	BacklogHeld = "Held for the captain"
 )
 
 // BacklogSections is backlog.md's sections in file order.
-var BacklogSections = []string{BacklogInFlight, BacklogHeld, BacklogQueued, BacklogDone}
+var BacklogSections = []string{BacklogInFlight, BacklogQueued, BacklogDone}
 
 // DoneKeep is how many Done entries backlog.md keeps; older ones move to
 // BacklogArchiveName (firstmate `.tasks.toml` `done_keep = 10`).

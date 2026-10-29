@@ -108,7 +108,7 @@ func TestManualSection2RoutesEveryKindToOneOwner(t *testing.T) {
 	sec := part(t, text, "## What you know and where it lives")
 	for _, want := range []string{
 		"You just learned", "is your only memory", "it is never a source",
-		"`## " + memory.CaptainSection + "`", "`## " + memory.LessonsSection + "`", "`## " + memory.BacklogHeld + "`",
+		"`## " + memory.CaptainSection + "`", "`## " + memory.LessonsSection + "`", "a news each",
 		"`## " + memory.ProjectDecisionsSection + "`", "as a proposal to the captain", memory.ArchiveName, memory.BacklogArchiveName,
 	} {
 		if !strings.Contains(sec, want) {
@@ -123,12 +123,22 @@ func TestManualSection2RoutesEveryKindToOneOwner(t *testing.T) {
 	}
 }
 
-// TestManualSection13RecordsHeldQuestions: A3.
-func TestManualSection13RecordsHeldQuestions(t *testing.T) {
-	sec := part(t, renderedManual(t), "## Talking to the captain")
-	for _, want := range []string{"`## " + memory.BacklogHeld + "`", "exactly as you sent it", "what it waits on", "verbatim", "only then remove the line"} {
-		if !strings.Contains(sec, want) {
-			t.Errorf("section 13 does not say %q", want)
+// TestManualSection13AsksOnlyThroughNews: CON-136. A question to the
+// captain is a news, a news is only a question, it closes only on its own
+// answer, and a promise is a Queued line, never a Held one.
+func TestManualSection13AsksOnlyThroughNews(t *testing.T) {
+	for _, headless := range []bool{false, true} {
+		p := fixedParams()
+		p.Headless = headless
+		sec := part(t, manualWith(t, p), "## Talking to the captain")
+		for _, want := range []string{"is a news, and a news is only ever a question", "never opened as a news", "news open",
+			"Close a news only when its own question is answered", "`## " + memory.BacklogQueued + "`", "put their words verbatim into the task first"} {
+			if !strings.Contains(sec, want) {
+				t.Errorf("headless=%v: section 13 does not say %q", headless, want)
+			}
+		}
+		if strings.Contains(sec, memory.BacklogHeld) {
+			t.Errorf("headless=%v: section 13 still records into ## %s", headless, memory.BacklogHeld)
 		}
 	}
 }

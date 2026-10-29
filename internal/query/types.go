@@ -163,22 +163,15 @@ type MateNode struct {
 	// (mvp.md M5 task 27) - see CrewNode.Tokens for why this package leaves
 	// it Absent and who fills it in.
 	Tokens Field[TokenValue]
-	// Held is the questions the Mate asked the captain that are still
-	// open: the `asked "…"` entries of the `## Held for the captain`
-	// section of `mate/backlog.md` (manual section 13). The section's
-	// promises and notes are the Mate's own bookkeeping and are left out.
-	// It is the Console's news. Loaded per Project rather than with
-	// mate.meta, because the backlog outlives a stopped Mate: Absent when
-	// the Project has no backlog yet, Known and empty when nothing is asked.
-	Held Field[[]HeldItem]
-	// News is what a headless Mate opened for the captain with `mate news
-	// open` and has not closed: `mate/news.jsonl` folded (CON-78). Absent
+	// News is the questions the Mate put to the captain with `mate news
+	// open` and has not closed: `mate/news.jsonl` folded (CON-78). It is
+	// the only place the Console reads what the Mate asked (CON-136). Absent
 	// when the Mate never opened one, Known and empty when every news is
 	// closed. Newest first.
 	News Field[[]NewsItem]
 }
 
-// NewsItem is one open news of a headless Mate.
+// NewsItem is one open news of a Mate.
 type NewsItem struct {
 	ID       int
 	Crew     string
@@ -203,17 +196,6 @@ func (n MateNode) OwedNews() []NewsItem {
 		}
 	}
 	return out
-}
-
-// HeldItem is one open question the Mate asked the captain.
-type HeldItem struct {
-	// Task and Date are the entry's head as the Mate wrote it: the task the
-	// question belongs to and the day it was recorded, YYYY-MM-DD. Either
-	// is empty when the entry does not carry it.
-	Task string
-	Date string
-	// Question is the sentence the Mate sent the captain, in its words.
-	Question string
 }
 
 // MateIdentity is the designated Mate row itself. Status is the durable
