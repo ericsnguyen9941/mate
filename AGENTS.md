@@ -1,6 +1,7 @@
 # mate agent notes
 
-- Spec: `docs/mvp.md`. Read it before touching code. Its task list stops at 2026-10-13.
+- `docs/mvp.md` is history: the original design decisions and the M0–M21 task log. Don't read it up front.
+  When code cites it (`mvp.md section 4b`, `M18`), grep for that section. Don't add new entries to it.
 - Issues and tasks live in Linear: team `EricsNguyen` (key `CON`), project `mate`. Use the `linear` MCP server from `.mcp.json`. Teams `HVN` and `MIHU` belong to projects mate manages, not to this repo.
 - Module `github.com/nguyenngocanh94/mate`. Binary `cmd/mate`.
 - `make check` runs gofmt, `go vet`, and `go test -json ./...` through `scripts/gotestreport`.
