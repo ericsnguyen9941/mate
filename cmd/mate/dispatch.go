@@ -68,6 +68,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdHook(args[1:], os.Stdin, stdout, stderr)
 	case "send":
 		return cmdSend(args[1:], stdout, stderr)
+	case "notifications":
+		return cmdNotifications(args[1:], stdout, stderr)
 	case "news":
 		return cmdNews(args[1:], stdout, stderr)
 	case "peek":
