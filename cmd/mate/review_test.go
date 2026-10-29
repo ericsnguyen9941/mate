@@ -95,8 +95,8 @@ func TestReviewVerdictDoesNotInferApprovalFromProse(t *testing.T) {
 }
 
 // assertMaterialRubric pins CON-109: a brief defines a material finding and
-// passes a review whose Findings is none, whatever its Notes holds, so a
-// reviewer does not return a delivery over a doc nit.
+// keeps Notes nonblocking once findings and material verification gaps are
+// resolved, so a reviewer does not return a delivery over a doc nit.
 func assertMaterialRubric(t *testing.T, brief string) {
 	t.Helper()
 	for _, want := range []string{
@@ -104,7 +104,7 @@ func assertMaterialRubric(t *testing.T, brief string) {
 		"a gate cannot be trusted (flaky, or not running what it claims)",
 		"data loss or a security hole",
 		"doc nits, hardening or refactors nobody asked for, hypothetical risks",
-		"pass when Findings is none, whatever Notes holds",
+		"Findings and Verification gaps both say none. Notes never block a pass.",
 	} {
 		if !strings.Contains(brief, want) {
 			t.Errorf("brief lacks %q:\n%s", want, brief)

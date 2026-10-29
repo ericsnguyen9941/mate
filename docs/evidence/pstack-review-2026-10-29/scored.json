@@ -1,0 +1,667 @@
+{
+  "status": "complete-frozen-before-label-reveal",
+  "mapping_seen": false,
+  "schema_benefit_scored": false,
+  "source_scope": "Only neutral r4 folder and preregistered protocol",
+  "runs": [
+    {
+      "id": "a44ce688f19b",
+      "case": "S1",
+      "score_status": "scored",
+      "reported_verdict": "changes-requested",
+      "expected_verdict": "changes-requested",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 1,
+      "expected_root_causes": 1,
+      "finding_labels": [
+        "correct-static"
+      ],
+      "observed_discriminating_repro": false,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Full diff plus directly affected Load/Lookup; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Correct source diagnosis; existing TestSave passed but does not exercise Load. No new discriminating check attempted.",
+      "limitations": [],
+      "s6_gate_reruns": null,
+      "command_count": 4,
+      "elapsed_seconds": 27.986,
+      "usage": [
+        {
+          "input_tokens": 84864,
+          "cached_input_tokens": 71808,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1370,
+          "reasoning_output_tokens": 169
+        }
+      ],
+      "report_sha256": "3df2f21177d9df4ccd482d000e87fab9715b9e6c8b11783bd35d998561ee8db2",
+      "receipt_sha256": "43977d4c14085a163a01f7d4cf79767c0f71b3d86f5581d3956c2cec36804177",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": null,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "c4382cbb7636",
+      "case": "S1",
+      "score_status": "scored",
+      "reported_verdict": "changes-requested",
+      "expected_verdict": "changes-requested",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 1,
+      "expected_root_causes": 1,
+      "finding_labels": [
+        "correct-reproduced"
+      ],
+      "observed_discriminating_repro": true,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Full diff plus directly affected Load/Lookup; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Temporary TestReviewerRoundTrip executes Save→Load→Lookup at millisecond-aligned expiry, observes 1970 restored date and failed before-expiry lookup. Source kept in command receipt despite cleanup.",
+      "limitations": [
+        "Probe shell command exit is 0 because cleanup rm follows failing go test; actual output explicitly records test failure. Reviewer reports failure correctly.",
+        "Reviewer did not run base control; millisecond-aligned timestamp and shown base UnixMilli serializer make the probe discriminate the regression by source inspection."
+      ],
+      "s6_gate_reruns": null,
+      "command_count": 7,
+      "elapsed_seconds": 43.009,
+      "usage": [
+        {
+          "input_tokens": 166286,
+          "cached_input_tokens": 139904,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2146,
+          "reasoning_output_tokens": 179
+        }
+      ],
+      "report_sha256": "ad7d6eb802163ecbb7e4ba16418548ea1773bd39888a67d9b9ff1c296a0adb33",
+      "receipt_sha256": "c72c701edefc6a4dece7aa6fe048d1331105c15ed333631630a27239bf49d6bf",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": null,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "1b167f31bf46",
+      "case": "S2",
+      "score_status": "scored",
+      "reported_verdict": "changes-requested",
+      "expected_verdict": "changes-requested",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 1,
+      "expected_root_causes": 1,
+      "finding_labels": [
+        "correct-reproduced"
+      ],
+      "observed_discriminating_repro": true,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Full diff and directly affected Receiver; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Temporary TestReviewRetryAfterCommitTimeout calls Send twice through real Receiver and logs effects=[job-1 job-1], count=2. Existing suite also passes.",
+      "limitations": [
+        "Diagnostic probe logs duplicate effects but has no assertion; observed output proves violation, yet it is not a regression-catching test as written.",
+        "Two command attempts failed to start and were recovered; successful later source inspection and probe make this a valid run.",
+        "Two full package test commands were used; this is cost overhead, not an S6 gate-reuse failure."
+      ],
+      "s6_gate_reruns": null,
+      "command_count": 8,
+      "elapsed_seconds": 62.792,
+      "usage": [
+        {
+          "input_tokens": 199972,
+          "cached_input_tokens": 182912,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 3161,
+          "reasoning_output_tokens": 597
+        }
+      ],
+      "report_sha256": "07eec7c4f6a83fcbcccfe576b8e8f3fd3fdd2fd297c4a97ae9b5e1ea0f69730d",
+      "receipt_sha256": "a637d6ace6d4486f1fb32dff7399bb8e958e9774f133c31d7990b4e501a75248",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported",
+        "gap"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": null,
+      "full_package_test_invocations": 2,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "6a529ce9f56d",
+      "case": "S2",
+      "score_status": "scored",
+      "reported_verdict": "changes-requested",
+      "expected_verdict": "changes-requested",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 1,
+      "expected_root_causes": 1,
+      "finding_labels": [
+        "correct-reproduced"
+      ],
+      "observed_discriminating_repro": true,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Full diff and directly affected Receiver; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Temporary TestReviewAmbiguousTimeoutRetry calls Send twice through real Receiver; output effects after ambiguous timeout and retry: [job-1 job-1]. Probe removed and final git status clean.",
+      "limitations": [
+        "Diagnostic probe logs duplicate effects but has no assertion; observed output proves violation, yet it is not a regression-catching test as written."
+      ],
+      "s6_gate_reruns": null,
+      "command_count": 7,
+      "elapsed_seconds": 59.633,
+      "usage": [
+        {
+          "input_tokens": 160538,
+          "cached_input_tokens": 139520,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2208,
+          "reasoning_output_tokens": 265
+        }
+      ],
+      "report_sha256": "5a7681e0a4fa8a9dd9938517a043076dfa2a1402148b91348f643a49a55e61c9",
+      "receipt_sha256": "6975f800862a54d4251b6bc1a43fd7038637689a5e20f13f4b2852d9bfe8de1c",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported",
+        "gap"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": null,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "36a157a0fe73",
+      "case": "S3",
+      "score_status": "scored",
+      "reported_verdict": "pass",
+      "expected_verdict": "pass",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 0,
+      "expected_root_causes": 0,
+      "finding_labels": [],
+      "observed_discriminating_repro": null,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Full two-line rename and immediate caller compatibility; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Observed TestCompatibility passes whitespace legacy inputs through LoadCount/Parse and rejects invalid input; go doc Parse verifies exported signature. Diff preserves the implementation and wrapper.",
+      "limitations": [
+        "Initial command had a mistyped SHA and failed after successful HEAD/stat; corrected command verifies exact commits and diff."
+      ],
+      "s6_gate_reruns": null,
+      "command_count": 6,
+      "elapsed_seconds": 37.571,
+      "usage": [
+        {
+          "input_tokens": 143161,
+          "cached_input_tokens": 127360,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2252,
+          "reasoning_output_tokens": 350
+        }
+      ],
+      "report_sha256": "e0561b90963c3d1c342105bf7d10f4111198eb68599d125a4aeb7a42abf26bbd",
+      "receipt_sha256": "6aafc17a0d58a7faa4fcdda4d626e981a0dd1435fec375ca5e9b82e2c7444b66",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": null,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "54b32f7a83d5",
+      "case": "S3",
+      "score_status": "scored",
+      "reported_verdict": "pass",
+      "expected_verdict": "pass",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 0,
+      "expected_root_causes": 0,
+      "finding_labels": [],
+      "observed_discriminating_repro": null,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Full helper rename and immediate caller compatibility; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Observed TestCompatibility passes at target; static inspection confirms same trim/Atoi body, public Parse wrapper and LoadCount caller. No invented blocker.",
+      "limitations": [],
+      "s6_gate_reruns": null,
+      "command_count": 3,
+      "elapsed_seconds": 30.75,
+      "usage": [
+        {
+          "input_tokens": 68420,
+          "cached_input_tokens": 56320,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1638,
+          "reasoning_output_tokens": 360
+        }
+      ],
+      "report_sha256": "48eb3665e160d88699b5c4ed896da064d90699a6f7c9fd2f5f7b90e27a51cfeb",
+      "receipt_sha256": "7d5cacae3a35aaa8d0f0ff309d1cd1c0650409209a76c1e2030d06e6d39d643d",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": null,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "24db3ed305fd",
+      "case": "S4",
+      "score_status": "scored",
+      "reported_verdict": "incomplete",
+      "expected_verdict": "incomplete",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 0,
+      "expected_root_causes": 0,
+      "finding_labels": [],
+      "observed_discriminating_repro": null,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Full endpoint change plus its unit/live acceptance checks; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Observed TestRead passes and TestLiveRecords skips for missing staging credentials. Correctly identifies the unresolved required authenticated staging read and reports no product bug.",
+      "limitations": [],
+      "s6_gate_reruns": null,
+      "command_count": 3,
+      "elapsed_seconds": 26.507,
+      "usage": [
+        {
+          "input_tokens": 68762,
+          "cached_input_tokens": 50688,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1225,
+          "reasoning_output_tokens": 107
+        }
+      ],
+      "report_sha256": "66097188b42cb91e684616eaa195fad3c607427901f9cbf8d5a7ddde6ae4b04b",
+      "receipt_sha256": "c22e8437bf60787012d0742c12884799590c9ce943c469f8d0794c70693d14db",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported",
+        "gap"
+      ],
+      "unknown_classification_correct": true,
+      "material_gap_identified": true,
+      "prior_f1_closed": null,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "ce90480c1385",
+      "case": "S4",
+      "score_status": "scored",
+      "reported_verdict": "changes-requested",
+      "expected_verdict": "incomplete",
+      "semantic_verdict_correct": false,
+      "correct_root_causes": 0,
+      "expected_root_causes": 0,
+      "finding_labels": [],
+      "observed_discriminating_repro": null,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Full endpoint change plus its unit/live acceptance checks; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Observed TestRead passes and TestLiveRecords skips for missing staging credentials. Correctly states required staging read is not demonstrated, but classifies the missing evidence as changes-requested rather than incomplete.",
+      "limitations": [
+        "Unknown classification differs from preregistered gold. Both S4 runs safely withhold pass; this run does not invent a product defect or claim successful staging access."
+      ],
+      "s6_gate_reruns": null,
+      "command_count": 3,
+      "elapsed_seconds": 25.922,
+      "usage": [
+        {
+          "input_tokens": 67641,
+          "cached_input_tokens": 55680,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1325,
+          "reasoning_output_tokens": 115
+        }
+      ],
+      "report_sha256": "ecdb3dde24772ac3bd52214cf0c28d6db52abc0248775ccc57c74a8db37e3e75",
+      "receipt_sha256": "904f2b85505a816473a7326a8f170906992eddcd689248b296fab40faef1bb32",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported",
+        "gap"
+      ],
+      "unknown_classification_correct": false,
+      "material_gap_identified": true,
+      "prior_f1_closed": null,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "164a0be2fa77",
+      "case": "S5",
+      "score_status": "scored",
+      "reported_verdict": "changes-requested",
+      "expected_verdict": "changes-requested",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 1,
+      "expected_root_causes": 1,
+      "finding_labels": [
+        "correct-reproduced"
+      ],
+      "observed_discriminating_repro": true,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Scoped prior-to-target diff, prior F1 and Page behavior; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Reads prior F1 and exact prior-to-target diff. Temporary Page probe loops offsets by page size, observes missing values for sizes 1–4; independent past-end probe closes F1. Preserves go test failure exit while cleaning probe.",
+      "limitations": [
+        "Probe calls production Page in a self-written paging loop; it does not read or execute production Collect. The loop matches Collect in receipt source and reproduces the actual defect.",
+        "No runtime control against prior revision. Shown delta and probe inputs establish discrimination by source inspection."
+      ],
+      "s6_gate_reruns": null,
+      "command_count": 6,
+      "elapsed_seconds": 31.345,
+      "usage": [
+        {
+          "input_tokens": 125569,
+          "cached_input_tokens": 104832,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2518,
+          "reasoning_output_tokens": 592
+        }
+      ],
+      "report_sha256": "ca260f8c47a1d5427a56e625484e8e1f3842b7d62180c2911bd83ca1c40ef2a3",
+      "receipt_sha256": "0a59ea3f5dcc077a2758158edca873b8107023f9d190e797e56f16540ee12a42",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": true,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "8942cb9475e1",
+      "case": "S5",
+      "score_status": "scored",
+      "reported_verdict": "changes-requested",
+      "expected_verdict": "changes-requested",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 1,
+      "expected_root_causes": 1,
+      "finding_labels": [
+        "correct-reproduced"
+      ],
+      "observed_discriminating_repro": true,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Scoped prior-to-target diff, prior F1 and directly affected Collect; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Reads prior F1, exact prior-to-target diff and unchanged Collect caller. Temporary probe calls production Collect for sizes 1–6, observes loss for 1–4, and checks offsets at/past end to close F1.",
+      "limitations": [
+        "Cleanup command masks failing go test with shell exit 0; stdout records failure and report interprets it correctly.",
+        "No runtime control against prior revision. Shown delta and probe inputs establish discrimination by source inspection."
+      ],
+      "s6_gate_reruns": null,
+      "command_count": 6,
+      "elapsed_seconds": 53.15,
+      "usage": [
+        {
+          "input_tokens": 147463,
+          "cached_input_tokens": 125184,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2819,
+          "reasoning_output_tokens": 207
+        }
+      ],
+      "report_sha256": "28db4b4edbef03759f5fe7ecdfa247190bf5afad72cb55717f18067dad350a93",
+      "receipt_sha256": "d7a16ee55b1843905ba8bfdc8357e6fca35416e28780d1d5f1160a6f4fe6fda4",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": true,
+      "full_package_test_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "8303997897b0",
+      "case": "S6",
+      "score_status": "scored",
+      "reported_verdict": "pass",
+      "expected_verdict": "pass",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 0,
+      "expected_root_causes": 0,
+      "finding_labels": [],
+      "observed_discriminating_repro": null,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Scoped README change, documented flag mapping and prior F1; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Reads exact scoped README-only delta and prior receipt at the prior SHA, checks flag implementation statically, closes F1 and explicitly inherits runtime proof. No go test/go run execution.",
+      "limitations": [
+        "A malformed rg option order exits 2 but still returns matching lines; subsequent nl main.go establishes the flag mapping."
+      ],
+      "s6_gate_reruns": 0,
+      "command_count": 4,
+      "elapsed_seconds": 22.055,
+      "usage": [
+        {
+          "input_tokens": 87065,
+          "cached_input_tokens": 79488,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1643,
+          "reasoning_output_tokens": 81
+        }
+      ],
+      "report_sha256": "2f14f9f8d857c5fdb8355dffc7a5ad712d97bbd6fde1cd231869dffde4755eff",
+      "receipt_sha256": "9fae4656a7c0d09e40a633c92369a4fd3a4f8d4e96e27f85b3186454ab41d095",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported",
+        "inherited-with-source"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": true,
+      "full_package_test_invocations": 0,
+      "s6_targeted_runtime_invocations": 0,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    },
+    {
+      "id": "b3f6401d36d0",
+      "case": "S6",
+      "score_status": "scored",
+      "reported_verdict": "pass",
+      "expected_verdict": "pass",
+      "semantic_verdict_correct": true,
+      "correct_root_causes": 0,
+      "expected_root_causes": 0,
+      "finding_labels": [],
+      "observed_discriminating_repro": null,
+      "false_pass": false,
+      "false_blocker": false,
+      "fabricated_observed_claims": false,
+      "scope": "Scoped README change, targeted documented command and prior F1; appropriate",
+      "target_head_matches_receipt": true,
+      "tracked_product_code_changed": false,
+      "nested_agents_observed": false,
+      "provenance": "Reads exact scoped README-only delta and prior receipt at the prior SHA, runs only the newly documented go run command and observes JSON, closes F1 and inherits prior broader runtime proof. No full go test gate execution.",
+      "limitations": [
+        "One targeted invocation rechecks the changed documentation acceptance. It is not an unnecessary full runtime gate rerun under the registered metric."
+      ],
+      "s6_gate_reruns": 0,
+      "command_count": 3,
+      "elapsed_seconds": 28.099,
+      "usage": [
+        {
+          "input_tokens": 69056,
+          "cached_input_tokens": 62208,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1445,
+          "reasoning_output_tokens": 256
+        }
+      ],
+      "report_sha256": "17cb3175d233303a7046ef7096af8ee4d5889c42518c9dd5ad7f7cfdc51eeca6",
+      "receipt_sha256": "d3cb7881cc99322e9e61111240fd598ba3cc680976825f97087f1e757800de00",
+      "unsupported_findings": 0,
+      "wrong_root_cause_findings": 0,
+      "safe_pass_or_withhold_decision": true,
+      "acceptance_labels": [
+        "supported",
+        "inherited-with-source"
+      ],
+      "unknown_classification_correct": null,
+      "material_gap_identified": null,
+      "prior_f1_closed": true,
+      "full_package_test_invocations": 0,
+      "s6_targeted_runtime_invocations": 1,
+      "observed_tool_names": [
+        "exec"
+      ],
+      "evidence_source": "receipt commands + aggregated_output + files_after, checked against final report"
+    }
+  ],
+  "limitations": [
+    "Only r4 contributes to this score. r2/r3 lab failures are excluded, not counted as reviewer failures or successes.",
+    "No scorer re-execution permitted; command outputs and source receipts are primary evidence. Reviewer probes were not run against a baseline control; discrimination was checked against the shown source delta.",
+    "No mapping or implementation was opened. Blinding is partial: styles differ, and the registered protocol contains the planned variant order; this is not a claim of guaranteed double-blinding.",
+    "Small synthetic Go corpus, one run per variant/case, one scorer and common model: no statistical efficacy or general effect-size claim.",
+    "Full correctness across all inputs cannot be established by these probes; scores concern the preregistered defects and acceptance obligations.",
+    "Runtime parser/gate behavior and Herdr/Mate orchestration are outside this independent semantic score."
+  ],
+  "frozen_at_utc": "2026-10-29T06:46:21.548718+00:00",
+  "primary_comparison_eligible": true,
+  "aggregate_unlabelled": {
+    "runs": 12,
+    "cases": 6,
+    "correct_positive_root_causes": 6,
+    "positive_opportunities": 6,
+    "reproduced_correct": 5,
+    "static_correct": 1,
+    "exact_verdict_classification_correct": 11,
+    "safe_pass_or_withhold_decision_correct": 12,
+    "false_pass": 0,
+    "false_blocker": 0,
+    "fabricated_observed_claims": 0,
+    "unknown_correct_incomplete": 1,
+    "unknown_cases": 2,
+    "unknown_gap_identified": 2,
+    "s6_unnecessary_full_gate_reruns": 0,
+    "scoped_f1_closures_correct": 4
+  }
+}
