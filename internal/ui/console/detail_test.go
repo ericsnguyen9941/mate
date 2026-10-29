@@ -3,7 +3,6 @@ package console
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/query"
 )
@@ -262,11 +261,11 @@ func TestCrewDetailShowsTheLaunchProfile(t *testing.T) {
 	}
 }
 
-// bxHeld puts held items on payments-api's Mate and opens that Project.
-func bxHeld(t *testing.T, held query.Field[[]query.HeldItem]) Model {
+// bxMateNews puts news on payments-api's Mate and opens that Project.
+func bxMateNews(t *testing.T, news query.Field[[]query.NewsItem]) Model {
 	t.Helper()
 	tree := designTree()
-	tree.Projects[7].Mate.Held = held
+	tree.Projects[7].Mate.News = news
 	m := newFixture(t, tree, 40, 36, unicodeGlyphs)
 	for i := 0; i < 7; i++ {
 		m, _ = send(t, m, key("down"))
@@ -275,59 +274,22 @@ func bxHeld(t *testing.T, held query.Field[[]query.HeldItem]) Model {
 	return m
 }
 
-// Asked: under the Mate's own fields, every question the Mate asked the
-// captain and still waits on - the task, its age, and the question in the
-// Mate's words, with none of its bookkeeping - so a captain who was away
-// reads it without asking the Mate again.
-func TestMateDetailShowsTheQuestionsTheMateAskedTheCaptain(t *testing.T) {
-	asOf := goldenAsOf.In(time.Local)
-	m := bxHeld(t, query.KnownField([]query.HeldItem{
-		{Task: "checkout-button", Date: asOf.AddDate(0, 0, -3).Format("2006-01-02"), Question: "Classic checkout or the express one?"},
-		{Task: "go-live", Date: asOf.Format("2006-01-02"), Question: "Ship on Friday?"},
-		{Question: "Which database do you want to use?"},
-	}))
-	d := bxDetail(t, m)
-	bxWants(t, "Mate detail", d,
-		"  asked    checkout-button · 3d\n    Classic checkout or the express\n    one?\n",
-		"           go-live · today\n    Ship on Friday?\n",
-		"           Which database do you want\n           to use?\n")
-	// "news" is the REPL's list; a backlog question is not in it (CON-100).
-	bxDenies(t, "Mate detail", d, "waits on:", "news")
-
-	// One field per question: y on the first copies that question.
-	for i, f := range m.detailFields(m.w) {
-		if f.label == "asked" {
-			m.detailSel = i
-		}
-	}
-	if got, ok := m.detailCopy(); !ok || got != "Classic checkout or the express one?" {
-		t.Errorf("copy = %q, %v; want the question", got, ok)
-	}
-}
-
-// Nothing held says so; no backlog at all says nothing; an unreadable
-// backlog is not shown as "none".
+// No open news says so; no news log at all says nothing; an unreadable log
+// is not shown as "none". The backlog is never a source (CON-136).
 func TestMateDetailNewsStates(t *testing.T) {
-	d := bxDetail(t, bxHeld(t, query.KnownField([]query.HeldItem{})))
+	d := bxDetail(t, bxMateNews(t, query.KnownField([]query.NewsItem{})))
 	bxWants(t, "empty news", d, "news     none")
-	d = bxDetail(t, bxHeld(t, query.AbsentField[[]query.HeldItem]("no backlog")))
-	bxDenies(t, "absent news", d, "news")
-	d = bxDetail(t, bxHeld(t, query.UnknownField[[]query.HeldItem]("permission denied")))
-	bxWants(t, "unreadable news", d, "asked    unknown", "permission denied")
+	d = bxDetail(t, bxMateNews(t, query.AbsentField[[]query.NewsItem]("no news log")))
+	bxDenies(t, "absent news", d, "news", "asked")
+	d = bxDetail(t, bxMateNews(t, query.UnknownField[[]query.NewsItem]("permission denied")))
+	bxWants(t, "unreadable news", d, "news     unknown", "permission denied")
 }
 
-// On the workspace level a Project says how many questions wait in it:
-// news first, the backlog's asked ones when the Mate opened no news.
+// On the workspace level a Project says how many news wait on the captain.
 func TestProjectPeekCountsNews(t *testing.T) {
 	tree := designTree()
-	tree.Projects[7].Mate.Held = query.KnownField([]query.HeldItem{{Question: "a?"}, {Question: "b?"}})
-	m := newFixture(t, tree, 40, 36, unicodeGlyphs)
-	for i := 0; i < 7; i++ {
-		m, _ = send(t, m, key("down"))
-	}
-	bxWants(t, "project peek", bxDetail(t, m), "asked     2 waiting on you")
 	tree.Projects[7].Mate.News = query.KnownField([]query.NewsItem{{ID: 3, Title: "R2 account id", Owed: true}})
-	m = newFixture(t, tree, 40, 36, unicodeGlyphs)
+	m := newFixture(t, tree, 40, 36, unicodeGlyphs)
 	for i := 0; i < 7; i++ {
 		m, _ = send(t, m, key("down"))
 	}

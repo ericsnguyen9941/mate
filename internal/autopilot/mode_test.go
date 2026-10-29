@@ -130,7 +130,7 @@ func TestManualComesBackToAutoAfterFiveQuietMinutes(t *testing.T) {
 	}
 	// CON-93: auto came back without the captain, so the digest that hands
 	// the Mate the question says a captain's decision is not its to make.
-	if !strings.Contains(typed[0], "a decides: captain choice goes to the captain and waits under Held") {
+	if !strings.Contains(typed[0], "a decides: captain choice goes to the captain as news") {
 		t.Fatalf("digest %q does not keep a captain's decision with the captain", typed[0])
 	}
 	if !hasSent(f.sent(), autopilot.RearmText(autopilot.DefaultQuietAfter)) {

@@ -7,7 +7,7 @@ import (
 
 func TestBacklogMovesPreserveVerbatimObligationsAndMultilineEvidence(t *testing.T) {
 	original := BacklogHeader() + "\n## Notes\nDo not rewrite this.\n"
-	got, _, err := EditBacklog(original, "add", "checkout", BacklogHeld, `asked "Giữ cách cũ?" Waits on captain.`)
+	got, _, err := EditBacklog(original, "add", "checkout", BacklogQueued, `promised "Giữ cách cũ?" Waits on captain.`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -16,7 +16,7 @@ func TestBacklogMovesPreserveVerbatimObligationsAndMultilineEvidence(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(moved, `asked "Giữ cách cũ?" Waits on captain.`+"\n  evidence: crews/checkout/report.md") || !strings.Contains(moved, "## Notes\nDo not rewrite this.") {
+	if !strings.Contains(moved, `promised "Giữ cách cũ?" Waits on captain.`+"\n  evidence: crews/checkout/report.md") || !strings.Contains(moved, "## Notes\nDo not rewrite this.") {
 		t.Fatal(moved)
 	}
 	if _, _, err := EditBacklog(moved, "add", "checkout", BacklogQueued, "replacement"); err == nil {
@@ -65,5 +65,22 @@ func TestBacklogRewriteLeavesAPointerLine(t *testing.T) {
 	next, _, err = EditBacklogEntry(text, "done", "k2", BacklogDone, "ignored", false)
 	if err != nil || !strings.Contains(next, "## Done\n- k2: fix the flaky test\n  evidence: logs\n") {
 		t.Fatalf("done without rewrite = %v\n%s", err, next)
+	}
+}
+
+// TestBacklogMovesAnEntryOutOfTheRetiredHeldSection: a backlog written
+// before CON-136 still has `## Held for the captain`; its promises move
+// to Queued with backlog move, and the section is no longer required.
+func TestBacklogMovesAnEntryOutOfTheRetiredHeldSection(t *testing.T) {
+	text := "# Backlog\n\n## In flight\n\n## " + BacklogHeld + "\n- reinstall, 2026-10-28: promised \"I will reinstall it.\" Waits on: the captain asking.\n\n## Queued\n\n## Done\n"
+	got, _, err := EditBacklog(text, "move", "reinstall", BacklogQueued, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "## Queued\n- reinstall, 2026-10-28: promised") {
+		t.Fatal(got)
+	}
+	if strings.Contains(BacklogHeader(), BacklogHeld) {
+		t.Errorf("a fresh backlog still has ## %s", BacklogHeld)
 	}
 }

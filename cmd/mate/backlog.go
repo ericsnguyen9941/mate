@@ -190,8 +190,7 @@ func formatAge(d time.Duration) string {
 // entry written, or the one moved, becomes the one pointer line
 // `- <crew-id>: <tracker-id>`, under `## In flight` unless --section says
 // otherwise, and no content is copied - the tracker holds it. Without
-// --tracker nothing changes: `## Held for the captain` and `## Queued`
-// entries without a tracker id are written as they always were. A project
+// --tracker nothing changes: `## Queued` entries without a tracker id are written as they always were. A project
 // with no tracker plugin refuses --tracker, so a pointer never points at
 // nothing.
 func cmdBacklogEdit(args []string, stdout, stderr io.Writer) error {
@@ -199,8 +198,8 @@ func cmdBacklogEdit(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("backlog "+action, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	workspace := fs.String("workspace", "", "workspace directory")
-	section := fs.String("section", "", "In flight, Held for the captain, Queued, or Done (default: Queued; In flight with --tracker)")
-	text := fs.String("text", "", "one complete entry; preserve captain questions verbatim")
+	section := fs.String("section", "", "In flight, Queued, or Done (default: Queued; In flight with --tracker)")
+	text := fs.String("text", "", "one complete entry; a promise to the captain in their words")
 	tracker := fs.String("tracker", "", "the tracker's own id for this task (such as HVN-12); the entry becomes the pointer `- <id>: <tracker-id>`; needs a tracker plugin")
 	if err := fs.Parse(reorderArgs(fs, args[1:])); err != nil {
 		return err

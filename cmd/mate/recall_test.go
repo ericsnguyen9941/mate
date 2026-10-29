@@ -13,6 +13,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -135,7 +136,7 @@ func TestRecallPrintsSection12Point5InOrder(t *testing.T) {
 		// 1: mode, next work, the backlog table, inbox, outbox.
 		"mode: manual\n", "next work: pick - ", "crews (mate backlog shop):", "ID  STATE", "k1  spawned", "5 open, 1 closed",
 		"inbox: 3 unresolved", `stuck, quiet too long: "no status for 15m"`, `k3 needs an answer: "choose red or blue for the button" (crews/k3.status)`, `k4 wait-mate: "ready in branch mate/k4" (crews/k4.status)`,
-		"outbox: nothing queued",
+		"outbox: nothing queued", "news: none open",
 		// 2: facts with head.
 		"commits: 2 on main", "head: ",
 		// 3: PROJECT.md framed, then the stale anchor.
@@ -146,6 +147,7 @@ func TestRecallPrintsSection12Point5InOrder(t *testing.T) {
 		"----- end backlog.md (## Done: 2 entries not shown) -----",
 		"In flight in backlog.md but not an open crew in part 1: buyesp32",
 		"Open crews in part 1 with no `- <id>` line under In flight: k1",
+		"## Held for the captain is retired: open a news for each question",
 		// 5, 6.
 		"----- begin memory.md (", "The canary lesson is HERON-7.", "----- end memory.md -----",
 		"----- begin WORKSPACE.md (", "Never merge on a Friday.", "----- end WORKSPACE.md -----",
@@ -160,6 +162,31 @@ func TestRecallPrintsSection12Point5InOrder(t *testing.T) {
 	}
 	if strings.Contains(out, ": ABSENT (") || strings.Contains(out, ": (empty) (") {
 		t.Errorf("every file is present and non-empty, yet the digest says ABSENT or (empty)")
+	}
+}
+
+// TestRecallListsTheOpenNews: the open news are the questions the Mate
+// holds for the captain (CON-136), so part 1 carries each with its question
+// and the captain's answer; a closed one is gone.
+func TestRecallListsTheOpenNews(t *testing.T) {
+	w, now, _ := recallFixture(t)
+	path := matehost.NewsPath(w.MateDir("shop"))
+	tag, err := matehost.OpenNews(path, matehost.News{Title: "Push the contract tag?", Question: "Can the tag wait until the real API?"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sync, err := matehost.OpenNews(path, matehost.News{Title: "Sync main", Question: "Synced?"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := matehost.CloseNews(path, sync, "synced", false, now); err != nil {
+		t.Fatal(err)
+	}
+	out := recallText(t, w, now, recallOptions{LiveOnly: true})
+	mustOrder(t, out, "outbox: nothing queued", "news: 1 open (mate news list shop)",
+		fmt.Sprintf("- #%d ", tag), "waits on the captain: Push the contract tag?", "  asked: Can the tag wait until the real API?")
+	if strings.Contains(out, "Sync main") {
+		t.Errorf("recall lists a closed news:\n%s", out)
 	}
 }
 

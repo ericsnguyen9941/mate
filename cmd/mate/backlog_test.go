@@ -325,7 +325,7 @@ func TestBacklogTrackerWritesAPointerLine(t *testing.T) {
 	trackerPlugin(t, w, true)
 	for _, args := range [][]string{
 		{"backlog", "add", "shop", "k2", "--tracker", "HVN-12", "--text", "this content is not copied"},
-		{"backlog", "add", "shop", "k3", "--section", "Held for the captain", "--text", "asked \"red or blue?\" Waiting on: the captain."},
+		{"backlog", "add", "shop", "k3", "--section", "Queued", "--text", "promised \"red or blue\" Waits on: the captain."},
 		{"backlog", "add", "shop", "k4", "--text", "ship the button"},
 		{"backlog", "add", "shop", "k6", "--section", "Queued", "--tracker", "HVN-15"},
 	} {
@@ -350,7 +350,7 @@ func TestBacklogTrackerWritesAPointerLine(t *testing.T) {
 	}
 	for _, want := range []string{
 		"## In flight\n- k4: HVN-20\n- k2: HVN-12\n",
-		"## Held for the captain\n- k3: asked \"red or blue?\" Waiting on: the captain.\n",
+		"## Queued\n- k3: promised \"red or blue\" Waits on: the captain.\n",
 		"## Done\n- k6: HVN-15\n",
 	} {
 		if !strings.Contains(string(data), want) {

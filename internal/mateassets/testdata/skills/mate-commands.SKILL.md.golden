@@ -31,10 +31,10 @@ Cite it as a source in `## What we already know`. The `(anchor ...)` is exactly 
 
 `mate recall <project>` prints your session-start digest in numbered parts, live state first and memory last, so a cut digest never loses the crews:
 
-1. Live state: the mode, the open crews, every unresolved inbox item, and your outbox.
+1. Live state: the mode, the open crews, every unresolved inbox item, your outbox, and every open news.
 2. `mate project facts`: one block per repo.
 3. `/ws/.mate/projects/shop/PROJECT.md`, then a warning for each anchor its repo has moved past.
-4. `/ws/.mate/projects/shop/mate/backlog.md` without `## Done` itself, then the In flight ids that are not open crews and the open crews with no line; with a tracker plugin, what the tracker says of each pointer.
+4. `/ws/.mate/projects/shop/mate/backlog.md` without `## Done` itself, then the In flight ids that are not open crews, the open crews with no line, and a retired `## Held for the captain` section still there; with a tracker plugin, what the tracker says of each pointer.
 5. `/ws/.mate/projects/shop/mate/memory.md`.
 6. `/ws/.mate/WORKSPACE.md`, and whether the two CREW.md files have rules.
 7. What `memory check` says.

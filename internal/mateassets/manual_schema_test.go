@@ -254,7 +254,7 @@ var headingMention = regexp.MustCompile("`## ([^`]+)`")
 var templateHeadings = func() map[string]bool {
 	m := map[string]bool{"Deviations from Build": true, "Still open": true, "Durable facts": true, "For the next crew": true,
 		store.VerdictSection: true, store.FindingsSection: true, store.PriorFindingsSection: true, "Notes": true,
-		store.LearningUsageSection: true, store.LearningPredictionsSection: true}
+		store.LearningUsageSection: true, store.LearningPredictionsSection: true, memory.BacklogHeld: true}
 	for _, set := range [][]string{memory.Sections, memory.ProjectSections, memory.BacklogSections} {
 		for _, s := range set {
 			m[s] = true

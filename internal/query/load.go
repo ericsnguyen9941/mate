@@ -12,7 +12,6 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/box"
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/matehost"
-	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
@@ -133,7 +132,6 @@ func loadProject(ws *store.Workspace, ref store.ProjectRef, live Liveness, w *wa
 	}
 
 	p.Mate = loadMate(ws, ref.Name, live, w)
-	p.Mate.Held = note(w, loadHeld(ws, ref.Name), "held", RowRef{Kind: RowMate, ID: ref.Name, Label: ref.Name})
 	p.Mate.News = note(w, loadNews(ws, ref.Name), "news", RowRef{Kind: RowMate, ID: ref.Name, Label: ref.Name})
 	// The box is read before the Crews because a Crew's state depends on
 	// it: `blocked` is an open incident in the merged view and nothing
@@ -235,27 +233,6 @@ func loadMate(ws *store.Workspace, project string, live Liveness, w *warnings) M
 		Pane:      pane,
 	}, note)
 	return out
-}
-
-// loadHeld reads the questions the Mate asked the captain from `mate/backlog.md`.
-// It is a plain read of a file the Mate already keeps, so showing it costs
-// the Mate no turn.
-func loadHeld(ws *store.Workspace, project string) Field[[]HeldItem] {
-	data, err := os.ReadFile(ws.BacklogFile(project))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return AbsentField[[]HeldItem]("this project has no backlog yet")
-		}
-		return UnknownField[[]HeldItem](readFailureReason(err))
-	}
-	entries := memory.HeldEntries(string(data))
-	items := make([]HeldItem, 0, len(entries))
-	for _, e := range entries {
-		if e.Question != "" {
-			items = append(items, HeldItem{Task: e.ID, Date: e.Date, Question: e.Question})
-		}
-	}
-	return KnownField(items)
 }
 
 // loadNews reads the news a headless Mate has open from `mate/news.jsonl`,

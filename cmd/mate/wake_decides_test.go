@@ -33,7 +33,7 @@ func TestWakeSaysACaptainsDecisionIsTheCaptains(t *testing.T) {
 	for _, want := range []string{
 		"needs-decision ask-k4: keep the old endpoint",
 		"\n  decides: captain (Keep or remove the old endpoint",
-		"\n  next: ask the captain and record it under ## Held for the captain; send the Crew nothing until they answer\n",
+		"\n  next: ask the captain as news; send the Crew nothing until they answer\n",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("wake lacks %q:\n%s", want, text)

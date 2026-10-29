@@ -20,7 +20,7 @@ func TestManualBootstrapIsRecall(t *testing.T) {
 		"`recall cut to fit`",
 		"`ABSENT`",
 		"Dispatch a short onboarding scout",
-		"If you cannot name every In flight crew and every Held question from your context, run `" + p.MatevBin + " recall shop` before you act on anything.",
+		"If you cannot name every In flight crew and every open news from your context, run `" + p.MatevBin + " recall shop` before you act on anything.",
 		"`⟦mate⟧ stow:`",
 	} {
 		if !strings.Contains(sec, want) {

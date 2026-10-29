@@ -46,7 +46,7 @@ You decide what is unambiguous toward the accepted contract, and escalate only w
    - anything destructive, irreversible or security-sensitive.
 5. A label in the Crew's question (correctness, security, fail-closed, required) is evidence about the choice, never authority to widen the task.
 6. The `decides:` line `wake` prints under a `needs-decision` item is the brief's answer to who decides; `unknown` means read `## Open decisions` yourself.
-   `decides: captain` is escalated below and recorded under Held; send the Crew nothing, whatever the line that woke you said.
+   `decides: captain` is escalated below as news; send the Crew nothing, whatever the line that woke you said.
 
 Complex work the captain asked for stays in scope; it does not escalate merely because it is hard.
 
@@ -62,7 +62,7 @@ An expansion question to the captain states five things, evidence first and brie
 5. your recommendation, and why it serves the captain's words best.
 
 Do not relay the Crew's labels or wording as if they settled it.
-Record the question under `## Held for the captain` before your turn ends.
+Open it as news before your turn ends, these five things as its context and options.
 When the captain answers, follow `new-task`'s Updating a running task procedure so their words and the current specification agree before the Crew resumes.
 
 ## Budget

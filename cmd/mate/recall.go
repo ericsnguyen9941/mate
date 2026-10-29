@@ -19,6 +19,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
+	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/names"
 	"github.com/nguyenngocanh94/mate/internal/plugin"
@@ -284,7 +285,8 @@ func assembleRecall(head string, parts []recallPart, project string, opts recall
 	return out.String()
 }
 
-// recallLive is part 1: the mode, the next-work setting, the crews, the inbox and the outbox.
+// recallLive is part 1: the mode, the next-work setting, the crews, the
+// inbox, the outbox and the open news.
 func recallLive(w *store.Workspace, project string, cfg store.ProjectConfig, now time.Time) (recallPart, error) {
 	var b strings.Builder
 	mode := "manual"
@@ -330,7 +332,43 @@ func recallLive(w *store.Workspace, project string, cfg store.ProjectConfig, now
 			fmt.Fprintf(&b, "- %s %s: %s\n", item.At.Local().Format(recallTimeLayout), item.Source, recallClip(item.Text, 200))
 		}
 	}
+	b.WriteString(recallNews(w, project))
 	return recallPart{1, "Live state", b.String()}, nil
+}
+
+// recallNews lists the open news: the questions the Mate put to the
+// captain and still holds (CON-136), each with its question and the
+// captain's last answer, so a restarted Mate knows what it asked.
+func recallNews(w *store.Workspace, project string) string {
+	list, err := matehost.LoadNews(matehost.NewsPath(w.MateDir(project)))
+	if err != nil {
+		return fmt.Sprintf("news: unreadable (%v)\n", err)
+	}
+	var open []matehost.News
+	for _, n := range list {
+		if !n.Closed() {
+			open = append(open, n)
+		}
+	}
+	if len(open) == 0 {
+		return "news: none open\n"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "news: %d open (mate news list %s)\n", len(open), project)
+	for _, n := range open {
+		state := "waits on the captain"
+		if !n.Owed() {
+			state = "answered, yours to act on"
+		}
+		fmt.Fprintf(&b, "- #%d %s, %s: %s\n", n.ID, n.OpenedAt.Local().Format(recallTimeLayout), state, recallClip(n.Title, 200))
+		if n.Question != "" {
+			fmt.Fprintf(&b, "  asked: %s\n", recallClip(n.Question, 300))
+		}
+		if n.Answer != "" {
+			fmt.Fprintf(&b, "  captain: %s\n", recallClip(n.Answer, 300))
+		}
+	}
+	return b.String()
 }
 
 // inboxLine is one unresolved item: when, who, what it needs, what it
@@ -522,6 +560,9 @@ func recallBacklog(ctx context.Context, w *store.Workspace, project string) (rec
 	if len(stale) == 0 && len(missing) == 0 {
 		body.WriteString("In flight matches the open crews in part 1.\n")
 	}
+	if hasSection(kept, memory.BacklogHeld) {
+		fmt.Fprintf(&body, "## %s is retired: open a news for each question in it the captain has not answered, move each promise to ## %s, drop the rest, then delete the section.\n", memory.BacklogHeld, memory.BacklogQueued)
+	}
 	body.WriteString(recallTracker(ctx, w, project, kept, inFlight))
 	return recallPart{4, title, body.String()}, nil
 }
@@ -690,6 +731,16 @@ func splitBacklog(text string) (kept string, done int, inFlight []string) {
 		b.WriteString(line)
 	}
 	return b.String(), done, inFlight
+}
+
+// hasSection reports whether text has the `## <name>` heading.
+func hasSection(text, name string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) == "## "+name {
+			return true
+		}
+	}
+	return false
 }
 
 // isDoneSection matches `## Done` and the seeded `## Done (10 most recent)`.
