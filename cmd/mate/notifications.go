@@ -122,19 +122,11 @@ func notificationSnapshot(ctx context.Context, ws *store.Workspace, dashboardURL
 	}
 	for _, p := range snap.Projects {
 		np := notifications.Project{Name: p.Name}
-		if p.Mate.News.State == query.Unknown || p.Mate.Held.State == query.Unknown {
+		if p.Mate.News.State == query.Unknown {
 			out.Complete = false
 		}
 		for _, n := range p.Mate.OwedNews() {
 			np.News = append(np.News, notifications.News{Key: fmt.Sprintf("%s/news/%d", p.ProjectID, n.ID), Revision: n.At.UTC().Format(time.RFC3339Nano), Title: fmt.Sprintf("#%d · %s", n.ID, n.Title)})
-		}
-		// Pane-based Mates can still keep captain questions in their backlog.
-		// Once native news exist, use them, matching the console's own precedence.
-		if p.Mate.News.State == query.Absent && p.Mate.Held.IsKnown() {
-			for _, h := range p.Mate.Held.Value {
-				key := p.ProjectID + "/held/" + h.Task + "/" + h.Question
-				np.News = append(np.News, notifications.News{Key: key, Revision: h.Date + "/" + h.Question, Title: h.Question})
-			}
 		}
 		np.Summary = notificationSummary(ctx, ws, p, now)
 		out.Projects = append(out.Projects, np)
