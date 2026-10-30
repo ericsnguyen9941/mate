@@ -99,7 +99,7 @@ func TestLiveTimelineExplainsTheAcceptance(t *testing.T) {
 	})
 
 	// The observer that also records the timeline: cmdConsole's own wiring.
-	watcher, timelineDB, err := consoleWatcherWithTimeline(root, deps)
+	watcher, timelineDB, _, err := consoleWatcherWithTimeline(root, deps)
 	if err != nil {
 		t.Fatalf("consoleWatcherWithTimeline: %v", err)
 	}

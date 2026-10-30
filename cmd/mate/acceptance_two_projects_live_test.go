@@ -170,7 +170,7 @@ func TestLiveAcceptanceTwoProjects(t *testing.T) {
 	// console does. The observer records the timeline as cmdConsole's does,
 	// because the blog half's claim that the Mate yielded its turn to the
 	// digest (task 31) is read out of the Mate's turn rows.
-	watcher, timelineDB, err := consoleWatcherWithTimeline(root, deps)
+	watcher, timelineDB, _, err := consoleWatcherWithTimeline(root, deps)
 	if err != nil {
 		t.Fatalf("consoleWatcherWithTimeline: %v", err)
 	}

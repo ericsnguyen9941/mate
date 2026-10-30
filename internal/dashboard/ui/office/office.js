@@ -503,7 +503,21 @@
     });
   }
 
+  // What the last /api/events said about timelines that stopped moving
+  // (CON-139): the page answers, but what it draws for them is old.
+  var timelineStale = "";
+
+  function staleTimelines(list) {
+    return (list || []).map(function (s) {
+      return "timeline " + s.project + " since " + clock(s.since) + ": " + s.error;
+    }).join("; ");
+  }
+
   function markLive() {
+    if (timelineStale) {
+      live = { state: "stale", at: Date.now(), reason: timelineStale };
+      return;
+    }
     live = { state: "live", at: Date.now(), reason: "" };
   }
 
@@ -523,6 +537,7 @@
     var watching = sel && sel.kind !== "cab" && sel.kind !== "board";
     api("/api/events?since=" + enc(lastEventID) + "&wait=" + (watching ? "5" : "20")).then(function (body) {
       if (token !== pollToken) return;
+      timelineStale = staleTimelines(body.timeline_stale);
       var serverID = body.last_event_id || 0;
       var moved = (body.events && body.events.length) || (body.now && body.now.length);
       if (serverID < lastEventID || moved) {

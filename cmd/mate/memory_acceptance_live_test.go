@@ -143,7 +143,7 @@ func memoryAcceptance(t *testing.T, kind harness.Kind, fresh bool) {
 		_, _ = spawn.StopMate(stopCtx, w, deps, memoryProject)
 	})
 
-	watcher, timelineDB, err := consoleWatcherWithTimeline(root, deps)
+	watcher, timelineDB, _, err := consoleWatcherWithTimeline(root, deps)
 	if err != nil {
 		t.Fatalf("consoleWatcherWithTimeline: %v", err)
 	}

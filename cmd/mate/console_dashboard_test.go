@@ -15,7 +15,7 @@ const freeAddr = "127.0.0.1:0"
 // The console serves the dashboard while it is open and stops with it.
 func TestStartConsoleDashboardServesUntilStopped(t *testing.T) {
 	w := usageWorkspace(t)
-	url, stop, err := startConsoleDashboard(context.Background(), w, freeAddr, false)
+	url, stop, err := startConsoleDashboard(context.Background(), w, freeAddr, false, nil)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestStartConsoleDashboardServesUntilStopped(t *testing.T) {
 // A busy port is reported, not fatal.
 func TestStartConsoleDashboardBusyPort(t *testing.T) {
 	w := usageWorkspace(t)
-	served, stop, err := startConsoleDashboard(context.Background(), w, freeAddr, false)
+	served, stop, err := startConsoleDashboard(context.Background(), w, freeAddr, false, nil)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestStartConsoleDashboardBusyPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse %q: %v", served, err)
 	}
-	if _, _, err := startConsoleDashboard(context.Background(), w, u.Host, false); err == nil {
+	if _, _, err := startConsoleDashboard(context.Background(), w, u.Host, false, nil); err == nil {
 		t.Fatal("second start on the same port should fail")
 	}
 }
@@ -58,10 +58,10 @@ func TestStartConsoleDashboardBusyPort(t *testing.T) {
 // error says what to set. With it the status line also names the LAN URL.
 func TestStartConsoleDashboardRemoteNeedsAllow(t *testing.T) {
 	w := usageWorkspace(t)
-	if _, _, err := startConsoleDashboard(context.Background(), w, "0.0.0.0:0", false); err == nil || !strings.Contains(err.Error(), "allow-remote") {
+	if _, _, err := startConsoleDashboard(context.Background(), w, "0.0.0.0:0", false, nil); err == nil || !strings.Contains(err.Error(), "allow-remote") {
 		t.Fatalf("routable bind without allow_remote: %v", err)
 	}
-	served, stop, err := startConsoleDashboard(context.Background(), w, "0.0.0.0:0", true)
+	served, stop, err := startConsoleDashboard(context.Background(), w, "0.0.0.0:0", true, nil)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}

@@ -417,6 +417,17 @@ type EventsResponse struct {
 	// Now are the `v_now` rows of the actors that moved since `since`: one
 	// call refreshes both the story and the scene.
 	Now []SceneRow `json:"now"`
+	// TimelineStale are the projects whose timeline stopped moving: every
+	// page built from it is behind the files since then (CON-139).
+	TimelineStale []StaleTimeline `json:"timeline_stale,omitempty"`
+}
+
+// StaleTimeline is one project whose ingest has failed every pass since
+// Since.
+type StaleTimeline struct {
+	Project string `json:"project"`
+	Since   string `json:"since"`
+	Error   string `json:"error"`
 }
 
 // NowResponse is GET /api/now: every `v_now` row of the workspace, or of

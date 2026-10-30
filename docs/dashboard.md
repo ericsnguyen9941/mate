@@ -548,6 +548,8 @@ Otherwise it waits up to `wait` seconds, polling the database once a second, and
 `now` are the `v_now` rows of the actors that moved, so one call refreshes both the story and the scene.
 `v_now` has no "changed since" of its own, so which actors moved is read off `transition` - the table the view's scene columns already come from - as the distinct actors with a transition whose `event_id > since`.
 
+`timeline_stale`, present only when there is something to say, lists the projects whose ingest has failed every pass since `since` (wall clock), with the latest `error` on one line (CON-139). Everything served for such a project is behind its files from then on. Only the console's dashboard knows: it is the timeline's writer. `mate dashboard` on its own never sends the field.
+
 This endpoint is not cached: it answers "what happened after the id you hold", which depends on the caller's cursor. Crew task snapshots are also uncached because heartbeat age and running durations advance without events; the remaining endpoints use the event generation cache.
 
 ```json
@@ -701,6 +703,7 @@ It is a view: a news is answered in its Mate's REPL, and nothing here marks one 
 
 Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, `/api/news` (again on every quiet poll, because news moves without an event), and for an open drawer `/api/projects/{p}/mate` plus `/api/plugins?project=<p>`, `/api/projects/{p}/tasks/{crew}`, or `/api/board?days=<n>`.
 It long-polls `/api/events` from the lowest `last_event_id` it holds (`wait=5` with a drawer open, 20 otherwise) and re-reads the floor when anyone moved.
+A `timeline_stale` in the answer turns the live pill `stale` with `timeline <p> since <time>: <error>` until an answer without it.
 
 The typefaces are the design's - Geist, Geist Mono and Bricolage Grotesque - as latin WOFF2 subsets under `ui/office/fonts/`.
 All three are under the SIL Open Font License 1.1; the licences are embedded from `internal/dashboard/fontlicenses/` and served at `/office/fonts/licenses/<Family>-OFL.txt`, kept outside `ui/` because they name web addresses.

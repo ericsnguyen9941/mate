@@ -47,7 +47,7 @@ func (p *pass) ingestGit(ctx context.Context) error {
 		// commits; nothing is concluded and the next pass asks again.
 		return nil //nolint:nilerr
 	}
-	git := p.ing.deps.git()
+	git := p.boundedGit()
 	facts := p.ing.gitFacts()
 
 	for _, crew := range p.crews {
@@ -395,4 +395,26 @@ func shortSHA(sha string) string {
 		return sha
 	}
 	return sha[:7]
+}
+
+// boundedGit is the ingest's git with every call held to the pass's external
+// deadline (DefaultProjectTimeout): past it a call fails at once, which the
+// callers above read as git having said nothing.
+func (p *pass) boundedGit() gitx.Git {
+	git := p.ing.deps.git()
+	if p.external.IsZero() {
+		return git
+	}
+	return gitx.Git{Runner: deadlineRunner{inner: git.Runner, deadline: p.external}}
+}
+
+type deadlineRunner struct {
+	inner    gitx.Runner
+	deadline time.Time
+}
+
+func (r deadlineRunner) Run(ctx context.Context, cmd gitx.Command) (gitx.Result, error) {
+	ctx, cancel := context.WithDeadline(ctx, r.deadline)
+	defer cancel()
+	return r.inner.Run(ctx, cmd)
 }
