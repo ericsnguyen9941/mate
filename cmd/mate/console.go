@@ -148,7 +148,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	// It is also the single writer of `.mate/mate.db` (mvp.md M5): the
 	// timeline is recorded at the end of each of its polls, and the database
 	// handle's advisory lock is released when the console quits.
-	watcher, timelineDB, err := consoleWatcherWithTimeline(dir, deps)
+	watcher, timelineDB, ingest, err := consoleWatcherWithTimeline(dir, deps)
 	if err != nil {
 		return err
 	}
@@ -191,6 +191,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 		snap = recovery.apply(snap)
 		snap = withCrewHealth(snap, watcher.Snapshot())
 		snap = withRuntimeNotice(snap, watcher)
+		snap = withTimelineStale(snap, ingest)
 		snap = withAutoStatus(snap, pilot.Snapshot())
 		return withTokens(snap, ws), nil
 	}
@@ -206,7 +207,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	// The dashboard comes up with the console, after the observer has made
 	// sure the database exists. It is a convenience: a failure is said on the
 	// status line and never stops the console.
-	if url, stopDashboard, err := startConsoleDashboard(ctx, ws, commands.Dashboard.Addr, commands.Dashboard.AllowRemote); err != nil {
+	if url, stopDashboard, err := startConsoleDashboard(ctx, ws, commands.Dashboard.Addr, commands.Dashboard.AllowRemote, ingest); err != nil {
 		notice = err.Error()
 	} else {
 		defer stopDashboard()

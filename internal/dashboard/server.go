@@ -11,6 +11,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/store"
+	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
 
 // DefaultAddr is what `mate dashboard` binds when nobody says otherwise.
@@ -41,6 +42,10 @@ type Deps struct {
 	// because only a harness profile may know which harness that is. Nil
 	// calls no harness unsupported.
 	PluginHarness func(kind string) error
+	// TimelineStale is the console's ingest saying which projects' timeline
+	// stopped moving (CON-139). Nil - `mate dashboard` on its own, or a
+	// console that is not the writer - says nothing.
+	TimelineStale func() []timeline.Stale
 }
 
 func (d Deps) now() time.Time {

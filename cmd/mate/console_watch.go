@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -59,16 +60,16 @@ func consoleWatcher(dir string, deps spawn.Deps) (*watch.Watcher, error) {
 // already locked by another console is not an error here: that console is the
 // writer, this one still observes, and the timeline is recorded once rather
 // than twice (internal/db.ErrLocked).
-func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *db.DB, error) {
+func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *db.DB, *timeline.Ingester, error) {
 	ws, err := store.Open(dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var watcher *watch.Watcher
 	handle, err := db.Open(ws)
 	if err != nil {
 		if !errors.Is(err, db.ErrLocked) {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		watcher = watch.New(ws, watch.Deps{
 			Runtime:  deps.Runtime,
@@ -76,7 +77,7 @@ func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *d
 			Session:  consoleSession(ws, deps),
 			Observer: deps.Observer,
 		})
-		return watcher, nil, nil
+		return watcher, nil, nil, nil
 	}
 	ingest := timeline.New(ws, handle, timeline.Deps{
 		SessionRef: consoleSessionRef(ws, deps),
@@ -106,7 +107,7 @@ func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *d
 		// ledger.
 		Turns: ingest,
 	})
-	return watcher, handle, nil
+	return watcher, handle, ingest, nil
 }
 
 // consoleSessionRef is timeline.SessionRefFunc over the Herdr adapter: the
@@ -193,6 +194,23 @@ func withCrewHealth(snap query.Snapshot, health map[watch.CrewRef]watch.Health) 
 			}
 			crew.Health = query.KnownField(crewHealth(h))
 		}
+	}
+	return snap
+}
+
+// withTimelineStale says on the status line which projects' timeline has
+// stopped moving (CON-139): the tree is read from files and stays current,
+// but the dashboard, budgets and no-turn checks read the timeline.
+func withTimelineStale(snap query.Snapshot, ingest *timeline.Ingester) query.Snapshot {
+	if ingest == nil {
+		return snap
+	}
+	for _, st := range ingest.Stale() {
+		if snap.Runtime.Notice != "" {
+			snap.Runtime.Notice += "; "
+		}
+		snap.Runtime.Notice += fmt.Sprintf("timeline %s stale since %s: %s",
+			st.Project, st.Since.Local().Format("15:04"), st.Error)
 	}
 	return snap
 }

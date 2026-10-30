@@ -198,6 +198,11 @@ func (p *pass) sessionRef(ctx context.Context, crew string) string {
 	if p.ing.deps.SessionRef == nil {
 		return ""
 	}
+	if !p.external.IsZero() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, p.external)
+		defer cancel()
+	}
 	ref, err := p.ing.deps.SessionRef(ctx, p.project, crew)
 	if err != nil {
 		// "The runtime did not answer" is not a finding, exactly as it is

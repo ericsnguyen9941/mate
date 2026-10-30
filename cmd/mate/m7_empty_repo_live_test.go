@@ -116,7 +116,7 @@ func TestLiveM7EmptyRepoDoesNotGuess(t *testing.T) {
 
 	// The observer records the timeline as cmdConsole's does, so the run can
 	// be measured afterwards (scripts/m7measure).
-	watcher, timelineDB, err := consoleWatcherWithTimeline(root, deps)
+	watcher, timelineDB, _, err := consoleWatcherWithTimeline(root, deps)
 	if err != nil {
 		t.Fatalf("consoleWatcherWithTimeline: %v", err)
 	}

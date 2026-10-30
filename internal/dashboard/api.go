@@ -443,6 +443,14 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) eventsSince(ctx context.Context, project string, since int64, env envelope) (EventsResponse, error) {
 	out := EventsResponse{envelope: env, Project: project, Since: since,
 		Events: []timeline.StoryEvent{}, Now: []SceneRow{}}
+	if s.deps.TimelineStale != nil {
+		for _, st := range s.deps.TimelineStale() {
+			if project == "" || st.Project == project {
+				out.TimelineStale = append(out.TimelineStale, StaleTimeline{
+					Project: st.Project, Since: db.FormatTime(st.Since), Error: st.Error})
+			}
+		}
+	}
 
 	names := []string{project}
 	if project == "" {

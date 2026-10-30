@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
@@ -60,16 +63,26 @@ type Deps struct {
 	// ThinkingGap is the shortest uncovered stretch inside a turn that
 	// becomes a `thinking` action. Zero means DefaultThinkingGap.
 	ThinkingGap time.Duration
-	// ProjectTimeout bounds one project's pass of Ingest. Zero means
+	// ProjectTimeout bounds what one project's pass of Ingest waits on
+	// outside the process - git and Herdr - not the pass itself. Zero means
 	// DefaultProjectTimeout.
 	ProjectTimeout time.Duration
 }
 
-// DefaultProjectTimeout bounds one project's pass of a poll's ingest. The
-// pass runs git per crew and asks Herdr for session refs, at the end of
-// every observer round: a git or a Herdr that never answers must cost the
-// round this long, not the round itself. Reindex is not bounded - it is one
-// transaction over every project, run by a person who can interrupt it.
+// DefaultProjectTimeout bounds the git and Herdr calls of one project's pass
+// of a poll's ingest. The pass runs git per crew and asks Herdr for session
+// refs, at the end of every observer round: a git or a Herdr that never
+// answers must cost the round this long, not the round itself. Reindex is
+// not bounded - it is one transaction over every project, run by a person
+// who can interrupt it.
+//
+// Reading the files and writing the database are not bounded (CON-139): a
+// pass that is rolled back for running out of time leaves the next pass the
+// same work plus whatever arrived meanwhile, so once a project's backlog took
+// longer than the bound no pass ever committed again. Measured 2026-10-30:
+// mihuv2 needed 49 s to catch up and froze for hours at 15 s. A git or Herdr
+// call that runs out the bound says nothing, which every caller already
+// treats as "ask again next pass", and the pass still commits.
 const DefaultProjectTimeout = 15 * time.Second
 
 // DefaultThinkingGap is the shortest silence inside a turn the ingest is
@@ -123,6 +136,54 @@ type Ingester struct {
 	deps        Deps
 	transcripts map[string]transcriptCache
 	settledGit  *gitFacts
+
+	// mu guards stale, which readers outside the poll goroutine ask for.
+	mu    sync.Mutex
+	stale map[string]Stale
+}
+
+// Stale is a project whose ingest has failed every pass since Since: its
+// timeline is missing whatever happened after that, while the files that
+// the console reads go on moving. Measured 2026-10-30, a timeline frozen
+// for hours said nothing anywhere and the Office drew finished crews as
+// working (CON-139).
+type Stale struct {
+	Project string
+	// Since is the wall-clock time of the first pass of the run that failed.
+	Since time.Time
+	// Error is the latest pass's error, on one line.
+	Error string
+}
+
+// Stale reports the projects whose latest pass failed, by name. It is safe
+// to call from any goroutine.
+func (i *Ingester) Stale() []Stale {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	out := make([]Stale, 0, len(i.stale))
+	for _, st := range i.stale {
+		out = append(out, st)
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].Project < out[b].Project })
+	return out
+}
+
+func (i *Ingester) notePass(project string, err error) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if err == nil {
+		delete(i.stale, project)
+		return
+	}
+	if i.stale == nil {
+		i.stale = map[string]Stale{}
+	}
+	st, ok := i.stale[project]
+	if !ok {
+		st = Stale{Project: project, Since: time.Now()}
+	}
+	st.Error, _, _ = strings.Cut(err.Error(), "\n")
+	i.stale[project] = st
 }
 
 // New builds an ingest over an opened workspace and a writable database.
@@ -163,32 +224,29 @@ func (i *Ingester) ingestAll(ctx context.Context, shared *sql.Tx) error {
 			return err
 		}
 		if shared != nil {
-			if err := i.ingestProject(ctx, ref.Name, shared); err != nil {
+			if err := i.ingestProject(ctx, ref.Name, shared, time.Time{}); err != nil {
 				return fmt.Errorf("timeline: %s: %w", ref.Name, err)
 			}
 			continue
 		}
-		if err := i.ingestBounded(ctx, ref.Name); err != nil {
+		err := i.ingestBounded(ctx, ref.Name)
+		if ctx.Err() == nil {
+			// A pass cut short by the caller going away says nothing
+			// about the project.
+			i.notePass(ref.Name, err)
+		}
+		if err != nil {
 			errs = append(errs, fmt.Errorf("timeline: %s: %w", ref.Name, err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// ingestBounded is one project's pass of a poll, within ProjectTimeout. A
-// pass that runs out of it is rolled back whole like any failed pass, and
-// the next poll reads from the same cursors again.
+// ingestBounded is one project's pass of a poll, its git and Herdr calls
+// within ProjectTimeout (DefaultProjectTimeout says why only those).
 func (i *Ingester) ingestBounded(ctx context.Context, project string) error {
-	bound := i.deps.projectTimeout()
-	pctx, cancel := context.WithTimeout(ctx, bound)
-	defer cancel()
-	err := i.ingestProject(pctx, project, nil)
-	if err != nil && pctx.Err() != nil && ctx.Err() == nil {
-		// What failed first is whichever call noticed the deadline -
-		// git, Herdr or the transaction - and is a consequence of it.
-		return fmt.Errorf("the pass ran out its %s bound: %w", bound, pctx.Err())
-	}
-	return err
+	// The wall clock, not deps.Now: that one dates the records.
+	return i.ingestProject(ctx, project, nil, time.Now().Add(i.deps.projectTimeout()))
 }
 
 // Reindex drops every derived table and rebuilds the whole timeline from the
@@ -219,7 +277,9 @@ func (i *Ingester) Reindex(ctx context.Context) error {
 // a status line - a line with no timestamp of its own - gets one), the logs
 // read from their cursors, and the causality pass runs last because it needs
 // every event of the pass to already have an id.
-func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sql.Tx) (err error) {
+//
+// external is the deadline of the pass's git and Herdr calls; zero is none.
+func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sql.Tx, external time.Time) (err error) {
 	tx := shared
 	if tx == nil {
 		tx, err = i.d.SQL().BeginTx(ctx, nil)
@@ -236,7 +296,7 @@ func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sq
 	now := i.deps.now()
 	w := newWriter(tx, now)
 	b := newBatch()
-	p := &pass{ing: i, project: project, now: now, b: b, w: w, tx: tx}
+	p := &pass{ing: i, project: project, now: now, b: b, w: w, tx: tx, external: external}
 
 	if err = p.ingestMeta(ctx); err != nil {
 		return err
@@ -294,6 +354,10 @@ type pass struct {
 	b       *batch
 	w       *writer
 	tx      *sql.Tx
+
+	// external is the deadline of the pass's calls outside the process (git,
+	// Herdr); zero is none. See DefaultProjectTimeout.
+	external time.Time
 
 	// crews is every crew of the project, from `crews/<id>.meta`.
 	crews []crewRecord

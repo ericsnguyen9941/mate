@@ -173,6 +173,11 @@ async function boot(opts = {}) {
   await flush();
   return {
     doc, root, requests, flush, fx,
+    // answerEvents ends the open /api/events long poll with body.
+    async answerEvents(body) {
+      pendingEvents.shift()({ ok: true, status: 200, json: () => Promise.resolve(body) });
+      await flush();
+    },
     drawer: () => root.querySelector("#drawer"),
     key(name) { (winListeners.keydown || []).forEach(fn => fn({ key: name })); },
     hash: () => hash,
@@ -761,6 +766,20 @@ test("a failed poll turns the live pill stale with the reason", async () => {
   const pill = app.root.querySelector("#live");
   assert.ok(pill.classes.includes("stale"));
   assert.match(pill.text, /stale · the dashboard is not answering/);
+});
+
+test("a timeline that stopped moving turns the live pill stale, and clears with it", async () => {
+  const app = await boot();
+  const quiet = { last_event_id: 1, events: [], now: [] };
+  await app.answerEvents(Object.assign({}, quiet, { timeline_stale: [
+    { project: "shop", since: "2026-10-03T07:30:43.000000000Z", error: "refused" }
+  ] }));
+  let pill = app.root.querySelector("#live");
+  assert.ok(pill.classes.includes("stale"), "a page drawn from a frozen timeline is not live");
+  assert.match(pill.text, /stale · timeline shop since \d\d:30:43: refused/);
+  await app.answerEvents(quiet);
+  pill = app.root.querySelector("#live");
+  assert.ok(!pill.classes.includes("stale"), "the pill is live again once the timeline moves");
 });
 
 // ------------------------------------------------------------ safety
