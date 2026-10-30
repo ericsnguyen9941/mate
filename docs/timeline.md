@@ -437,6 +437,9 @@ Re-read whole, a growing pass over a 25 MB Claude transcript took about 250 ms a
 What a growing pass still spends is the timeline's own walk over the whole batch - usage turns, actions and their targets are derived again for every call and only then filtered to what lies past the cursor - not parsing.
 Telemetry follows the same cursor: Claude's and pi's normalised facts are emitted only from the telemetry cursor on, so a pass no longer decodes every prompt of the session again, and pi's model and thinking-level facts come from the batch its read already parsed rather than from a second parse of the file.
 
+A crew closed more than an hour ago is left unread when the timeline holds its transcript at its size and mtime on disk and its status file has no undated line; a finalized Mate session is left unread on the same check, without the hour. Git is not asked about a crew closed over an hour ago whose merge is decided: recorded, or never coming because it did not close `finished` (CON-140). The hour is the window in which a pass whose git did not answer still re-asks about the commits a transcript shows.
+Before that, a console start decoded every transcript a project ever had and asked git about every closed crew: measured 2026-10-30, mihuv2's closed crews alone were 421 MB of transcript, and a cold pass over the workspace took about 16 s against about 4 s after.
+
 `mate reindex` empties the derived tables and refills them in one transaction, so a rebuild that fails halfway leaves the timeline it started with.
 An ordinary poll commits one transaction per project instead, for the opposite reason: a project whose `.meta` is half-written must not hold back the rest of the workspace.
 

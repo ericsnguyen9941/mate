@@ -2,7 +2,9 @@ package timeline
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,6 +53,15 @@ func (p *pass) ingestTranscripts(ctx context.Context) error {
 			p.unresolved(p.mate.ActorID, string(loc.Kind), reason)
 			continue
 		}
+		if loc.Finalized {
+			settled, err := p.recordedAtRest(ctx, loc.Path)
+			if err != nil {
+				return err
+			}
+			if settled {
+				continue
+			}
+		}
 		if err := p.ingestOneTranscript(ctx, loc); err != nil {
 			return err
 		}
@@ -61,11 +72,83 @@ func (p *pass) ingestTranscripts(ctx context.Context) error {
 			p.unresolved(crew.ActorID, string(loc.Kind), reason)
 			continue
 		}
+		settled, err := p.settledCrew(ctx, crew, loc)
+		if err != nil {
+			return err
+		}
+		if settled {
+			continue
+		}
 		if err := p.ingestOneTranscript(ctx, loc); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// settledFor is how long a crew stays closed before its transcript may be
+// left unread. Within it, a pass whose git did not answer in time (CON-139)
+// still has the transcript's commit sightings to ask about again; a sighting
+// git cannot resolve an hour after the crew stopped is not going to resolve.
+const settledFor = time.Hour
+
+// settledCrew reports whether a crew's transcript can be left unread this
+// pass: the crew closed more than settledFor ago, the timeline holds the
+// transcript as it is on disk, and the crew's status file has no line the
+// timeline has not dated - dating one needs the shell commands the
+// transcript holds. A settled crew's turns, actions, session and cursors are
+// on the table already, so reading it again only re-derived them.
+//
+// Measured 2026-10-30 (CON-140): mihuv2's 466 closed-crew transcripts are
+// 421 MB, and decoding them made the first pass of every console start take
+// ~20 s while the warm pass took 1.5 s.
+func (p *pass) settledCrew(ctx context.Context, crew crewRecord, loc Located) (bool, error) {
+	if !crew.state().Closed() {
+		return false, nil
+	}
+	stopped := metaTime(crew.Meta, MetaStoppedAt)
+	if stopped.IsZero() || p.now.Sub(stopped) < settledFor {
+		return false, nil
+	}
+	recorded, err := p.recordedAtRest(ctx, loc.Path)
+	if err != nil || !recorded {
+		return false, err
+	}
+	status := p.ing.ws.CrewStatus(p.project, crew.ID)
+	info, err := os.Stat(status)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	read, err := p.readCursor(ctx, status)
+	if err != nil {
+		return false, err
+	}
+	return read >= info.Size(), nil
+}
+
+// recordedAtRest reports whether a committed pass read path at the size and
+// modification time it has now. The telemetry cursor is written in the same
+// transaction as the transcript's facts, so a match means they are on the
+// table; a reindex empties it, which makes every transcript read again.
+func (p *pass) recordedAtRest(ctx context.Context, path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		// A missing file is the reader's to report.
+		return false, nil
+	}
+	var size, mtime int64
+	err = p.tx.QueryRowContext(ctx, `SELECT t.source_size, t.source_mtime FROM telemetry_cursor t
+		JOIN cursor c ON c.source_path = t.source_path WHERE t.source_path = ?`, path).Scan(&size, &mtime)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return size == info.Size() && mtime == info.ModTime().UnixNano(), nil
 }
 
 func (p *pass) ingestOneTranscript(ctx context.Context, loc Located) error {
