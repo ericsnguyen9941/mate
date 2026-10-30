@@ -62,6 +62,9 @@ func (p *pass) ingestGit(ctx context.Context) error {
 			continue
 		}
 		repo, base := p.ing.ws.RepoDir(repoCfg.Path), repoCfg.DefaultBranch
+		if p.gitSettled(ctx, crew) {
+			continue
+		}
 		// A closed crew stays closed (crewstate.Declare), so what git
 		// answered about its branch and its commits after it closed is not
 		// asked again; see gitFacts.
@@ -96,6 +99,30 @@ func (p *pass) ingestGit(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// gitSettled reports whether git has nothing left to tell about a crew: it
+// closed more than settledFor ago and its merge is decided - recorded, or
+// never coming because it did not close `finished`. A finished crew still
+// waiting for its pull request is asked on every pass, however old.
+//
+// gitFacts already spares a warm pass most of this, but it lives in memory:
+// measured 2026-10-30 (CON-140), once the transcripts were left unread, a
+// console start still spent ~10 s waiting on one git call or more per closed
+// crew of the workspace.
+func (p *pass) gitSettled(ctx context.Context, crew crewRecord) bool {
+	if !crew.state().Closed() {
+		return false
+	}
+	stopped := metaTime(crew.Meta, MetaStoppedAt)
+	if stopped.IsZero() || p.now.Sub(stopped) < settledFor {
+		return false
+	}
+	if crew.state() != crewstate.StateFinished {
+		return true
+	}
+	_, merged := p.w.eventID(ctx, dedup(KindMergeDone, crew.ActorID))
+	return merged
 }
 
 // ingestSightings records the commits a crew's transcript shows it making.
