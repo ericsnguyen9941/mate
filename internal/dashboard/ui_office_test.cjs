@@ -993,6 +993,7 @@ test("the Mate drawer goes full screen and back; other drawers have no such butt
   const full = () => app.drawer().querySelector('[data-focus="drawer-full"]');
   assert.ok(!app.drawer().classes.includes("drawer-full"));
   assert.equal(full().getAttribute("aria-label"), "Full screen");
+  assert.equal(full().parentNode.parentNode, app.drawer(), "the buttons sit on the drawer itself, so they stay put as it scrolls");
   await app.click(full());
   assert.ok(app.drawer().classes.includes("drawer-full"));
   assert.equal(full().getAttribute("aria-pressed"), "true");

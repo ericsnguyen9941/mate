@@ -1306,7 +1306,7 @@
         el("h2", { text: title }),
         el("div", { class: "dstate" }, [stateChip, since ? el("span", { class: "since", text: since }) : null])
       ]),
-      el("div", { class: "dbtns" }, [full || null, close])
+      el("div", { class: "dbtns" + (full ? " two" : "") }, [full || null, close])
     ]);
   }
 
@@ -2313,6 +2313,10 @@
       : sel.kind === "board" ? boardDrawer() : sel.kind === "captain" ? captainDrawer()
         : sel.kind === "inbox" ? inboxDrawer(sel.project) : sel.kind === "add" ? addDrawer() : cabinetDrawer(sel.project);
     append(aside, nodes);
+    // The head's buttons hang over the drawer as it scrolls; to stick they
+    // must be a child of the drawer, not of the head.
+    var btns = aside.querySelector(".dbtns");
+    if (btns) aside.insertBefore(btns, btns.parentNode);
     return aside;
   }
 
