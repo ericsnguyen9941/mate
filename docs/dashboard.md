@@ -3,9 +3,9 @@
 This is the contract of `mate dashboard` and of `internal/dashboard` (docs/mvp.md M6, tasks 28 and 29).
 Task 28 owns the server and this document; task 29 builds the three-tier UI against it.
 
-The dashboard is read-only and local.
+The dashboard reads, and the one served by `mate console` can also act.
 It opens `.mate/mate.db` with `db.OpenRead`, which takes no lock, so it runs beside an open console rather than instead of it.
-There is no endpoint that writes: every action stays in the console TUI, which is where a reader who can act already is.
+It writes nothing itself. Its one write, `POST /api/actions` (section 7b, CON-141), hands a button press to the console's own action function, so a page and the console's action sheet run one code path; `mate dashboard` on its own has no console behind it and stays read-only.
 
 ```
 mate dashboard [<workspace>] [--addr 127.0.0.1:7777] [--open] [--allow-remote]
@@ -576,6 +576,40 @@ This endpoint is not cached: it answers "what happened after the id you hold", w
 }
 ```
 
+## 7b. Actions (CON-141)
+
+`GET /api/projects/{project}/actions` is the console's action sheet for the project's Mate and for each open crew, in the sheet's order and words.
+
+```json
+{"generated_at": "…", "last_event_id": 412, "project": "shop",
+ "mate": [{"action": "start", "label": "Start mate", "available": false, "reason": "Mate is recorded running"},
+          {"action": "stop", "label": "Stop mate…", "available": true, "confirm": "Stop the Mate of shop? …"}],
+ "crews": {"buybtn": [{"action": "merge", "label": "Merge…", "available": true, "confirm": "Merge mate/buybtn into main and finish crew buybtn? …"}]}}
+```
+
+Availability is `internal/query`'s (`query.ActionAvailability`), read from the console's own snapshot - the one answer the console's sheet shows too - and `reason` is why a button cannot run.
+`confirm` is the question a page asks before a destructive action; a button without one runs at once.
+The Mate has start (or `resume`, or `onboard` to create it), `stop`, `restart_mate`, `mode` and `clear_composer`; a crew has `stop`, `restart_crew`, `merge` (only once it reported `wait-mate`) and `diff`, which a page reads from section 6 rather than posting.
+The console's `Repair binding…` is not offered: repairing a crew is not wired behind it.
+A dashboard with no console behind it answers `read_only` with the reason and no buttons.
+
+`POST /api/actions` with `{"action": "stop", "project": "shop", "crew": "buybtn"}` (`crew` only for a crew's action) presses one.
+The press is checked again against a fresh snapshot, then run by the console's `consoleAction`; the answer is `{"line": "…"}`, the console's own one line.
+
+| Status | When |
+| --- | --- |
+| `200` | it ran; `line` says what happened |
+| `400` | an action not offered for that row (`remove_project`, `repair`, …) or a body that is not one |
+| `403` | no console behind this dashboard, or an `Origin` that is not this server's |
+| `404` | an unknown project, or a crew that is not open |
+| `409` | the action cannot run now (its `reason`), or another action is still running on the same Mate or crew |
+| `415` | a body that is not `application/json` |
+| `422` | the service ran and refused or failed; `error` is its message verbatim |
+
+There is no authentication (CON-141 leaves that to the LAN): anyone who can open the page can press a button.
+The JSON body and the `Origin` check only keep another site open in the same browser from pressing one, since a cross-site form cannot send JSON without a preflight this server never answers.
+An action runs to its end even when the page that pressed it goes away.
+
 ### `GET /api/now?project=<p>`
 
 The whole scene in one call: every `v_now` row, in the shape of `/api/events`' `now`, sorted by `actor_id`.
@@ -668,12 +702,12 @@ Below 720px the tables collapse to one card per row and the page does not scroll
 
 ## 11. Mate Office
 
-A second, read-only face on the same API, served at `/office/` from `internal/dashboard/ui/office/`: `index.html`, `office.css`, `office.js`, plus `../humanize.js` shared with the admin UI.
+A second face on the same API, served at `/office/` from `internal/dashboard/ui/office/`: `index.html`, `office.css`, `office.js`, plus `../humanize.js` shared with the admin UI.
 It draws the workspace as an office from the owner's "Mate Office" design: a hallway with the captain's desk and the crews standing in it, and one room per project with the Mate at the big desk, a desk per open crew and a filing cabinet of closed tasks.
 A room's door light is the project's, not only its Mate's: `stopped` when the Mate is not running, `running` while the Mate or any open crew is at work (a Mate in any state but `idle`, `asleep`, `blocked` or `gone`; a crew `arriving`, `at_desk_working`, `walking_to_ceo` or `leaving`), and otherwise `idle 3h`, the age of the latest scene `since` among the Mate and its open crews.
 The nameplate of each room shows how many tokens that project has consumed: the Mate's own turns plus every task, open and closed, which is the total line of `mate usage`.
 A room whose project page has not been read, or whose sum is missing a part, shows `?`.
-It holds to every rule of section 10 - same origin only, GET only, text set with `textContent`, no build step, `null` shown as `?`.
+It holds to every rule of section 10 - same origin only, text set with `textContent`, no build step, `null` shown as `?` - and its only request that is not a GET is an action button's `POST /api/actions` (section 7b).
 Its view switch is `Office | City | Admin`.
 
 | Hash | Opens |
@@ -683,6 +717,8 @@ Its view switch is `Office | City | Admin`.
 | `#cabinet/<project>` | the filing cabinet: closed tasks by age, each with its final state and a `Usage details` button under it |
 | `#board` | the daily board: tokens, work done and incidents by day (section 3c) |
 | `#captain` | the captain drawer: the news every Mate sent the captain, with where each stands (section 3d) |
+
+The Mate drawer and the crew drawer each have an `Actions` block after `Current activity`: section 7b's buttons, in the console sheet's order. A button that cannot run is disabled with its reason under it. A destructive one opens a question with `Cancel`, where the focus lands, and the action's own button; only that one runs it. While an action runs every button waits, and the one running says `Running …`. The answer is the console's one line, or the service's error in its own words, and the page re-reads the floor and the buttons at once. `Diff` shows the crew's branch (section 6) under the buttons and hides it on a second press. A dashboard with no console says it is read-only instead of drawing buttons.
 
 `Usage details` is a link to `../#/p/<project>/t/<crew>/usage` (names `encodeURIComponent`-ed) that opens the admin page in a new tab (`target="_blank"`, `rel="noopener"`); the Mate has none.
 
@@ -724,7 +760,7 @@ The Office filing cabinet includes a `Harness / model / effort` column. Harness 
 
 ## 12. Agent City
 
-A third read-only face on the same API, served at `/city/` from `internal/dashboard/ui/city/` (CON-125): the workspace as a 3D city, the same scene as the Agent City promo, built from the live API instead of a snapshot.
+A third face on the same API, served at `/city/` from `internal/dashboard/ui/city/` (CON-125): the workspace as a 3D city, the same scene as the Agent City promo, built from the live API instead of a snapshot.
 It is linked from the admin header (`Agent City`, beside `Mate Office`) and from the Office's view switch.
 
 | File | Holds |
@@ -759,7 +795,7 @@ An unknown harness (one AgentMascot has no preset for) is a plain grey mascot wi
 Every mascot, in the city and in a tent, now and then says a line going round Vietnamese social media that fits its pose - working, thinking, idle, done or asleep - from `chatter.js`, every 12 to 34 seconds at random, and only when it is not already talking (CON-128). Small talk is for fun and says nothing about the work: it comes in a yellow bubble, never the paper one real lines use, and never in a tent's feed. In a tent it falls only where the mascot has said nothing real for a moment, one line at a time in the room, seeded by the crew's name so a rebuilt tent says the same lines at the same times; past the history it goes on while the tent is watched.
 
 Hovering a mascot names it - crew and role, harness, model, effort, state - a tent its repo, merged count and crews at work, City Hall the inbox and the Mates' tokens today.
-Clicking a crew opens `../office/#crew/<project>/<crew>`, a Mate `../office/#mate/<project>`, City Hall or its mailbox `../office/#captain`.
+Clicking a crew opens `../office/#crew/<project>/<crew>`, a Mate `../office/#mate/<project>`, City Hall or its mailbox `../office/#captain`; the crew and Mate drawers there carry the action buttons (section 11).
 Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, playing back what its agents did (CON-127).
 Its tasks are the project's rows on the tent spawned since midnight UTC seven days ago, or still open; a tent with no ship task among them takes its last three merged ship tasks and their reviews instead, and `since` moves back to the earliest spawn. Their lines are one read of section 4b with that `since`.
 The playback is every task's spawn (or, for a reviewer, the Mate asking it to review), all its status lines, its questions and the answers, its hand-backs, each reviewer's verdict (`review` of the reviewer row; the reviewer's last hand-back is where it lands), and the merge, or the close of a task that was not merged, in the order they happened, one every 2.5 seconds whatever the real gap; the panel lists them with their real local times.

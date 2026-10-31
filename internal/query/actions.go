@@ -69,6 +69,12 @@ func mateActions(m MateNode) []ActionAvailability {
 	out = append(out, action("stop", stop, stopReason))
 	out = append(out, action("resume", status == MateStopped, "Mate is recorded "+string(status)))
 	out = append(out, action("onboard", false, "this Project already has a Mate"))
+	// restart_mate and clear_composer act on a live Mate's pane: the one
+	// stops and starts it, the other clears what is typed in its composer.
+	// A Mate recorded anything but running has neither to act on.
+	running := status == MateRunning
+	out = append(out, action("restart_mate", running, "Mate is recorded "+string(status)))
+	out = append(out, action("clear_composer", running, "Mate is recorded "+string(status)))
 	// TODO(task 10): v1 also published switch_harness here. Restarting a
 	// Mate under another harness is mvp.md's task 10, and publishing a
 	// capability nothing implements is exactly the drift this package
@@ -80,7 +86,6 @@ func mateActions(m MateNode) []ActionAvailability {
 //
 // retry and discard are not here: mvp.md has no retry at all (a Crew runs
 // once), so offering one would publish a capability nothing implements.
-// TODO(task 22): add merge once `mate merge <crew>` exists.
 func crewActions(c CrewNode) []ActionAvailability {
 	stop := c.Binding.State == Known && c.Binding.Value.Status == BindingActive
 	stopReason := "no active binding to stop"
@@ -123,6 +128,11 @@ func crewActions(c CrewNode) []ActionAvailability {
 		restartReason = "the worktree record could not be read; refresh before restarting"
 	}
 	out = append(out, action("restart_crew", restart, restartReason))
+	// merge (`mate merge`, mvp.md task 22) belongs to a crew that handed
+	// back: it announces that by appending wait-mate, and before then there
+	// is nothing finished to land.
+	out = append(out, action("merge", c.Status == CrewWaitMate,
+		"not waiting on merge; a crew can be merged once it reports wait-mate"))
 	return out
 }
 

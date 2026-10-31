@@ -215,7 +215,7 @@ func TestPluginsNamesAnUnknownProjectAndAnUnboundOne(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
-		t.Error("POST /api/plugins was accepted; this API has no write endpoint")
+		t.Error("POST /api/plugins was accepted; a read takes no write")
 	}
 }
 

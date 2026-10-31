@@ -61,6 +61,28 @@
     cabinet: "M5 3h14a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM4 9h16M4 15h16M10 6h4M10 12h4M10 18h4"
   };
 
+  // Icons for the control slots (CON-141's buttons and the redesign's).
+  IC.play = "M6 4l14 8-14 8z";
+  IC.stopsq = "M6 6h12v12H6z";
+  IC.restart = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5";
+  IC.mode = "M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7zM16 12h.01";
+  IC.eraser = "M20 20H8l-5-5a2 2 0 0 1 0-2.8L12.2 3a2 2 0 0 1 2.8 0l5 5a2 2 0 0 1 0 2.8L12 19M6 11l7 7";
+  IC.copy = "M9 9h11v11H9zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1";
+  IC.trash = "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6";
+  IC.wrench = "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z";
+  IC.diff = "M12 3v6M9 6h6M9 18h6M5 21h14a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1z";
+  IC.code = "M16 18l6-6-6-6M8 6l-6 6 6 6";
+  IC.plus = "M12 5v14M5 12h14";
+  IC.filter = "M3 5h18l-7 8v6l-4 2v-8z";
+  IC.lock = "M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V7a4 4 0 0 1 8 0v4";
+  IC.inbox = "M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z";
+  IC.send = "M22 2L11 13M22 2l-7 20-4-9-9-4z";
+  IC.fork = "M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6M6 21v-6";
+  IC.clock = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 7v5l3 2";
+  IC.chevR = "M9 6l6 6-6 6";
+  IC.chat = "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z";
+  IC.assign = "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM19 8v6M22 11h-6";
+
   // The harness is the head, drawn with its own mark (the design's "harness
   // is the face"). A harness this page has no mark for keeps a plain head
   // with its initial, and an unrecorded one a "?".
@@ -314,19 +336,38 @@
   // ------------------------------------------------------------ the API
 
   function api(path) {
-    // Read-only by construction: the only request this page ever makes is
-    // a GET to its own origin.
-    return fetch(path, { method: "GET", headers: { accept: "application/json" } }).catch(function () {
+    // Every read is a GET to this page's own origin; the one write is
+    // press() below.
+    return request(path, { method: "GET", headers: { accept: "application/json" } });
+  }
+
+  // press is POST /api/actions (CON-141): one action button, run by the
+  // console's own action function. A JSON body and this origin are what
+  // the server asks of a write.
+  function press(body) {
+    return request("/api/actions", {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  }
+
+  function request(path, init) {
+    return fetch(path, init).catch(function () {
       var e = new Error("the dashboard is not answering");
       e.reason = "the dashboard is not answering";
+      e.status = 0;
       throw e;
     }).then(function (r) {
       return r.json().catch(function () {
-        throw new Error("the dashboard answered " + r.status + " with something that is not JSON");
+        var bad = new Error("the dashboard answered " + r.status + " with something that is not JSON");
+        bad.status = r.status;
+        throw bad;
       }).then(function (body) {
         if (!r.ok) {
           var e = new Error(body.error || ("the dashboard answered " + r.status));
           e.reason = body.reason || body.error || "";
+          e.status = r.status;
           throw e;
         }
         return body;
@@ -339,6 +380,8 @@
   function taskPath(p, c) { return "/api/projects/" + enc(p) + "/tasks/" + enc(c); }
   function matePath(p) { return "/api/projects/" + enc(p) + "/mate"; }
   function pluginsPath(p) { return "/api/plugins?project=" + enc(p); }
+  function actionsPath(p) { return "/api/projects/" + enc(p) + "/actions"; }
+  function historyPath(p, since) { return "/api/projects/" + enc(p) + "/history?since=" + enc(since); }
 
   // ------------------------------------------------------------ state
 
@@ -363,6 +406,26 @@
   var news = null;            // /api/news: {body} | {error}
   var newsOpen = {};          // "<project>/<id>" -> true for each news opened up in the captain drawer
   var newsEarlierAll = false; // the captain drawer lists every closed news, not only the latest
+  var acts = null;            // the open drawer's /api/projects/{p}/actions: {key, body} | {key, error}
+  var asking = null;          // {key, name, crew, button}: the destructive action whose question is open
+  var running = {};           // drawer key -> the button running there; that drawer's other buttons wait
+  var outcomes = {};          // drawer key -> {kind, text}: the last action's one line on that drawer
+  var diffView = null;        // {key, body} | {key, error} | {key, loading}: a crew's branch diff
+  var wsReadOnly = null;      // why this dashboard cannot act ("" when it can, null until known)
+  var mateTab = "details";    // the Mate drawer's tab: "details" or "talk"
+  var talkOpen = {};          // exchange id -> true when an older turn is opened up
+  var matesOnly = storedFlag("mate-office-mates-only"); // the console's `v`: rooms show only their Mate
+  var inboxMode = {};         // project -> "inbox" | "log"
+  var inboxLog = null;        // the open inbox's full log: {key, body} | {key, error}
+  var newsDraft = {};         // "<project>/<id>" -> {opt, own}: an answer being written
+  var addForm = { name: "", repo: "" };
+  var staleList = [];         // /api/events' timeline_stale: [{project, since, error}]
+  var toast = null;           // {project, id, title}: news that arrived while the page was open
+  var knownNews = null;       // "<project>/<id>" -> true for news already seen by this page
+
+  function storedFlag(k) {
+    try { return window.localStorage.getItem(k) === "1"; } catch (e) { return false; }
+  }
 
   function parseHash() {
     var h = (window.location.hash || "").replace(/^#\/?/, "");
@@ -373,6 +436,8 @@
     if (parts[0] === "mate" && parts[1]) return { kind: "mate", project: parts[1] };
     if (parts[0] === "cabinet" && parts[1]) return { kind: "cab", project: parts[1] };
     if (parts[0] === "captain") return { kind: "captain" };
+    if (parts[0] === "inbox" && parts[1]) return { kind: "inbox", project: parts[1] };
+    if (parts[0] === "add") return { kind: "add" };
     if (parts[0] === "board") return parts[1] ? { kind: "board", date: parts[1] } : { kind: "board" };
     if (parts[0] === "crew" && parts[1] && parts[2]) return { kind: "crew", project: parts[1], crew: parts[2] };
     return null;
@@ -384,6 +449,8 @@
     if (s.kind === "cab") return "cabinet/" + enc(s.project);
     if (s.kind === "board") return "board" + (s.date ? "/" + enc(s.date) : "");
     if (s.kind === "captain") return "captain";
+    if (s.kind === "inbox") return "inbox/" + enc(s.project);
+    if (s.kind === "add") return "add";
     return "mate/" + enc(s.project);
   }
 
@@ -404,6 +471,8 @@
     sel = next;
     if (changed) {
       detail = null;
+      asking = null;
+      diffView = null;
       loadDetail().then(draw);
       draw();
       var close = root.querySelector("[data-focus=\"drawer-close\"]");
@@ -447,7 +516,7 @@
         // can only fetch an event twice, never miss one.
         lastEventID = Math.min.apply(null, ids);
         // An open captain drawer reads the news in loadDetail already.
-        return Promise.all([loadDetail(), sel && sel.kind === "captain" ? null : loadNews()]);
+        return Promise.all([loadDetail(), sel && sel.kind === "captain" ? null : loadNews(), probeActions(wsBody)]);
       });
     }).then(function () {
       if (token !== pollToken) return;
@@ -466,6 +535,8 @@
     var key = selKey(s);
     var token = ++detailToken;
     if (s && s.kind === "captain") return loadNews();
+    if (s && s.kind === "add") return Promise.resolve();
+    if (s && s.kind === "inbox") return (inboxMode[s.project] === "log" ? loadInboxLog(s.project) : Promise.resolve());
     if (!s || s.kind === "cab") return Promise.resolve();
     if (s.kind === "board") return Promise.all([loadBoard(), s.date ? loadBoardDay(s.date) : null]);
     if (!detail || detail.key !== key) detail = { key: key, loading: true };
@@ -477,6 +548,14 @@
       if (token !== detailToken) return;
       detail = { key: key, error: err };
     })];
+    // The buttons are the console's snapshot, read beside the drawer and on
+    // their own: a failure leaves the rest of the drawer drawn.
+    reads.push(api(actionsPath(s.project)).then(function (body) {
+      noteReadOnly(body);
+      if (token === detailToken) acts = { key: key, body: body };
+    }, function (err) {
+      if (token === detailToken) acts = { key: key, error: err };
+    }));
     // The project's apps are read only while its Mate drawer is open, and
     // on their own: a failure here leaves the rest of the drawer drawn.
     if (s.kind === "mate") {
@@ -496,6 +575,7 @@
     var before = news ? JSON.stringify(news.body ? news.body.projects : news.error.message) : "";
     return api("/api/news").then(function (body) {
       news = { body: body };
+      noticeNews(body);
     }, function (err) {
       news = { error: err };
     }).then(function () {
@@ -538,6 +618,8 @@
     api("/api/events?since=" + enc(lastEventID) + "&wait=" + (watching ? "5" : "20")).then(function (body) {
       if (token !== pollToken) return;
       timelineStale = staleTimelines(body.timeline_stale);
+      var staleMoved = JSON.stringify(body.timeline_stale || []) !== JSON.stringify(staleList);
+      staleList = body.timeline_stale || [];
       var serverID = body.last_event_id || 0;
       var moved = (body.events && body.events.length) || (body.now && body.now.length);
       if (serverID < lastEventID || moved) {
@@ -556,7 +638,7 @@
       // it again, and redraws only when it moved.
       loadNews().then(function (changed) {
         if (token !== pollToken) return;
-        if (changed) draw(); else drawLive();
+        if (changed || staleMoved) draw(); else drawLive();
         poll();
       });
     }, function (err) {
@@ -778,7 +860,7 @@
   }
 
   function adminHref() {
-    if (!sel) return "../";
+    if (!sel || !sel.project) return "../";
     if (sel.kind === "crew") return "../#/p/" + enc(sel.project) + "/t/" + enc(sel.crew);
     if (sel.kind === "mate") return "../#/p/" + enc(sel.project) + "/mate";
     return "../#/p/" + enc(sel.project);
@@ -819,19 +901,21 @@
         ]),
         el("div", { class: "msub" }, [
           segNav(),
+          matesButton(true),
           el("span", { class: "kpi" }, ["tokens today", el("b", { text: tok(today) })])
         ])
-      ];
+      ].concat(bands());
     }
-    return el("header", { class: "top" }, [
+    return [el("header", { class: "top" }, [
       el("div", { class: "brand" }, [el("span", { class: "mark" }, icon("office")), "Mate Office"]),
       el("div", { class: "ws", title: ws ? ws.root : "" }, ["workspace ", el("b", { text: wsName() })]),
       liveNode(),
       el("div", { class: "grow" }),
       el("div", { class: "kpi", title: "tokens spent today by every Mate and crew (v_now.tokens_today)" }, ["Today ", el("b", { text: tok(today) }), " tokens"]),
+      matesButton(false),
       segNav(),
       themeButton()
-    ]);
+    ])].concat(bands());
   }
 
   // ------------------------------------------------------------ the hallway
@@ -985,6 +1069,17 @@
     var cols = roomCols(open.length);
     var lowCab = cols === 1;
     var wait = waitingCount(name);
+    if (matesOnly) {
+      var box = inboxCount(name);
+      return el("section", { class: "room compact r" + (index % 3) + (running ? "" : " r-stopped"), "aria-label": name + " room", "data-room": name }, [
+        el("div", { class: "door", "data-door": name }, [el("i", { class: "dl" }), el("i", { class: "dr2" })]),
+        el("div", { class: "plate" }, [el("b", { text: name }), roomLight(running, m, open), spentLabel(name),
+          wait > 0 ? el("span", { class: "wb" }, [icon("ask"), wait + " waiting"]) : null]),
+        staleNote(name),
+        mateDesk(name, m, running),
+        el("p", { class: "mates-line", text: plural(open.length, "open crew", "open crews") + " · " + (box.n == null ? "?" : box.n) + " in the inbox" })
+      ]);
+    }
     var node = el("section", {
       class: "room r" + (index % 3) + (running ? "" : " r-stopped") + " has-cab" + (lowCab ? " low-cab" : ""),
       "aria-label": name + " room", "data-room": name,
@@ -997,7 +1092,9 @@
         spentLabel(name),
         wait > 0 ? el("span", { class: "wb" }, [icon("ask"), wait + " waiting"]) : null
       ]),
+      mailbox(name, false),
       lowCab ? null : cabinet(name, closed, false),
+      staleNote(name),
       mateDesk(name, m, running),
       b && b.__error ? el("p", { class: "room-err", text: "This room could not be read: " + (b.__error.reason || b.__error.message) })
         : open.length ? el("div", { class: "crews" }, open.map(function (t) { return desk(name, t); }))
@@ -1182,10 +1279,12 @@
         spentLabel(name),
         wait > 0 ? el("span", { class: "wb" }, [icon("ask"), wait + " waiting"]) : null,
         el("span", { class: "grow" }),
+        mailbox(name, true),
         cab
       ]),
+      staleNote(name),
       mate,
-      b && b.__error ? el("p", { class: "room-err", text: "This room could not be read: " + (b.__error.reason || b.__error.message) })
+      matesOnly ? el("p", { class: "m-empty", text: plural(open.length, "open crew", "open crews") }) : b && b.__error ? el("p", { class: "room-err", text: "This room could not be read: " + (b.__error.reason || b.__error.message) })
         : open.length ? el("div", { class: "mr-crews" }, open.map(function (t) { return tile(name, t, false); }))
           : el("p", { class: "m-empty", text: b ? "No open crews" : "loading…" })
     ]);
@@ -1334,14 +1433,17 @@
     var s = mateState(m.state);
     var h = harnessInfo(m.harness);
     var present = running && m.state !== "gone";
-    var nodes = [
-      drawerHead(personAvatar(h, shirt("mate:" + name), present),
-        ["Mate · team lead", htag(h)], name, chip(s), m.since ? "since " + age(m.since) : null),
+    var head = drawerHead(personAvatar(h, shirt("mate:" + name), present),
+      ["Mate · team lead", htag(h)], name, chip(s), m.since ? "since " + age(m.since) : null);
+    var ex = exchangesOf(name);
+    var top = [head, actionsSection(name, ""), mateTabs(name, ex.list ? ex.list.length : null)];
+    if (mateTab === "talk") return top.concat([talkSection(name), composer(name)]);
+    var nodes = top.concat([
       usageSection({
         tokens: b ? m.tokens : null, cost: b ? m.cost : null, updated: b ? b.generated_at : null,
         contextPct: m.context_pct, contextTokens: m.context_tokens, today: m.tokens_today, spark: mateSpark()
       })
-    ];
+    ]);
     var last = m.last_turn;
     nodes.push(el("section", { class: "ds", "aria-label": "Current activity" }, [
       el("h3", { class: "sh", text: "Current activity" }),
@@ -1352,6 +1454,7 @@
         el("dt", { text: "Mode" }), el("dd", { text: (b && b.mode) || c.mode || "?" })
       ])
     ]));
+    nodes.push(el("section", { class: "ds", "aria-label": "Inbox daemon" }, [el("h3", { class: "sh", text: "Inbox daemon" }), daemonLine(name)]));
     var open = openTasks(name);
     var max = Math.max.apply(null, [1].concat(open.map(function (t) { return t.tokens ? t.tokens.total : 0; })));
     nodes.push(el("section", { class: "ds", "aria-label": "Crews in this room" }, [
@@ -1415,6 +1518,614 @@
 
   function lastOf(list) { return list && list.length ? list[list.length - 1] : null; }
 
+  // ------------------------------------------------------------ actions
+
+  // Every drawer that can act shows one fixed set of slots, in one order:
+  // the console's buttons where GET .../actions offers them (CON-141), and
+  // the redesign's other buttons, which the web cannot run yet, drawn
+  // dimmed with the reason under them. A button never moves and never
+  // disappears; the console's key is on it as a hint.
+  var NOT_WIRED = "not wired yet";
+  var ACT_KEYS = { start: "s", onboard: "s", resume: "s", stop: "x", restart_mate: "R", mode: "m", clear_composer: "C",
+    explain: "e", copy: "y", remove_project: "X", restart_crew: "R", merge: "M", repair: "p", diff: "d", peek: "↵", zed: "z" };
+  var ACT_ICONS = { start: "play", onboard: "play", resume: "play", stop: "stopsq", restart_mate: "restart", mode: "mode",
+    clear_composer: "eraser", explain: "think", copy: "copy", remove_project: "trash", restart_crew: "restart", merge: "merge",
+    repair: "wrench", diff: "diff", peek: "read", zed: "code" };
+  var ACT_DANGER = { stop: true, remove_project: true };
+
+  function serverButton(list, action, label) {
+    for (var i = 0; i < list.length; i++) if (list[i].action === action) return list[i];
+    return { action: action, label: label, available: false, reason: "?" };
+  }
+
+  function mateSlots(list) {
+    var start = list[0] && /^(start|onboard|resume)$/.test(list[0].action) ? list[0] : serverButton(list, "start", "Start mate");
+    var mode = null;
+    list.forEach(function (b) { if (b.action === "mode") mode = b; });
+    return [
+      start,
+      serverButton(list, "stop", "Stop mate…"),
+      serverButton(list, "restart_mate", "Restart mate…"),
+      mode || { action: "mode", label: "Mode", available: false, reason: "?" },
+      serverButton(list, "clear_composer", "Clear composer"),
+      { action: "explain", label: "Explain notice (Jev)", available: false, reason: NOT_WIRED },
+      { action: "copy", label: "Copy agent id", available: false, reason: "no agent id in the API yet" },
+      { action: "remove_project", label: "Remove project…", available: false, reason: NOT_WIRED }
+    ];
+  }
+
+  function crewSlots(list) {
+    return [
+      serverButton(list, "stop", "Stop crew…"),
+      serverButton(list, "restart_crew", "Restart crew…"),
+      serverButton(list, "merge", "Merge…"),
+      { action: "repair", label: "Repair binding…", available: false, reason: NOT_WIRED },
+      serverButton(list, "diff", "Diff"),
+      { action: "peek", label: "Peek", available: false, reason: NOT_WIRED },
+      { action: "zed", label: "Open in Zed", available: false, reason: NOT_WIRED },
+      { action: "copy", label: "Copy crew id", available: true }
+    ];
+  }
+
+  function actionsSection(name, crew) {
+    var key = selKey(sel);
+    var a = acts && acts.key === key ? acts : null;
+    var busy = running[key];
+    var nodes = [el("h3", { class: "sh" }, ["Actions", busy ? el("span", { text: "one at a time" }) : null])];
+    if (!a) nodes.push(el("p", { class: "loading-note", text: "loading…" }));
+    else if (a.error) nodes.push(el("p", { class: "err-note", text: "Actions: ?", title: a.error.reason || a.error.message }));
+    else if (a.body.read_only) nodes.push(roLine(a.body.read_only));
+    else {
+      var list = crew ? (a.body.crews || {})[crew] : a.body.mate;
+      if (!list) nodes.push(el("p", { class: "loading-note", text: "This crew is not open in the console; there is nothing to act on." }));
+      else {
+        var slots = crew ? crewSlots(list) : mateSlots(list);
+        nodes.push(el("div", { class: "acts", role: "group", "aria-label": "Actions" }, slots.map(function (btn, i) {
+          return actionSlot(name, crew, key, btn, i);
+        })));
+      }
+    }
+    if (outcomes[key]) nodes.push(resultLine(outcomes[key]));
+    if (live.state === "stale" && a && a.body && !a.body.read_only) {
+      nodes.push(el("p", { class: "stale-line" }, [icon("clock"), "This page is stale. Each action re-reads first and refuses if things moved."]));
+    }
+    if (crew && diffView && diffView.key === key) nodes.push(diffBlock(diffView));
+    return el("section", { class: "ds", "aria-label": "Actions" }, nodes);
+  }
+
+  function actionSlot(name, crew, key, btn, i) {
+    var busy = running[key];
+    var isRun = !!busy && busy.action === btn.action;
+    var disabled = !btn.available || !!busy;
+    var why = !btn.available ? (btn.reason || "?") : busy && !isRun ? "waiting on " + busy.label : "";
+    var label = isRun ? "Running " + btn.label.replace(/…$/, "") + "…" : btn.label;
+    var whyId = "why-" + i;
+    var b = el("button", {
+      class: "act" + (ACT_DANGER[btn.action] ? " danger" : "") + (isRun ? " running" : ""), type: "button",
+      disabled: disabled, "aria-busy": isRun ? "true" : null, "aria-describedby": why ? whyId : null,
+      "data-focus": "act:" + btn.action
+    }, [
+      el("span", { class: "spin", "aria-hidden": "true" }),
+      icon(ACT_ICONS[btn.action] || "arrowR"),
+      el("span", { class: "l", text: label }),
+      ACT_KEYS[btn.action] ? el("kbd", { class: "k", "aria-hidden": "true", text: ACT_KEYS[btn.action] }) : null
+    ]);
+    b.addEventListener("click", function () {
+      if (disabled) return;
+      if (btn.action === "diff") { toggleDiff(name, crew, key); return; }
+      if (btn.action === "copy") { copyText(crew || name, key); return; }
+      if (btn.confirm) {
+        asking = { key: key, name: name, crew: crew, button: btn };
+        delete outcomes[key];
+        draw();
+        focusOn("act-cancel");
+        return;
+      }
+      runAction(name, crew, key, btn);
+    });
+    return el("div", { class: "act-slot" }, [b, el("small", { class: "why", id: whyId, text: why })]);
+  }
+
+  // One line per action, and three kinds of not-done told apart: refused
+  // (the service said no and changed nothing), failed (it ran and broke),
+  // and no answer (the page cannot tell whether it ran).
+  var RESULT = {
+    ok: ["t-ok", "done", "Done ·"],
+    refused: ["t-wait", "blocked", "Refused · nothing changed ·"],
+    failed: ["t-bad", "failed", "Failed after running ·"],
+    unknown: ["t-wait", "unknown", "No answer ·"],
+    info: ["t-info", "copy", ""]
+  };
+
+  function resultLine(o) {
+    var r = RESULT[o.kind] || RESULT.failed;
+    var good = o.kind === "ok" || o.kind === "info";
+    return el("p", { class: "res " + r[0], role: "status" }, [
+      icon(r[1]),
+      el("span", null, [r[2] ? el("b", { text: r[2] }) : null, r[2] ? " " : null, el("span", { class: good ? "act-out" : "act-err", text: o.text })])
+    ]);
+  }
+
+  function outcomeOf(err) {
+    var text = err.message + (err.reason && err.reason !== err.message ? " · " + err.reason : "");
+    if (!err.status) return { kind: "unknown", text: "the dashboard did not answer, so this page cannot tell whether it ran. Look at the room before pressing again." };
+    if (err.status === 422 || err.status >= 500) return { kind: "failed", text: text };
+    return { kind: "refused", text: text.replace(/^Action refused: /, "").replace(/ · nothing started$/, "") };
+  }
+
+  function focusOn(focus) {
+    var n = root.querySelector("[data-focus=\"" + focus + "\"]");
+    if (n && n.focus) n.focus({ preventScroll: true });
+  }
+
+  function runAction(name, crew, key, btn) {
+    asking = null;
+    delete outcomes[key];
+    running[key] = btn;
+    draw();
+    var body = { action: btn.action, project: name };
+    if (crew) body.crew = crew;
+    return press(body).then(function (res) {
+      outcomes[key] = { kind: "ok", text: res.line || btn.label.replace(/…$/, "") + " done" };
+    }, function (err) {
+      outcomes[key] = outcomeOf(err);
+    }).then(function () {
+      delete running[key];
+      draw();
+      // What the action changed shows up in the floor and the buttons at
+      // once rather than at the next event.
+      return Promise.all([loadAll(), loadDetail()]).then(draw);
+    });
+  }
+
+  function cancelAsk() {
+    var a = asking;
+    asking = null;
+    draw();
+    if (a) focusOn("act:" + a.button.action);
+  }
+
+  // The question before a destructive action: the console's own words, the
+  // object it acts on, focus on Cancel, and only the action's name runs it.
+  function confirmDialog() {
+    var a = asking;
+    var btn = a.button;
+    var verb = btn.label.replace(/…$/, "");
+    var obj = a.crew ? a.name + "/" + a.crew : a.name;
+    var cancel = el("button", { class: "btn ghost", type: "button", "data-focus": "act-cancel" }, "Cancel");
+    cancel.addEventListener("click", function (e) { if (e && e.stopPropagation) e.stopPropagation(); cancelAsk(); });
+    var yes = el("button", { class: "btn " + (ACT_DANGER[btn.action] ? "dangerP" : "primary"), type: "button", "data-focus": "act-confirm" }, verb);
+    yes.addEventListener("click", function (e) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      var x = asking;
+      if (x) runAction(x.name, x.crew, x.key, x.button);
+    });
+    var dlg = el("div", { class: "dlg", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "dlg-t", "aria-describedby": "dlg-d" }, [
+      el("h3", { id: "dlg-t", text: verb + "?" }),
+      el("p", { class: "dlg-obj" }, [el("span", { text: a.crew ? "Crew" : "Project" }), el("b", { class: "mono", text: obj })]),
+      el("p", { class: "prompt", id: "dlg-d", text: btn.confirm }),
+      el("div", { class: "frow" }, [cancel, yes]),
+      el("small", { class: "hint", text: "Esc or Cancel changes nothing. Only “" + verb + "” runs it." })
+    ]);
+    var wrap = el("div", { class: "mwrap" }, dlg);
+    wrap.addEventListener("click", function (e) { if (e && e.target === wrap) cancelAsk(); });
+    return wrap;
+  }
+
+  function copyText(text, key) {
+    var done = function () { outcomes[key] = { kind: "ok", text: "copied " + text }; draw(); };
+    var fallback = function () { outcomes[key] = { kind: "info", text: text + " · select it to copy (the clipboard needs https or localhost)" }; draw(); };
+    try {
+      if (window.navigator && window.navigator.clipboard && window.isSecureContext) {
+        window.navigator.clipboard.writeText(text).then(done, fallback);
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    fallback();
+  }
+
+  function toggleDiff(name, crew, key) {
+    if (diffView && diffView.key === key && !diffView.loading) { diffView = null; draw(); return; }
+    diffView = { key: key, loading: true };
+    draw();
+    api(taskPath(name, crew) + "/diff").then(function (body) {
+      if (diffView && diffView.key === key) diffView = { key: key, body: body };
+    }, function (err) {
+      if (diffView && diffView.key === key) diffView = { key: key, error: err };
+    }).then(draw);
+  }
+
+  function diffBlock(v) {
+    if (v.loading) return el("p", { class: "loading-note", text: "reading the diff…" });
+    if (v.error) return el("p", { class: "err-note", text: "Diff: " + (v.error.reason || v.error.message) });
+    if (!v.body.exists) return el("p", { class: "err-note", text: v.body.reason || "the branch is gone" });
+    return el("pre", { class: "act-diff", "aria-label": "Diff of " + (v.body.branch || "the branch"), text: v.body.text || "no changes" });
+  }
+
+  // ------------------------------------------------------------ read-only
+
+  function roLine(reason) {
+    return el("p", { class: "ro-line" }, [icon("lock"), el("span", { text: reason })]);
+  }
+
+  function noteReadOnly(body) {
+    if (body && typeof body.read_only === "string") wsReadOnly = body.read_only;
+  }
+
+  // probeActions asks the first room's buttons once, so the band can say
+  // from the start that this dashboard only reads.
+  function probeActions(wsBody) {
+    if (wsReadOnly !== null) return null;
+    var first = (wsBody.projects || [])[0];
+    if (!first) return null;
+    return api(actionsPath(first.name)).then(noteReadOnly, function () { /* the drawers say it when they open */ });
+  }
+
+  function bands() {
+    var out = [];
+    if (wsReadOnly) out.push(el("div", { class: "bn ro", role: "status" }, [icon("lock"), el("b", { text: "Read-only." }), el("span", { text: wsReadOnly })]));
+    return out;
+  }
+
+  // ------------------------------------------------------------ Mates only
+
+  function toggleMatesOnly() {
+    matesOnly = !matesOnly;
+    try { window.localStorage.setItem("mate-office-mates-only", matesOnly ? "1" : "0"); } catch (e) { /* this page only */ }
+    draw();
+  }
+
+  function matesButton(small) {
+    var b = el("button", { class: "tog", type: "button", "aria-pressed": matesOnly ? "true" : "false", "data-focus": "mates-only",
+      "aria-label": "Mates only", title: "Show only each room's Mate (the console's v)" },
+    small ? icon("filter") : [icon("filter"), "Mates only", el("kbd", { class: "k", "aria-hidden": "true", text: "v" })]);
+    b.addEventListener("click", toggleMatesOnly);
+    return b;
+  }
+
+  // ------------------------------------------------------------ talking to the Mate
+
+  function mateTabs(name, n) {
+    var tab = function (id, label, count) {
+      var b = el("button", { class: mateTab === id ? "on" : "", type: "button", role: "tab", "aria-selected": mateTab === id ? "true" : "false",
+        "data-focus": "tab:" + id }, [label, count != null ? el("span", { class: "n", text: String(count) }) : null]);
+      b.addEventListener("click", function () { mateTab = id; draw(); });
+      return b;
+    };
+    return el("div", { class: "tabs", role: "tablist", "aria-label": "Mate of " + name }, [tab("talk", "Talk", n), tab("details", "Details", null)]);
+  }
+
+  function exchangesOf(name) {
+    var d = detail && detail.key === "mate/" + enc(name) ? detail : null;
+    if (!d || d.loading) return { loading: true };
+    if (d.error) return { error: d.error };
+    return { list: d.body.exchanges || [] };
+  }
+
+  var TURNS_SHOWN = 20;
+
+  function talkSection(name) {
+    var x = exchangesOf(name);
+    var nodes = [el("p", { class: "chat-note", text: "Each message runs one headless turn of this Mate. Older turns fold to one line." })];
+    if (x.loading) nodes.push(el("p", { class: "loading-note", text: "loading…" }));
+    else if (x.error) nodes.push(el("p", { class: "err-note", text: "The turns could not be read: " + (x.error.reason || x.error.message) }));
+    else if (!x.list.length) nodes.push(el("p", { class: "chat-note", text: "No turns recorded yet." }));
+    else {
+      var list = x.list.slice(-TURNS_SHOWN);
+      list.forEach(function (ex, i) {
+        var last = i === list.length - 1;
+        var open = last || !!talkOpen[ex.id];
+        var at = ex.prompt_at || ex.started_at;
+        var t = ex.tokens ? tok(ex.tokens.total) + " tok" : "? tok";
+        var who = ex.source || "?";
+        if (!open) {
+          var row = el("button", { class: "tc", type: "button", "aria-expanded": "false", "data-focus": "turn:" + ex.id }, [
+            el("span", { class: "mono", text: at ? clock(at) : "?" }),
+            el("span", { class: "who", text: who }),
+            el("b", { text: firstLine(ex.prompt) }),
+            el("span", { class: "mono", text: t })
+          ]);
+          row.addEventListener("click", function () { talkOpen[ex.id] = true; draw(); });
+          nodes.push(row);
+          return;
+        }
+        var head = [el("span", { class: "mono", text: at ? monthDay(at) + " " + clock(at) : "?" }), el("span", { text: "from " + who }), el("span", { text: t })];
+        if (!last) {
+          var fold = el("button", { class: "fold", type: "button", "data-focus": "turn:" + ex.id }, "Fold");
+          fold.addEventListener("click", function () { delete talkOpen[ex.id]; draw(); });
+          head.push(fold);
+        }
+        var steps = [];
+        if (ex.tool_calls != null) steps.push(plural(ex.tool_calls, "tool call", "tool calls"));
+        if (ex.model_calls != null) steps.push(plural(ex.model_calls, "model call", "model calls"));
+        if (ex.duration_ms != null) steps.push(formatRun(ex.duration_ms));
+        var ended = !!(ex.ended_at || ex.response_at);
+        nodes.push(el("div", { class: "tx" }, [
+          el("div", { class: "tx-h" }, head),
+          el("div", { class: "msg me" + (who === "captain" ? "" : " other"), text: ex.prompt || "(no prompt recorded)" }),
+          steps.length ? el("p", { class: "steps" }, [icon("tool"), steps.join(" · ")]) : null,
+          ex.response ? el("div", { class: "msg mate", text: ex.response }) : null,
+          el("span", { class: "phase" }, ended ? chip({ word: "done", tone: "t-gone", icon: "done" }) :
+            el("span", { class: "chip t-ok" }, [el("span", { class: "dots", "aria-hidden": "true" }, [el("i"), el("i"), el("i")]), "working"]))
+        ]));
+      });
+    }
+    return el("section", { class: "chat", "aria-label": "Talk" }, nodes);
+  }
+
+  function firstLine(s) {
+    var t = String(s || "").split("\n")[0];
+    return t.length > 90 ? t.slice(0, 89) + "…" : t || "(no prompt)";
+  }
+
+  // The composer keeps its place. Sending is not wired yet (CON-141's
+  // follow-up), so it is drawn and dimmed with the reason.
+  function composer(name) {
+    var a = acts && acts.key === "mate/" + enc(name) ? acts : null;
+    if (a && a.body && a.body.read_only) return el("footer", { class: "dfoot" }, roLine(a.body.read_only));
+    var send = el("button", { class: "btn primary", type: "button", disabled: true, "aria-describedby": "send-why" }, [icon("send"), "Send"]);
+    return el("footer", { class: "dfoot" }, [
+      el("textarea", { class: "compose", disabled: true, "aria-label": "Message the Mate of " + name, placeholder: "Message the Mate of " + name + "…" }),
+      el("div", { class: "crow" }, [
+        el("small", { id: "send-why", text: "Talking to the Mate from the browser is " + NOT_WIRED + " · use its REPL" }),
+        send
+      ])
+    ]);
+  }
+
+  // ------------------------------------------------------------ the room's inbox
+
+  var INBOX_VERBS = {
+    "needs-decision": { word: "needs-decision", tone: "t-wait", icon: "ask", assign: true },
+    blocked: { word: "blocked", tone: "t-bad", icon: "blocked", assign: true },
+    "wait-mate": { word: "wait-mate", tone: "t-wait", icon: "review" }
+  };
+
+  function inboxInfo(i) {
+    if (i.kind === "incident") return { word: i.verb ? i.verb.replace(/_/g, " ") : "incident", tone: "t-bad", icon: "blocked" };
+    return INBOX_VERBS[i.verb] || { word: i.verb || i.kind || "?", tone: "t-info", icon: "mail" };
+  }
+
+  function inboxCount(name) {
+    var b = body(name);
+    if (!b) return { n: null, bad: false };
+    var items = b.inbox || [];
+    return { n: items.length, bad: items.some(function (i) { return inboxInfo(i).tone === "t-bad"; }) };
+  }
+
+  function mailbox(name, small) {
+    var key = "inbox/" + enc(name);
+    var c = inboxCount(name);
+    var label = c.n == null ? "?" : String(c.n);
+    if (small) {
+      return pickable(el("button", { class: "mcab" + (selKey(sel) === key ? " sel" : ""), type: "button",
+        "aria-label": "Inbox of " + name + ", " + label + " waiting" }, [icon("inbox"), label, el("small", { text: "inbox" })]), key);
+    }
+    return pickable(el("button", { class: "mbox" + (selKey(sel) === key ? " sel" : ""), type: "button",
+      "aria-label": "Inbox of " + name + ", " + label + " waiting" }, [
+      el("span", { class: "mb-body", "aria-hidden": "true" }, [el("span", { class: "mb-paper" }), el("span", { class: "mb-slot" })]),
+      el("span", { class: "mb-post", "aria-hidden": "true" }),
+      el("span", { class: "cnt" + (c.bad ? " bad" : c.n ? " hot" : ""), text: label }),
+      el("span", { class: "clbl", text: "inbox" })
+    ]), key);
+  }
+
+  function loadInboxLog(name) {
+    var key = "inbox/" + enc(name);
+    var since = new Date(Date.now() - 86400000).toISOString().replace(/\.\d{3}Z$/, "Z");
+    return api(historyPath(name, since)).then(function (b) { inboxLog = { key: key, body: b }; }, function (e) { inboxLog = { key: key, error: e }; });
+  }
+
+  function daemonLine(name) {
+    var b = body(name);
+    var c = card(name) || {};
+    var mode = (b && b.mode) || c.mode || "";
+    if (mode === "auto") return el("p", { class: "autol t-ok" }, [icon("send"), "auto · the daemon types the box's answers into the Mate"]);
+    if (mode === "manual") return el("p", { class: "autol t-idle" }, [icon("send"), "manual · the daemon types nothing; answers wait for the Mate"]);
+    return el("p", { class: "autol t-gone" }, [icon("send"), "mode ?"]);
+  }
+
+  function inboxDrawer(name) {
+    var b = body(name);
+    var items = b ? b.inbox || [] : null;
+    var mode = inboxMode[name] || "inbox";
+    var seg = function (id, label) {
+      var x = el("button", { class: mode === id ? "on" : "", type: "button", "aria-pressed": mode === id ? "true" : "false", "data-focus": "inbox-mode:" + id }, label);
+      x.addEventListener("click", function () {
+        if (mode === id) return;
+        inboxMode[name] = id;
+        if (id === "log") { inboxLog = null; loadInboxLog(name).then(draw); }
+        draw();
+      });
+      return x;
+    };
+    var head = drawerHead(el("span", { class: "dav dcab", "aria-hidden": "true" }, icon("inbox")),
+      ["Inbox · room " + name], "Message box",
+      chip({ word: "", tone: items && items.length ? "t-wait" : "t-gone", icon: "inbox" }, items == null ? "?" : plural(items.length, "waiting", "waiting")), null);
+    var nodes = [head,
+      el("section", { class: "ds" }, [
+        el("div", { class: "inbox-mode" }, [el("nav", { class: "bseg", "aria-label": "Show" }, [seg("inbox", "Inbox" + (items ? " · " + items.length : "")), seg("log", "Full log · 24h")]),
+          el("kbd", { class: "k", "aria-hidden": "true", text: "l" })]),
+        daemonLine(name)
+      ])];
+    if (mode === "log") {
+      nodes.push(el("section", { class: "ds", "aria-label": "Full log" }, logRows(name)));
+      return nodes;
+    }
+    if (!b) { nodes.push(el("p", { class: "cab-empty", text: projects[name] ? "This room could not be read." : "loading…" })); return nodes; }
+    if (b.inbox_error) nodes.push(el("p", { class: "err-note news-err", text: "The box could not be read: " + b.inbox_error }));
+    nodes.push(el("section", { class: "ds", "aria-label": "Inbox" }, items.length ? items.map(function (i) { return inboxRow(name, i); })
+      : [el("p", { class: "loading-note", text: "Nothing waiting in this room's box." })]));
+    return nodes;
+  }
+
+  function inboxRow(name, i) {
+    var info = inboxInfo(i);
+    var action;
+    if (info.assign) {
+      var ro = wsReadOnly;
+      action = [el("button", { class: "btn", type: "button", disabled: true, "aria-label": "Assign to Mate", "data-focus": "assign:" + i.seq }, [icon("assign"), "Assign to Mate"]),
+        el("small", { class: "why", text: ro ? "read-only dashboard" : NOT_WIRED })];
+    } else if (i.crew) {
+      var open = pickable(el("button", { class: "btn", type: "button" }, [icon("arrowR"), "Open crew"]), "crew/" + enc(name) + "/" + enc(i.crew));
+      action = [open, el("small", { class: "why", text: i.verb === "wait-mate" ? "Merge… is in the crew drawer" : "" })];
+    }
+    return el("div", { class: "iitem" }, [
+      el("div", { class: "ihead" }, [chip(info), i.crew ? el("span", { class: "id", text: i.crew }) : null, el("span", { class: "at", title: i.at || null, text: i.at ? clock(i.at) : "?" })]),
+      el("p", { class: "itext", text: i.text }),
+      action ? el("div", { class: "ibtn" }, action) : null
+    ]);
+  }
+
+  function logRows(name) {
+    var l = inboxLog && inboxLog.key === "inbox/" + enc(name) ? inboxLog : null;
+    if (!l) return [el("p", { class: "loading-note", text: "loading…" })];
+    if (l.error) return [el("p", { class: "err-note", text: "The log could not be read: " + (l.error.reason || l.error.message) })];
+    var rows = [];
+    Object.keys(l.body.crews || {}).forEach(function (crew) {
+      var h = l.body.crews[crew] || {};
+      (h.status_lines || []).forEach(function (s) {
+        rows.push({ at: s.at, crew: crew, info: INBOX_VERBS[s.verb] || { word: s.verb || "message", tone: "t-info", icon: "working" }, text: s.text });
+      });
+      (h.questions || []).forEach(function (q) {
+        if (q.answered_at) rows.push({ at: q.answered_at, crew: crew, info: { word: "answered", tone: "t-ok", icon: "answer" }, text: q.text });
+      });
+    });
+    rows.sort(function (a, b) { return (parseAt(b.at) || 0) - (parseAt(a.at) || 0); });
+    if (!rows.length) return [el("p", { class: "loading-note", text: "Nothing written in the last 24 hours." })];
+    return rows.slice(0, 80).map(function (r) {
+      return el("div", { class: "logl" }, [el("span", { class: "mono", title: r.at, text: clock(r.at) }), icoChip(r.info),
+        el("span", null, [el("b", { class: "mono", text: r.crew }), " · " + r.info.word + " · ", el("span", { text: r.text })])]);
+    });
+  }
+
+  // ------------------------------------------------------------ a new room
+
+  function newRoomDoor(small) {
+    var b = el("button", { class: "newroom" + (selKey(sel) === "add" ? " sel" : ""), type: "button", "aria-label": "New room: add project" }, [
+      el("span", { class: "pl", "aria-hidden": "true" }, icon("plus")),
+      el("span", { class: "nr-t" }, [el("b", { text: "New room" }),
+        el("small", null, ["Add project…", small ? null : el("kbd", { class: "k", "aria-hidden": "true", text: "n" })])])
+    ]);
+    return pickable(b, "add");
+  }
+
+  function addProblem() {
+    var n = addForm.name.trim();
+    if (!n) return { field: "", why: "name is required" };
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(n)) return { field: "Use lowercase letters, digits and dashes.", why: "the name is not valid" };
+    if (projectNames().indexOf(n) >= 0) return { field: "A project named " + n + " already exists.", why: "the name is taken" };
+    return null;
+  }
+
+  function addCommand() {
+    var n = addForm.name.trim();
+    var r = addForm.repo.trim();
+    return "mate project add " + n + (r ? " " + (/\s/.test(r) ? "'" + r.replace(/'/g, "'\\''") + "'" : r) : "");
+  }
+
+  function addDrawer() {
+    var head = drawerHead(el("span", { class: "dav dcab", "aria-hidden": "true" }, icon("plus")), ["New room"], "Add project",
+      chip({ word: "", tone: "t-idle", icon: "office" }, "no Mate is started"), null);
+    var name = el("input", { class: "inp", id: "add-name", value: addForm.name, placeholder: "kiosk", autocomplete: "off", spellcheck: "false",
+      "aria-describedby": "add-name-why", "data-focus": "add-name" });
+    var repo = el("input", { class: "inp mono", id: "add-repo", value: addForm.repo, placeholder: "~/code/kiosk", autocomplete: "off", spellcheck: "false",
+      "data-focus": "add-repo" });
+    name.addEventListener("input", function (e) { addForm.name = e.target.value; refreshAdd(); });
+    repo.addEventListener("input", function (e) { addForm.repo = e.target.value; refreshAdd(); });
+    var nodes = [head, el("section", { class: "ds", "aria-label": "Add project" }, [
+      el("label", { class: "fld", for: "add-name" }, [el("span", { text: "Name" })]), name,
+      el("small", { class: "fhelp", id: "add-name-why", text: "" }),
+      el("label", { class: "fld", for: "add-repo" }, [el("span", null, ["Repo path ", el("small", { text: "· optional" })])]), repo,
+      el("small", { class: "fhelp", text: "Leave it empty to add the room now and point it at a repo later." }),
+      el("div", { class: "frow" }, [
+        el("div", { class: "act-slot right" }, [
+          el("button", { class: "btn primary", type: "button", id: "add-go", disabled: true, "aria-describedby": "add-go-why" }, "Add project"),
+          el("small", { class: "why", id: "add-go-why", text: "" })
+        ])
+      ]),
+      el("div", { class: "cmd", id: "add-cmd" }, [el("span", { text: "Until then, run it in a terminal:" }), el("code", { id: "add-cmd-t", text: "" })])
+    ])];
+    return nodes;
+  }
+
+  // refreshAdd updates the form in place while the captain types, so the
+  // caret stays where it is.
+  function refreshAdd() {
+    var p = addProblem();
+    var name = root.querySelector("#add-name");
+    var why = root.querySelector("#add-name-why");
+    var goWhy = root.querySelector("#add-go-why");
+    var cmd = root.querySelector("#add-cmd");
+    var cmdT = root.querySelector("#add-cmd-t");
+    if (!name) return;
+    name.setAttribute("class", "inp" + (p && p.field ? " err" : ""));
+    if (why) { why.textContent = p && p.field ? p.field : "Lowercase letters, digits and dashes. It names the room."; why.setAttribute("class", p && p.field ? "ferr" : "fhelp"); }
+    if (goWhy) goWhy.textContent = p ? p.why : wsReadOnly ? "read-only dashboard" : "adding a project from the browser is " + NOT_WIRED;
+    if (cmd) { if (p) cmd.setAttribute("hidden", ""); else cmd.removeAttribute("hidden"); }
+    if (cmdT) cmdT.textContent = p ? "" : addCommand();
+  }
+
+  // ------------------------------------------------------------ answering news
+
+  function answerForm(key, n) {
+    var d = newsDraft[key] || (newsDraft[key] = { opt: "", own: "" });
+    var nodes = [el("p", { class: "lab", text: "Your answer" })];
+    (n.options || []).forEach(function (o) {
+      var on = d.opt === o.key && !d.own.trim();
+      var input = el("input", { type: "radio", name: "ans:" + key, checked: on, "data-focus": "opt:" + key + ":" + o.key });
+      input.addEventListener("change", function () { d.opt = o.key; d.own = ""; draw(); });
+      nodes.push(el("label", { class: "opt" + (on ? " on" : "") }, [input, el("span", null, [
+        el("b", null, [el("span", { class: "mono", text: o.key + " " }), o.text, o.recommended ? el("span", { class: "pick", text: "Mate's pick" }) : null])
+      ])]));
+    });
+    var own = el("textarea", { class: "compose", rows: "2", "aria-label": "Or in your own words", placeholder: "Or in your own words…", "data-focus": "own:" + key });
+    own.value = d.own;
+    own.textContent = d.own;
+    own.addEventListener("input", function (e) { d.own = e.target.value; });
+    nodes.push(own);
+    var why = wsReadOnly ? "read-only dashboard" : "answering from the browser is " + NOT_WIRED + " · answer in the Mate's REPL (^T)";
+    nodes.push(el("div", { class: "tactions" }, [
+      el("div", { class: "act-slot" }, [el("button", { class: "btn primary", type: "button", disabled: true }, [icon("send"), "Send to the Mate"]), el("small", { class: "why", text: why })]),
+      el("div", { class: "act-slot" }, [el("button", { class: "btn", type: "button", disabled: true }, [icon("fork"), "Talk it over first"]), el("small", { class: "why", text: "side talk is " + NOT_WIRED })])
+    ]));
+    return el("div", { class: "nans-form" }, nodes);
+  }
+
+  // noticeNews keeps which news this page has seen; one that arrives while
+  // the page is open shows a toast. The first read toasts nothing.
+  function noticeNews(b) {
+    var seen = {};
+    var fresh = null;
+    (b.projects || []).forEach(function (p) {
+      (p.news || []).forEach(function (n) {
+        var k = p.project + "/" + n.id;
+        seen[k] = true;
+        if (knownNews && !knownNews[k] && n.status === "new" && !fresh) fresh = { project: p.project, id: n.id, title: n.title };
+      });
+    });
+    if (fresh && !(sel && sel.kind === "captain")) toast = fresh;
+    knownNews = seen;
+  }
+
+  function toastNode() {
+    var t = toast;
+    var open = el("button", { class: "btn primary", type: "button", "data-focus": "toast-open" }, "Open news");
+    open.addEventListener("click", function () { newsOpen[t.project + "/" + t.id] = true; toast = null; select("captain"); });
+    var dismiss = el("button", { class: "btn", type: "button", "data-focus": "toast-dismiss" }, "Dismiss");
+    dismiss.addEventListener("click", function () { toast = null; draw(); });
+    return el("div", { class: "toast", role: "status" }, [
+      el("span", { class: "ico", "aria-hidden": "true" }, icon("mail")),
+      el("div", { class: "tt" }, [el("b", { text: "News from the Mate of " + t.project }), el("small", { text: t.title }), el("div", { class: "tb" }, [open, dismiss])])
+    ]);
+  }
+
+  function staleNote(name) {
+    var s = null;
+    staleList.forEach(function (x) { if (x.project === name) s = x; });
+    return s ? el("p", { class: "rnote", title: s.error || null }, [icon("clock"), "timeline stuck since " + clock(s.since)]) : null;
+  }
+
   function crewDrawer(name, crew) {
     var t = findTask(name, crew);
     var b = body(name);
@@ -1431,6 +2142,7 @@
 
     var nodes = [
       drawerHead(personAvatar(h, shirt(crew), st !== "gone"), ["Crew · " + name, htag(h)], crew, chip(s, word), t.since ? "since " + age(t.since) : null),
+      actionsSection(name, crew),
       usageSection({
         tokens: t.tokens, cost: t.cost, updated: b ? b.generated_at : null,
         contextPct: t.context_pct, contextTokens: t.turns > 0 ? t.context_tokens_last : null,
@@ -1576,12 +2288,14 @@
 
   function drawer() {
     var wide = sel && (sel.kind === "cab" || sel.kind === "board");
-    var aside = el("aside", { class: "drawer" + (wide ? " drawer-cabinet" : "") + (sel && sel.kind === "board" && sel.date ? " drawer-day" : ""),
+    var talky = sel && (sel.kind === "mate" || sel.kind === "inbox");
+    var aside = el("aside", { class: "drawer" + (wide ? " drawer-cabinet" : "") + (talky ? " drawer-wide" : "") + (sel && sel.kind === "board" && sel.date ? " drawer-day" : ""),
       "aria-label": "Details", id: "drawer" });
     if (!sel) { aside.setAttribute("hidden", ""); return aside; }
     aside.appendChild(el("span", { class: "grab", "aria-hidden": "true" }));
     var nodes = sel.kind === "mate" ? mateDrawer(sel.project) : sel.kind === "crew" ? crewDrawer(sel.project, sel.crew)
-      : sel.kind === "board" ? boardDrawer() : sel.kind === "captain" ? captainDrawer() : cabinetDrawer(sel.project);
+      : sel.kind === "board" ? boardDrawer() : sel.kind === "captain" ? captainDrawer()
+        : sel.kind === "inbox" ? inboxDrawer(sel.project) : sel.kind === "add" ? addDrawer() : cabinetDrawer(sel.project);
     append(aside, nodes);
     return aside;
   }
@@ -1653,7 +2367,7 @@
         nodes.push(sec);
       }
     }
-    nodes.push(el("p", { class: "loading-note news-ro", text: "Read-only: open and answer a news in its Mate's REPL (^T)." }));
+    nodes.push(el("p", { class: "loading-note news-ro", text: "Sending an answer from the browser is " + NOT_WIRED + ": answer a news in its Mate's REPL (^T)." }));
     return nodes;
   }
 
@@ -1680,7 +2394,8 @@
       if (open) delete newsOpen[key]; else newsOpen[key] = true;
       draw();
     });
-    return el("li", { class: "nli" + (open ? " open" : "") }, [btn, open ? newsBody(n) : null]);
+    var owed = n.status === "new" || n.status === "waiting";
+    return el("li", { class: "nli" + (open ? " open" : "") }, [btn, open ? newsBody(n) : null, open && owed ? answerForm(key, n) : null]);
   }
 
   function when(ts) {
@@ -2126,8 +2841,9 @@
       f.setAttribute("class", "floor mfloor");
       f.appendChild(mobileHall());
       names.forEach(function (n, i) { f.appendChild(mobileRoom(n, i)); });
+      if (ws) f.appendChild(newRoomDoor(true));
     } else {
-      f.appendChild(el("section", { class: "hall", "aria-label": "Hallway" }, [legend(), captainDesk(), boardButton(false), hallFigures()]));
+      f.appendChild(el("section", { class: "hall", "aria-label": "Hallway" }, [legend(), captainDesk(), boardButton(false), hallFigures(), newRoomDoor(false)]));
       f.appendChild(el("div", { class: "rooms" }, names.map(room)));
     }
     if (!names.length) f.appendChild(el("p", { class: "nothing", text: "This workspace has no projects yet." }));
@@ -2151,6 +2867,9 @@
     var d = drawer();
     root.appendChild(d);
     if (oldDrawer && sel) d.scrollTop = dy;
+    if (toast) root.appendChild(toastNode());
+    if (asking) root.appendChild(confirmDialog());
+    if (sel && sel.kind === "add") refreshAdd();
 
     if (focusKey) {
       var again = root.querySelector("[data-focus=\"" + focusKey + "\"]");
@@ -2211,6 +2930,8 @@
   applyTheme(storedTheme());
   window.addEventListener("hashchange", onHash);
   window.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && asking) { cancelAsk(); return; }
+    if (e.key === "Escape" && toast && !sel) { toast = null; draw(); return; }
     if (e.key === "Escape" && sel) select("");
   });
   window.addEventListener("resize", scheduleTrails);

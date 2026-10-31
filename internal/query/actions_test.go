@@ -119,3 +119,30 @@ func TestRestartCrewNeedsAnOpenCrewWithABranch(t *testing.T) {
 		}
 	}
 }
+
+// TestLiveMateAndHandedBackCrewActions: restart and clear composer need a
+// running Mate, merge a crew that handed back (CON-141 shows these on the
+// web, so the query layer answers them for console and page alike).
+func TestLiveMateAndHandedBackCrewActions(t *testing.T) {
+	for _, tc := range []struct {
+		status MateStatus
+		live   bool
+	}{{MateRunning, true}, {MateStopped, false}, {MateCreated, false}} {
+		acts := mateActions(MateNode{Designated: KnownField(MateIdentity{MateID: "mate", Status: tc.status})})
+		for _, name := range []string{"restart_mate", "clear_composer"} {
+			got := actionByName(acts, name)
+			if got.Available != tc.live || (!tc.live && !strings.Contains(got.Reason, string(tc.status))) {
+				t.Errorf("%s on a %s Mate = %+v, want available=%v", name, tc.status, got, tc.live)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		status CrewStatus
+		merge  bool
+	}{{CrewWaitMate, true}, {CrewWorking, false}, {CrewNeedsDecision, false}} {
+		got := actionByName(crewActions(CrewNode{Status: tc.status}), "merge")
+		if got.Available != tc.merge {
+			t.Errorf("merge on a %s crew = %+v, want available=%v", tc.status, got, tc.merge)
+		}
+	}
+}

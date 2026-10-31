@@ -176,24 +176,38 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	recovery, stopRecovery := startConsoleRecovery(ctx, ws, deps)
 	defer stopRecovery()
 
-	load := func(loadCtx context.Context) (query.Snapshot, error) {
-		bindings := append(consoleCommandBindings(commands), links.bindings()...)
-		snap, err := query.LoadLive(loadCtx, ws, consoleHarnesses(), bindings, consoleLiveness(loadCtx, ws, deps))
-		if err != nil {
-			return snap, err
+	// loadFrom is the console's snapshot read over one Workspace. The
+	// console reads through its own; the dashboard opens a fresh one per
+	// read, because LoadLive re-reads workspace.yaml into the Workspace it
+	// is given and two goroutines must not do that to one value.
+	loadFrom := func(ws *store.Workspace) console.LoadFunc {
+		return func(loadCtx context.Context) (query.Snapshot, error) {
+			bindings := append(consoleCommandBindings(commands), links.bindings()...)
+			snap, err := query.LoadLive(loadCtx, ws, consoleHarnesses(), bindings, consoleLiveness(loadCtx, ws, deps))
+			if err != nil {
+				return snap, err
+			}
+			// query.Load reads files; the health column is an observation. The
+			// snapshot picks up whatever the observer has seen by now, and the
+			// crews it has not seen keep their Absent health. The daemon's own
+			// state - when it last sent, why it last could not - rides along the
+			// same way, and so does the observer's standing word about the
+			// terminal runtime it could not reach.
+			snap = recovery.apply(snap)
+			snap = withCrewHealth(snap, watcher.Snapshot())
+			snap = withRuntimeNotice(snap, watcher)
+			snap = withTimelineStale(snap, ingest)
+			snap = withAutoStatus(snap, pilot.Snapshot())
+			return withTokens(snap, ws), nil
 		}
-		// query.Load reads files; the health column is an observation. The
-		// snapshot picks up whatever the observer has seen by now, and the
-		// crews it has not seen keep their Absent health. The daemon's own
-		// state - when it last sent, why it last could not - rides along the
-		// same way, and so does the observer's standing word about the
-		// terminal runtime it could not reach.
-		snap = recovery.apply(snap)
-		snap = withCrewHealth(snap, watcher.Snapshot())
-		snap = withRuntimeNotice(snap, watcher)
-		snap = withTimelineStale(snap, ingest)
-		snap = withAutoStatus(snap, pilot.Snapshot())
-		return withTokens(snap, ws), nil
+	}
+	load := loadFrom(ws)
+	dashboardLoad := func(loadCtx context.Context) (query.Snapshot, error) {
+		fresh, err := store.Open(ws.Root())
+		if err != nil {
+			return query.Snapshot{}, err
+		}
+		return loadFrom(fresh)(loadCtx)
 	}
 	h := host.Open(host.Detect(os.Getenv), host.Options{Env: os.Getenv, SelfCols: func() int {
 		cols, _, err := term.GetSize(stdoutFile.Fd())
@@ -207,7 +221,14 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	// The dashboard comes up with the console, after the observer has made
 	// sure the database exists. It is a convenience: a failure is said on the
 	// status line and never stops the console.
-	if url, stopDashboard, err := startConsoleDashboard(ctx, ws, commands.Dashboard.Addr, commands.Dashboard.AllowRemote, ingest); err != nil {
+	// The action function is built before the dashboard so its buttons run
+	// exactly what the action sheet runs (CON-141).
+	noticeClient, noticeErr := consoleNoticeClient(ws)
+	action := consoleAction(ws, deps)
+	if noticeClient != nil {
+		action = consoleNoticeAction(ws, deps, noticeClient, action)
+	}
+	if url, stopDashboard, err := startConsoleDashboard(ctx, ws, commands.Dashboard.Addr, commands.Dashboard.AllowRemote, ingest, dashboardLoad, action); err != nil {
 		notice = err.Error()
 	} else {
 		defer stopDashboard()
@@ -262,16 +283,11 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	}
 	// A Jev configuration problem is said on the same status line, after
 	// any pane message; the console stays usable either way.
-	noticeClient, noticeErr := consoleNoticeClient(ws)
 	if noticeErr != nil {
 		addNotice(noticeErr.Error())
 	}
 	if observerErr != nil && (noticeErr == nil || observerErr.Error() != noticeErr.Error()) {
 		addNotice(observerErr.Error())
-	}
-	action := consoleAction(ws, deps)
-	if noticeClient != nil {
-		action = consoleNoticeAction(ws, deps, noticeClient, action)
 	}
 	model := console.New(load, action).
 		WithNoticeClassifier(noticeClient != nil).

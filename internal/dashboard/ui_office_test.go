@@ -224,7 +224,7 @@ func TestNowRepeatsVNow(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
-		t.Error("POST /api/now was accepted; this API has no write endpoint")
+		t.Error("POST /api/now was accepted; a read takes no write")
 	}
 }
 

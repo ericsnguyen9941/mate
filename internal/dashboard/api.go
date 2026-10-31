@@ -15,9 +15,10 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
 
-// routes is the whole API surface. Every pattern names GET explicitly: a
-// POST to any of these is a 405 from the mux rather than something this
-// package has to remember not to implement.
+// routes is the whole API surface. Every pattern names its method: a POST
+// to a read is a 405 from the mux rather than something this package has to
+// remember not to implement, and POST /api/actions is the one write, handed
+// to the console's own action function (CON-141).
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/workspace", s.cached(s.handleWorkspace))
 	s.mux.HandleFunc("GET /api/projects/{project}", s.cached(s.handleProject))
@@ -32,6 +33,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/board", s.respond(s.handleBoard, false))
 	s.mux.HandleFunc("GET /api/board/day", s.respond(s.handleBoardDay, false))
 	s.mux.HandleFunc("GET /api/news", s.respond(s.handleNews, false))
+	s.mux.HandleFunc("GET /api/projects/{project}/actions", s.respond(s.handleActions, false))
+	s.mux.HandleFunc("POST /api/actions", s.handleAct)
 	s.mux.Handle("GET /office/fonts/licenses/", http.StripPrefix("/office/fonts/licenses/", etagFileServer(fontLicensesFS())))
 	s.mux.Handle("GET /", etagFileServer(uiFS()))
 }

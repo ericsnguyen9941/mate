@@ -497,7 +497,9 @@ func TestTheEmbeddedUIIsServedAtTheRoot(t *testing.T) {
 	}
 }
 
-func TestNoEndpointAcceptsAWrite(t *testing.T) {
+// TestNoReadAcceptsAWrite: the one write is POST /api/actions
+// (actions_test.go); a POST to a read is refused by the mux.
+func TestNoReadAcceptsAWrite(t *testing.T) {
 	f := newFixture(t)
 	for _, path := range []string{
 		"/api/workspace",
@@ -510,7 +512,7 @@ func TestNoEndpointAcceptsAWrite(t *testing.T) {
 		}
 		_ = resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
-			t.Errorf("POST %s was accepted; this API has no write endpoint", path)
+			t.Errorf("POST %s was accepted; a read takes no write", path)
 		}
 	}
 }
