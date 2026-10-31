@@ -11,9 +11,11 @@
 //
 // Three things are deliberate:
 //
-// Nothing writes. There is no handler that takes a POST, no column this
-// package updates, and no file it opens for writing. Every action stays in
-// the console TUI, which is where a reader who can act already is.
+// It writes nothing itself. No column this package updates, no file it
+// opens for writing. The one POST, /api/actions (CON-141), hands a button
+// press to the console's own action function through Deps.Act, so the page
+// and the console's action sheet run one code path; without that seam -
+// `mate dashboard` on its own - there is nothing that changes anything.
 //
 // The bind address must be loopback unless the caller passes AllowRemote. A
 // workspace's timeline names branches, file paths, the commands a crew ran

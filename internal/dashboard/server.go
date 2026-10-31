@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/db"
+	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
@@ -46,6 +47,15 @@ type Deps struct {
 	// stopped moving (CON-139). Nil - `mate dashboard` on its own, or a
 	// console that is not the writer - says nothing.
 	TimelineStale func() []timeline.Stale
+	// Snapshot is the console's own read of the workspace (query.LoadLive
+	// and what the console adds to it): the availability its action sheet
+	// shows, and the one the action buttons show (CON-141).
+	Snapshot func(ctx context.Context) (query.Snapshot, error)
+	// Act runs one action exactly as the console's action sheet does, and
+	// returns its one line. Act and Snapshot are wired only by the console;
+	// with either nil - `mate dashboard` on its own - the dashboard stays
+	// read-only and says so.
+	Act func(ctx context.Context, req ActionRequest) (string, error)
 }
 
 func (d Deps) now() time.Time {
@@ -78,6 +88,7 @@ type Server struct {
 	deps   Deps
 	cache  *cache
 	agents *agentIndex
+	acting *actionLocks
 	mux    *http.ServeMux
 }
 
@@ -97,7 +108,7 @@ func New(opts Options) (*Server, error) {
 		// would also keep the console out of its own timeline.
 		return nil, errors.New("dashboard: the database handle must be read-only (db.OpenRead)")
 	}
-	s := &Server{ws: opts.Workspace, db: opts.DB, deps: opts.Deps, cache: newCache(), agents: &agentIndex{}, mux: http.NewServeMux()}
+	s := &Server{ws: opts.Workspace, db: opts.DB, deps: opts.Deps, cache: newCache(), agents: &agentIndex{}, acting: &actionLocks{}, mux: http.NewServeMux()}
 	s.routes()
 	return s, nil
 }

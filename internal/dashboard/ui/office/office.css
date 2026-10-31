@@ -710,3 +710,190 @@ svg.fc { position: absolute; left: 17%; top: 17%; width: 66%; height: 66%; fill:
 @keyframes blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @keyframes ring { 0% { box-shadow: 0 0 0 0 var(--badT); } 100% { box-shadow: 0 0 0 9px rgba(0,0,0,0); } }
 @media (prefers-reduced-motion: reduce) { .mo * { animation: none !important; transition: none !important; } }
+
+/* ------------------------------------------------------------ controls (CON-141 and the control redesign) */
+
+/* Action slots: a fixed 2-column grid. A slot is the button and, under it,
+   why it cannot run; the line is kept even when empty so nothing moves. */
+.acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 10px; }
+.act-slot { min-width: 0; display: flex; flex-direction: column; }
+.act-slot.right { align-items: flex-end; }
+.act { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 0 10px 0 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; text-align: left; white-space: nowrap; overflow: hidden; cursor: pointer; }
+.act .l { overflow: hidden; text-overflow: ellipsis; }
+.act:hover:not([disabled]) { background: var(--surface2); }
+.act[disabled] { opacity: .45; cursor: not-allowed; }
+.act.danger { color: var(--badT); }
+.act.running { opacity: 1; background: var(--selbg); border-color: var(--sel); color: var(--sel); cursor: progress; }
+.act.running > svg.i { display: none; }
+.spin { display: none; width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+.act.running .spin { display: block; }
+.k { margin-left: auto; flex: none; font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; font-weight: 500; line-height: 17px; padding: 0 5px; color: var(--ink2); border: 1px solid var(--line); border-radius: 5px; }
+.why { display: block; min-height: 18px; padding: 2px 2px 0; font-size: 11.5px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.res { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; padding: 9px 11px; border-radius: 10px; font-size: 12.5px; line-height: 1.4; color: var(--t); background: var(--b); }
+.res b { font-weight: 700; }
+.res .act-out, .res .act-err { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ro-line { display: flex; gap: 8px; align-items: center; margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--infoB); color: var(--infoT); font-size: 12.5px; font-weight: 500; overflow-wrap: anywhere; }
+.stale-line { display: flex; gap: 6px; align-items: center; margin: 8px 0 0; font-size: 12px; font-weight: 500; color: var(--waitT); }
+.stale-line svg.i { width: 14px; height: 14px; }
+.act-diff { margin: 10px 0 0; max-height: 360px; overflow: auto; padding: 10px; border-radius: 8px; background: var(--surface2); font: 11.5px/1.45 "Geist Mono", ui-monospace, monospace; white-space: pre; }
+
+/* Buttons in forms and dialogs. */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn:hover:not([disabled]) { background: var(--surface2); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.btn.primary:hover:not([disabled]) { background: var(--ink); opacity: .9; }
+.btn.dangerP { background: var(--badT); border-color: var(--badT); color: #fff; }
+.btn.dangerP:hover:not([disabled]) { background: var(--badT); opacity: .9; }
+
+/* The band under the top bar. */
+.bn { position: sticky; top: 56px; z-index: 5; display: flex; gap: 8px; align-items: center; padding: 8px 20px; font-size: 12.5px; font-weight: 500; border-bottom: 1px solid var(--line); }
+.bn b { font-weight: 700; }
+.bn.ro { background: var(--infoB); color: var(--infoT); }
+.tog { display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink2); font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer; flex: none; }
+.tog[aria-pressed="true"] { background: var(--selbg); border-color: var(--sel); color: var(--sel); }
+.tog .k { margin-left: 2px; }
+
+/* The question before a destructive action. */
+.mwrap { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--scrim); }
+.dlg { width: min(500px, 100%); max-height: 100%; overflow: auto; padding: 20px 22px 18px; border-radius: 18px; background: var(--surface); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.dlg h3 { margin: 0 0 6px; font-family: "Bricolage Grotesque", sans-serif; font-size: 21px; font-weight: 700; line-height: 1.2; }
+.dlg-obj { display: flex; gap: 10px; align-items: baseline; margin: 0 0 8px; padding: 9px 12px; border-radius: 10px; background: var(--surface2); font-size: 12.5px; color: var(--ink2); overflow-wrap: anywhere; }
+.dlg-obj b { color: var(--ink); font-family: "Geist Mono", ui-monospace, monospace; font-size: 13px; }
+.dlg .prompt { margin: 0; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.frow { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
+.dlg .hint { display: block; margin-top: 10px; font-size: 11.5px; color: var(--ink2); text-align: right; }
+
+/* The Mate drawer's tabs, and talking to the Mate. */
+.drawer-wide { width: 460px; }
+.tabs { display: flex; gap: 4px; padding: 6px 20px 0; border-bottom: 1px solid var(--line); }
+.tabs button { position: relative; display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border: 0; background: transparent; color: var(--ink2); font: inherit; font-weight: 600; cursor: pointer; }
+.tabs button.on { color: var(--ink); }
+.tabs button.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ink); }
+.tabs .n { padding: 0 6px; border-radius: 8px; background: var(--surface2); color: var(--ink2); font-size: 11px; }
+.chat { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px 12px; }
+.chat-note { margin: 0 4px 6px; font-size: 12px; color: var(--ink2); }
+.tc { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; min-height: 36px; padding: 6px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--ink2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.tc:hover { background: var(--hover); }
+.tc b { color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc .mono, .tx-h .mono { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11.5px; }
+.tc .who { padding: 0 6px; border-radius: 5px; background: var(--surface2); font-size: 11px; font-weight: 600; }
+.tx { display: flex; flex-direction: column; gap: 8px; padding: 6px 0 10px; }
+.tx-h { display: flex; align-items: center; gap: 8px; padding: 0 4px; font-size: 11.5px; color: var(--ink2); }
+.tx-h .fold { margin-left: auto; min-height: 28px; border: 0; background: transparent; color: var(--ink2); font: inherit; font-size: 11.5px; cursor: pointer; }
+.msg { max-width: 90%; padding: 9px 12px; border-radius: 14px; font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.me { align-self: flex-end; background: var(--ink); color: var(--surface); border-bottom-right-radius: 5px; }
+.msg.me.other { background: var(--infoB); color: var(--infoT); }
+.msg.mate { align-self: flex-start; max-height: 320px; overflow: auto; background: var(--surface2); box-shadow: inset 0 0 0 1px var(--line); border-bottom-left-radius: 5px; }
+.steps { display: flex; gap: 6px; align-items: center; margin: 0; padding-left: 4px; font-family: "Geist Mono", ui-monospace, monospace; font-size: 11.5px; color: var(--ink2); }
+.steps svg.i { width: 13px; height: 13px; }
+.phase { align-self: flex-start; }
+.dots { display: inline-flex; gap: 3px; margin-right: 2px; }
+.dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: blink 1.2s infinite; }
+.dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+.dfoot { position: sticky; bottom: 0; z-index: 1; padding: 10px 16px 14px; border-top: 1px solid var(--line); background: var(--surface); }
+.compose { display: block; width: 100%; min-height: 64px; max-height: 160px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface2); color: var(--ink); font: inherit; font-size: 13.5px; line-height: 1.45; }
+.compose[disabled] { opacity: .6; cursor: not-allowed; }
+.compose::placeholder, .inp::placeholder { color: var(--ink2); }
+.crow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.crow small { flex: 1; min-width: 0; font-size: 11.5px; color: var(--ink2); }
+
+/* The room's inbox: a mailbox on the wall, opposite the cabinet. */
+.mbox { position: absolute; left: 18px; top: 30px; width: 72px; height: 122px; padding: 0; border: 0; border-radius: 12px; background: transparent; cursor: pointer; z-index: 2; }
+.mbox:hover { background: var(--hover); }
+.mb-body { position: absolute; left: 6px; top: 10px; width: 60px; height: 52px; border-radius: 10px 10px 6px 6px; background: var(--cab); box-shadow: inset 0 0 0 1.5px var(--cabE), 0 4px 0 var(--cabE); }
+.mb-slot { position: absolute; left: 14px; top: 16px; width: 32px; height: 6px; border-radius: 3px; background: var(--cabE); }
+.mb-paper { position: absolute; left: 18px; top: 4px; width: 24px; height: 18px; border-radius: 2px; background: var(--paper); transform: rotate(-6deg); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.mb-post { position: absolute; left: 32px; top: 64px; width: 8px; height: 30px; border-radius: 2px; background: var(--cabE); }
+.mbox .cnt.hot { background: var(--waitT); }
+.mbox .cnt.bad { background: var(--badT); }
+.mo .mbox.sel { background: var(--selbg); box-shadow: 0 0 0 3px var(--sel); }
+@container (max-width: 470px) { .room.has-cab:not(.low-cab) .mate { margin-left: 84px; margin-right: 84px; } }
+.rnote { position: relative; z-index: 1; display: flex; gap: 6px; align-items: center; margin: 4px 0 0; padding: 5px 10px; border-radius: 9px; background: var(--waitB); color: var(--waitT); font-size: 12px; font-weight: 600; }
+.rnote svg.i { width: 14px; height: 14px; }
+.room.compact { min-height: 0; padding-bottom: 14px; }
+.mates-line { margin: 4px 0 0; font-size: 12.5px; color: var(--ink2); }
+
+/* The door to a new room. */
+.newroom { flex: none; align-self: stretch; min-width: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border: 2px dashed var(--hallE); border-radius: 18px; background: transparent; color: var(--ink2); font: inherit; cursor: pointer; }
+.newroom:hover { background: var(--hover); color: var(--ink); border-color: var(--cabE); }
+.newroom .pl { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.nr-t { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.nr-t b { color: var(--ink); font-weight: 600; }
+.nr-t small { display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
+
+/* The inbox drawer. */
+.inbox-mode { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.autol { display: flex; gap: 8px; align-items: center; margin: 0; padding: 8px 11px; border-radius: 10px; font-size: 12.5px; font-weight: 500; color: var(--t); background: var(--b); }
+.iitem { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.iitem:first-of-type { border-top: 0; }
+.ihead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.ihead .at { margin-left: auto; font-size: 12px; color: var(--ink2); }
+.itext { grid-column: 1 / 2; margin: 0; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.ibtn { grid-column: 2 / 3; grid-row: 1 / 3; align-self: center; display: flex; flex-direction: column; align-items: stretch; width: 140px; }
+.ibtn .why { white-space: normal; text-align: right; min-height: 0; }
+.logl { display: grid; grid-template-columns: 44px 22px minmax(0, 1fr); gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12.5px; overflow-wrap: anywhere; }
+.logl:first-of-type { border-top: 0; }
+.logl .mono { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11.5px; color: var(--ink2); }
+.logl .chip.ico { width: 22px; height: 22px; }
+
+/* Forms. */
+.fld { display: block; margin: 10px 0 6px; font-size: 12.5px; font-weight: 600; }
+.fld small { font-weight: 500; color: var(--ink2); }
+.inp { display: block; width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); color: var(--ink); font: inherit; font-size: 14px; }
+.inp.mono { font-family: "Geist Mono", ui-monospace, monospace; font-size: 13px; }
+.inp.err { border-color: var(--badT); box-shadow: 0 0 0 3px var(--badB); }
+.fhelp { display: block; margin-top: 5px; font-size: 12px; color: var(--ink2); }
+.ferr { display: block; margin-top: 5px; font-size: 12px; font-weight: 600; color: var(--badT); }
+.cmd { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface2); font-size: 12px; color: var(--ink2); }
+.cmd[hidden] { display: none; }
+.cmd code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 12.5px; color: var(--ink); user-select: all; overflow-wrap: anywhere; }
+
+/* Answering a news. */
+.nans-form { margin: 0 0 14px 34px; padding: 12px; border-radius: 12px; background: var(--surface2); box-shadow: inset 0 0 0 1px var(--line); }
+.nans-form .lab { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2); }
+.opt { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; }
+.opt:hover { background: var(--hover); }
+.opt.on { border-color: var(--sel); background: var(--selbg); box-shadow: inset 0 0 0 1px var(--sel); }
+.opt input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--sel); }
+.opt b { font-weight: 600; }
+.pick { display: inline-flex; margin-left: 6px; padding: 0 6px; border-radius: 5px; background: var(--okB); color: var(--okT); font-size: 11px; font-weight: 700; vertical-align: 1px; }
+.nans-form .compose { min-height: 56px; margin-top: 4px; background: var(--surface); }
+.tactions { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 10px; }
+.tactions .act-slot { flex: 1 1 200px; }
+.tactions .btn { width: 100%; }
+.tactions .why, .act-slot.right .why { white-space: normal; }
+
+/* News that arrived while the page was open. */
+.toast { position: fixed; right: 20px; bottom: 20px; z-index: 15; width: 360px; max-width: calc(100vw - 32px); display: flex; gap: 12px; align-items: flex-start; padding: 12px 12px 12px 14px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--waitT), 0 14px 40px rgba(0,0,0,.2); }
+.toast .ico { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 9px; background: var(--waitB); color: var(--waitT); }
+.toast .tt { flex: 1; min-width: 0; }
+.toast b { display: block; font-size: 13px; }
+.toast small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink2); overflow-wrap: anywhere; }
+.toast .tb { display: flex; gap: 6px; margin-top: 8px; }
+.toast .btn { min-height: 36px; padding: 0 12px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 759px) {
+  .act, .btn, .tog, .tc, .tabs button { min-height: 44px; }
+  .tog { width: 44px; height: 44px; padding: 0; justify-content: center; }
+  .bn { top: 56px; padding: 8px 14px; font-size: 12px; flex-wrap: wrap; }
+  .drawer-wide { width: auto; }
+  .mwrap { align-items: end; padding: 10px; }
+  .dlg { padding: 18px 16px 14px; }
+  .dlg .hint { display: none; }
+  .frow .btn { flex: 1; }
+  .toast { left: 12px; right: 12px; bottom: 12px; width: auto; }
+  .act .k, .tog .k { display: none; }
+  .iitem { grid-template-columns: minmax(0, 1fr); }
+  .ibtn { grid-column: 1; grid-row: auto; width: auto; align-items: flex-start; }
+  .ibtn .why { text-align: left; }
+  .nans-form { margin-left: 0; }
+  .newroom { flex-direction: row; width: calc(100% - 32px); margin: 16px 16px 0; min-height: 64px; }
+  .nr-t { align-items: flex-start; }
+  .tabs { padding: 4px 12px 0; }
+  .chat { padding: 10px 10px; }
+  .dfoot { padding: 8px 12px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .spin, .dots i { animation: none !important; } }

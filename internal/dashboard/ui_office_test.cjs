@@ -138,7 +138,13 @@ async function boot(opts = {}) {
     // Timers never fire: a retry after a failed poll must not keep node up.
     document: doc, window, setTimeout() { return 0; }, setInterval() { return 0; }, console,
     fetch(url, init) {
-      requests.push({ url, method: init && init.method });
+      requests.push({ url, method: init && init.method, headers: init && init.headers, body: init && init.body });
+      if (init && init.method === "POST") {
+        const res = url === "/api/actions" && opts.press ? opts.press(JSON.parse(init.body)) : { status: 404, body: { error: "not found " + url } };
+        const answer = r => { const status = r.status || 200; return { ok: status < 300, status, json: () => Promise.resolve(r.body) }; };
+        // A press may answer later: a promise stands for an action still running.
+        return res && typeof res.then === "function" ? res.then(answer) : Promise.resolve(answer(res));
+      }
       if (url.startsWith("/api/events")) {
         if (opts.eventsFail) return Promise.reject(new TypeError("Failed to fetch"));
         return new Promise(resolve => pendingEvents.push(resolve));
@@ -157,6 +163,9 @@ async function boot(opts = {}) {
       else if (p === "/api/news") body = fx.news || { projects: [] };
       else if (p === "/api/board") body = boardBody(Number(u.searchParams.get("days")));
       else if (p === "/api/board/day") body = boardDayBody(u.searchParams.get("date"));
+      else if ((m = /^\/api\/projects\/([^/]+)\/actions$/.exec(p))) body = (opts.actions || {})[m[1]] ||
+        { project: m[1], read_only: "this dashboard is read-only: actions run in the dashboard `mate console` serves", mate: [], crews: {} };
+      else if ((m = /^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/diff$/.exec(p))) body = { project: m[1], crew: m[2], branch: "mate/" + m[2], exists: true, text: "diff --git a/x b/x\n+one line\n" };
       else if ((m = /^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/.exec(p))) body = fx.tasks[m[1] + "/" + m[2]] || taskBody(fx, m[1], m[2]);
       else if ((m = /^\/api\/projects\/([^/]+)\/mate$/.exec(p))) body = fx.mates[m[1]] || { project: m[1], exchanges: [] };
       else if ((m = /^\/api\/projects\/([^/]+)$/.exec(p))) body = fx.projects[m[1]];
@@ -659,7 +668,7 @@ test("the captain's desk says how much news is unread and opens the news from ev
   assert.ok(old.some(b => /Old note 8.*dropped/.test(b.text)));
   await app.click(earlier.querySelector(".news-more"));
   assert.equal(newsRows(newsSec(app.drawer(), "Earlier")).length, 12, "Show all lists every closed news");
-  assert.match(app.drawer().text, /Read-only/);
+  assert.match(app.drawer().text, /Sending an answer from the browser is not wired yet/);
 });
 
 test("a news opens into its question, options, when it was read and answered, and the Mate's updates", async () => {
@@ -801,7 +810,97 @@ test("workspace text stays text", async () => {
   }
 });
 
-test("the page only ever GETs its own origin", async () => {
+// ------------------------------------------------------------ actions (CON-141)
+
+const SHOP_ACTIONS = {
+  shop: {
+    project: "shop",
+    mate: [
+      { action: "start", label: "Start mate", available: false, reason: "Mate is recorded running" },
+      { action: "stop", label: "Stop mate…", available: true, confirm: "Stop the Mate of shop? This Mate only; its crews keep running." },
+      { action: "mode", label: "Mode → auto", available: true }
+    ],
+    crews: {
+      "api-fix": [
+        { action: "stop", label: "Stop crew…", available: true, confirm: "Close shop/api-fix?" },
+        { action: "merge", label: "Merge…", available: false, reason: "not waiting on merge; a crew can be merged once it reports wait-mate" },
+        { action: "diff", label: "Diff", available: true }
+      ]
+    }
+  }
+};
+
+const actionsOf = app => app.drawer().querySelector('section[aria-label="Actions"]');
+const actionButton = (app, action) => actionsOf(app).querySelector(`[data-focus="act:${action}"]`);
+const posts = app => app.requests.filter(r => r.method === "POST");
+
+test("the Mate drawer offers the console's actions, and one that cannot run says why", async () => {
+  const app = await boot({ hash: "#mate/shop", actions: SHOP_ACTIONS });
+  const start = actionButton(app, "start");
+  assert.ok(start, "the start button is drawn");
+  assert.ok("disabled" in start.attrs, "start is disabled on a running Mate");
+  assert.equal(start.parentNode.querySelector(".why").textContent, "Mate is recorded running", "the reason sits under the button");
+  assert.ok(!("disabled" in actionButton(app, "mode").attrs));
+  await app.click(start);
+  assert.equal(posts(app).length, 0, "a disabled button sends nothing");
+});
+
+test("a destructive action asks first: Cancel sends nothing, the action's own button runs it", async () => {
+  const pressed = [];
+  const app = await boot({ hash: "#mate/shop", actions: SHOP_ACTIONS, press: b => { pressed.push(b); return { body: { line: "Mate mate-shop stop confirmed in session s1" } }; } });
+  const dialog = () => app.root.querySelector('.dlg[role="alertdialog"]');
+  await app.click(actionButton(app, "stop"));
+  assert.match(dialog().textContent, /Stop the Mate of shop\?/);
+  assert.match(dialog().querySelector(".dlg-obj").textContent, /shop/, "the dialog names what it acts on");
+  assert.equal(app.doc.activeElement && app.doc.activeElement.attrs["data-focus"], "act-cancel", "the focus lands on Cancel");
+  await app.click(dialog().querySelector('[data-focus="act-cancel"]'));
+  assert.equal(dialog(), null);
+  assert.equal(posts(app).length, 0);
+
+  await app.click(actionButton(app, "stop"));
+  app.key("Escape");
+  await app.flush();
+  assert.equal(dialog(), null, "Escape answers no");
+  assert.ok(!app.drawer().hasAttribute("hidden"), "and leaves the drawer open");
+  assert.equal(posts(app).length, 0);
+
+  await app.click(actionButton(app, "stop"));
+  assert.equal(dialog().querySelector('[data-focus="act-confirm"]').textContent, "Stop mate", "only the action's own name runs it");
+  await app.click(dialog().querySelector('[data-focus="act-confirm"]'));
+  assert.deepEqual(pressed, [{ action: "stop", project: "shop" }]);
+  const post = posts(app)[0];
+  assert.equal(post.url, "/api/actions");
+  assert.equal(post.headers["content-type"], "application/json");
+  assert.equal(actionsOf(app).querySelector(".act-out").textContent, "Mate mate-shop stop confirmed in session s1");
+});
+
+test("an action that runs at once names the crew, and a failure is the service's own words", async () => {
+  const app = await boot({ hash: "#mate/shop", actions: SHOP_ACTIONS,
+    press: () => ({ status: 422, body: { error: "send: the composer is not empty" } }) });
+  await app.click(actionButton(app, "mode"));
+  const out = actionsOf(app).querySelector('.res.t-bad[role="status"]');
+  assert.ok(out, "the failure is shown");
+  assert.match(out.textContent, /^Failed after running ·/);
+  assert.equal(out.querySelector(".act-err").textContent, "send: the composer is not empty");
+});
+
+test("a crew drawer has the crew's actions, and Diff shows the branch without writing anything", async () => {
+  const app = await boot({ hash: "#crew/shop/api-fix", actions: SHOP_ACTIONS });
+  assert.match(actionButton(app, "merge").parentNode.textContent, /not waiting on merge/);
+  await app.click(actionButton(app, "diff"));
+  assert.match(actionsOf(app).querySelector(".act-diff").textContent, /\+one line/);
+  assert.equal(posts(app).length, 0);
+  await app.click(actionButton(app, "diff"));
+  assert.equal(actionsOf(app).querySelector(".act-diff"), null, "a second press hides it");
+});
+
+test("a dashboard that cannot act says so instead of drawing buttons", async () => {
+  const app = await boot({ hash: "#mate/shop" });
+  assert.match(actionsOf(app).textContent, /read-only/);
+  assert.equal(actionsOf(app).querySelector("button"), null);
+});
+
+test("reading the page only ever GETs its own origin", async () => {
   const app = await boot({ hash: "#crew/shop/db-migrate" });
   await app.click(roomOf(app.root, "shop").querySelector(".mate"));
   await app.click(roomOf(app.root, "shop").querySelector(".cab"));
@@ -813,6 +912,168 @@ test("the page only ever GETs its own origin", async () => {
   }
 });
 
+
+test("a refusal says nothing changed, and is told apart from a failure", async () => {
+  const app = await boot({ hash: "#mate/shop", actions: SHOP_ACTIONS,
+    press: () => ({ status: 409, body: { error: "Action refused: Mate is recorded stopped · nothing started" } }) });
+  await app.click(actionButton(app, "mode"));
+  const out = actionsOf(app).querySelector('.res[role="status"]');
+  assert.ok(out.classes.includes("t-wait"), "a refusal is not drawn as a failure");
+  assert.match(out.textContent, /^Refused · nothing changed · Mate is recorded stopped$/);
+});
+
+test("every slot keeps its place: what the web cannot do yet is dimmed with why", async () => {
+  const app = await boot({ hash: "#mate/shop", actions: SHOP_ACTIONS });
+  const labels = actionsOf(app).querySelectorAll(".act .l").map(n => n.textContent);
+  assert.deepEqual(labels, ["Start mate", "Stop mate…", "Restart mate…", "Mode → auto", "Clear composer", "Explain notice (Jev)", "Copy agent id", "Remove project…"]);
+  const remove = actionButton(app, "remove_project");
+  assert.ok("disabled" in remove.attrs);
+  assert.equal(remove.parentNode.querySelector(".why").textContent, "not wired yet");
+  assert.equal(actionButton(app, "restart_mate").parentNode.querySelector(".why").textContent, "?", "a button the service did not send is unknown, not hidden");
+  assert.match(actionButton(app, "stop").textContent, /x$/, "the console's key is on the button");
+});
+
+test("while an action runs, that drawer's other buttons wait and the running one says so", async () => {
+  let finish;
+  const app = await boot({ hash: "#mate/shop", actions: SHOP_ACTIONS,
+    press: () => new Promise(r => { finish = () => r({ body: { line: "Mode is manual" } }); }) });
+  await app.click(actionButton(app, "mode"));
+  const mode = actionButton(app, "mode");
+  assert.equal(mode.querySelector(".l").textContent, "Running Mode → auto…");
+  assert.equal(mode.attrs["aria-busy"], "true");
+  assert.ok("disabled" in actionButton(app, "stop").attrs, "the drawer's other buttons wait");
+  assert.equal(actionButton(app, "stop").parentNode.querySelector(".why").textContent, "waiting on Mode → auto");
+  await app.click(actionButton(app, "stop"));
+  assert.equal(app.root.querySelector(".dlg"), null, "a waiting button asks nothing");
+  finish();
+  await app.flush();
+  assert.equal(actionsOf(app).querySelector(".act-out").textContent, "Mode is manual");
+  assert.ok(!("disabled" in actionButton(app, "stop").attrs), "the drawer's buttons come back");
+  assert.equal(posts(app).length, 1);
+});
+
+test("a crew drawer can copy the crew's id even when the clipboard is out of reach", async () => {
+  const app = await boot({ hash: "#crew/shop/api-fix", actions: SHOP_ACTIONS });
+  await app.click(actionButton(app, "copy"));
+  assert.match(actionsOf(app).querySelector(".res").textContent, /api-fix · select it to copy/);
+  assert.equal(posts(app).length, 0);
+});
+
+test("a read-only dashboard says so in a band under the top bar", async () => {
+  const app = await boot();
+  const band = app.root.querySelector(".bn.ro");
+  assert.ok(band, "the band is drawn");
+  assert.match(band.textContent, /read-only/);
+  const acting = await boot({ actions: SHOP_ACTIONS });
+  assert.equal(acting.root.querySelector(".bn.ro"), null, "a dashboard that can act draws no band");
+});
+
+test("the Mate drawer's Talk tab shows the recorded turns, the last one open, and a composer that says why it cannot send", async () => {
+  const fx = fixture();
+  fx.mates.shop.exchanges = [
+    { id: "e1", source: "crew", prompt: "api-fix is ready", prompt_at: "2026-10-03T13:42:07.000000000Z", response: "Reviewing it now.", ended_at: "2026-10-03T13:43:07.000000000Z", tool_calls: 2, model_calls: 3, tokens: { total: 1200 } },
+    { id: "e2", source: "captain", prompt: "Merge api-fix when green", prompt_at: "2026-10-03T14:10:07.000000000Z", response: "<b>Merged</b> → main.", ended_at: "2026-10-03T14:11:07.000000000Z", tool_calls: 1, model_calls: 2, tokens: { total: 900 } }
+  ];
+  const app = await boot({ hash: "#mate/shop", fixture: fx, actions: SHOP_ACTIONS });
+  await app.click(app.drawer().querySelector('[data-focus="tab:talk"]'));
+  const talk = app.drawer().querySelector('section[aria-label="Talk"]');
+  assert.equal(talk.querySelectorAll(".tc").length, 1, "the older turn folds to one line");
+  assert.match(talk.querySelector(".tc").textContent, /crew.*api-fix is ready/);
+  assert.equal(talk.querySelector(".msg.mate").textContent, "<b>Merged</b> → main.", "a reply stays text");
+  await app.click(talk.querySelector(".tc"));
+  assert.equal(app.drawer().querySelectorAll(".tx").length, 2, "a folded turn opens");
+  const send = app.drawer().querySelector(".dfoot .btn.primary");
+  assert.ok("disabled" in send.attrs);
+  assert.match(app.drawer().querySelector(".dfoot").textContent, /not wired yet/);
+  assert.equal(posts(app).length, 0);
+});
+
+test("each room has an inbox on its wall; it lists what waits and the full log", async () => {
+  const app = await boot();
+  const box = roomOf(app.root, "shop").querySelector(".mbox");
+  assert.equal(box.querySelector(".cnt").textContent, "1");
+  await app.click(box);
+  assert.equal(app.hash(), "#inbox/shop");
+  const d = app.drawer();
+  assert.equal(d.querySelector("h2").text, "Message box");
+  const item = d.querySelector(".iitem");
+  assert.match(item.textContent, /needs-decision.*ui-polish.*keep the 6px button radius/);
+  const assign = item.querySelector('[aria-label="Assign to Mate"]');
+  assert.ok("disabled" in assign.attrs);
+  assert.match(item.querySelector(".why").textContent, /read-only dashboard|not wired yet/);
+  assert.match(d.querySelector(".autol").textContent, /manual/);
+  await app.click(d.querySelector('[data-focus="inbox-mode:log"]'));
+  assert.ok(app.requests.some(r => r.url.startsWith("/api/projects/shop/history?since=")), "the log reads the room's history");
+  assert.equal(posts(app).length, 0);
+});
+
+test("Mates only shrinks every room to its plate and its Mate", async () => {
+  const app = await boot();
+  await app.click(app.root.querySelector('[data-focus="mates-only"]'));
+  const shop = roomOf(app.root, "shop");
+  assert.ok(shop.classes.includes("compact"));
+  assert.equal(shop.querySelectorAll(".desk").length, 0);
+  assert.ok(shop.querySelector(".mate"));
+  assert.match(shop.querySelector(".mates-line").textContent, /4 open crews · 1 in the inbox/);
+  await app.click(app.root.querySelector('[data-focus="mates-only"]'));
+  assert.ok(roomOf(app.root, "shop").querySelectorAll(".desk").length > 0);
+});
+
+test("the new-room door opens a form that checks the name and gives the command to run", async () => {
+  const app = await boot();
+  await app.click(app.root.querySelector(".newroom"));
+  assert.equal(app.hash(), "#add");
+  const name = app.root.querySelector("#add-name");
+  const type = async v => { name.value = v; name.dispatch("input", { target: name }); await app.flush(); };
+  assert.equal(app.root.querySelector("#add-go-why").textContent, "name is required");
+  await type("Shop App");
+  assert.match(app.root.querySelector("#add-name-why").textContent, /lowercase/);
+  await type("shop");
+  assert.match(app.root.querySelector("#add-name-why").textContent, /already exists/);
+  await type("kiosk");
+  assert.match(app.root.querySelector("#add-go-why").textContent, /read-only dashboard|not wired yet/);
+  assert.equal(app.root.querySelector("#add-cmd-t").textContent, "mate project add kiosk");
+  assert.ok("disabled" in app.root.querySelector("#add-go").attrs);
+  assert.equal(posts(app).length, 0);
+});
+
+test("an owed news opens into an answer form whose Send says why it cannot send yet", async () => {
+  const app = await boot({ hash: "#captain" });
+  const d = app.drawer();
+  await app.click(newsRow(d, "Primary button colour"));
+  const form = app.drawer().querySelector(".nans-form");
+  assert.ok(form, "the answer form is drawn");
+  const radios = form.querySelectorAll('input[type="radio"]');
+  assert.equal(radios.length, 2);
+  radios[1].dispatch("change");
+  await app.flush();
+  assert.ok(app.drawer().querySelectorAll(".opt")[1].classes.includes("on"), "the picked option is marked");
+  assert.match(app.drawer().querySelector(".nans-form .pick").textContent, /Mate's pick/);
+  assert.match(app.drawer().querySelector(".nans-form").textContent, /not wired yet/);
+  await app.click(newsRow(app.drawer(), "PR #41 ready"));
+  assert.equal(app.drawer().querySelectorAll(".nans-form").length, 1, "news the Mate is on gets no form");
+});
+
+test("news that arrives while the page is open shows a toast that opens it", async () => {
+  const fx = fixture();
+  const app = await boot({ fixture: fx });
+  assert.equal(app.root.querySelector(".toast"), null, "what was there at load is not news");
+  fx.news.projects[0].news.unshift({ id: 9, title: "Ship on Friday?", context: [], options: [], status: "new", opened_at: "2026-10-03T14:31:07.000000000Z", at: "2026-10-03T14:31:07.000000000Z", notes: [], kind: "decision", question: "Friday?" });
+  await app.answerEvents({ last_event_id: 900, events: [], now: [] });
+  const t = app.root.querySelector(".toast");
+  assert.ok(t, "the toast is drawn");
+  assert.match(t.textContent, /News from the Mate of shop.*Ship on Friday\?/);
+  await app.click(t.querySelector('[data-focus="toast-open"]'));
+  assert.equal(app.hash(), "#captain");
+  assert.equal(app.root.querySelector(".toast"), null);
+});
+
+test("a room whose timeline stopped moving says since when", async () => {
+  const app = await boot();
+  await app.answerEvents({ last_event_id: 900, events: [], now: [], timeline_stale: [{ project: "shop", since: "2026-10-03T13:41:00.000000000Z", error: "git timed out" }] });
+  assert.match(roomOf(app.root, "shop").querySelector(".rnote").textContent, /timeline stuck since/);
+  assert.equal(roomOf(app.root, "infra").querySelector(".rnote"), null);
+});
 
 // ------------------------------------------------------------ the daily board
 
