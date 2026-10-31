@@ -1,0 +1,348 @@
+<title>Agent City Console</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one reading column (~72ch) with wide tables and the state sheet
+   breaking out to 1100px. Single light palette on purpose: it is the city's. */
+:root {
+  --paper: #F2EFE8;
+  --card: #FFFDF8;
+  --card-2: #F7F3EB;
+  --ink: #24211D;
+  --muted: #6B655C;
+  --line: rgba(36, 33, 29, .14);
+  --coral: #E77859;
+  --coral-ink: #B4492C;
+  --ok: #2F8A4C; --ok-bg: #E2F0E3;
+  --warn: #A85A1F; --warn-bg: #FBEBD8;
+  --bad: #B33A2B; --bad-bg: #F8E1DC;
+  --run: #3C5BA8; --run-bg: #E3E9F7;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+body { background: var(--paper); color: var(--ink); font: 15.5px/1.6 var(--sans); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 80px; }
+main { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 34px; }
+.col { max-width: 72ch; }
+h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.05; letter-spacing: -.025em; margin: 0; font-weight: 800; text-wrap: balance; }
+h1 span { color: var(--coral); }
+h2 { font-size: 24px; letter-spacing: -.015em; margin: 0 0 10px; text-wrap: balance; }
+h3 { font-size: 16px; margin: 18px 0 6px; }
+p { margin: 0 0 10px; }
+.lead { font-size: 18px; color: var(--muted); max-width: 64ch; }
+.eyebrow { font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--coral-ink); }
+a { color: var(--run); }
+code, kbd { font-family: var(--mono); font-size: .9em; }
+kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--card); }
+.cta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.cta a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 12px; background: var(--ink); color: var(--card); text-decoration: none; font-weight: 600; }
+.cta a.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+section { scroll-margin-top: 16px; }
+.decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.decisions div { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; min-width: 0; }
+.decisions b { display: block; font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--card-2); position: sticky; top: 0; }
+td.grp { background: var(--paper); font-weight: 700; font-size: 13px; color: var(--muted); }
+table.map td:first-child { font-weight: 600; min-width: 170px; }
+table.map td:nth-child(2) { min-width: 200px; }
+table.map td:nth-child(3), table.map td:nth-child(4) { min-width: 210px; }
+.dirs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.dir { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.dir.pick { border: 2px solid var(--ink); }
+.dir h3 { margin: 0; }
+.dir svg { width: 100%; height: auto; border-radius: 10px; background: var(--paper); }
+.dir ul { margin: 0; padding-left: 18px; font-size: 14px; }
+.tag { display: inline-block; font: 600 11px var(--mono); padding: 2px 8px; border-radius: 999px; background: var(--ink); color: var(--card); width: max-content; }
+.tag.no { background: var(--card-2); color: var(--muted); }
+.screens { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.screens a { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); text-decoration: none; color: var(--ink); }
+.screens a:hover { border-color: var(--coral); }
+.screens b { font-size: 14.5px; }
+.screens small { color: var(--muted); }
+.screens code { color: var(--coral-ink); }
+
+/* The state sheet: the prototype's own components, drawn still. */
+.sheet { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.cell { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cell > b { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cell p { font-size: 13px; color: var(--muted); margin: 0; }
+.act { display: flex; flex-direction: column; gap: 3px; }
+.act button { min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); text-align: left; font: 600 14px var(--sans); display: flex; gap: 6px; align-items: center; color: var(--ink); }
+.act button.danger { color: var(--coral-ink); }
+.act button.primary { background: var(--ok); border-color: var(--ok); color: var(--card); }
+.act button[disabled] { opacity: .45; }
+.act button.running { opacity: 1; background: var(--run-bg); border-color: #B9C6EA; color: var(--run); }
+.act small { color: var(--muted); font-size: 11.5px; min-height: 1.25em; }
+.result { display: flex; gap: 8px; padding: 8px 10px; border-radius: 10px; font-size: 13px; }
+.result .g { font: 700 13px var(--mono); }
+.result[data-kind="ok"] { background: var(--ok-bg); color: var(--ok); }
+.result[data-kind="refused"] { background: var(--warn-bg); color: var(--warn); }
+.result[data-kind="failed"] { background: var(--bad-bg); color: var(--bad); }
+.band { display: flex; gap: 8px; padding: 8px 10px; border-radius: 10px; font-size: 13px; }
+.band.stale { background: var(--warn-bg); color: var(--warn); }
+.band.ro { background: var(--card-2); color: var(--muted); border: 1px dashed var(--line); }
+.band.replay { background: var(--run-bg); color: var(--run); }
+.confirm { border-radius: 12px; padding: 12px; box-shadow: 0 10px 30px rgba(36,33,29,.18); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.confirm h4 { margin: 0; font-size: 15px; }
+.confirm .scope { font: 12px var(--mono); background: var(--card-2); border-radius: 8px; padding: 6px 8px; overflow-wrap: anywhere; }
+.confirm .row { display: flex; gap: 6px; justify-content: flex-end; }
+.btn { min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); font: 600 13px var(--sans); color: var(--ink); }
+.btn.focus { outline: 2px solid var(--run); outline-offset: 2px; }
+.btn.coral { background: var(--coral-ink); border-color: var(--coral-ink); color: var(--card); }
+dl.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0; font-size: 14px; }
+dl.facts dt { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+dl.facts dd { margin: 0; }
+dd.unk { color: #9A9287; }
+.pins { display: flex; flex-wrap: wrap; gap: 8px; }
+.pin { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 10px 3px 3px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font: 600 12.5px var(--sans); box-shadow: 0 3px 10px rgba(36,33,29,.12); }
+.pin .g { display: inline-grid; place-items: center; min-width: 24px; height: 24px; border-radius: 999px; font: 700 13px var(--mono); color: var(--card); }
+.p-topic .g { background: var(--coral); } .p-merge .g { background: var(--ok); } .p-inc .g { background: var(--warn); } .p-dec .g { background: var(--card-2); color: var(--ink); border: 1px solid var(--line); } .p-run .g { background: var(--run); } .p-empty .g { background: var(--card); color: var(--muted); border: 1px dashed #9A9287; }
+.p-far { padding-right: 3px; }
+.legend { font-size: 13px; color: var(--muted); }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.two > div { min-width: 0; }
+.box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.box ul, .col ul { margin: 0; padding-left: 20px; }
+.box li, .col li { margin-bottom: 4px; }
+footer { color: var(--muted); font-size: 13px; }
+</style>
+
+<main>
+<header class="col">
+  <div class="eyebrow">mate · thiết kế · 31/10/2026</div>
+  <h1>Agent City làm được việc của <span>console</span></h1>
+  <p class="lead">Captain đứng giữa thành phố mà điều hành được mọi việc: trả lời topic ở City Hall, nói chuyện với Mate ở quảng trường của khu, merge ở cửa lều. Mọi nút đều nằm trong một panel cố định cạnh cảnh 3D, trên điện thoại thì là bottom sheet.</p>
+  <div class="cta">
+    <a href="prototype.html">Mở prototype</a>
+    <a class="ghost" href="#map">Bảng đối chiếu</a>
+    <a class="ghost" href="#states">Các trạng thái</a>
+  </div>
+</header>
+
+<section class="col" id="decisions">
+  <h2>Các quyết định</h2>
+  <div class="decisions">
+    <div><b>Điều khiển ở đâu</b>Mỗi việc có một địa điểm trong thành phố. Bấm vào đó thì camera bay tới và mở <i>một</i> panel DOM (dock bên phải, hoặc sheet trên phone). Kết hợp hướng (c) và (a).</div>
+    <div><b>Phát lại trong lều</b>Chỉ hành động khi đang ở <code>Live</code>. Khi đang tua, nút mờ đi kèm lý do <code>replaying; go Live to act</code>, có nút Go Live ngay trong panel.</div>
+    <div><b>Cái gì nổi từ xa</b>Chỉ ba loại có pin: topic đang chờ (<code>?</code>), crew sẵn sàng merge (<code>⇢</code>), sự cố (<code>!</code>). Mỗi vật tối đa một pin. Thêm cột Needs you và phím <kbd>n</kbd>.</div>
+    <div><b>Đẩy sang Office</b>Diff đầy đủ, timeline/usage từng task, tủ hồ sơ task đã đóng, board theo ngày. City chỉ hiện bản tóm tắt kèm link.</div>
+  </div>
+</section>
+
+<section id="directions">
+  <div class="col">
+    <h2>Ba hướng cho câu hỏi 1</h2>
+    <p>Đây là ba cách đặt nút vào một cảnh 3D. Quy tắc đã chốt là nút luôn ở một chỗ cố định, có lý do nằm dưới nút, và làm được bằng bàn phím. Quy tắc này loại hướng (b) ngay từ đầu.</p>
+  </div>
+  <div class="dirs">
+    <div class="dir">
+      <span class="tag no">không chọn riêng</span>
+      <h3>(a) Panel HUD cạnh vật thể</h3>
+      <svg viewBox="0 0 300 150" role="img" aria-label="Sketch: city on the left, a docked panel on the right">
+        <rect x="10" y="10" width="190" height="130" rx="8" fill="#E6DFD0"/><rect x="40" y="50" width="40" height="30" rx="4" fill="#C9DBF5"/><rect x="110" y="70" width="40" height="30" rx="4" fill="#BFE3D2"/><circle cx="125" cy="80" r="6" fill="#E77859"/>
+        <rect x="208" y="10" width="82" height="130" rx="8" fill="#FFFDF8" stroke="#24211D" stroke-opacity=".2"/><rect x="216" y="22" width="50" height="7" rx="3" fill="#24211D"/><rect x="216" y="40" width="30" height="14" rx="3" fill="#F7F3EB" stroke="#24211D" stroke-opacity=".2"/><rect x="250" y="40" width="30" height="14" rx="3" fill="#F7F3EB" stroke="#24211D" stroke-opacity=".2"/><rect x="216" y="60" width="64" height="70" rx="3" fill="#F7F3EB"/>
+        <path d="M131 80 L205 50" stroke="#E77859" stroke-dasharray="3 3"/>
+      </svg>
+      <ul><li>Có chỗ cho chữ dài: chat, topic, peek. Làm được bàn phím và screen reader như Office.</li><li>Dễ dựng lại khi dữ liệu đổi vì không phụ thuộc vị trí 3D.</li><li>Nhược điểm: đứng một mình thì cảnh 3D chỉ còn là cái menu đẹp, ẩn dụ thành phố không làm được việc gì.</li></ul>
+    </div>
+    <div class="dir">
+      <span class="tag no">loại</span>
+      <h3>(b) Menu radial hoặc biển nổi tại vật thể</h3>
+      <svg viewBox="0 0 300 150" role="img" aria-label="Sketch: a ring of buttons around a mascot">
+        <rect x="10" y="10" width="280" height="130" rx="8" fill="#E6DFD0"/><rect x="120" y="70" width="60" height="40" rx="4" fill="#BFE3D2"/><circle cx="150" cy="85" r="8" fill="#E77859"/>
+        <g fill="#FFFDF8" stroke="#24211D" stroke-opacity=".3"><circle cx="150" cy="45" r="13"/><circle cx="188" cy="62" r="13"/><circle cx="188" cy="105" r="13"/><circle cx="112" cy="62" r="13"/><circle cx="112" cy="105" r="13"/></g>
+        <text x="150" y="49" font-size="10" text-anchor="middle" fill="#24211D">⇢</text><text x="188" y="66" font-size="10" text-anchor="middle" fill="#24211D">■</text><text x="112" y="66" font-size="10" text-anchor="middle" fill="#24211D">↻</text>
+      </svg>
+      <ul><li>Trông rất "game" và gần vật thể.</li><li>Vị trí nút thay đổi theo camera, không có chỗ ghi lý do dưới nút, không có chỗ cho câu xác nhận dài.</li><li>Trên phone thì vùng chạm 44 px chồng lên nhau, và bong bóng nói đùa sẽ che nút. Vi phạm ba quy tắc đã chốt.</li></ul>
+    </div>
+    <div class="dir pick">
+      <span class="tag">chọn: (c) + (a)</span>
+      <h3>(c) Mỗi việc có địa điểm riêng, chung một panel</h3>
+      <svg viewBox="0 0 300 150" role="img" aria-label="Sketch: City Hall, a plaza, a tent gate, each with a pin, and one panel">
+        <rect x="10" y="10" width="190" height="130" rx="8" fill="#E6DFD0"/>
+        <rect x="85" y="55" width="40" height="34" rx="4" fill="#F4DCCF"/><text x="105" y="76" font-size="9" text-anchor="middle" fill="#24211D">HALL</text>
+        <rect x="25" y="95" width="45" height="32" rx="4" fill="#BFE3D2"/><text x="47" y="114" font-size="8" text-anchor="middle" fill="#24211D">tent</text>
+        <rect x="140" y="95" width="45" height="32" rx="4" fill="#C9DBF5"/><circle cx="162" cy="112" r="5" fill="#E77859"/>
+        <circle cx="105" cy="45" r="8" fill="#E77859"/><text x="105" y="48" font-size="9" text-anchor="middle" fill="#fff">?</text>
+        <circle cx="47" cy="87" r="8" fill="#2F8A4C"/><text x="47" y="90" font-size="9" text-anchor="middle" fill="#fff">⇢</text>
+        <rect x="208" y="10" width="82" height="130" rx="8" fill="#FFFDF8" stroke="#24211D" stroke-opacity=".2"/><rect x="216" y="22" width="50" height="7" rx="3" fill="#24211D"/><rect x="216" y="40" width="64" height="16" rx="3" fill="#2F8A4C"/><rect x="216" y="62" width="64" height="68" rx="3" fill="#F7F3EB"/>
+      </svg>
+      <ul><li>Địa điểm trả lời câu "việc này ở đâu": topic nằm ở City Hall và hòm thư, Mate ở quảng trường khu, crew ở trong lều, merge ở biển của lều.</li><li>Panel trả lời câu "làm thế nào": nút cố định, có lý do, câu xác nhận, dòng kết quả, làm được bằng bàn phím.</li><li>Trên phone, Go to thay cho việc xoay camera. Cảnh vẫn có ích vì pin và tư thế mascot cho biết cần đi đâu.</li></ul>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="col">
+    <h2>Các màn hình</h2>
+    <p>Mỗi ô dưới đây mở prototype đúng màn đó. Prototype dùng nguyên <code>city.js</code>, <code>room.js</code> và mascot thật, chỉ có API là giả. Muốn xem bản phone thì thu cửa sổ dưới 760 px. Nút <b>Demo states</b> ở góc dưới bên trái dùng để bật stale, read-only, timeline kẹt, Herdr chết, và quyết định hành động tiếp theo bị từ chối hay thất bại.</p>
+  </div>
+  <div class="screens">
+    <a href="prototype.html#overview"><b>Toàn cảnh</b><small>pin <code>?</code> ở hòm thư, <code>⇢</code> ở PLA-58, <code>!</code> ở HU-129, <code>+</code> ở khu chưa có Mate; cột Needs you</small></a>
+    <a href="prototype.html#mate"><b>Bấm vào Mate</b><small>trạng thái, Actions, rồi các tab Chat / Inbox / Apps / Project</small></a>
+    <a href="prototype.html#chat"><b>Chat với Mate</b><small>gập lượt cũ, Send có 5 s để undo, thinking → using tool → done, Interrupt</small></a>
+    <a href="prototype.html#inbox"><b>Inbox của mihuv2</b><small>Inbox / All log, Assign khi project ở manual</small></a>
+    <a href="prototype.html#crew"><b>Bấm vào crew</b><small>PLA-58 wait-mate: Stop crew…, Restart crew…, Merge…, Diff, Peek</small></a>
+    <a href="prototype.html#merge"><b>Hộp xác nhận Merge</b><small><code>mate/PLA-58 → main</code>, focus ở Cancel; xác nhận thì hộp hàng bay ra biển lều</small></a>
+    <a href="prototype.html#peek"><b>Peek HU-129</b><small>màn hình chỉ đọc của crew đang stuck</small></a>
+    <a href="prototype.html#diff"><b>Diff</b><small>số file, +/−, một hunk, link sang Office để xem cả diff</small></a>
+    <a href="prototype.html#topics"><b>City Hall: danh sách topic</b><small>Waiting on you / The Mate is on it / Earlier</small></a>
+    <a href="prototype.html#topic"><b>Một topic</b><small>câu hỏi, context, ghi chú của Mate, các option, tự gõ, undo</small></a>
+    <a href="prototype.html#fork"><b>Phiên bàn riêng</b><small>fork chỉ đọc, câu trả lời đề xuất, Use this answer thì đổ vào ô để sửa</small></a>
+    <a href="prototype.html#tent"><b>Trong lều, Live</b><small>phát lại kèm tab Crews here</small></a>
+    <a href="prototype.html#replay"><b>Trong lều, đang tua</b><small>panel crew hiện dữ liệu hiện tại, nút chờ Live</small></a>
+    <a href="prototype.html#add"><b>Thêm project</b><small>một công viên thành khu mới, camera bay tới, pin <code>+ new</code></small></a>
+    <a href="prototype.html#create"><b>Tạo Mate</b><small>chọn harness claude / codex / pi, mascot mới xuất hiện trên quảng trường</small></a>
+    <a href="prototype.html#delete"><b>Xoá project</b><small>nêu số Mate và crew sẽ dừng; dữ liệu vẫn còn trên đĩa</small></a>
+    <a href="prototype.html#system"><b>System</b><small>dashboard, timeline, Herdr, daemon auto đã gửi gì hoặc vì sao chưa gửi</small></a>
+    <a href="prototype.html#goto"><b>Go to</b><small>cách đi tới crew trên phone mà không phải xoay camera</small></a>
+    <a href="prototype.html#readonly"><b>Read-only</b><small>dashboard không có console phía sau</small></a>
+    <a href="prototype.html#stale"><b>Stale</b><small>pill chuyển sang stale, panel có dải cảnh báo, hành động phải chờ</small></a>
+  </div>
+</section>
+
+<section id="map">
+  <div class="col">
+    <h2>Bảng đối chiếu</h2>
+    <p>Mỗi chức năng của console và REPL được đặt vào một chỗ trong thành phố. Trên desktop thì bấm vào vật thể, hoặc dùng phím. Trên phone thì chạm, hoặc dùng Go to (<code>⌕</code>). Panel có cùng nội dung trên cả hai, chỉ khác là dock hay sheet.</p>
+  </div>
+  <div class="scroll">
+  <table class="map">
+    <thead><tr><th>Chức năng</th><th>Địa điểm / vật thể</th><th>Desktop</th><th>Phone</th></tr></thead>
+    <tbody>
+      <tr><td class="grp" colspan="4">Workspace</td></tr>
+      <tr><td>Tình trạng mọi project</td><td>Màn hình lớn của City Hall; tư thế các Mate; tab Projects ở City Hall</td><td>Nhìn toàn cảnh; bấm City Hall rồi chọn Projects; phím <kbd>h</kbd></td><td>Toàn cảnh, rồi Go to › City Hall › Projects</td></tr>
+      <tr><td>Thêm project</td><td>Một công viên (lô trống); nút <i>+ Add project…</i> ở City Hall</td><td>Bấm vào công viên, hoặc City Hall › Projects › Add project…</td><td>City Hall › Projects › Add project…</td></tr>
+      <tr><td>Xoá project</td><td>Tab Project của Mate trong khu đó; hàng của project ở City Hall</td><td>Mate › Project › Delete project…, rồi xác nhận</td><td>Như desktop, nằm trong sheet</td></tr>
+      <tr><td class="grp" colspan="4">Mate</td></tr>
+      <tr><td>Start / Resume / Create mate</td><td>Mate trên quảng trường. Khu chưa có Mate thì có pin <code>+ No Mate yet</code></td><td>Bấm vào Mate › Actions, ô đầu tiên. Create mở form chọn harness</td><td>Chạm pin hoặc Go to › Mate</td></tr>
+      <tr><td>Stop… / Restart…</td><td>Mate › Actions</td><td>Nút có dấu <code>…</code>, hỏi lại, focus ở Cancel</td><td>Như desktop; hai nút của hộp xác nhận chia đôi chiều ngang</td></tr>
+      <tr><td>Mode auto ↔ manual</td><td>Mate › Actions (<code>Mode → manual</code>); trạng thái hiện ở góc khối Actions</td><td>Một lần bấm, không cần xác nhận</td><td>Như desktop</td></tr>
+      <tr><td>Clear composer · Explain notice</td><td>Mate › Actions</td><td>Kết quả là một dòng chữ; Explain trả về câu trả lời của Jev</td><td>Như desktop</td></tr>
+      <tr><td>Copy agent id · App/plugin</td><td>Dưới Actions của Mate; tab Apps</td><td>Copy agent id; mỗi app có link Open ↗</td><td>Như desktop</td></tr>
+      <tr><td class="grp" colspan="4">Crew</td></tr>
+      <tr><td>Stop crew…</td><td>Mascot crew trong lều; tab Crews here của lều</td><td>Bấm vào crew › Actions › Stop crew…</td><td>Go to › crew, hoặc chạm pin</td></tr>
+      <tr><td>Restart crew…</td><td>Như trên</td><td>Actions › Restart crew…</td><td>Như trên</td></tr>
+      <tr><td>Merge…</td><td>Crew có pin <code>⇢ ready to merge</code>; kết quả hiện ở biển <i>N merged</i> của lều</td><td>Bấm pin › Merge… (nút xanh). Mờ đi với lý do <code>not waiting on merge</code> khi crew chưa báo wait-mate</td><td>Needs you › mục merge › Merge…</td></tr>
+      <tr><td>Diff</td><td>Crew › tab Diff</td><td>Nút Diff để bật tắt; số file, +/−, một hunk, link <i>Whole diff in Office ↗</i></td><td>Như desktop; hunk cuộn ngang trong khung riêng</td></tr>
+      <tr><td>Peek</td><td>Crew › tab Peek</td><td>Màn hình chỉ đọc, ghi thời điểm chụp, có Refresh. Không có terminal</td><td>Như desktop</td></tr>
+      <tr><td>Timeline, usage chi tiết</td><td>Link dưới Actions của crew</td><td>Mở Admin ở tab mới</td><td>Như desktop</td></tr>
+      <tr><td class="grp" colspan="4">Inbox của project</td></tr>
+      <tr><td>Status line, incident</td><td>Mate › tab Inbox (có số đếm); <code>!</code> trên crew bị incident</td><td>Danh sách có glyph theo verb; bấm một dòng để mở crew</td><td>Như desktop</td></tr>
+      <tr><td>Chỉ inbox ↔ toàn bộ log</td><td>Nút gạt ở đầu tab Inbox</td><td><code>Inbox | All log</code></td><td>Như desktop</td></tr>
+      <tr><td>Assign</td><td>Dòng needs-decision trong Inbox; tab Status của crew</td><td>Nút Assign; mờ đi khi auto (<code>auto: the daemon sends it</code>) hoặc khi đã assign</td><td>Như desktop</td></tr>
+      <tr><td class="grp" colspan="4">Trò chuyện với Mate (thay REPL)</td></tr>
+      <tr><td>Chat có trạng thái</td><td>Mate › tab Chat</td><td><code>◐ thinking…</code>, <code>⚙ using mate status…</code>, <code>✓ done</code> trên từng lượt</td><td>Sheet mở cao hết cỡ</td></tr>
+      <tr><td>Composer, Interrupt, undo, gập lượt</td><td>Cuối tab Chat</td><td><kbd>⌘↵</kbd> để gửi, có 5 s để Undo; Interrupt chỉ bật khi Mate đang chạy; <i>Show N earlier turns</i></td><td>Như desktop; vùng chạm 44 px</td></tr>
+      <tr><td>Topic: trả lời</td><td>Hòm thư và City Hall (pin <code>?</code> có số đếm)</td><td>City Hall › Topics › một topic › option hoặc tự gõ › Send answer (có undo)</td><td>Needs you › topic</td></tr>
+      <tr><td>Topic: fork bàn riêng</td><td>Trong topic</td><td>Discuss privately, rồi Use this answer, sửa nếu cần, rồi Send</td><td>Như desktop</td></tr>
+      <tr><td class="grp" colspan="4">Trạng thái hệ thống</td></tr>
+      <tr><td>live / stale</td><td>Pill trên thanh trên cùng; dải cảnh báo trong mọi panel</td><td><code>● live</code> / <code>▲ stale · reason</code></td><td>Gộp vào chip System (glyph ● hoặc ▲)</td></tr>
+      <tr><td>Timeline kẹt, Herdr, daemon auto</td><td>Chip System</td><td>Panel System: từng dòng, có project và thời điểm</td><td>Như desktop</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="scene">
+  <div class="col">
+    <h2>Merge, Stop, Restart trong thành phố</h2>
+    <p>Hiệu ứng trong cảnh chỉ để mắt bắt kịp. Sự thật nằm ở dòng kết quả trong panel, dòng này luôn có. Hiệu ứng nào cũng rẻ: một khối hộp, một pin DOM, và những thứ <code>city.js</code> đã làm sẵn (biển nảy lên khi có merge, crew rời đi).</p>
+  </div>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Hành động</th><th>Đang chạy</th><th>Thành công</th><th>Bị từ chối (409) / thất bại (422)</th></tr></thead>
+    <tbody>
+      <tr><td>Merge…</td><td>Crew bê một hộp hàng ra biển lều; pin <code>⟳ Running merge…</code></td><td>Hộp vào biển, biển nảy lên, số merged tăng; crew rời lều; pin <code>✓ merged PLA-58</code> ở biển</td><td>Hộp quay lại tay crew; pin <code>✕ refused</code> hoặc <code>✕ failed</code> rung nhẹ</td></tr>
+      <tr><td>Stop crew…</td><td>Pin chạy trên đầu crew</td><td>Crew rời khỏi lều (city.js bỏ mascot ra)</td><td>Crew ở yên; pin đỏ hoặc cam</td></tr>
+      <tr><td>Restart crew / mate</td><td>Pin chạy</td><td>Mascot chuyển sang tư thế working và nói "on it" (bong bóng giấy); pin <code>!</code> biến mất</td><td>Như trên</td></tr>
+      <tr><td>Stop mate…</td><td>Pin chạy trên Mate</td><td>Mate chuyển sang tư thế ngủ (asleep)</td><td>Như trên</td></tr>
+      <tr><td>Create mate</td><td>Pin <code>+</code> đổi thành pin chạy</td><td>Mascot đúng harness xuất hiện trên quảng trường</td><td>Quảng trường vẫn trống</td></tr>
+      <tr><td>Add / Delete project</td><td>Pin chạy ở City Hall hoặc trên khu</td><td>Công viên thành khu mới (pin <code>+ new</code>, camera bay tới); hoặc khu thành công viên</td><td>Cảnh không đổi</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="states">
+  <div class="col">
+    <h2>Các trạng thái</h2>
+    <p>Đây là những thành phần trong prototype, vẽ lại ở dạng tĩnh. Mọi nút giữ nguyên vị trí qua mọi trạng thái, và dòng lý do dưới nút vẫn giữ chỗ kể cả khi trống, để không có gì xô lệch.</p>
+  </div>
+  <div class="sheet">
+    <div class="cell"><b>Bình thường</b><div class="act"><button class="primary">Merge…</button><small>&nbsp;</small></div><div class="act"><button class="danger">Stop crew…</button><small>&nbsp;</small></div></div>
+    <div class="cell"><b>Mờ, có lý do</b><div class="act"><button disabled>Merge…</button><small>not waiting on merge</small></div><div class="act"><button disabled>Start mate</button><small>Mate is recorded running</small></div></div>
+    <div class="cell"><b>Đang hỏi lại</b><div class="confirm"><h4>Merge mate/PLA-58 → main?</h4><div class="scope">plantrip/PLA-58 · fast-forward only · the crew finishes</div><div class="row"><span class="btn focus">Cancel</span><span class="btn coral">Merge</span></div></div><p>Focus ở Cancel; Esc là Cancel; Tab chỉ đi vòng trong hộp.</p></div>
+    <div class="cell"><b>Đang chạy</b><div class="act"><button class="running">⟳ Running merge…</button><small>running…</small></div><div class="act"><button disabled class="danger">Stop crew…</button><small>waiting: Merge is running</small></div><div class="pins"><span class="pin p-run"><span class="g">⟳</span>Running merge…</span></div></div>
+    <div class="cell"><b>Thành công</b><div class="result" data-kind="ok"><span class="g">✓</span><span>merged mate/PLA-58 into main (fast-forward 3 commits); crew PLA-58 finished · 14:32</span></div></div>
+    <div class="cell"><b>Bị từ chối, chưa có gì thay đổi</b><div class="result" data-kind="refused"><span class="g">⊘</span><span><b>Refused, nothing changed:</b> main moved since the review (2 commits); fast-forward not possible · 14:32</span></div></div>
+    <div class="cell"><b>Đã chạy nhưng thất bại</b><div class="result" data-kind="failed"><span class="g">✕</span><span><b>Ran and failed:</b> git push origin main: ! [remote rejected] main -&gt; main (protected branch hook declined) · 14:32</span></div></div>
+    <div class="cell"><b>Chỉ đọc</b><div class="band ro"><span>⊘</span><span>Read-only: actions run in the dashboard `mate console` serves.</span></div><p>Thay chỗ cả khối Actions và composer bằng một dòng. Link Timeline/Usage vẫn còn.</p></div>
+    <div class="cell"><b>Stale</b><div class="band stale"><span>▲</span><span>Stale since 14:20: the dashboard is not answering. What you see may be old; actions wait until the city is live again.</span></div><div class="act"><button disabled>Restart crew…</button><small>stale since 14:20; wait for live</small></div></div>
+    <div class="cell"><b>Đang tua trong lều</b><div class="band replay"><span>⏸</span><span>The tent shows 10/31 04:03 · Claude · PLA-58; this panel shows now. Actions wait for Live. <span class="btn">Go Live</span></span></div></div>
+    <div class="cell"><b>Chưa biết</b><dl class="facts"><div><dt>Tokens today</dt><dd class="unk">?</dd></div><div><dt>Context</dt><dd class="unk">?</dd></div><div><dt>Merged</dt><dd>1</dd></div><div><dt>Since</dt><dd class="unk">?</dd></div></dl><p>Giá trị null hiện là <code>?</code> màu nhạt, không bao giờ là 0.</p></div>
+    <div class="cell"><b>Form: lỗi và trống</b><div class="act"><button disabled class="primary">Add project</button><small>a name is needed</small></div><div class="act"><button disabled class="primary">Send answer</button><small>pick an option or type an answer</small></div></div>
+  </div>
+</section>
+
+<section id="attention">
+  <div class="two">
+    <div class="col">
+      <h2>Câu hỏi 5: nổi bật mà không thành đống badge</h2>
+      <ul>
+        <li><b>Chỉ ba loại có pin.</b> Topic đang chờ (<code>?</code>, cam đỏ, gộp thành một pin có số đếm ở hòm thư), crew sẵn sàng merge (<code>⇢</code>, xanh lá), sự cố (<code>!</code>, cam đậm). Việc khác (working, idle, đang review) chỉ thể hiện qua tư thế mascot, như hiện nay.</li>
+        <li><b>Mỗi vật tối đa một pin</b>, loại gấp nhất thắng. Với 24 project và 30 crew, tệ nhất cũng chỉ khoảng mười pin.</li>
+        <li><b>Câu hỏi crew gửi Mate không phải việc của captain.</b> Nó chỉ có pin <code>◆</code> nhạt khi project ở manual và chưa ai nhận, vì lúc đó chỉ captain gỡ được.</li>
+        <li><b>Pin là nút DOM</b>, không phải sprite. Chữ nét ở mọi khoảng cách, <kbd>Tab</kbd> đi tới được, và bong bóng nói đùa (vẽ trong WebGL) không thể che. Ở xa (trên 70 đơn vị) pin chỉ còn glyph.</li>
+        <li>Khi đang mở một vật, các pin khác mờ đi, và mascot đang được chọn ngừng nói đùa.</li>
+        <li>Cột <b>Needs you</b> bên trái (desktop) liệt kê đúng những thứ đó theo thứ tự gấp. Phím <kbd>n</kbd> đi tới việc tiếp theo.</li>
+      </ul>
+      <div class="pins" style="margin-top:10px"><span class="pin p-topic"><span class="g">?</span>2 waiting on you</span><span class="pin p-merge"><span class="g">⇢</span>PLA-58 ready to merge</span><span class="pin p-inc"><span class="g">!</span>HU-129 stuck 42m</span><span class="pin p-dec"><span class="g">◆</span>HU-131 asks its Mate</span><span class="pin p-empty"><span class="g">+</span>No Mate yet</span><span class="pin p-inc p-far"><span class="g">!</span></span></div>
+      <p class="legend">Pin cuối cùng là dạng ở xa.</p>
+    </div>
+    <div class="col">
+      <h2>Câu hỏi 3: tua lịch sử và hành động thật</h2>
+      <p><b>Chỉ hành động ở Live.</b> Cảnh trong lều khi đang tua là quá khứ. Nếu bấm Merge trong lúc cảnh đang cho thấy crew còn đang code, captain sẽ hành động theo một hình ảnh sai. Còn nếu bấm nút rồi tự nhảy về Live, cảnh sẽ đổi ngay dưới hộp xác nhận.</p>
+      <ul>
+        <li>Panel luôn hiện dữ liệu <i>hiện tại</i>. Dải xanh ghi rõ cảnh đang ở thời điểm nào và panel đang ở thời điểm nào.</li>
+        <li>Nút vẫn ở nguyên chỗ, mờ đi với lý do <code>replaying; go Live to act</code>. Nút Go Live nằm ngay trong panel, cạnh đó có phím <kbd>L</kbd>.</li>
+        <li>Chat và topic không phụ thuộc vào việc tua. Chúng nằm ở Mate và City Hall, không nằm trong lều.</li>
+      </ul>
+      <h2 style="margin-top:22px">Câu hỏi 4: trên điện thoại</h2>
+      <ul>
+        <li>Một hàng trên cùng: tên, Needs you, Go to (<code>⌕</code>), System (gộp cả live/stale). Hàng này không cuộn ngang ở 375 px.</li>
+        <li>Bottom sheet có ba nấc: peek (148 px), một nửa, gần đầy. Chạm vào thanh kéo để đổi nấc. Camera đẩy vật được chọn lên nửa trên màn hình.</li>
+        <li>Không cần xoay camera: <b>Go to</b> liệt kê Needs you, rồi Mate, crew, lều theo project, có ô tìm kiếm. Chọn một mục thì camera bay tới đó.</li>
+        <li>Mọi vùng chạm từ 44 px trở lên. Hộp xác nhận có hai nút chia đôi chiều ngang.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="office" class="col">
+  <h2>Đánh đổi với Office: việc gì vẫn để Office làm</h2>
+  <p>City làm được mọi hành động. Những thứ dưới đây là việc <i>đọc dài</i>. Cảnh 3D phải nhường gần nửa màn hình cho chúng, nên City chỉ hiện bản tóm tắt và link sang Office hoặc Admin.</p>
+  <ul>
+    <li><b>Diff đầy đủ.</b> City hiện số file, +/− và một hunk, đủ để quyết có merge hay không. Đọc từng dòng diff cần chiều ngang mà dock 420 px không có.</li>
+    <li><b>Timeline và usage của từng task.</b> Đây là bảng nhiều cột, đã có sẵn ở Admin. City chỉ để link ↗.</li>
+    <li><b>Tủ hồ sơ task đã đóng và board theo ngày.</b> Lều đã phát lại được 7 ngày; xem xa hơn và lọc thì Office làm tốt hơn.</li>
+    <li><b>Chat rất dài với Mate.</b> City gập các lượt cũ. Đọc lại cả phiên thì dùng Office, nơi có cả màn hình cho nó.</li>
+  </ul>
+  <p>Những thứ City <i>không</i> đẩy đi: mọi hành động (Mate, crew, project), trả lời topic, fork bàn riêng, Assign, Peek. Captain không phải rời thành phố để làm bất kỳ việc nào trong số đó.</p>
+</section>
+
+<section id="build" class="col">
+  <h2>Để bản dựng thật làm được</h2>
+  <ul>
+    <li><b>Đã có ở nhánh CON-141 (chưa merge):</b> <code>GET /api/projects/{p}/actions</code>, <code>POST /api/actions</code>, mã 409/422 để phân biệt từ chối với thất bại. Prototype dùng đúng shape này: label, available, reason, confirm.</li>
+    <li><b>Còn thiếu ở API</b> (console có, web chưa có): thêm và xoá project, Explain notice, Copy agent id, Peek (chụp màn hình qua Herdr), gửi chat, Interrupt và trạng thái lượt của Mate headless, trả lời topic, fork chỉ đọc, Assign, nhật ký daemon auto.</li>
+    <li><b>three.js:</b> không thêm gì nặng. Chỉ thêm vòng chọn (torus), hộp hàng (box) và pin DOM chiếu vị trí mỗi frame. Cảnh vẫn được dựng lại từ API như bây giờ.</li>
+    <li><b>Thay đổi nhỏ ở city.js:</b> xuất <code>blocks[].centre</code> (đã có), thêm vị trí của biển lều cho pin, và cho phép đặt <code>chatAt</code> để tắt nói đùa trên mascot đang chọn. Prototype đang làm việc này từ bên ngoài.</li>
+    <li><b>Hiệu năng:</b> khung đầu tiên vẫn là khung của city.js. Panel chỉ dựng khi được mở. Pin là DOM nên không có thêm draw call.</li>
+  </ul>
+</section>
+
+<footer class="col">Prototype: <code>docs/design/agent-city-console/</code>. Cảnh lấy từ <code>internal/dashboard/ui/city/</code> ở main <code>a5f4079</code>; dữ liệu giả ở <code>proto/fake.js</code> (3 project, 6 crew đang mở, 2 topic đang chờ, 1 incident).</footer>
+</main>

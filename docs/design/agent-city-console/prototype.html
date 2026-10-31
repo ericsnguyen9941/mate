@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Agent City Console</title>
+<!--
+  Prototype of Agent City doing the console's work (design: index.html).
+  The scene is the real one: city/ is internal/dashboard/ui/city (city.js,
+  room.js, history.js, the mascots, vendored three.js). Only the API is
+  fake (proto/fake.js), and the HUD over it (proto/app.js) is the design.
+-->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="proto/hud.css">
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<header class="top">
+  <div class="brand">
+    <h1>Agent <span>City</span></h1>
+    <p>click a Mate, a crew, a tent or City Hall · pins mark what needs you</p>
+  </div>
+  <div class="tools">
+    <nav class="seg" aria-label="View">
+      <a href="#" title="admin dashboard (not in the prototype)">Admin</a>
+      <a href="#" title="Mate Office (not in the prototype)">Office</a>
+      <a class="on" href="#" aria-current="page">City</a>
+    </nav>
+    <button class="chip" id="needs" type="button" data-tone="need"><span class="g" aria-hidden="true">●</span><span id="needs-n">Needs you</span><kbd>n</kbd></button>
+    <button class="chip" id="goto" type="button" aria-label="Go to"><span class="g" aria-hidden="true">⌕</span><span>Go to</span><kbd>/</kbd></button>
+    <button class="chip" id="sys" type="button" data-tone="ok"><span class="g" aria-hidden="true">●</span><span id="sys-t">System</span></button>
+    <span class="chip live" id="live" data-state="loading" role="status" aria-live="polite"><span class="g" aria-hidden="true">●</span><span class="t">loading</span></span>
+  </div>
+</header>
+<nav id="rail" aria-label="Needs you"></nav>
+<div id="pins" aria-label="Pins in the city"></div>
+<aside id="dock" aria-labelledby="dock-title">
+  <button class="grab" id="grab" type="button" aria-label="Resize panel"></button>
+  <div class="dhead">
+    <div style="min-width:0">
+      <div class="crumbs" id="crumbs"></div>
+      <h2 id="dock-title" tabindex="-1"></h2>
+      <div class="sub" id="dock-sub"></div>
+    </div>
+    <button class="x" id="close" type="button" aria-label="Close panel (Escape)">✕</button>
+  </div>
+  <div class="dbody" id="dbody"></div>
+</aside>
+<div id="scrub">
+  <button id="play" type="button" aria-label="Pause">❚❚</button>
+  <button id="speed" type="button" title="Playback speed">1×</button>
+  <div class="track"><div id="ticks"></div><input id="seek" type="range" min="0" max="1" step="any" value="1" aria-label="Time in the tent's history"></div>
+  <span id="when"></span>
+  <button id="golive" type="button" title="Jump to now (L)">Live</button>
+</div>
+<div id="scrim" role="presentation"></div>
+<p id="hint">Tab pins · Enter open · / go to · n next · Esc back</p>
+<details id="demo">
+  <summary>Demo states</summary>
+  <div class="box">
+    <label><input type="checkbox" id="d-stale"> Dashboard stale</label>
+    <label><input type="checkbox" id="d-ro"> Read-only dashboard</label>
+    <label><input type="checkbox" id="d-tl"> Timeline stuck (mihuv2)</label>
+    <label><input type="checkbox" id="d-herdr"> Herdr not answering</label>
+    <label>Next action <select id="d-next"><option value="auto">runs</option><option value="refuse">is refused (409)</option><option value="fail">fails (422)</option></select></label>
+    <div class="jump" id="d-jump"></div>
+  </div>
+</details>
+<script type="module" src="proto/app.js"></script>
+</body>
+</html>
