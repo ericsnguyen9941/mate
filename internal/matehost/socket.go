@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -21,6 +22,15 @@ const (
 	OpHistory    = "history"
 	OpClearDraft = "clear-draft"
 	OpReload     = "reload"
+	// The captain's ops from a page (CON-142): what the REPL's composer,
+	// Esc, a news answer and a topic's session do, so a message typed on
+	// the dashboard is the same turn as one typed in the Mate's pane.
+	OpSubmit       = "submit"
+	OpInterrupt    = "interrupt"
+	OpAnswer       = "answer"
+	OpSessionAsk   = "session-ask"
+	OpSessionClose = "session-close"
+	OpSessions     = "sessions"
 )
 
 type request struct {
@@ -32,6 +42,8 @@ type request struct {
 	N      int   `json:"n,omitempty"`
 	// Launch is what a reload switches the host to.
 	Launch *Launch `json:"launch,omitempty"`
+	// News is the news an answer or a session op is about.
+	News int `json:"news,omitempty"`
 }
 
 type response struct {
@@ -43,6 +55,10 @@ type response struct {
 	State  *State `json:"state,omitempty"`
 	Items  []Item `json:"items,omitempty"`
 	Killed bool   `json:"killed,omitempty"`
+	// Interrupted is whether an interrupt found a turn to stop.
+	Interrupted bool `json:"interrupted,omitempty"`
+	// Sessions are the open topic sessions, for OpSessions.
+	Sessions []SessionInfo `json:"sessions,omitempty"`
 }
 
 // maxSocketPath is the longest path a unix socket binds (panerun's rule).
@@ -130,6 +146,46 @@ func (h *Host) answer(req request) response {
 			return response{Error: err.Error(), Busy: busy}
 		}
 		return response{OK: true}
+	case OpSubmit:
+		if strings.TrimSpace(req.Text) == "" {
+			return response{Error: "a message has no text"}
+		}
+		h.mu.Lock()
+		stopping := h.stopping
+		h.mu.Unlock()
+		if stopping {
+			return response{Error: ErrStopping.Error(), Busy: true}
+		}
+		h.Submit(req.Text)
+		s := h.State()
+		return response{OK: true, State: &s}
+	case OpInterrupt:
+		if req.News > 0 {
+			return response{OK: true, Interrupted: h.InterruptSession(req.News)}
+		}
+		return response{OK: true, Interrupted: h.Interrupt()}
+	case OpAnswer:
+		if strings.TrimSpace(req.Text) == "" {
+			return response{Error: "an answer has no text"}
+		}
+		if err := h.AnswerNews(req.News, req.Text); err != nil {
+			return response{Error: err.Error()}
+		}
+		s := h.State()
+		return response{OK: true, State: &s}
+	case OpSessionAsk:
+		if err := h.OpenSession(req.News); err != nil {
+			return response{Error: err.Error()}
+		}
+		if err := h.AskSession(req.News, req.Text); err != nil {
+			return response{Error: err.Error(), Busy: errors.Is(err, ErrSessionBusy)}
+		}
+		return response{OK: true, Sessions: h.Sessions()}
+	case OpSessionClose:
+		h.CloseSession(req.News)
+		return response{OK: true}
+	case OpSessions:
+		return response{OK: true, Sessions: h.Sessions()}
 	}
 	return response{Error: fmt.Sprintf("unknown op %q", req.Op)}
 }
@@ -230,4 +286,46 @@ func (c Client) ClearDraft(ctx context.Context) error {
 func (c Client) Reload(ctx context.Context, l Launch) error {
 	_, err := c.do(ctx, request{Op: OpReload, Launch: &l}, 0)
 	return err
+}
+
+// Submit hands the host a captain message: it runs now or after the turn
+// in flight, exactly as one typed in the REPL's composer.
+func (c Client) Submit(ctx context.Context, text string) (State, error) {
+	resp, err := c.do(ctx, request{Op: OpSubmit, Text: text}, 0)
+	if err != nil || resp.State == nil {
+		return State{}, err
+	}
+	return *resp.State, nil
+}
+
+// Interrupt stops the Mate's turn in flight, or with news > 0 that news's
+// session run. It reports whether there was one.
+func (c Client) Interrupt(ctx context.Context, news int) (bool, error) {
+	resp, err := c.do(ctx, request{Op: OpInterrupt, News: news}, 0)
+	return resp.Interrupted, err
+}
+
+// AnswerNews is the captain answering news id (Host.AnswerNews).
+func (c Client) AnswerNews(ctx context.Context, id int, text string) error {
+	_, err := c.do(ctx, request{Op: OpAnswer, News: id, Text: text}, 0)
+	return err
+}
+
+// AskSession opens news id's session if it is not open and asks it text.
+// A *BusyError means the session is still answering.
+func (c Client) AskSession(ctx context.Context, id int, text string) error {
+	_, err := c.do(ctx, request{Op: OpSessionAsk, News: id, Text: text}, 0)
+	return err
+}
+
+// CloseSession closes news id's session.
+func (c Client) CloseSession(ctx context.Context, id int) error {
+	_, err := c.do(ctx, request{Op: OpSessionClose, News: id}, 0)
+	return err
+}
+
+// Sessions are the host's open topic sessions.
+func (c Client) Sessions(ctx context.Context) ([]SessionInfo, error) {
+	resp, err := c.do(ctx, request{Op: OpSessions}, 0)
+	return resp.Sessions, err
 }

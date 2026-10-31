@@ -571,3 +571,64 @@ func TestHostReloadSwitchesSessionBetweenTurns(t *testing.T) {
 		t.Fatal("the REPL was not told the session changed")
 	}
 }
+
+// A page's captain ops (CON-142) are the REPL's own: a submitted message is
+// a captain turn, an answer lands in its news, and a closed news refuses.
+func TestSocketCaptainOps(t *testing.T) {
+	f := newFixture(t)
+	sock, err := os.MkdirTemp("/tmp", "mh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(sock)
+	path := filepath.Join(sock, SocketName)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = f.host.Serve(ctx, path, nil) }()
+	c := Client{Path: path}
+	deadline := time.Now().Add(5 * time.Second)
+	for c.Ping(ctx) != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("socket never answered")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := c.Submit(ctx, "  "); err == nil {
+		t.Error("submitted an empty message")
+	}
+	if s, err := c.Submit(ctx, "hello from the city"); err != nil || !s.Busy {
+		t.Fatalf("submit = %+v, %v", s, err)
+	}
+	items := f.done(t, 1)
+	if it := items[0]; it.Source != SourceCaptain || it.Text != "hello from the city" {
+		t.Fatalf("submitted item = %+v", it)
+	}
+	if ok, err := c.Interrupt(ctx, 0); err != nil || ok {
+		t.Fatalf("interrupt with nothing running = %v, %v", ok, err)
+	}
+
+	news := filepath.Join(f.dir, NewsName)
+	if _, err := OpenNews(news, News{Title: "Dark mode", Question: "Which way?"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	f.host.RefreshNews()
+	if err := c.AnswerNews(ctx, 1, "[a] env"); err != nil {
+		t.Fatal(err)
+	}
+	if it := f.done(t, 2)[1]; it.News != 1 || it.Text != "[a] env" {
+		t.Fatalf("answer item = %+v", it)
+	}
+	if err := CloseNews(news, 1, "done", false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	f.host.RefreshNews()
+	if err := c.AnswerNews(ctx, 1, "again"); err == nil || !strings.Contains(err.Error(), "already closed") {
+		t.Fatalf("answer to a closed news = %v", err)
+	}
+	if err := c.AskSession(ctx, 1, "why?"); err == nil || !strings.Contains(err.Error(), ErrNoForks.Error()) {
+		t.Fatalf("session without forks = %v", err)
+	}
+	if list, err := c.Sessions(ctx); err != nil || len(list) != 0 {
+		t.Fatalf("sessions = %+v, %v", list, err)
+	}
+}

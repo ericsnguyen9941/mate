@@ -194,7 +194,8 @@ func TestAPressIsRefusedBeforeAnythingRuns(t *testing.T) {
 		status int
 	}{
 		{"unavailable", `{"action":"start","project":"` + fixtureProject + `"}`, nil, http.StatusConflict},
-		{"not offered", `{"action":"remove_project","project":"` + fixtureProject + `"}`, nil, http.StatusBadRequest},
+		{"not offered", `{"action":"retry","project":"` + fixtureProject + `"}`, nil, http.StatusBadRequest},
+		{"remove not allowed by the snapshot", `{"action":"remove_project","project":"` + fixtureProject + `"}`, nil, http.StatusConflict},
 		{"repair is not wired", `{"action":"repair","project":"` + fixtureProject + `","crew":"` + fixtureCrew + `"}`, nil, http.StatusBadRequest},
 		{"unknown project", `{"action":"stop","project":"nosuch"}`, nil, http.StatusNotFound},
 		{"closed crew", `{"action":"stop","project":"` + fixtureProject + `","crew":"gone"}`, nil, http.StatusNotFound},
