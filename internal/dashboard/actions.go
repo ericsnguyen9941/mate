@@ -95,14 +95,20 @@ func (s *Server) handleActions(ctx context.Context, r *http.Request, env envelop
 		out.ReadOnly = readOnlyReason
 		return out, nil
 	}
-	node, err := s.projectNode(ctx, project)
-	if err != nil {
-		return nil, err
-	}
 	snap, err := s.deps.Snapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
+	node, err := nodeOf(snap, project)
+	if err != nil {
+		return nil, err
+	}
+	s.fillActions(&out, snap, node)
+	return out, nil
+}
+
+// fillActions puts one project's buttons from snap into out.
+func (s *Server) fillActions(out *ActionsResponse, snap query.Snapshot, node query.ProjectNode) {
 	out.Mate = mateButtons(node)
 	out.MateMore = s.mateMore(node)
 	for _, c := range node.Crews {
@@ -111,6 +117,37 @@ func (s *Server) handleActions(ctx context.Context, r *http.Request, env envelop
 	}
 	out.Harnesses = harnessChoices(snap)
 	out.Daemon = daemonOf(node)
+}
+
+// AllActionsResponse is GET /api/actions: every project's buttons from one
+// read of the console's snapshot, which is what the City polls - one
+// snapshot per answer however many projects there are.
+type AllActionsResponse struct {
+	envelope
+	ReadOnly string                     `json:"read_only,omitempty"`
+	Projects map[string]ActionsResponse `json:"projects"`
+}
+
+func (s *Server) handleAllActions(ctx context.Context, _ *http.Request, env envelope) (any, error) {
+	out := AllActionsResponse{envelope: env, Projects: map[string]ActionsResponse{}}
+	if s.deps.Snapshot == nil || s.deps.Act == nil {
+		out.ReadOnly = readOnlyReason
+		return out, nil
+	}
+	snap, err := s.deps.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, ref := range s.ws.Projects() {
+		node, err := nodeOf(snap, ref.Name)
+		if err != nil {
+			continue
+		}
+		one := ActionsResponse{Project: ref.Name, Mate: []Button{}, Crews: map[string][]Button{},
+			MateMore: []Button{}, CrewMore: map[string][]Button{}, Harnesses: []HarnessChoice{}}
+		s.fillActions(&one, snap, node)
+		out.Projects[ref.Name] = one
+	}
 	return out, nil
 }
 
@@ -120,6 +157,10 @@ func (s *Server) projectNode(ctx context.Context, project string) (query.Project
 	if err != nil {
 		return query.ProjectNode{}, err
 	}
+	return nodeOf(snap, project)
+}
+
+func nodeOf(snap query.Snapshot, project string) (query.ProjectNode, error) {
 	for _, p := range snap.Projects {
 		if p.ProjectID == project || p.Name == project {
 			return p, nil

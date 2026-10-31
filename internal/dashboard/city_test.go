@@ -141,3 +141,35 @@ func TestCityPressesGoToTheConsole(t *testing.T) {
 		t.Errorf("peek = %d %+v", status, e)
 	}
 }
+
+func TestAllActionsAreOneSnapshot(t *testing.T) {
+	f := newFixture(t)
+	snap := citySnapshot()
+	loads := 0
+	server, err := New(Options{Workspace: f.ws, DB: f.read, Deps: Deps{
+		Now:      func() time.Time { return fixtureNow },
+		Snapshot: func(context.Context) (query.Snapshot, error) { loads++; return snap, nil },
+		Act:      (&actRecorder{}).act,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+	resp, err := ts.Client().Get(ts.URL + "/api/actions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got AllActionsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if loads != 1 {
+		t.Errorf("snapshot read %d times for one answer", loads)
+	}
+	one, ok := got.Projects[fixtureProject]
+	if !ok || len(one.Mate) != 5 || len(one.CrewMore[fixtureCrew]) != 4 {
+		t.Fatalf("projects = %+v", got.Projects)
+	}
+}
