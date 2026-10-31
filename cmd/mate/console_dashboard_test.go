@@ -18,7 +18,7 @@ const freeAddr = "127.0.0.1:0"
 // The console serves the dashboard while it is open and stops with it.
 func TestStartConsoleDashboardServesUntilStopped(t *testing.T) {
 	w := usageWorkspace(t)
-	url, stop, err := startConsoleDashboard(context.Background(), w, freeAddr, false, nil, nil, nil)
+	url, stop, err := startConsoleDashboard(context.Background(), w, freeAddr, false, nil, nil, nil, false)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestStartConsoleDashboardServesUntilStopped(t *testing.T) {
 // A busy port is reported, not fatal.
 func TestStartConsoleDashboardBusyPort(t *testing.T) {
 	w := usageWorkspace(t)
-	served, stop, err := startConsoleDashboard(context.Background(), w, freeAddr, false, nil, nil, nil)
+	served, stop, err := startConsoleDashboard(context.Background(), w, freeAddr, false, nil, nil, nil, false)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestStartConsoleDashboardBusyPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse %q: %v", served, err)
 	}
-	if _, _, err := startConsoleDashboard(context.Background(), w, u.Host, false, nil, nil, nil); err == nil {
+	if _, _, err := startConsoleDashboard(context.Background(), w, u.Host, false, nil, nil, nil, false); err == nil {
 		t.Fatal("second start on the same port should fail")
 	}
 }
@@ -61,10 +61,10 @@ func TestStartConsoleDashboardBusyPort(t *testing.T) {
 // error says what to set. With it the status line also names the LAN URL.
 func TestStartConsoleDashboardRemoteNeedsAllow(t *testing.T) {
 	w := usageWorkspace(t)
-	if _, _, err := startConsoleDashboard(context.Background(), w, "0.0.0.0:0", false, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "allow-remote") {
+	if _, _, err := startConsoleDashboard(context.Background(), w, "0.0.0.0:0", false, nil, nil, nil, false); err == nil || !strings.Contains(err.Error(), "allow-remote") {
 		t.Fatalf("routable bind without allow_remote: %v", err)
 	}
-	served, stop, err := startConsoleDashboard(context.Background(), w, "0.0.0.0:0", true, nil, nil, nil)
+	served, stop, err := startConsoleDashboard(context.Background(), w, "0.0.0.0:0", true, nil, nil, nil, false)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -101,6 +101,14 @@ func TestADashboardPressIsTheSheetsRequest(t *testing.T) {
 		{dashboard.ActionRequest{Action: "merge", Project: "shop", Crew: "buy"}, console.ActionRequest{Action: console.ActionMerge, Target: "shop", TargetKind: "crew", Crew: "buy"}},
 		{dashboard.ActionRequest{Action: "restart_crew", Project: "shop", Crew: "buy"}, console.ActionRequest{Action: console.ActionRestartCrew, Target: "shop", TargetKind: "crew", Crew: "buy"}},
 		{dashboard.ActionRequest{Action: "diff", Project: "shop", Crew: "buy"}, console.ActionRequest{Action: console.ActionDiff, Target: "shop", TargetKind: "crew", Crew: "buy"}},
+		// The City's (CON-142): the new-project form, the box's [assign],
+		// the project's remove, a create with a harness, a peek and Jev.
+		{dashboard.ActionRequest{Action: "add_project", Project: "landing", Repo: "../landing"}, console.ActionRequest{Action: console.ActionOnboard, TargetKind: "workspace", Input: "landing", Repo: "../landing"}},
+		{dashboard.ActionRequest{Action: "assign", Project: "shop", Crew: "buy", Key: "crews/buy.status@9", Line: "resolve: buy asks"}, console.ActionRequest{Action: console.ActionResolve, Target: "shop", TargetKind: "project", Crew: "buy", Input: "resolve: buy asks", Key: "crews/buy.status@9"}},
+		{dashboard.ActionRequest{Action: "remove_project", Project: "shop"}, console.ActionRequest{Action: console.ActionRemoveProject, Target: "shop", TargetKind: "project"}},
+		{dashboard.ActionRequest{Action: "onboard", Project: "shop", Harness: "codex"}, console.ActionRequest{Action: console.ActionOnboard, Target: "shop", TargetKind: "project-mate", Harness: "codex"}},
+		{dashboard.ActionRequest{Action: "peek", Project: "shop", Crew: "buy"}, console.ActionRequest{Action: console.ActionPeek, Target: "shop", TargetKind: "crew", Crew: "buy"}},
+		{dashboard.ActionRequest{Action: "explain_notice", Project: "shop", Crew: "buy"}, console.ActionRequest{Action: console.ActionNotice, Target: "shop", TargetKind: "crew", Crew: "buy"}},
 	} {
 		if got := dashboardActionRequest(tc.in); got != tc.want {
 			t.Errorf("%+v -> %+v, want %+v", tc.in, got, tc.want)

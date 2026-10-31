@@ -22,6 +22,24 @@ type ActionRequest struct {
 	Action  string `json:"action"`
 	Project string `json:"project"`
 	Crew    string `json:"crew,omitempty"`
+	// Text is what the captain typed: a message to the Mate (`say`), an
+	// answer to a news (`answer`), a question to a news's session (`fork`).
+	Text string `json:"text,omitempty"`
+	// News is the news an `answer`, a `fork` or a `fork_close` is about,
+	// and on `interrupt` the session to stop instead of the Mate's turn.
+	News int `json:"news,omitempty"`
+	// Harness is the agent a new Mate is created with (`onboard`); empty
+	// is the workspace's default.
+	Harness string `json:"harness,omitempty"`
+	// Repo is the repository `add_project` registers, absolute or relative
+	// to the workspace root; empty adds a project with no repo yet.
+	Repo string `json:"repo,omitempty"`
+	// Key names the inbox entry an `assign` hands to the Mate
+	// (query.BoxEntry.AssignKey).
+	Key string `json:"key,omitempty"`
+	// Line is the entry's resolve line, filled in by the server from its
+	// own snapshot so a page cannot put words in the Mate's composer.
+	Line string `json:"-"`
 }
 
 // Button is one action button: what it does in the console's words,
@@ -33,6 +51,8 @@ type Button struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
 	Confirm   string `json:"confirm,omitempty"`
+	// Key is the inbox entry an `assign` button hands to the Mate.
+	Key string `json:"key,omitempty"`
 }
 
 // ActionsResponse is GET /api/projects/{project}/actions (CON-141): the
@@ -45,6 +65,11 @@ type ActionsResponse struct {
 	ReadOnly string              `json:"read_only,omitempty"`
 	Mate     []Button            `json:"mate"`
 	Crews    map[string][]Button `json:"crews"`
+	// The City's buttons beyond the console sheet (CON-142); see city.go.
+	MateMore  []Button            `json:"mate_more"`
+	CrewMore  map[string][]Button `json:"crew_more"`
+	Harnesses []HarnessChoice     `json:"harnesses"`
+	Daemon    *Daemon             `json:"daemon,omitempty"`
 }
 
 // ActionResult is POST /api/actions answered: the console's one line.
@@ -64,18 +89,64 @@ func (s *Server) handleActions(ctx context.Context, r *http.Request, env envelop
 	if err != nil {
 		return nil, err
 	}
-	out := ActionsResponse{envelope: env, Project: project, Mate: []Button{}, Crews: map[string][]Button{}}
+	out := ActionsResponse{envelope: env, Project: project, Mate: []Button{}, Crews: map[string][]Button{},
+		MateMore: []Button{}, CrewMore: map[string][]Button{}, Harnesses: []HarnessChoice{}}
 	if s.deps.Snapshot == nil || s.deps.Act == nil {
 		out.ReadOnly = readOnlyReason
 		return out, nil
 	}
-	node, err := s.projectNode(ctx, project)
+	snap, err := s.deps.Snapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
+	node, err := nodeOf(snap, project)
+	if err != nil {
+		return nil, err
+	}
+	s.fillActions(&out, snap, node)
+	return out, nil
+}
+
+// fillActions puts one project's buttons from snap into out.
+func (s *Server) fillActions(out *ActionsResponse, snap query.Snapshot, node query.ProjectNode) {
 	out.Mate = mateButtons(node)
+	out.MateMore = s.mateMore(node)
 	for _, c := range node.Crews {
 		out.Crews[c.CrewID] = crewButtons(node.ProjectID, c)
+		out.CrewMore[c.CrewID] = s.crewMore(node, c)
+	}
+	out.Harnesses = harnessChoices(snap)
+	out.Daemon = daemonOf(node)
+}
+
+// AllActionsResponse is GET /api/actions: every project's buttons from one
+// read of the console's snapshot, which is what the City polls - one
+// snapshot per answer however many projects there are.
+type AllActionsResponse struct {
+	envelope
+	ReadOnly string                     `json:"read_only,omitempty"`
+	Projects map[string]ActionsResponse `json:"projects"`
+}
+
+func (s *Server) handleAllActions(ctx context.Context, _ *http.Request, env envelope) (any, error) {
+	out := AllActionsResponse{envelope: env, Projects: map[string]ActionsResponse{}}
+	if s.deps.Snapshot == nil || s.deps.Act == nil {
+		out.ReadOnly = readOnlyReason
+		return out, nil
+	}
+	snap, err := s.deps.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, ref := range s.ws.Projects() {
+		node, err := nodeOf(snap, ref.Name)
+		if err != nil {
+			continue
+		}
+		one := ActionsResponse{Project: ref.Name, Mate: []Button{}, Crews: map[string][]Button{},
+			MateMore: []Button{}, CrewMore: map[string][]Button{}, Harnesses: []HarnessChoice{}}
+		s.fillActions(&one, snap, node)
+		out.Projects[ref.Name] = one
 	}
 	return out, nil
 }
@@ -86,6 +157,10 @@ func (s *Server) projectNode(ctx context.Context, project string) (query.Project
 	if err != nil {
 		return query.ProjectNode{}, err
 	}
+	return nodeOf(snap, project)
+}
+
+func nodeOf(snap query.Snapshot, project string) (query.ProjectNode, error) {
 	for _, p := range snap.Projects {
 		if p.ProjectID == project || p.Name == project {
 			return p, nil
@@ -219,11 +294,15 @@ func (s *Server) handleAct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ActionRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxActionBody)).Decode(&req); err != nil {
 		s.writeError(w, r, http.StatusBadRequest, "the action could not be read", err.Error())
 		return
 	}
 	req.Action, req.Project, req.Crew = strings.TrimSpace(req.Action), strings.TrimSpace(req.Project), strings.TrimSpace(req.Crew)
+	if req.Action == actAddProject {
+		s.addProject(w, r, req)
+		return
+	}
 	if _, ok := s.ws.Project(req.Project); !ok {
 		s.writeError(w, r, http.StatusNotFound, unknownProject(s.ws, req.Project), "")
 		return
@@ -239,13 +318,13 @@ func (s *Server) handleAct(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusInternalServerError, "the workspace could not be read", err.Error())
 		return
 	}
-	buttons := mateButtons(node)
+	buttons := append(mateButtons(node), s.mateMore(node)...)
 	target := req.Project
 	if req.Crew != "" {
 		buttons, target = nil, req.Project+"/"+req.Crew
 		for _, c := range node.Crews {
 			if c.CrewID == req.Crew {
-				buttons = crewButtons(node.ProjectID, c)
+				buttons = append(crewButtons(node.ProjectID, c), s.crewMore(node, c)...)
 			}
 		}
 		if buttons == nil {
@@ -254,8 +333,14 @@ func (s *Server) handleAct(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var pressed *Button
+	want := req.Action
+	if talk[want] {
+		// An answer, a session and an interrupt are the chat's, and can
+		// run when a message can be sent.
+		want = actSay
+	}
 	for i := range buttons {
-		if buttons[i].Action == req.Action {
+		if buttons[i].Action == want && (want != actAssign || buttons[i].Key == req.Key) {
 			pressed = &buttons[i]
 		}
 	}
@@ -267,11 +352,26 @@ func (s *Server) handleAct(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, http.StatusConflict, "Action refused: "+pressed.Reason+" · nothing started", "")
 		return
 	}
+	if pressed.Action == actAssign {
+		req.Line = s.resolveLine(node, req.Crew, req.Key)
+	}
+	if talk[req.Action] || req.Action == actPeek {
+		// Talking and reading a screen do not wait for, or hold up, a
+		// stop or a merge on the same Mate or crew.
+		target += "#" + req.Action
+	}
 	if busy, ok := s.acting.take(target, req.Action); !ok {
 		s.writeError(w, r, http.StatusConflict, "Action refused: "+busy+" is still running on "+target+" · nothing started", "")
 		return
 	}
 	defer s.acting.release(target)
+	s.run(w, r, ctx, req)
+}
+
+// run hands a checked request to the console and answers with its one
+// line, or with the service's error verbatim as a 422: it ran and failed,
+// which a page tells apart from a 409, refused and nothing changed.
+func (s *Server) run(w http.ResponseWriter, r *http.Request, ctx context.Context, req ActionRequest) {
 	line, err := s.deps.Act(ctx, req)
 	if err != nil {
 		s.writeError(w, r, http.StatusUnprocessableEntity, err.Error(), "")

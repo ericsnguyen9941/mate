@@ -56,6 +56,9 @@ type Deps struct {
 	// with either nil - `mate dashboard` on its own - the dashboard stays
 	// read-only and says so.
 	Act func(ctx context.Context, req ActionRequest) (string, error)
+	// Notice is whether the console has Jev to explain a crew's screen
+	// (`explain_notice`); false greys the button out with the reason.
+	Notice bool
 }
 
 func (d Deps) now() time.Time {

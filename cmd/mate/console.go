@@ -228,7 +228,7 @@ func runConsole(dir string, stdout, stderr io.Writer, split bool) error {
 	if noticeClient != nil {
 		action = consoleNoticeAction(ws, deps, noticeClient, action)
 	}
-	if url, stopDashboard, err := startConsoleDashboard(ctx, ws, commands.Dashboard.Addr, commands.Dashboard.AllowRemote, ingest, dashboardLoad, action); err != nil {
+	if url, stopDashboard, err := startConsoleDashboard(ctx, ws, commands.Dashboard.Addr, commands.Dashboard.AllowRemote, ingest, dashboardLoad, action, noticeClient != nil); err != nil {
 		notice = err.Error()
 	} else {
 		defer stopDashboard()

@@ -599,7 +599,7 @@ The press is checked again against a fresh snapshot, then run by the console's `
 | Status | When |
 | --- | --- |
 | `200` | it ran; `line` says what happened |
-| `400` | an action not offered for that row (`remove_project`, `repair`, …) or a body that is not one |
+| `400` | an action not offered for that row (`repair`, an `assign` whose `key` is no open question, …) or a body that is not one |
 | `403` | no console behind this dashboard, or an `Origin` that is not this server's |
 | `404` | an unknown project, or a crew that is not open |
 | `409` | the action cannot run now (its `reason`), or another action is still running on the same Mate or crew |
@@ -609,6 +609,27 @@ The press is checked again against a fresh snapshot, then run by the console's `
 There is no authentication (CON-141 leaves that to the LAN): anyone who can open the page can press a button.
 The JSON body and the `Origin` check only keep another site open in the same browser from pressing one, since a cross-site form cannot send JSON without a preflight this server never answers.
 An action runs to its end even when the page that pressed it goes away.
+
+#### The City's actions (CON-142)
+
+Agent City (section 12) presses more than the console's sheet, still through the same `POST /api/actions` and the same checks.
+`GET /api/projects/{project}/actions` carries them beside the sheet, and `GET /api/actions` answers every project at once from one read of the console's snapshot, `{"read_only"?, "projects": {"<p>": <the per-project answer>}}`, which is what the City polls:
+
+| Field | Buttons |
+| --- | --- |
+| `mate_more` | `say` (the Mate's chat; it stands for `answer`, `fork`, `fork_close` and `interrupt` too, refused while the Mate is not running or is not headless) and `remove_project`, with the console's own question |
+| `crew_more` | `peek` and `explain_notice` (a live binding; Jev configured), then one `assign` per open question of the crew, with its `key` (`query.BoxEntry.AssignKey`), refused once the Mate has it or while it waits in the outbox |
+| `harnesses` | the harnesses a new Mate can run on, the workspace's default first: `onboard` takes one as `harness` |
+| `daemon` | the auto daemon's `sends`, `last_sent_at`, and the `notice` of why the digest queued has not gone, when there is any |
+
+A press may carry `text` (`say`, `answer`, `fork`), `news` (`answer`, `fork`, `fork_close`, and `interrupt` of a session rather than the Mate's turn), `harness` (`onboard`), `repo` (`add_project`) and `key` (`assign`).
+`assign` hands the question's resolve line to the Mate, the console's `[assign]`; the line is the server's from its snapshot, never the page's.
+`add_project` names a project that is not there yet in `project` and is refused (`409`) for a name `[a-z][a-z0-9-]{0,31}` does not take or one already in the workspace; with an empty `repo` the project starts with none.
+The chat's actions go to the headless Mate's own host over its socket (`matehost`'s `submit`, `interrupt`, `answer`, `session-ask`, `session-close`): a message sent from a page is the same captain turn as one typed in the Mate's pane, queued behind the turn in flight, and an answer lands in its news.
+Talking and peeking take no lock on the Mate or crew, so they neither wait for nor hold up a stop or a merge; the body may be 64 KiB.
+
+`GET /api/projects/{project}/chat` is the headless Mate's conversation as its REPL keeps it (`mate/history.jsonl`, the last 80 items): `{"headless", "items": [{"at", "source", "label", "text", "reply", "silent", "interrupted", "error", "done", "tools": [names], "ms", "tokens", "news"}], "state": {"busy", "queued", "turn_source", …} | null, "state_error"?}`. `state` is the host's own answer; `null` with `state_error` when it did not give one, and `null` without one for a Mate that is not headless.
+`GET /api/projects/{project}/forks/{news}` is what was said in a news's private session (`mate/topics/<news>.jsonl`), with `open` (`null` when the host did not answer) and the question it is answering now as `running`.
 
 ### `GET /api/now?project=<p>`
 
@@ -765,8 +786,8 @@ It is linked from the admin header (`Agent City`, beside `Mate Office`) and from
 
 | File | Holds |
 | --- | --- |
-| `index.html`, `city.css` | the page: title, view switch, live pill, the tent panel and its feed |
-| `app.js` | reads the API, keeps the city live, hover and click |
+| `index.html`, `city.css` | the page: title, view switch, Needs you, Go to, System, live pill, the rail, pins, the panel, the scrub bar |
+| `app.js` | reads the API, keeps the city live, the panels and their buttons, pins, hover, click and keys |
 | `city.js` | the city: island, streets, City Hall, one block per project, one tent per repo, the setters `setCrews`, `setMate`, `setMerged`, `setBoard`, `setHall`, `setMailbox` |
 | `room.js` | one tent up close, playing back its history |
 | `history.js` | what a tent's agents did, read from the history endpoint |
@@ -794,8 +815,22 @@ An unknown harness (one AgentMascot has no preset for) is a plain grey mascot wi
 
 Every mascot, in the city and in a tent, now and then says a line going round Vietnamese social media that fits its pose - working, thinking, idle, done or asleep - from `chatter.js`, every 12 to 34 seconds at random, and only when it is not already talking (CON-128). Small talk is for fun and says nothing about the work: it comes in a yellow bubble, never the paper one real lines use, and never in a tent's feed. In a tent it falls only where the mascot has said nothing real for a moment, one line at a time in the room, seeded by the crew's name so a rebuilt tent says the same lines at the same times; past the history it goes on while the tent is watched.
 
-Hovering a mascot names it - crew and role, harness, model, effort, state - a tent its repo, merged count and crews at work, City Hall the inbox and the Mates' tokens today.
-Clicking a crew opens `../office/#crew/<project>/<crew>`, a Mate `../office/#mate/<project>`, City Hall or its mailbox `../office/#captain`; the crew and Mate drawers there carry the action buttons (section 11).
+Since CON-142 the city also does the console's work (design: `docs/design/agent-city-console/`).
+Every thing is a place, and one panel holds what it can do: docked on the right of a wide screen, a bottom sheet with a grab handle on a phone, the camera flown (and its view offset) so the thing stays in sight beside it.
+
+| Place | Panel |
+| --- | --- |
+| a Mate on its plaza | state, mode, tokens, context; the Mate's buttons (section 7b); tabs Chat (the REPL's conversation, send with a 5-second undo, Interrupt), Inbox (what waits, with `Assign to the Mate`), Apps (`/api/plugins`), Project (`Remove project…`) |
+| a crew | state, status line, harness, branch, tokens; its buttons, Diff and Peek as toggles, `Explain notice`; links to the admin timeline, usage and the Office drawer |
+| City Hall | Topics (every news, waiting first: options, an own answer with a 5-second undo, `Discuss privately` in a read-only fork of the Mate) and Projects (each one's Mate and crews, `Remove…`, `+ Add project…`) |
+| an empty park lot | the add-project form; the new project takes the next lot |
+| a block | its Mate, tents and crews |
+| a tent | its playback (below) and the crews in it |
+
+Pins over the scene are buttons, reached by Tab, for only three kinds of thing: a topic waiting on the captain (`?`, on City Hall, with the count), a crew ready to merge (`⇢`), an incident (`!`); a crew's question to its Mate gets a quiet `◆` only in a manual project where nobody handed it over, and a project with no Mate a `+`. One pin per thing, the most urgent; a running action's `⟳` and a result's `✓`/`✕` win for a moment. Far off a pin keeps its glyph and drops its words. The same list is the `Needs you` rail; `n` opens the next, `/` or `g` opens Go to (every place by name; on a phone it is how a crew is reached), `h` City Hall, `Escape` closes or goes back.
+Every button keeps its place and a line under it for the reason it cannot run: the API's, or the page's own (read-only, stale, replaying, another action of the same Mate or crew running). A destructive one asks first in the console's words, `Cancel` focused. A press says `Running …` until the one line comes back: `✓` and the line, `⊘ Refused, nothing changed:` for a 409, `✕ Ran and failed:` for a 422, each in the server's words. A merge carries a crate from the crew to its tent's sign.
+A selected mascot does not make small talk. A standalone dashboard shows the panels without buttons and says it is read-only.
+
 Clicking a tent opens `#tent=<project>/<repo>`: the tent up close, playing back what its agents did (CON-127).
 Its tasks are the project's rows on the tent spawned since midnight UTC seven days ago, or still open; a tent with no ship task among them takes its last three merged ship tasks and their reviews instead, and `since` moves back to the earliest spawn. Their lines are one read of section 4b with that `since`.
 The playback is every task's spawn (or, for a reviewer, the Mate asking it to review), all its status lines, its questions and the answers, its hand-backs, each reviewer's verdict (`review` of the reviewer row; the reviewer's last hand-back is where it lands), and the merge, or the close of a task that was not merged, in the order they happened, one every 2.5 seconds whatever the real gap; the panel lists them with their real local times.
@@ -803,10 +838,11 @@ A crew sits at the round table from its spawn until just before the first event 
 The scrub bar under the tent runs from the first event to now, with the days and the merges marked: drag it, or click a line in the panel, to go there. Play runs at 1×, 4×, 16× or 64× until it reaches now; `Live` jumps to now and follows. A tent opens live, three events before now. Live and caught up, the open crews and the Mate end posed by their scene states, and a new event on the project reads the history again and plays it; scrubbed back, the view stays on the same event. `Space` plays and pauses.
 A tent's mascots keep their whole timeline (AgentMascot's `keep`), so a pose or a line scrubbed back to is the one played there; by default a mascot drops what is more than ten seconds older than its newest.
 The history is kept per tent while the project's rows are the same, and read ahead while the pointer rests on a tent, so a click opens it at once. A repo with no task shows a sleeping Mate.
-`Escape` or `Back to the city` leaves the tent.
+Acting is for now only: while a tent is scrubbed back every button waits with `replaying; go Live to act`, and the panel offers `Go Live` (`L`).
+`Escape` leaves the tent.
 
-Reads: `/api/workspace`, `/api/projects/{p}` per project, `/api/board?days=7`, `/api/news`, and `/api/projects/{p}/history` for a tent.
+Reads: `/api/workspace`, `/api/projects/{p}` per project, `/api/actions`, `/api/board?days=7`, `/api/news`, `/api/projects/{p}/history` for a tent, and for an open panel `/chat`, `/forks/{news}`, `…/diff` and `/api/plugins`; its one write is `POST /api/actions`.
 The city is drawn as soon as `/api/workspace` answers; each project's crews and signs fill in as its page arrives, and the board and the news are read beside them and never hold the city up (CON-126).
-It long-polls `/api/events?since=<last_event_id>&wait=20`; an answer with events re-reads the workspace and the pages of the projects they name, an id that went backwards (a `mate reindex`) re-reads every project, and every answer re-reads `/api/news` and, once it is five minutes old, `/api/board`. The pill says `live` or `stale` with the reason, and a failed poll retries every 3 seconds.
+It long-polls `/api/events?since=<last_event_id>&wait=20`; an answer with events re-reads the workspace and the pages of the projects they name, an id that went backwards (a `mate reindex`) re-reads every project, and every answer re-reads `/api/actions`, `/api/news`, the open chat or fork and, once it is five minutes old, `/api/board`. The pill says `live` or `stale` with the reason, and a failed poll retries every 3 seconds.
 The page marks `city:drawn` and `city:tent <project>/<repo>` on the browser's performance timeline at the first frame of each.
 The scene is one light palette whatever the system theme.

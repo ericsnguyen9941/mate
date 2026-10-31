@@ -318,6 +318,13 @@ func (h *Host) reapSessions() {
 }
 
 // sessionsLocked is every open session, by news.
+// Sessions are the open sessions now, by news.
+func (h *Host) Sessions() []SessionInfo {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.sessionsLocked()
+}
+
 func (h *Host) sessionsLocked() []SessionInfo {
 	out := make([]SessionInfo, 0, len(h.sessions))
 	for _, s := range h.sessions {
