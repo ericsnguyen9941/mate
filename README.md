@@ -1,18 +1,69 @@
-# mate
+<p align="center">
+  <img src="docs/readme/logo.svg" width="88" height="88" alt="mate">
+</p>
 
-mate điều phối một đội agent lập trình trên máy của bạn. Bạn là **captain**: bạn
-nói chuyện với một **Mate** cho mỗi project. Mate chia việc, giao cho các **Crew**
-chạy song song, mỗi Crew một git worktree riêng. Mate cho review độc lập, rồi
-merge, hoặc để Crew mở PR. mate là một binary Go: core của workspace, console
-trong terminal, dashboard web và CLI cho agent gọi.
+<h1 align="center">mate</h1>
 
+<p align="center">
+  <b>Một đội agent lập trình trên máy của bạn: bạn nói với Mate, Mate điều phối Crew.</b>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white" alt="Go 1.25">
+  <img src="https://img.shields.io/badge/n%E1%BB%81n%20t%E1%BA%A3ng-macOS%20%C2%B7%20Linux%2FWSL2%20th%E1%BB%AD%20nghi%E1%BB%87m-555" alt="Nền tảng: macOS · Linux/WSL2 thử nghiệm">
+  <img src="https://img.shields.io/badge/harness-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20pi%20%C2%B7%20grok-ea7756" alt="Harness: Claude Code · Codex · pi · grok">
+</p>
+
+<p align="center">
+  <a href="https://mate.lovableai.space">Website</a> ·
+  <a href="docs/architecture.md">Kiến trúc</a> ·
+  <a href="GLOSSARY.md">Thuật ngữ</a>
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/readme/office.jpg" alt="Mate Office: mỗi project một phòng, Mate ở bàn lớn, Crew ở các bàn"></td>
+    <td width="50%"><img src="docs/readme/city.jpg" alt="Agent City: mỗi project một khu, mỗi repo một lều"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Mate Office</b>: mỗi project một phòng</td>
+    <td align="center"><b>Agent City</b>: workspace dựng thành một thành phố</td>
+  </tr>
+</table>
+
+Bạn là **captain**. Mỗi project có một **Mate**: bạn nói việc với Mate, Mate chia
+việc và giao cho các **Crew** chạy song song, mỗi Crew một git worktree riêng. Mate
+cho review độc lập, rồi merge, hoặc để Crew mở PR. mate là một binary Go: core của
+workspace, console trong terminal, dashboard web và CLI cho agent gọi.
+
+```mermaid
+flowchart LR
+  captain(["captain"]) -- "chat" --> mate["Mate<br/>một cho mỗi project, chạy Claude Code"]
+  mate -- "spawn" --> crewA["Crew A<br/>worktree, nhánh riêng"]
+  mate -- "spawn" --> crewB["Crew B<br/>worktree, nhánh riêng"]
+  mate -- "review" --> reviewer["Crew reviewer<br/>scout, chỉ đọc"]
+  crewA -- "bàn giao" --> mate
+  crewB -- "bàn giao" --> mate
+  mate --> land{{"merge local, hoặc Crew mở PR"}}
 ```
-captain ──chat──▶ Mate (mỗi project một Mate, chạy Claude Code)
-                    ├─ spawn ──▶ Crew A (worktree, nhánh riêng)
-                    ├─ spawn ──▶ Crew B
-                    ├─ review ─▶ Crew reviewer (scout, chỉ đọc)
-                    └─ merge local, hoặc Crew mở PR
-```
+
+**Mục lục:** [Vì sao mate](#vì-sao-mate) · [Nền tảng hỗ trợ](#nền-tảng-hỗ-trợ) ·
+[Cần cài trước](#cần-cài-trước) · [Cài mate](#cài-mate) · [Chạy](#chạy) ·
+[Kiến trúc](#kiến-trúc) · [Phát triển](#phát-triển)
+
+## Vì sao mate
+
+- 🧭 **Mỗi project một Mate.** Bạn nói việc một lần; Mate viết brief, chia việc,
+  theo dõi Crew và chỉ hỏi bạn khi cần bạn quyết.
+- 🌿 **Crew chạy song song.** Mỗi Crew một git worktree và một nhánh riêng, không
+  giẫm lên nhau.
+- 🔍 **Review độc lập trước khi merge.** Một Crew khác, chỉ đọc, xét thay đổi so với
+  brief.
+- 🛟 **Core chạy nền.** Đóng console hay trình duyệt không mất việc; core giám sát
+  host của Mate và bật lại khi host chết.
+- 🏢 **Xem trực tiếp.** Mate Office và Agent City vẽ cả workspace trong trình duyệt,
+  ai đang làm, ai đang chờ bạn.
+- 🔌 **Đa harness cho Crew.** Crew chạy Codex, Claude Code, pi hoặc grok.
 
 ## Nền tảng hỗ trợ
 
@@ -38,7 +89,11 @@ captain ──chat──▶ Mate (mỗi project một Mate, chạy Claude Code)
 
 Mỗi harness tự đăng nhập bằng tài khoản của nó; mate không chép token giữa các
 harness. Không có `codex` thì đặt `defaults.crew_harness: claude` trong
-`.mate/workspace.yaml`. Trên macOS: `brew install go git gh herdr`.
+`.mate/workspace.yaml`. Trên macOS:
+
+```sh
+brew install go git gh herdr
+```
 
 ## Cài mate
 
@@ -67,9 +122,10 @@ bằng binary mới không. Chi tiết: [docs/install.md](docs/install.md).
 ## Chạy
 
 ```sh
+mate init ~/workspace   # một lần: tạo workspace
 cd ~/workspace
-mate            # hoặc: mate . / mate ~/workspace
-mate console    # trong terminal khác, nếu muốn
+mate                    # hoặc: mate . / mate ~/workspace
+mate console            # trong terminal khác, nếu muốn
 ```
 
 `mate` chạy core của workspace ở foreground, như một dev server: in link Office và
@@ -109,31 +165,34 @@ Console, REPL, Office và City chỉ là vỏ: engine chạy trong core, Mate ch
 
 ### Đường đi của một hành động
 
-```
-console --- coreclient: POST /api/act ----> .mate/core.sock --+
-Office, City --- POST /api/actions --> 127.0.0.1:7777 --------+
-                                                              v
-+----------------------------- mate core ------------------------------+
-| Engine.Act: một lối vào cho mọi UI, một khoá cho mỗi đích            |
-| vòng lặp: observer, timeline, outbox, auto, recovery, hostwatch      |
-+-----------+---------------------------------+------------------------+
-            | chat, giao tin qua host.sock    | internal/spawn: start/stop Mate,
-            v                                 | stop/restart Crew
-   host của Mate headless                     +--> host của Mate (process nền)
-   (claude -p mỗi lượt)                       +--> runtime.Adapter -> Herdr -> pane
-            ^
-REPL -------+ host.sock
-
-lệnh CLI do Mate và Crew gọi --> thẳng tới .mate/, Herdr, host.sock
+```mermaid
+flowchart LR
+  console["console"] -- "POST /api/act<br/>.mate/core.sock" --> act
+  web["Office, Agent City"] -- "POST /api/actions<br/>127.0.0.1:7777" --> act
+  repl["REPL"] -- "host.sock" --> host
+  subgraph core["mate core"]
+    act["Engine.Act<br/>một lối vào cho mọi UI,<br/>một khoá cho mỗi đích"]
+  end
+  act -- "chat, giao tin<br/>host.sock" --> host["host của Mate headless<br/>claude -p mỗi lượt"]
+  act -- "start/stop Mate<br/>internal/spawn" --> host
+  act -- "stop/restart Crew" --> herdr["runtime.Adapter → Herdr"]
+  herdr --> pane["pane của Crew"]
+  cli["lệnh CLI do Mate và Crew gọi"] --> files[(".mate/")]
+  cli --> herdr
+  cli --> host
 ```
 
 Core không spawn Crew: Mate gọi một lệnh CLI, lệnh này tự mở pane trong Herdr.
+Bên cạnh `Engine.Act`, core chạy các vòng lặp: observer, timeline, outbox, auto,
+recovery và giám sát host.
 
 Các process trao đổi chủ yếu qua file trong `.mate/`; các file nhiều bên cùng sửa
 (outbox, news, work, backlog) khoá bằng `flock`. `mate.db` (SQLite) chỉ có một bên
-ghi và dựng lại được từ file. Socket unix (`core.sock`, `host.sock`) cho lệnh cần trả lời ngay.
+ghi và dựng lại được từ file. Socket unix (`core.sock`, `host.sock`) cho lệnh cần trả
+lời ngay.
 
-### Tầng package
+<details>
+<summary><b>Tầng package</b></summary>
 
 Bảy tầng, thấp lên cao. Một package chỉ import package cùng tầng hoặc tầng thấp hơn.
 
@@ -154,7 +213,10 @@ giới khác giữ luật riêng: ngoài `internal/harness/...` không code nào
 harness, trừ vài file có lý do trong `ratchetAllow`; `ui/console` không import
 `store`, `core` hay Herdr; chỉ `internal/spawn` import `runtime/herdr`.
 
-### Thư mục `.mate/`
+</details>
+
+<details>
+<summary><b>Thư mục <code>.mate/</code></b></summary>
 
 ```
 <workspace>/.mate/
@@ -176,7 +238,10 @@ harness, trừ vài file có lý do trong `ratchetAllow`; `ui/console` không im
 
 Worktree của Crew nằm ở `<workspace>/.worktrees/<p>-<crew>`, ngoài `.mate/`.
 
-### Harness và Herdr
+</details>
+
+<details>
+<summary><b>Harness và Herdr</b></summary>
 
 Mate chỉ chạy Claude Code: chỉ harness có lượt headless mới chạy được Mate. Crew
 chạy `codex` (mặc định), `claude`, `pi` hoặc `grok`. Mỗi harness là một package trong
@@ -186,6 +251,8 @@ Herdr chỉ là lớp pane, như tmux: nó chạy TUI của Crew (và của Mate
 pane`) cùng pane shell của Mate. Host của Mate headless chạy ngoài Herdr. mate gọi
 Herdr qua `runtime.Adapter`. Mỗi workspace một session Herdr; tên của nó là dòng
 `Herdr` core in ra.
+
+</details>
 
 ## Phát triển
 
@@ -199,3 +266,6 @@ MATE_LIVE=1 make test   # thêm test TestLive* chạy Herdr và harness thật
 Test bị skip mà không khai trong `scripts/gotestreport/expected-skips.txt` làm build
 đỏ. Suite xanh khi test live bị skip không chứng minh tính năng chạy với Herdr thật.
 Quy ước cho agent làm việc trên repo này: [AGENTS.md](AGENTS.md).
+
+<sub>Ảnh Office và City chụp từ giao diện thật trong repo, với dữ liệu mẫu của test
+(`internal/dashboard/testdata/office/busy.json`).</sub>
