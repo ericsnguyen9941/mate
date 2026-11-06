@@ -13,8 +13,8 @@ import (
 // finds `mate.db` (db.Workspace), plus the workspace's autocompact
 // threshold and the path of a crew's learning record. Every method only
 // reads. RecordAtClose writes the record's usage section itself, not
-// through the store (plan docs/plans/store-split-2026-11-06.md section 7;
-// CON-240, section 3).
+// through the store, as section 7 of the plan notes (CON-240, plan
+// docs/plans/store-split-2026-11-06.md section 3).
 type Workspace interface {
 	dashboard.Workspace
 	spawn.CrewReader

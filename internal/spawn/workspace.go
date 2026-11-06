@@ -8,8 +8,9 @@ import (
 // CrewReader is the part of *store.Workspace that ListCrews reads: the
 // project's box (box.Workspace, for box.Load), plus whether the project is
 // registered and which crews have a `.meta`. Every method only reads. Only
-// ListCrews takes it; the rest of spawn writes and keeps *store.Workspace
-// (CON-240, plan docs/plans/store-split-2026-11-06.md section 3).
+// ListCrews and the crewIDs it calls take it; the rest of spawn writes and
+// keeps *store.Workspace (CON-240, plan docs/plans/store-split-2026-11-06.md
+// section 3).
 type CrewReader interface {
 	box.Workspace
 	CrewIDs(project string) ([]string, error)
