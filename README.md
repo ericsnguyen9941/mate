@@ -8,10 +8,10 @@ trong terminal, dashboard web và CLI cho agent gọi.
 
 ```
 captain ──chat──▶ Mate (mỗi project một Mate, chạy Claude Code)
-                    ├─ mate crew spawn ──▶ Crew A (worktree, nhánh riêng)
-                    ├─ mate crew spawn ──▶ Crew B
-                    ├─ mate review ──────▶ Crew reviewer (scout, chỉ đọc)
-                    └─ mate land (merge local), hoặc Crew mở PR
+                    ├─ spawn ──▶ Crew A (worktree, nhánh riêng)
+                    ├─ spawn ──▶ Crew B
+                    ├─ review ─▶ Crew reviewer (scout, chỉ đọc)
+                    └─ merge local, hoặc Crew mở PR
 ```
 
 ## Nền tảng hỗ trợ
@@ -59,16 +59,25 @@ make build      # ra bin/mate; chép nó vào một thư mục trong PATH
 
 **Cập nhật:** chạy lại `go install …@latest`, hoặc `git pull && make build` rồi chép
 `bin/mate` đè lên bản cũ (trên macOS: `rm` file cũ rồi `cp`). Core đang chạy vẫn dùng
-binary cũ: `mate core status` báo `stale`, chạy `mate core restart`. Chi tiết:
-[docs/install.md](docs/install.md).
+binary cũ, và `mate` không tự thay nó: `mate` in `mate core: already running` kèm dòng
+`stale: the mate binary changed after this core started`. Tắt core cũ (Ctrl+C ở
+terminal đang chạy nó) rồi chạy lại `mate`; `mate console` thì tự hỏi có bật lại core
+bằng binary mới không. Chi tiết: [docs/install.md](docs/install.md).
 
-**Kiểm là đã cài đúng:**
+## Chạy
 
 ```sh
-mate --version              # mate <version> (<commit>, <build date>)
-mate init /tmp/mate-try     # initialized workspace at …
-mate /tmp/mate-try          # in header của core: Office, City, Herdr, Log; Ctrl+C để dừng
+cd ~/workspace
+mate            # hoặc: mate . / mate ~/workspace
+mate console    # trong terminal khác, nếu muốn
 ```
+
+`mate` chạy core của workspace ở foreground, như một dev server: in link Office và
+City (mặc định `http://127.0.0.1:7777/office/` và `/city/`) rồi log của core; Ctrl+C
+để dừng. Core đang chạy rồi thì `mate` in trạng thái của nó và thoát. `mate console`
+mở giao diện terminal; chưa có core thì nó tự bật core chạy nền. `mate` không tự tạo
+workspace: không thấy `.mate/` ở thư mục hiện tại hay thư mục cha thì nó in danh
+sách lệnh và thoát; `mate <dir>` với thư mục chưa có `.mate/` báo `not a mate workspace`.
 
 Hướng dẫn dùng nằm trong `docs/`: chạy core [docs/core.md](docs/core.md), console
 và phím [docs/console-commands.md](docs/console-commands.md), tracker
@@ -83,17 +92,17 @@ Bản đồ đầy đủ: [docs/architecture.md](docs/architecture.md). Cách ch
 
 ### Process
 
-| Process | Bật bởi | Việc |
-| --- | --- | --- |
-| mate core | `mate`, `mate .`, `mate <dir>`, `mate core run` (foreground); `mate core start` (nền) | Engine của workspace: observer và timeline, outbox, auto daemon, recovery, giám sát host của Mate, Office/City, notification. Mỗi workspace một core: nó giữ flock trên `.mate/core.lock` và phục vụ client trên `.mate/core.sock`. |
-| Host của Mate headless | `internal/spawn`, khi start Mate | Process nền riêng, ngoài Herdr, mỗi Mate một host. Mỗi tin là một lượt `claude -p`. Nghe trên `host.sock`. Core giám sát và bật lại khi host chết, tối đa 3 lần trong 10 phút; dừng core không dừng host. |
-| Console | `mate console` | Giao diện terminal, client của core qua `core.sock`, không chạy engine. Mỗi workspace một console (`console.lock`). |
-| REPL của Mate | console, hoặc `mate mate-agent repl <p>` | Client của `host.sock`. |
-| Office, Agent City | trình duyệt | Trang web core phục vụ ở `127.0.0.1:7777` (`/office/`, `/city/`). |
-| TUI của Mate | `./tui` trong thư mục Mate, hoặc `mate mate-agent tui <p>` | Mở session của Mate trong TUI của Claude. Giữ `.mate/tui.lock`; trong lúc đó mọi UI chỉ xem. |
-| Crew | `mate crew spawn` | TUI của harness trong pane Herdr, làm việc trong `<workspace>/.worktrees/<p>-<crew>`. Ghi dòng trạng thái vào file `.status`. |
-| PR watcher | `mate pr watch`; recovery và auto daemon của core | Một process cho mỗi PR của Crew. PR merge hay đóng thì báo Mate qua outbox. |
-| CLI | Mate, Crew, captain | Lệnh ngắn (`mate crew spawn`, `mate send`, `mate land`…). Không qua core: đọc và ghi thẳng `.mate/`, gọi Herdr hay `host.sock` khi cần. |
+| Process | Việc |
+| --- | --- |
+| mate core | Engine của workspace: observer và timeline, outbox, auto daemon, recovery, giám sát host của Mate, Office/City, notification. Chạy foreground khi captain chạy `mate`, hoặc chạy nền khi console bật nó. Mỗi workspace một core: nó giữ flock trên `.mate/core.lock` và phục vụ client trên `.mate/core.sock`. |
+| Host của Mate headless | Process nền riêng, ngoài Herdr, mỗi Mate một host; bật khi Mate start. Mỗi tin là một lượt `claude -p`. Nghe trên `host.sock`. Core giám sát và bật lại khi host chết, tối đa 3 lần trong 10 phút; dừng core không dừng host. |
+| Console | Giao diện terminal, client của core qua `core.sock`, không chạy engine. Mỗi workspace một console (`console.lock`). |
+| REPL của Mate | Khung chat với Mate headless, console hiện nó ở pane bên cạnh. Client của `host.sock`. |
+| Office, Agent City | Trang web core phục vụ ở `127.0.0.1:7777` (`/office/`, `/city/`). |
+| TUI của Mate | Session của Mate headless mở tạm trong TUI của Claude, từ pane shell của Mate. Giữ `.mate/tui.lock`; trong lúc đó mọi UI chỉ xem. |
+| Crew | TUI của harness trong pane Herdr, làm việc trong `<workspace>/.worktrees/<p>-<crew>`. Mate spawn nó bằng lệnh CLI. Ghi dòng trạng thái vào file `.status`. |
+| PR watcher | Một process cho mỗi PR của Crew, do lệnh CLI hoặc recovery và auto daemon của core bật. PR merge hay đóng thì báo Mate qua outbox. |
+| Lệnh CLI | Lệnh ngắn do Mate và Crew gọi. Không qua core: đọc và ghi thẳng `.mate/`, gọi Herdr hay `host.sock` khi cần. |
 
 Console, REPL, Office và City chỉ là vỏ: engine chạy trong core, Mate chạy trong host.
 Đóng console không dừng core.
@@ -115,14 +124,14 @@ Office, City --- POST /api/actions --> 127.0.0.1:7777 --------+
             ^
 REPL -------+ host.sock
 
-CLI (mate crew spawn, mate send, mate land…) --> thẳng tới .mate/, Herdr, host.sock
+lệnh CLI do Mate và Crew gọi --> thẳng tới .mate/, Herdr, host.sock
 ```
 
-Core không spawn Crew: Mate gọi `mate crew spawn`, lệnh này tự mở pane trong Herdr.
+Core không spawn Crew: Mate gọi một lệnh CLI, lệnh này tự mở pane trong Herdr.
 
 Các process trao đổi chủ yếu qua file trong `.mate/`; các file nhiều bên cùng sửa
-(outbox, news, work, backlog) khoá bằng `flock`. `mate.db` (SQLite) chỉ có một bên ghi và dựng lại được từ file bằng
-`mate reindex`. Socket unix (`core.sock`, `host.sock`) cho lệnh cần trả lời ngay.
+(outbox, news, work, backlog) khoá bằng `flock`. `mate.db` (SQLite) chỉ có một bên
+ghi và dựng lại được từ file. Socket unix (`core.sock`, `host.sock`) cho lệnh cần trả lời ngay.
 
 ### Tầng package
 
@@ -142,8 +151,8 @@ Bảy tầng, thấp lên cao. Một package chỉ import package cùng tầng h
 tầng, hay import sai tầng, làm build đỏ. Vi phạm còn lại ghi trong
 `internal/archtest/violations.txt`, và phần nợ ở đó chỉ được giảm. Các test ranh
 giới khác giữ luật riêng: ngoài `internal/harness/...` không code nào gọi tên một
-harness, trừ vài file có lý do trong `ratchetAllow`; `ui/console` không import `store`, `core` hay Herdr; chỉ `internal/spawn`
-import `runtime/herdr`.
+harness, trừ vài file có lý do trong `ratchetAllow`; `ui/console` không import
+`store`, `core` hay Herdr; chỉ `internal/spawn` import `runtime/herdr`.
 
 ### Thư mục `.mate/`
 
@@ -156,7 +165,7 @@ import `runtime/herdr`.
 ├── core.lock, core.sock    core đang chạy (flock), socket cho client
 ├── core.log                log của core
 ├── console.lock, tui.lock  một console, một TUI của Mate mỗi workspace
-├── mate.db                 timeline SQLite, dựng lại bằng mate reindex
+├── mate.db                 timeline SQLite, dựng lại được từ file
 └── projects/<p>/
     ├── project.yaml, PROJECT.md
     ├── sent.log, incidents.log
@@ -175,8 +184,8 @@ chạy `codex` (mặc định), `claude`, `pi` hoặc `grok`. Mỗi harness là 
 
 Herdr chỉ là lớp pane, như tmux: nó chạy TUI của Crew (và của Mate ở `mate.mode:
 pane`) cùng pane shell của Mate. Host của Mate headless chạy ngoài Herdr. mate gọi
-Herdr qua `runtime.Adapter`; muốn nhìn các pane thì `herdr session attach <session>`,
-tên session là dòng `Herdr` core in ra.
+Herdr qua `runtime.Adapter`. Mỗi workspace một session Herdr; tên của nó là dòng
+`Herdr` core in ra.
 
 ## Phát triển
 
