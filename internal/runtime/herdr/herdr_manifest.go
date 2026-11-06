@@ -12,7 +12,7 @@ import (
 
 // errHerdrNotInstalled means the pin could not run. An absent binary is not
 // drift: tests skip rather than fail. CI has no herdr, so it never verifies
-// this pin (ADR 0007).
+// this pin; drift is caught only on a machine that has Herdr installed.
 var errHerdrNotInstalled = errors.New("herdr binary not installed; testdata/manifest.json version pin unverified")
 
 type herdrManifest struct {

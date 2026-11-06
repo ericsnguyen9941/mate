@@ -59,7 +59,8 @@ func ParseLogLevel(s string) slog.Level {
 // pane (workspace/tab create --env, not agent start). Both the runtime
 // allowlist and the harness launch-env filter derive from this one list,
 // plus the keys each registered harness declares (harness.Info.EnvKeys),
-// so they cannot drift. Unknown keys are refused (ADR 0009).
+// so they cannot drift. Unknown keys are refused, not dropped: a silently
+// dropped identity value would start an agent that cannot prove who it is.
 func IdentityEnvKeys() []string {
 	return []string{
 		EnvWorkspaceID,

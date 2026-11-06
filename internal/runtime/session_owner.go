@@ -57,8 +57,9 @@ func ReclaimSessionOwner(configHome, session, workspaceID string) error {
 
 // ClaimSessionOwner records which workspace id owns a Herdr session name in
 // the config home, with O_EXCL so two processes cannot silently share the
-// address. persistence.NameRegistry refuses this scope (ADR 0004); this file
-// is the cross-workspace record. Same-owner re-claim is idempotent.
+// address. persistence.NameRegistry refuses this scope, because a
+// per-workspace database cannot arbitrate names between workspaces; this
+// file is the cross-workspace record. Same-owner re-claim is idempotent.
 func ClaimSessionOwner(configHome, session, workspaceID string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {

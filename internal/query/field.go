@@ -12,7 +12,8 @@ import (
 // must never be defaulted to its Go zero value and rendered as fact: a
 // worktree path of "" and a worktree that could not be read are different
 // things, and the Console needs to tell them apart. This mirrors
-// TokenUsage's Known convention (ADR 0016 "no fake numbers") for
+// TokenUsage's Known convention (a transcript that cannot be read gives no
+// numbers, never zeros) for
 // every field that can fail.
 //
 // It is a string, not the design notes' `uint8` iota, for one reason: with
@@ -57,7 +58,7 @@ const (
 //   - Absent: why there is legitimately nothing ("first attempt"). Always set.
 //   - Known: usually empty; set only for a caveat a UI must not drop, such
 //     as a binding recorded active not proving the agent is alive
-//     (ADR 0019's health observer does not exist).
+//     (nothing in the snapshot probes the agent live).
 type Field[T any] struct {
 	State  FieldState
 	Value  T

@@ -14,7 +14,8 @@ import (
 // TranscriptParser is the parse half of a harness's TranscriptSource: it
 // turns one format's bytes into normalized facts. It is not part of the
 // Profile; only the harness's own TranscriptSource calls it, because a
-// harness may be launchable while its transcript is unreadable (ADR 0016).
+// harness may be launchable while its transcript is unreadable, and then it
+// reports no usage rather than zeros.
 //
 // The two methods differ only in what they do with a message whose records may
 // still be appended to; see ParseTranscript and ParseTranscriptFinal.
@@ -85,7 +86,8 @@ type TranscriptParser interface {
 	// unique on (binding_id, source, source_ref) and never updated).
 	// Establishing the precondition is the caller's job, and enforcing it
 	// belongs to the reconcile/trigger boundary in the sibling tasks, not to
-	// the parser (ADR 0016).
+	// the parser: only the code that stopped the runtime can know the stop
+	// was observed rather than merely requested.
 	//
 	// A parser whose format cannot split one message across records may
 	// implement it as ParseTranscript: the precondition is then vacuous.
@@ -101,7 +103,8 @@ type TranscriptParser interface {
 // The alternative, having the parser emit each record's raw parent references
 // and letting reconcile rebuild the graph, was rejected: `parentUuid` and
 // `promptId` are Claude's own shapes, and resolving them outside the adapter
-// would put format knowledge in reconcile, which ADR 0016 keeps out. It would
+// would put format knowledge in reconcile, when only a harness's own adapter
+// may know its JSONL shapes. It would
 // also arrive too late - `agent_turn` is immutable and unique on
 // (binding_id, source, source_ref), so a turn's harness turn must be known at
 // its first insert and can never be backfilled.
@@ -166,8 +169,8 @@ const (
 // TokenUsage is one turn's per-call token accounting. It mirrors the four
 // counters harnesses report and is deliberately not a cumulative total:
 // Claude reports usage per API call, so a turn's numbers are already deltas
-// and a caller must never add them to a running total again (ADR 0016,
-// "Deltas are canonical").
+// and a caller must never add them to a running total again: deltas are
+// what is stored, and a cumulative view is the sum of them.
 type TokenUsage struct {
 	Input      int64
 	Output     int64
@@ -257,8 +260,8 @@ type TranscriptTurn struct {
 	// entirely.
 	SubagentID string
 	// ContextReset is always false from the Claude parser: how a Claude
-	// transcript marks a context reset is not yet identified (ADR 0016,
-	// "Open questions"). It is never guessed from token counts.
+	// transcript marks a context reset is not yet identified, and v1 left it
+	// unproven too. It is never guessed from token counts.
 	ContextReset bool
 	// DurationMS is nil from the Claude parser. The only duration-bearing
 	// record (system/turn_duration) does not reliably identify its turn, so
@@ -308,8 +311,9 @@ type TranscriptUsageFailure struct {
 
 // TranscriptMalformed describes the first complete line a parser could not
 // classify. The parser stops there: the caller commits the prefix and
-// quarantines the exact line span without advancing through it (ADR 0016,
-// "call and result are separate facts" / the fragment gate). Reason is a
+// quarantines the exact line span without advancing through it, because the
+// stored facts are append-only and a line skipped past could never be
+// re-derived. Reason is a
 // stable parse-level code; a caller maps it to transcript_malformed and never
 // branches on Detail. Recovery is an explicit user decision: retry leaves the
 // line available for re-ingest, while skip records an acknowledged gap.
@@ -343,7 +347,8 @@ const (
 
 // TranscriptBatch is the normalized result of parsing one byte range. It is a
 // value, not a stream, so a caller can inspect every fact before deciding what
-// to commit (ADR 0016 G5-11 step 4 keeps parsing outside the write).
+// to commit: parsing happens before the write, so the facts, the cursor and
+// the event commit together in one transaction.
 type TranscriptBatch struct {
 	Source      TranscriptFormat
 	Records     []TranscriptRecord

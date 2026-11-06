@@ -384,8 +384,9 @@ func (m Model) bindingForRow(r row) query.Field[query.BindingValue] {
 // beginNewProject is the 'n' key: it opens the new-project form directly,
 // without the actions sheet in between, and leaves the sheet closed behind
 // it (actionMenu.openForm). Creating a Project is the one thing a reader can
-// do on a workspace that has none (ADR 0023 dropped the default Project), so
-// it is the one action that gets its own key rather than five keystrokes
+// do on a workspace that has none (a new workspace gets no default Project:
+// once the Console could add one, a default saved no step), so it is the
+// one action that gets its own key rather than five keystrokes
 // through a menu of entries that all refuse.
 func (m Model) beginNewProject() Model {
 	choice, ok := m.newProjectChoice()
