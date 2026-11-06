@@ -86,9 +86,9 @@ func (cfg ProjectConfig) RepoNames() []string {
 	return names
 }
 
-// soleRepo is the project's one repo. It is what every caller that has no
-// crew to ask uses: ErrNoRepo for a project without a repo, ErrAmbiguousRepo
-// for one with several, each naming the fix.
+// soleRepo is the project's one repo: ErrNoRepo for a project without a
+// repo, ErrAmbiguousRepo for one with several, each naming the fix. Only the
+// tests call it today; CrewRepo makes the same choice for a crew.
 func (cfg ProjectConfig) soleRepo() (RepoConfig, error) {
 	switch len(cfg.Repos) {
 	case 0:
