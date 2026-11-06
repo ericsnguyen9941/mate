@@ -14,8 +14,8 @@ cannot delete issues or projects; Mates cancel instead.
 ```
 mate plugin add ./examples/plugins/linear --as linear-work --set project_url=<linear-workspace-url> --key t
 mate plugin doctor linear-work
-mate mate stop <project>
-mate mate start <project>
+mate mate-agent stop <project>
+mate mate-agent start <project>
 ```
 
 Then, in the Mate's pane, run `/mcp`, log in to `linear-work`, and ask the Mate

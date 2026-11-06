@@ -46,7 +46,7 @@ func shortWorkspace(t *testing.T, project string) *store.Workspace {
 	return w
 }
 
-// hostPlay plays `mate mate host` as deps.Hosts (CON-225): each start runs
+// hostPlay plays `mate mate-agent host` as deps.Hosts (CON-225): each start runs
 // a host in-process on the Mate's socket, holding the host lock as the
 // real process does, and the host leaves - socket and lock - when it has
 // answered its stop or is sent SIGTERM or SIGKILL.
@@ -202,7 +202,7 @@ func TestStartMateHeadlessRunsTheHostOutsideHerdrAndRecordsIt(t *testing.T) {
 		t.Fatalf("host starts = %+v", play.starts)
 	}
 	spec := play.starts[0]
-	want := []string{deps.Binary, "mate", "host", "shop", "--workspace", w.Root(), "--no-repl"}
+	want := []string{deps.Binary, "mate-agent", "host", "shop", "--workspace", w.Root(), "--no-repl"}
 	if !slices.Equal(spec.Argv, want) || spec.Dir != w.MateDir("shop") || spec.Log != matehost.LogPath(w.MateDir("shop")) {
 		t.Fatalf("host start = %+v, want %q in the Mate directory", spec, want)
 	}
@@ -368,7 +368,7 @@ func TestStartMateHeadlessReportsAHostThatExitedAtOnce(t *testing.T) {
 	w := shortWorkspace(t, "shop")
 	deps := fakeDeps(t, runtime.NewFake())
 	deps.Hosts = spawn.HostFuncs{Start: func(spec spawn.HostSpec) (int, <-chan struct{}, error) {
-		if err := os.WriteFile(spec.Log, []byte("mate mate host shop: the launch is missing\n"), 0o644); err != nil {
+		if err := os.WriteFile(spec.Log, []byte("mate mate-agent host shop: the launch is missing\n"), 0o644); err != nil {
 			return 0, nil, err
 		}
 		exited := make(chan struct{})

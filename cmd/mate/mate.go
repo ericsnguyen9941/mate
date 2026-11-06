@@ -11,10 +11,10 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// cmdMate dispatches `mate mate <start|stop|status|refresh|host|repl|tui>`.
+// cmdMate dispatches `mate mate-agent <start|stop|status|refresh|host|repl|tui>`.
 func (c cli) cmdMate(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return newUsageError("usage: mate mate <start|stop|status|refresh|host|repl|tui> <project> ...")
+		return newUsageError("usage: mate mate-agent <start|stop|status|refresh|host|repl|tui> <project> ...")
 	}
 	switch args[0] {
 	case "start":
@@ -32,16 +32,16 @@ func (c cli) cmdMate(args []string, stdout, stderr io.Writer) error {
 	case "tui":
 		return cmdMateTUI(args[1:], stdout, stderr)
 	default:
-		return newUsageErrorf("unknown mate subcommand %q", args[0])
+		return newUsageErrorf("unknown mate-agent subcommand %q", args[0])
 	}
 }
 
-// cmdMateStart implements `mate mate start <project> [--harness claude|codex] [--fresh] [--mode pane|headless]`.
+// cmdMateStart implements `mate mate-agent start <project> [--harness claude|codex] [--fresh] [--mode pane|headless]`.
 func cmdMateStart(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("mate start", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mate-agent start", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate mate start <project> [--workspace <dir>] [--harness "+harnessChoices(harness.RoleMate, "|")+"] [--fresh] [--mode pane|headless]")
+		fmt.Fprintln(stderr, "usage: mate mate-agent start <project> [--workspace <dir>] [--harness "+harnessChoices(harness.RoleMate, "|")+"] [--fresh] [--mode pane|headless]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	modeFlag := fs.String("mode", "", "pane (the harness's own TUI) or headless (mate's REPL, one harness run per message); default: project.yaml's mate.mode, else the mode the Mate last ran in, else headless when the harness can run one")
@@ -52,7 +52,7 @@ func cmdMateStart(args []string, stdout, stderr io.Writer) error {
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
-		return newUsageError("mate mate start: want exactly 1 argument: <project>")
+		return newUsageError("mate mate-agent start: want exactly 1 argument: <project>")
 	}
 	req := spawn.StartRequest{Project: fs.Arg(0), Resume: true, Fresh: *freshFlag, Mode: *modeFlag}
 	if *harnessFlag != "" {
@@ -63,7 +63,7 @@ func cmdMateStart(args []string, stdout, stderr io.Writer) error {
 		if !runsMate(kind) {
 			// spawn.StartMate refuses it too, through the harness's own
 			// launcher; this says so before a workspace is looked for.
-			return newUsageErrorf("mate mate start: the %s harness cannot run a Mate: it has no verified Hooks capability (choose %s)",
+			return newUsageErrorf("mate mate-agent start: the %s harness cannot run a Mate: it has no verified Hooks capability (choose %s)",
 				kind, harnessChoices(harness.RoleMate, " or "))
 		}
 		req.Harness = kind
@@ -103,20 +103,20 @@ func cmdMateStart(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// cmdMateStop implements `mate mate stop <project> [--no-stow]`.
+// cmdMateStop implements `mate mate-agent stop <project> [--no-stow]`.
 //
 // Stopped by the captain with its composer empty, the Mate is first asked
 // to stow (docs/mvp.md task 37, B7), exactly as the console's restart asks
 // it, and the stop waits for that turn up to outbox.DefaultStowCeiling. A
 // Mate mid-turn or with unsent text in its composer is stopped at once: a
-// captain who types `mate stop` wants it stopped, and only the console's
+// captain who types `mate mate-agent stop` wants it stopped, and only the console's
 // restart has a second press to ask with. A Mate stopping itself is never
 // asked - it would be waiting on its own turn.
 func (c cli) cmdMateStop(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("mate stop", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mate-agent stop", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate mate stop <project> [--no-stow] [--workspace <dir>]")
+		fmt.Fprintln(stderr, "usage: mate mate-agent stop <project> [--no-stow] [--workspace <dir>]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	noStowFlag := fs.Bool("no-stow", false, "stop at once, without asking the Mate to stow what exists only in its conversation")
@@ -125,7 +125,7 @@ func (c cli) cmdMateStop(args []string, stdout, stderr io.Writer) error {
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
-		return newUsageError("mate mate stop: want exactly 1 argument: <project>")
+		return newUsageError("mate mate-agent stop: want exactly 1 argument: <project>")
 	}
 	w, err := resolveStopWorkspace(*workspaceFlag)
 	if err != nil {
@@ -155,13 +155,13 @@ func mateStop(ctx context.Context, w *store.Workspace, deps spawn.Deps, project,
 	return nil
 }
 
-// cmdMateStatus implements `mate mate status <project>`. It prints one
+// cmdMateStatus implements `mate mate-agent status <project>`. It prints one
 // line: running, stopped or stale, with what Herdr was observed to say.
 func cmdMateStatus(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("mate status", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mate-agent status", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate mate status <project> [--workspace <dir>]")
+		fmt.Fprintln(stderr, "usage: mate mate-agent status <project> [--workspace <dir>]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
@@ -169,7 +169,7 @@ func cmdMateStatus(args []string, stdout, stderr io.Writer) error {
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
-		return newUsageError("mate mate status: want exactly 1 argument: <project>")
+		return newUsageError("mate mate-agent status: want exactly 1 argument: <project>")
 	}
 	w, err := resolveWorkspace(*workspaceFlag)
 	if err != nil {
@@ -185,14 +185,14 @@ func cmdMateStatus(args []string, stdout, stderr io.Writer) error {
 
 // cmdMateRefresh safely replaces the transcript; ordinary start still resumes.
 func cmdMateRefresh(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("mate refresh", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mate-agent refresh", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	workspace := fs.String("workspace", "", "workspace directory")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return newUsageError("usage: mate mate refresh <project> [--workspace <dir>]")
+		return newUsageError("usage: mate mate-agent refresh <project> [--workspace <dir>]")
 	}
 	w, err := resolveWorkspace(*workspace)
 	if err != nil {

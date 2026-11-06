@@ -269,9 +269,9 @@ func TestCrewStopOpensTheOldLayout(t *testing.T) {
 }
 
 // TestMateStopOpensTheOldLayout: with no herdr on PATH, a mate.meta that
-// records a pane makes migrate refuse; mate mate stop opens the old layout
+// records a pane makes migrate refuse; mate mate-agent stop opens the old layout
 // (it fails asking Herdr, not on the layout), and the refusal names the way
-// out: with herdr on PATH, mate mate stop stops it and migrate moves.
+// out: with herdr on PATH, mate mate-agent stop stops it and migrate moves.
 // Not parallel: it sets HERDR_CONFIG_PATH, PATH in the process environment through gitOnlyPath.
 func TestMateStopOpensTheOldLayout(t *testing.T) {
 	w, root := oldShopWorkspace(t)
@@ -282,11 +282,11 @@ func TestMateStopOpensTheOldLayout(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := testCLI().mainRun([]string{"migrate", root, "--dry-run"}, &stdout, &stderr); code != 1 ||
-		!strings.Contains(stderr.String(), "Herdr could not be asked; with herdr on PATH, run mate migrate again, or stop it with mate mate stop shop") {
+		!strings.Contains(stderr.String(), "Herdr could not be asked; with herdr on PATH, run mate migrate again, or stop it with mate mate-agent stop shop") {
 		t.Fatalf("migrate with no herdr: exit %d, stderr %q", code, stderr.String())
 	}
 	stderr.Reset()
-	if code := testCLI().mainRun([]string{"mate", "stop", "shop", "--no-stow", "--workspace", root}, &stdout, &stderr); code == 0 ||
+	if code := testCLI().mainRun([]string{"mate-agent", "stop", "shop", "--no-stow", "--workspace", root}, &stdout, &stderr); code == 0 ||
 		strings.Contains(stderr.String(), store.ErrLayoutOld.Error()) || !strings.Contains(stderr.String(), "herdr") {
 		t.Fatalf("mate stop with no herdr: exit %d, stderr %q; want a Herdr failure, not the layout", code, stderr.String())
 	}
@@ -298,7 +298,7 @@ func TestMateStopOpensTheOldLayout(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if code := testCLI().mainRun([]string{"mate", "stop", "shop", "--no-stow", "--workspace", root}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "shop: already gone") {
+	if code := testCLI().mainRun([]string{"mate-agent", "stop", "shop", "--no-stow", "--workspace", root}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "shop: already gone") {
 		t.Fatalf("mate stop with herdr: exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
 	}
 	stdout.Reset()

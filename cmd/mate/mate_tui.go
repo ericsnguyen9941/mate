@@ -19,16 +19,16 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// cmdMateTUI implements `mate mate tui <project>` (CON-227): the headless
+// cmdMateTUI implements `mate mate-agent tui <project>` (CON-227): the headless
 // Mate's session in the harness's own TUI, in this terminal, until the
 // captain closes it. The `tui` script in the Mate's directory runs it, and
-// the shell pane `mate mate start` opens beside a headless Mate starts
+// the shell pane `mate mate-agent start` opens beside a headless Mate starts
 // there. It needs no core: the flag and the turn lock are files.
 func cmdMateTUI(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("mate tui", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mate-agent tui", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate mate tui <project> [--workspace <dir>]")
+		fmt.Fprintln(stderr, "usage: mate mate-agent tui <project> [--workspace <dir>]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
@@ -36,7 +36,7 @@ func cmdMateTUI(args []string, stdout, stderr io.Writer) error {
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
-		return newUsageError("mate mate tui: want exactly 1 argument: <project>")
+		return newUsageError("mate mate-agent tui: want exactly 1 argument: <project>")
 	}
 	project := fs.Arg(0)
 	w, err := resolveWorkspace(*workspaceFlag)
@@ -55,23 +55,23 @@ func cmdMateTUI(args []string, stdout, stderr io.Writer) error {
 	return matehost.RunTUI(context.Background(), run)
 }
 
-// tuiRun is what `mate mate tui` runs for project's Mate: its host's
+// tuiRun is what `mate mate-agent tui` runs for project's Mate: its host's
 // launch, over this workspace's flag, turn lock and mate.meta.
 func tuiRun(w *store.Workspace, project string) (matehost.TUIRun, error) {
 	if _, ok := w.Project(project); !ok {
-		return matehost.TUIRun{}, fmt.Errorf("mate mate tui: no project %s in %s", project, w.Root())
+		return matehost.TUIRun{}, fmt.Errorf("mate mate-agent tui: no project %s in %s", project, w.Root())
 	}
 	meta, err := w.ReadMateMeta(project)
 	if err != nil {
 		return matehost.TUIRun{}, err
 	}
 	if meta[spawn.MetaMode] != spawn.ModeHeadless {
-		return matehost.TUIRun{}, fmt.Errorf("mate mate tui: the Mate of %s is not headless; its TUI is its own pane", project)
+		return matehost.TUIRun{}, fmt.Errorf("mate mate-agent tui: the Mate of %s is not headless; its TUI is its own pane", project)
 	}
 	mateDir := w.MateDir(project)
 	launch, err := matehost.ReadLaunch(mateDir)
 	if err != nil {
-		return matehost.TUIRun{}, fmt.Errorf("mate mate tui: the Mate of %s has no headless launch: %w (start it with `mate mate start %s`)", project, err, project)
+		return matehost.TUIRun{}, fmt.Errorf("mate mate-agent tui: the Mate of %s has no headless launch: %w (start it with `mate mate-agent start %s`)", project, err, project)
 	}
 	profile, err := harnesses.Lookup(harness.Kind(launch.Harness))
 	if err != nil {
@@ -97,7 +97,7 @@ func tuiRun(w *store.Workspace, project string) (matehost.TUIRun, error) {
 	return run, nil
 }
 
-// tuiFlag is the workspace's TUI flag held by `mate mate tui`.
+// tuiFlag is the workspace's TUI flag held by `mate mate-agent tui`.
 type tuiFlag struct {
 	lock   *store.TUILock
 	holder store.TUIHolder

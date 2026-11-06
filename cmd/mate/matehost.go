@@ -26,30 +26,30 @@ const newsPoll = 700 * time.Millisecond
 // before it is killed.
 const replQuitWait = 2 * time.Second
 
-// cmdMateHost implements `mate mate host <project>` (CON-78): the headless
+// cmdMateHost implements `mate mate-agent host <project>` (CON-78): the headless
 // Mate. spawn.StartMate starts it as a background process of its own,
 // outside Herdr, with no terminal and its output in host.log (CON-225);
 // run by hand in a terminal it works the same.
 //
 // The host runs until it is told to stop: the socket's stop op, SIGTERM or
 // SIGHUP. In a terminal it runs the REPL in the foreground as a process of
-// its own (`mate mate repl --in-pane`), a client of its socket like any
+// its own (`mate mate-agent repl --in-pane`), a client of its socket like any
 // other (CON-223): a REPL that ends, or crashes, is started again and the
 // Mate's turn goes on.
 func cmdMateHost(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("mate host", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mate-agent host", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate mate host <project> [--workspace <dir>] [--no-repl]")
+		fmt.Fprintln(stderr, "usage: mate mate-agent host <project> [--workspace <dir>] [--no-repl]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
-	noREPL := fs.Bool("no-repl", false, "run no REPL in this terminal; open one with `mate mate repl <project>`")
+	noREPL := fs.Bool("no-repl", false, "run no REPL in this terminal; open one with `mate mate-agent repl <project>`")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
-		return newUsageError("mate mate host: want exactly 1 argument: <project>")
+		return newUsageError("mate mate-agent host: want exactly 1 argument: <project>")
 	}
 	project := fs.Arg(0)
 	w, err := resolveWorkspace(*workspaceFlag)
@@ -61,13 +61,13 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("mate mate host: the Mate of %s already has a host running", project)
+		return fmt.Errorf("mate mate-agent host: the Mate of %s already has a host running", project)
 	}
 	defer release()
 	mateDir := w.MateDir(project)
 	launch, err := matehost.ReadLaunch(mateDir)
 	if err != nil {
-		return fmt.Errorf("mate mate host: %w (start it with `mate mate start %s`, which prepares the launch)", err, project)
+		return fmt.Errorf("mate mate-agent host: %w (start it with `mate mate-agent start %s`, which prepares the launch)", err, project)
 	}
 	profile, err := harnesses.Lookup(harness.Kind(launch.Harness))
 	if err != nil {
@@ -75,7 +75,7 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 	}
 	turns, ok := profile.(harness.HeadlessTurns)
 	if !ok {
-		return fmt.Errorf("mate mate host: the %s harness cannot run a headless Mate", launch.Harness)
+		return fmt.Errorf("mate mate-agent host: the %s harness cannot run a headless Mate", launch.Harness)
 	}
 	runner := &matehost.Runner{
 		Launch: launch,
@@ -94,7 +94,7 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 	// spawn starts the host as a process of its own, outside Herdr, with
 	// this output in host.log (CON-225): a line per start says which run
 	// the lines below it belong to.
-	fmt.Fprintf(stderr, "%s mate mate host %s: pid %d, session %s, socket %s\n",
+	fmt.Fprintf(stderr, "%s mate mate-agent host %s: pid %d, session %s, socket %s\n",
 		time.Now().UTC().Format(time.RFC3339), project, os.Getpid(), launch.SessionID, matehost.SocketPath(mateDir))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -142,35 +142,35 @@ func tryHostLock(w *store.Workspace, project string) (func(), bool, error) {
 	}
 }
 
-// runREPLProcess runs `mate mate repl --in-pane` on this terminal until it
+// runREPLProcess runs `mate mate-agent repl --in-pane` on this terminal until it
 // ends or ctx does; then it is told to quit, and killed if it will not.
 func runREPLProcess(ctx context.Context, bin, project, root string) error {
-	cmd := exec.CommandContext(ctx, bin, "mate", "repl", project, "--workspace", root, "--in-pane")
+	cmd := exec.CommandContext(ctx, bin, "mate-agent", "repl", project, "--workspace", root, "--in-pane")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = replQuitWait
 	return cmd.Run()
 }
 
-// cmdMateREPL implements `mate mate repl <project>` (CON-223): the Mate's
+// cmdMateREPL implements `mate mate-agent repl <project>` (CON-223): the Mate's
 // REPL as a client of its host's socket, in this terminal. The host runs
 // one in its own pane, and the console's stage one in its column (both
 // --in-pane, CON-224); another terminal can open one beside them, and
 // all show the same chat and the same draft.
 func cmdMateREPL(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("mate repl", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mate-agent repl", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mate mate repl <project> [--workspace <dir>]")
+		fmt.Fprintln(stderr, "usage: mate mate-agent repl <project> [--workspace <dir>]")
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
-	inPane := fs.Bool("in-pane", false, "run in a pane mate keeps open, which ^C never closes (mate mate host and the console's stage pass it)")
+	inPane := fs.Bool("in-pane", false, "run in a pane mate keeps open, which ^C never closes (mate mate-agent host and the console's stage pass it)")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
-		return newUsageError("mate mate repl: want exactly 1 argument: <project>")
+		return newUsageError("mate mate-agent repl: want exactly 1 argument: <project>")
 	}
 	project := fs.Arg(0)
 	w, err := resolveWorkspace(*workspaceFlag)
@@ -178,12 +178,12 @@ func cmdMateREPL(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if _, ok := w.Project(project); !ok {
-		return fmt.Errorf("mate mate repl: no project %s in %s", project, w.Root())
+		return fmt.Errorf("mate mate-agent repl: no project %s in %s", project, w.Root())
 	}
 	mateDir := w.MateDir(project)
 	launch, err := matehost.ReadLaunch(mateDir)
 	if err != nil {
-		return fmt.Errorf("mate mate repl: the Mate of %s has no headless host: %w", project, err)
+		return fmt.Errorf("mate mate-agent repl: the Mate of %s has no headless host: %w", project, err)
 	}
 	cfg := replConfig(w, project, launch)
 	cfg.Quit = !*inPane

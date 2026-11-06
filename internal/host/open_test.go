@@ -35,7 +35,7 @@ func TestAttachArgvTakesTheAgentOver(t *testing.T) {
 func TestREPLArgvRunsTheMatesREPLInThePane(t *testing.T) {
 	t.Parallel()
 	got := REPLArgv("/opt/mate", "/ws", "shop")
-	want := []string{"/opt/mate", "mate", "repl", "shop", "--workspace", "/ws", "--in-pane"}
+	want := []string{"/opt/mate", "mate-agent", "repl", "shop", "--workspace", "/ws", "--in-pane"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %q, want %q", got, want)
 	}

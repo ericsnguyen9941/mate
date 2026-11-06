@@ -242,7 +242,7 @@ The place to check is `/mcp` in the Mate's Claude pane.
 `harness` is the running Mate's (`actor.harness`, section 9); for a Mate that is not running it is `workspace.yaml`'s `defaults.mate_harness`, which a new start uses, and `unknown` when that is empty.
 Whether a harness can be given MCP servers is the harness profile's answer, not the dashboard's: the server asks `Deps.PluginHarness(kind)`, which `mate dashboard` and the console's dashboard wire to the profile's `MCPConfig` capability (`harness.Capabilities`), so `internal/dashboard` names no harness (the harness ratchet, `internal/harness/ratchet_test.go`).
 A harness whose `MCPConfig` is not verified answers with the capability's `Reason`, which is the app's `error`; a kind the binary does not have answers that it is unknown.
-The same capability decides the launch: a Mate launch carrying MCP servers on a harness without it is refused with `ErrMCPUnsupported`, so the dashboard and `mate mate start` cannot disagree.
+The same capability decides the launch: a Mate launch carrying MCP servers on a harness without it is refused with `ErrMCPUnsupported`, so the dashboard and `mate mate-agent start` cannot disagree.
 An `unknown` harness, or a server started without that seam, calls no app `harness unsupported`.
 Only an app with an MCP server can be `harness unsupported`; a skills-only or open-only app stays `configured`.
 While any app is unsupported the Mate will not start, so a `configured` app beside it carries an `error` saying so.

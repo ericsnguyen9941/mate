@@ -68,7 +68,7 @@ type sleepFunc func(context.Context, time.Duration) error
 
 func (f sleepFunc) Sleep(ctx context.Context, d time.Duration) error { return f(ctx, d) }
 
-// StowBeforeStop is the stow half of `mate mate stop`, also run by `mate
+// StowBeforeStop is the stow half of `mate mate-agent stop`, also run by `mate
 // project remove` and the console's remove before they stop the Mate. It
 // returns the words the stop reports for it: what the stow did, or why none
 // was asked for. The wait it starts is announced on stderr.

@@ -385,7 +385,7 @@ func TestConsoleStageRunsAHeadlessMatesREPL(t *testing.T) {
 		t.Fatalf("stage: %v", err)
 	}
 	stage := rec.of(roleStage)
-	want := []string{"/opt/mate", "mate", "repl", "shop", "--workspace", w.Root(), "--in-pane"}
+	want := []string{"/opt/mate", "mate-agent", "repl", "shop", "--workspace", w.Root(), "--in-pane"}
 	if len(stage) != 1 || !slices.Equal(stage[0].Argv, want) || !slices.Equal(stage[0].Env, rec.env) {
 		t.Fatalf("stage shown %+v, want %q with the console's PATH", stage, want)
 	}

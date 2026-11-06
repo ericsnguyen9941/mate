@@ -65,7 +65,7 @@ func TestCommandTableRowsAreComplete(t *testing.T) {
 		if strings.Contains(c.summary, "\n") {
 			t.Errorf("%v: summary must be one line, got %q", c.names, c.summary)
 		}
-		for _, name := range c.names {
+		for _, name := range slices.Concat(c.names, c.aliases) {
 			if name == "" || seen[name] {
 				t.Errorf("row %d: name %q is empty or already taken", i, name)
 			}
@@ -77,7 +77,7 @@ func TestCommandTableRowsAreComplete(t *testing.T) {
 func TestEveryCommandNameReachesItsRow(t *testing.T) {
 	t.Parallel()
 	for i, c := range testCLI().commands() {
-		for _, name := range c.names {
+		for _, name := range slices.Concat(c.names, c.aliases) {
 			s := newStubDispatcher()
 			s.isDir = func(string) bool { return true } // a same-named directory must not matter
 			var out, errw bytes.Buffer
@@ -104,7 +104,7 @@ func TestTableKeepsEveryCommandAndItsHandler(t *testing.T) {
 	cl := testCLI()
 	want := map[string]any{
 		"--version": cmdVersion, "-V": cmdVersion,
-		"init": cmdInit, "project": cl.cmdProject, "mate": cl.cmdMate,
+		"init": cmdInit, "project": cl.cmdProject, "mate-agent": cl.cmdMate,
 		"crew": nil, "brief": nil, "hook": nil,
 		"remember": cmdRemember, "memory": cmdMemory, "checkpoint": cmdCheckpoint,
 		"recall": cmdRecall, "learnings": cmdLearnings, "wake": cmdWake,
@@ -141,6 +141,33 @@ func TestVersionIsOneCommandWithTwoNames(t *testing.T) {
 		c, ok := lookupCommand(testCLI().commands(), name)
 		if !ok || !slices.Equal(c.names, []string{"--version", "-V"}) {
 			t.Fatalf("%s: row %v, ok=%v", name, c.names, ok)
+		}
+	}
+}
+
+// `mate mate` is the old name of `mate mate-agent` (CON-251): it still runs
+// the same handler, for the `tui` scripts, hosts and sessions that name it,
+// and usage never shows it.
+func TestMateIsAHiddenAliasOfMateAgent(t *testing.T) {
+	t.Parallel()
+	cl := testCLI()
+	c, ok := lookupCommand(cl.commands(), "mate")
+	if !ok || !slices.Equal(c.names, []string{"mate-agent"}) || reflect.ValueOf(c.run).Pointer() != reflect.ValueOf(cl.cmdMate).Pointer() {
+		t.Fatalf("mate: row %v, ok=%v; want the mate-agent row", c.names, ok)
+	}
+	usage := usageText(cl.commands())
+	if !strings.Contains(usage, "|mate-agent|") || !strings.Contains(usage, "\n  mate-agent ") {
+		t.Fatalf("usage does not list mate-agent:\n%s", usage)
+	}
+	if strings.Contains(usage, "|mate|") || strings.Contains(usage, "\n  mate ") || strings.Contains(usage, "mate mate") {
+		t.Fatalf("usage shows the alias mate:\n%s", usage)
+	}
+	// Both names run the same subcommands with the same output.
+	for _, name := range []string{"mate-agent", "mate"} {
+		var out, errw bytes.Buffer
+		err := cl.run([]string{name, "bogus"}, &out, &errw)
+		if err == nil || !strings.Contains(err.Error(), `unknown mate-agent subcommand "bogus"`) {
+			t.Fatalf("%s bogus: %v", name, err)
 		}
 	}
 }

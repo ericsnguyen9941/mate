@@ -14,11 +14,11 @@ _Avoid_: user, operator
 _Trong code_: `brief.Deciders`; `store.SourceUser` là dòng của captain trong `sent.log`
 
 **Mate**:
-Agent điều phối của một Project: nhận việc từ captain, giao cho Crew và xét kết quả Crew bàn giao. Mỗi Project có đúng một Mate.
+Agent điều phối của một Project: nhận việc từ captain, giao cho Crew và xét kết quả Crew bàn giao. Mỗi Project có đúng một Mate. Nhóm lệnh của nó là `mate mate-agent` (CON-251); `mate mate` là tên cũ, vẫn chạy nhưng không hiện trong usage; code, doc và lời gợi ý mới không viết `mate mate …`.
 _Trong code_: `harness.RoleMate`; `internal/spawn` khởi động và dừng Mate
 
 **Headless**:
-Kiểu chạy của agent Mate: không có TUI của harness, mỗi tin nhắn là một lần `claude -p`. Các lượt chạy trong host của Mate (`mate mate host`), một process nền riêng nằm ngoài Herdr, không có tab hay pane. Socket `host.sock` của host cho biết Mate còn sống hay không. REPL chỉ là một client của host. Kiểu còn lại là pane: TUI của Claude Code chạy trong pane Herdr (`mate.mode: pane`). Từ CON-236 Mate chỉ chạy trên harness có headless turns, tức Claude Code; Codex và pi chỉ chạy Crew.
+Kiểu chạy của agent Mate: không có TUI của harness, mỗi tin nhắn là một lần `claude -p`. Các lượt chạy trong host của Mate (`mate mate-agent host`), một process nền riêng nằm ngoài Herdr, không có tab hay pane. Socket `host.sock` của host cho biết Mate còn sống hay không. REPL chỉ là một client của host. Kiểu còn lại là pane: TUI của Claude Code chạy trong pane Herdr (`mate.mode: pane`). Từ CON-236 Mate chỉ chạy trên harness có headless turns, tức Claude Code; Codex và pi chỉ chạy Crew.
 _Avoid_: dùng "headless" cho mate core hay cho bất kỳ process nào khác
 _Trong code_: `spawn.ModeHeadless`; `internal/matehost`; `store.MateHostDetached`
 
@@ -96,7 +96,7 @@ _Avoid_: headless (chữ đó chỉ kiểu chạy của Mate)
 _Trong code_: `core.Engine` (`internal/core`)
 
 **TUI của Mate** (cờ TUI):
-Lúc session của một Mate headless được mở trong TUI gốc của harness (`./tui` trong pane shell của Mate, tức `mate mate tui`). Trong lúc đó host của Mate đó không chạy lượt nào, và Office, Agent City, console chỉ được xem; cờ là của cả workspace và tắt khi TUI tắt.
+Lúc session của một Mate headless được mở trong TUI gốc của harness (`./tui` trong pane shell của Mate, tức `mate mate-agent tui`). Trong lúc đó host của Mate đó không chạy lượt nào, và Office, Agent City, console chỉ được xem; cờ là của cả workspace và tắt khi TUI tắt.
 _Avoid_: dùng "TUI" cho console hay REPL của mate
 _Trong code_: `store.TUIHolder` (`.mate/tui.lock`); `query.TUIStatus`; `matehost.RunTUI`; `coreapi.ErrTUI`
 

@@ -204,7 +204,7 @@ type Options struct {
 	// host's lock, so it must not run fn before it returns.
 	After func(d time.Duration, fn func()) (stop func() bool)
 	// Paused reports whether the workspace's TUI flag is up (CON-227):
-	// `mate mate tui` holds `.mate/tui.lock`. While it is, the host starts
+	// `mate mate-agent tui` holds `.mate/tui.lock`. While it is, the host starts
 	// no turn - what waits stays queued and goes once the TUI closes -
 	// refuses what the captain sends (ErrTUI), and refuses app lines and a
 	// reload as a busy Mate does, so the outbox keeps them. Nil is never

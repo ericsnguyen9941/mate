@@ -80,7 +80,7 @@ Linear, driven by `LINEAR_API_KEY`.
 mate plugin add /path/to/tracker-plugin --as tracker-work \
   --set project_url=https://tracker.example/workspace [--key t]
 mate plugin doctor tracker-work
-mate mate stop <project> && mate mate start <project>  # repeat for running Mates
+mate mate-agent stop <project> && mate mate-agent start <project>  # repeat for running Mates
 ```
 
 Then, in the Mate's pane, run `/mcp` and log in to `tracker-work` (only when

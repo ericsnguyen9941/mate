@@ -32,6 +32,11 @@ type command struct {
 	// names are the words that select the command; usually one, and
 	// --version answers to -V as well.
 	names []string
+	// aliases select the command too, but usage never prints them: an
+	// old name kept working for what still runs it, as `mate mate` does
+	// for scripts, hosts and sessions from before `mate mate-agent`
+	// (CON-251).
+	aliases []string
 	// summary is the one line the usage text prints beside the names.
 	summary string
 	// run is the handler, given the arguments after the command's name.
@@ -50,7 +55,7 @@ func (c cli) commands() []command {
 	return []command{
 		{names: []string{"init"}, summary: "create a workspace, or open the one there", run: cmdInit},
 		{names: []string{"project"}, summary: "add, list, remove and configure projects", run: c.cmdProject},
-		{names: []string{"mate"}, summary: "start, stop, refresh or check a project's Mate, or open a headless one's TUI", run: c.cmdMate},
+		{names: []string{"mate-agent"}, aliases: []string{"mate"}, summary: "start, stop, refresh or check a project's Mate, or open a headless one's TUI", run: c.cmdMate},
 		{names: []string{"crew"}, summary: "spawn, list, stop, relaunch and budget crews", run: withStdin(c.cmdCrew)},
 		{names: []string{"brief"}, summary: "check, append to or revise a crew's brief", run: withStdin(cmdBrief)},
 		{names: []string{"remember"}, summary: "add one entry to a project's memory", run: cmdRemember},
@@ -144,10 +149,10 @@ func (d dispatcher) run(args []string, stdout, stderr io.Writer) error {
 	return newUsageErrorf("unknown command %q", args[0])
 }
 
-// lookupCommand finds the row one of whose names is name.
+// lookupCommand finds the row one of whose names or aliases is name.
 func lookupCommand(cmds []command, name string) (command, bool) {
 	for _, c := range cmds {
-		if slices.Contains(c.names, name) {
+		if slices.Contains(c.names, name) || slices.Contains(c.aliases, name) {
 			return c, true
 		}
 	}
@@ -268,7 +273,7 @@ func resolveWorkspace(flagVal string) (*store.Workspace, error) {
 }
 
 // resolveStopWorkspace is resolveWorkspace for `mate crew stop` and `mate
-// mate stop` alone: it opens a workspace on the old layout too
+// mate-agent stop` alone: it opens a workspace on the old layout too
 // (store.OpenForMigrate), because mate migrate refuses while a crew is open
 // or a Mate runs and names these two commands as the way out. Neither
 // writes a repo path. Every other command stays on resolveWorkspace.

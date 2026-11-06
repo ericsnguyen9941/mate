@@ -292,7 +292,7 @@ func TestRunTUIKilledReleasesTheFlag(t *testing.T) {
 	x.released(t)
 }
 
-// SIGTERM to `mate mate tui` (a force close) reaches the TUI, which ends.
+// SIGTERM to `mate mate-agent tui` (a force close) reaches the TUI, which ends.
 func TestRunTUIPassesSIGTERMOn(t *testing.T) {
 	x := newTUIFixture(t, "term")
 	done := x.start(t)

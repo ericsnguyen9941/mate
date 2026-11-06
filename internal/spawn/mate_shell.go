@@ -23,7 +23,7 @@ func ShellPaneLabel(project string) string { return "mate-" + project + "-shell"
 
 // TUIArgv is what the `tui` script in project's Mate directory runs.
 func TUIArgv(binary, root, project string) []string {
-	return []string{binary, "mate", "tui", project, "--workspace", root}
+	return []string{binary, "mate-agent", "tui", project, "--workspace", root}
 }
 
 // writeTUIScript writes the `tui` script into the Mate's directory, again
@@ -80,11 +80,11 @@ var errNoHerdrSession = errors.New("the workspace's Herdr session is not running
 
 // withMateShell gives a headless Mate that started its `tui` script and
 // its shell pane, and says in res what came of them. Neither fails the
-// start: the Mate runs, and `mate mate tui` works from any terminal.
+// start: the Mate runs, and `mate mate-agent tui` works from any terminal.
 func withMateShell(ctx context.Context, w *store.Workspace, deps Deps, spec runtime.SessionSpec, req StartRequest, mateDir string, res *StartResult) {
 	project := req.Project
 	if err := writeTUIScript(w, deps, project, mateDir); err != nil {
-		res.ShellNote = fmt.Sprintf("no %s script in %s (%s); run `mate mate tui %s`", matehost.TUIName, mateDir, oneLineErr(err), project)
+		res.ShellNote = fmt.Sprintf("no %s script in %s (%s); run `mate mate-agent tui %s`", matehost.TUIName, mateDir, oneLineErr(err), project)
 		return
 	}
 	tab, err := ensureMateShell(ctx, deps, spec, project, mateDir, req.NoHerdrServer)

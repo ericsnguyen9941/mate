@@ -110,7 +110,7 @@ new core, which writes its own record over the old one.
 | -- | -- |
 | `core.lock` | Held by the running engine. JSON: `pid`, `owner` (`core` or `console`), `started`, `version`, `binary`, `build` (sha256 of the binary when it started), `socket`, `url`, `lan_url`, `tcp_error`. The file stays after the engine ends. |
 | `core.sock` | The core's unix socket (0600): Office/City's routes and the clients' API (`/api/core`, `/api/snapshot`, `/api/act`, CON-212). Removed when the core stops. |
-| `tui.lock` | Held by `mate mate tui` while a Mate's session is open in the TUI (CON-227). JSON: `project`, `pid` (`mate mate tui`), `started`, `harness_pid` (Claude, while it runs). The file stays after it ends. |
+| `tui.lock` | Held by `mate mate-agent tui` while a Mate's session is open in the TUI (CON-227). JSON: `project`, `pid` (`mate mate-agent tui`), `started`, `harness_pid` (Claude, while it runs). The file stays after it ends. |
 | `core.log` | The output of every core: `mate core start` sends the core's output there, and a core in the foreground (`mate`, `mate core run`) appends what it prints to the terminal. Before it opens the log, either moves a log larger than 10 MB to `core.log.1`, keeping that one old log. The log of a core that is running is never rotated. |
 
 ## The headless Mates' hosts
@@ -140,8 +140,8 @@ mate core: Mate shop: host pid 4242 died; started again (1 of 3 in 10m), resumed
 | A host the core did not start (a start by hand, a UI's restart, recovery) | A new count, even before the core gave up. |
 
 The count lives in the core's memory: a restarted core counts from zero, and
-its recovery brings back a host that died meanwhile. `mate mate stop` and
-`mate mate start` from a shell do not take the core's action lock: a stop
+its recovery brings back a host that died meanwhile. `mate mate-agent stop` and
+`mate mate-agent start` from a shell do not take the core's action lock: a stop
 that lands in the instant the core restarts the same host can leave the new
 host running, or have it started once more; stop again.
 
@@ -151,7 +151,7 @@ A headless Mate's session can be opened in Claude Code's own TUI for a
 while (CON-227), for slash commands, `/mcp`, plan mode or a long back and
 forth. Starting a headless Mate opens a shell pane beside it in the
 workspace's Herdr session, `mate-<project>-shell`, cwd the Mate's
-directory; `./tui` there runs `mate mate tui <project>`, which works from
+directory; `./tui` there runs `mate mate-agent tui <project>`, which works from
 any terminal too and needs no core:
 
 1. It takes `.mate/tui.lock`, the workspace's TUI flag. One TUI per
@@ -171,15 +171,15 @@ While the flag is up:
 | Who | What it does |
 | -- | -- |
 | Office, City | Every button but Peek is off: "Mate shop đang mở TUI". A `POST /api/actions` is a 409 with `code: tui`. Reading, Peek and the history work |
-| The console | Opening, or when the flag goes up while it is open: `Mate shop đang mở TUI (pid 4242, từ 09:30). Tắt TUI? [y/N]`. `y` has the core send SIGTERM to `mate mate tui` and wait up to 10 s for the flag to go, then the console runs; `N` or Enter says `close the TUI of shop first` and exits 1 |
+| The console | Opening, or when the flag goes up while it is open: `Mate shop đang mở TUI (pid 4242, từ 09:30). Tắt TUI? [y/N]`. `y` has the core send SIGTERM to `mate mate-agent tui` and wait up to 10 s for the flag to go, then the console runs; `N` or Enter says `close the TUI of shop first` and exits 1 |
 | `POST /api/act` on `core.sock` | Refused with code `tui`, except `close_tui` and `peek` |
 | That Mate's REPL | A message is refused: "Mate đang mở TUI". An app line (a digest, `mate send`) waits in the outbox as for a busy Mate, and goes once the TUI closes |
 | That Mate's host | Runs no turn; alive, so the watch below restarts nothing |
 | The engine's loops | Run on: the observer, the PR sweep, the auto daemon of the other Projects, the watch over the hosts |
 
 The `pid` the UIs show is Claude's once it runs: `kill -9` of it ends the
-TUI, and `mate mate tui` lets the flag go and the host run on.
-`mate mate tui` killed outright lets its lock go, but Claude may run on
+TUI, and `mate mate-agent tui` lets the flag go and the host run on.
+`mate mate-agent tui` killed outright lets its lock go, but Claude may run on
 and write the session: the flag stays up while the `harness_pid` its
 record names still runs, and a force close then signals that process.
 While the TUI is open its lines wait in the outbox untried, so a TUI kept

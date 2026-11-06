@@ -52,7 +52,7 @@ type Snapshot struct {
 	// workspace with nothing to recover or one that has not started.
 	Recovery RecoveryStatus
 	// TUI is the workspace's TUI flag (CON-227): a headless Mate's session
-	// open in the harness's own TUI, `mate mate tui` holding
+	// open in the harness's own TUI, `mate mate-agent tui` holding
 	// `.mate/tui.lock`. Nil when none is open. While it is set every UI only
 	// looks. The engine puts it in after Load, as it does Recovery.
 	TUI *TUIStatus `json:"tui,omitempty"`
@@ -62,7 +62,7 @@ type Snapshot struct {
 type TUIStatus struct {
 	// Project is the Mate whose session is open in the TUI.
 	Project string `json:"project"`
-	// PID is `mate mate tui`'s process.
+	// PID is `mate mate-agent tui`'s process.
 	PID int `json:"pid"`
 	// Since is when it took the flag.
 	Since time.Time `json:"since"`

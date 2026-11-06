@@ -42,7 +42,7 @@ type StowOptions struct {
 	// Poll is the pause between looks; zero means the sender's Interval.
 	Poll time.Duration
 	// RequireEmpty stows only into a composer that is empty right now: a
-	// Mate mid-turn is reported and not stowed (`mate mate stop`, where
+	// Mate mid-turn is reported and not stowed (`mate mate-agent stop`, where
 	// the captain may want the Mate gone now). Without it a busy Mate is
 	// stowed once its turn ends, as any queued line is.
 	RequireEmpty bool

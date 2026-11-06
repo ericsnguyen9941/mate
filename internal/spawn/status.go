@@ -44,7 +44,7 @@ type Status struct {
 	Detail string
 }
 
-// Line is the single line `mate mate status` prints.
+// Line is the single line `mate mate-agent status` prints.
 func (s Status) Line() string {
 	session := s.SessionID
 	if session == "" {
@@ -100,7 +100,7 @@ func hostStatus(ctx context.Context, w *store.Workspace, project string, meta ma
 	}
 	if alive, asked := hostAlive(ctx, w, project); asked && alive {
 		out.State = StateRunning
-		out.Detail = fmt.Sprintf("headless host pid %s still runs but does not answer on %s; mate mate stop ends it", pid, socket)
+		out.Detail = fmt.Sprintf("headless host pid %s still runs but does not answer on %s; mate mate-agent stop ends it", pid, socket)
 		return out
 	}
 	out.State = StateStale

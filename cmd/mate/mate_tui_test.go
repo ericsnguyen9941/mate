@@ -28,7 +28,7 @@ func tuiWorkspace(t *testing.T) *store.Workspace {
 	return w
 }
 
-// `mate mate tui` takes the workspace's flag, refuses a second one with
+// `mate mate-agent tui` takes the workspace's flag, refuses a second one with
 // who holds it, and runs only over a headless Mate's launch, with the
 // harness's TUI argv (CON-227). The flag pauses only that Mate's host.
 func TestMateTUIRunsOverAHeadlessMatesLaunch(t *testing.T) {

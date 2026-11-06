@@ -21,7 +21,7 @@ import (
 )
 
 // TestMain runs this test binary as a REPL client when a test starts it so
-// (replHelper), to be killed like the REPL process `mate mate host` runs.
+// (replHelper), to be killed like the REPL process `mate mate-agent host` runs.
 func TestMain(m *testing.M) {
 	if sock := os.Getenv("MATE_TEST_REPL_HELPER"); sock != "" {
 		os.Exit(replHelper(sock, os.Getenv("MATE_TEST_REPL_TYPE")))

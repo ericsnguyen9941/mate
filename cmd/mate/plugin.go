@@ -178,7 +178,7 @@ func printAdded(stdout io.Writer, res plugin.AddResult, id, project string) {
 		fmt.Fprintf(stdout, "note: instance %s is enabled: false; the binding gives nothing until it is enabled\n", id)
 	}
 	fmt.Fprintln(stdout, "next:")
-	fmt.Fprintf(stdout, "  1. restart the Mate: mate mate stop %s, then mate mate start %s\n", project, project)
+	fmt.Fprintf(stdout, "  1. restart the Mate: mate mate-agent stop %s, then mate mate-agent start %s\n", project, project)
 	if res.Manifest.MCP != nil {
 		fmt.Fprintf(stdout, "  2. in the Mate's pane, run /mcp and log in to %s\n", id)
 		fmt.Fprintf(stdout, "  3. ask the Mate for one read through %s's tools to see them answer\n", id)

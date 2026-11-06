@@ -47,7 +47,7 @@ func TestNewWorkspaceRecordsTheRegistryDefaults(t *testing.T) {
 	}
 }
 
-// A harness offered for a Mate - in the Console's catalog and on `mate mate
+// A harness offered for a Mate - in the Console's catalog and on `mate mate-agent
 // start`'s usage line - is exactly one with verified Hooks and headless
 // turns, the rules StartMate refuses by (CON-236). Every harness is still in
 // the catalog, because a Crew runs on it either way.

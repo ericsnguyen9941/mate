@@ -2,7 +2,7 @@ package harness
 
 // HeadlessTurns is what a harness offers to run a Mate headless (CON-78):
 // one non-interactive run per message on one session. A profile that
-// implements it can be started with `mate mate start --mode headless`; one
+// implements it can be started with `mate mate-agent start --mode headless`; one
 // that does not is refused. Claude Code is the only one today.
 type HeadlessTurns interface {
 	// TurnArgs is one run's argv after the program: the launch args

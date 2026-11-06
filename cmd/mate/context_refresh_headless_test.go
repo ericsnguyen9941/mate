@@ -49,7 +49,7 @@ func TestContextRefreshKeepsTheHeadlessMatesHost(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	rt := deps.Runtime.(*runtime.Fake)
-	// playHosts plays `mate mate host`: a host on the Mate's socket whose
+	// playHosts plays `mate mate-agent host`: a host on the Mate's socket whose
 	// turns run a stand-in claude that answers every message.
 	notes := make(chan string, 4)
 	played := playHosts(t, w, &deps, "shop", func(l matehost.Launch, pid int) *matehost.Host {

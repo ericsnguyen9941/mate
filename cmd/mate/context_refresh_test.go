@@ -13,7 +13,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// contextRefresh runs one refresh as `mate mate refresh` (automatic false)
+// contextRefresh runs one refresh as `mate mate-agent refresh` (automatic false)
 // and the auto daemon (true) run it, through mateRefresher. The refresh's
 // own tests live in internal/refresh; the ones here and in the other
 // context_refresh_*_test.go files drive it end to end over the real

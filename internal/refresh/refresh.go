@@ -71,7 +71,7 @@ func New(ws *store.Workspace, deps Deps) *Refresher {
 //
 // automatic is the console's own refresh: it runs only for a quiet Mate
 // whose current session reached the project's context limit, and it puts
-// itself off without an error where the captain's `mate mate refresh` is
+// itself off without an error where the captain's `mate mate-agent refresh` is
 // told why. Run reports whether the Mate's session changed.
 func (r *Refresher) Run(ctx context.Context, project string, automatic bool) (bool, error) {
 	a, due, err := r.begin(ctx, project, automatic)
@@ -149,7 +149,7 @@ func (r *Refresher) begin(ctx context.Context, project string, automatic bool) (
 // Mate quiet by the answers its Stop hook logs to sent.log (mateQuiet). A
 // harness whose turn-end evidence is not that log - Codex's is its rollout
 // - or that declares none gives it nothing to judge by, so it is never
-// refreshed automatically; the captain's `mate mate refresh` still can,
+// refreshed automatically; the captain's `mate mate-agent refresh` still can,
 // though one that declares none cannot show the stow turn ended either, so
 // that refresh is put off when the stow times out.
 func (a *attempt) manualOnly(cfg store.ProjectConfig) bool {
