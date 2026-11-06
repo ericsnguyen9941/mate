@@ -295,8 +295,8 @@ const herdrDefaultRootTabLabel = "1"
 // herdrServerEnv is the environment for a herdr server mate itself
 // cold-starts (EnsureSession's startNamedServer, when no session is already
 // running). v1's Herdr adapter (G4-04) originally allowlisted a small,
-// fixed set of keys "so operator MATE_* / secrets are not inherited" and explicitly
-// flagged "whether Herdr needs env keys beyond the server allowlist" as
+// fixed set of keys "so operator MATE_* / secrets are not inherited" and
+// explicitly flagged "whether Herdr needs env keys beyond the server allowlist" as
 // unproven.
 //
 // It is now proven, live, that Herdr does: a herdr server spawned with that

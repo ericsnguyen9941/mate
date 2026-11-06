@@ -53,8 +53,9 @@ type Adapter interface {
 	// "down", "1", "enter") into the pane the agent currently occupies. It
 	// exists for exactly one caller - the startup-prompt settle step that
 	// answers a recognised directory-trust dialog, which a harness launched
-	// in a directory it never trusted stops on while Herdr still reports it
-	// started - and is not a
+	// in a directory it never trusted stops on while the start still looks
+	// successful (Codex reports idle; Claude reports blocked, which the
+	// start adopts as started) - and is not a
 	// general typing primitive: PromptAgent is how text reaches a harness.
 	SendKeys(ctx context.Context, handle AgentHandle, keys []string) error
 	// SendText types one line of literal text into the pane the agent
@@ -576,7 +577,8 @@ func AllocateSessionName(reg LiveNameRegistry, id WorkspaceID, policy CollisionP
 // The name is "mate-" plus 32 hex characters of SHA-256 over the raw
 // workspace id (case-sensitive, not folded). That width is 128 bits, so
 // distinct Mate-generated ids including ws_A1 / ws_a1, which v1's
-// lowercasing slug made collide, produce distinct session addresses. It is still a hash, not a Go-level
+// lowercasing slug made collide, produce distinct session addresses. It is
+// still a hash, not a Go-level
 // injection; SHA-256 collision remains the residual. Explicit SessionSpec.Name
 // is not derived this way and can still join an existing server; EnsureSession
 // writes a config-home owner marker for that case.

@@ -10,7 +10,8 @@ import (
 // StartupScreen classifies a bounded terminal snapshot of a harness pane taken
 // right after `agent start`. Only measured interactive prompts are recognised
 // per harness - the directory-trust dialog measured on 2026-09-14, which no
-// permission flag clears, and, for Codex, the release-update prompt measured on 2026-09-18 - and
+// permission flag clears, and, for Codex, the release-update prompt
+// measured on 2026-09-18 - and
 // everything that is not one of those and not the empty composer is
 // Unrecognized. That last value is the point: the caller answers a recognised
 // dialog and refuses to press anything into a screen it cannot name, so a

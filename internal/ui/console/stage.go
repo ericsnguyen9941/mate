@@ -170,10 +170,10 @@ func (m Model) stageRefusal(r row) (string, bool) {
 		// reserved is not a refusal. application.ResolveAttachTarget (the
 		// CLI's own resolution, which reads only recorded state) accepts any
 		// held binding that is not stale - reserved included - and a
-		// reserved binding is frequently a live agent: a SIGKILL after the
-		// agent started but before the spawn recorded it running leaves
-		// `preparing` + reserved binding + live agent, and nothing adopts or
-		// reaps that on its own. Refusing it here would
+		// reserved binding is frequently a live agent: in v1, a SIGKILL
+		// after the agent started but before the spawn recorded it running
+		// left `preparing` + reserved binding + live agent, and nothing
+		// adopted or reaped that on its own. Refusing it here would
 		// refuse an attach the CLI allows, and would hide the one session a
 		// crash recovery most needs to reach. The Agent View is enterable
 		// for the same reason (stageTargetAvailable, session_mode.go).

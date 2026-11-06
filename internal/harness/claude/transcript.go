@@ -618,8 +618,8 @@ func (p *claudeParse) addUser(rec claudeRecord, raw string, offset int64, ordina
 	// measured:
 	//
 	//   - A prompt is not only a plain-string one. Restricting openers to
-	//     string content (v1's first draft of this rule) misses the 28 turns opened
-	//     by a block-array prompt - one carrying an image or an attachment -
+	//     string content (v1's first draft of this rule) misses the 28
+	//     turns opened by a block-array prompt - one carrying an image or an attachment -
 	//     which misattributes 81 assistant records to the previous turn and
 	//     leaves 196 with no turn at all, against 6 under this rule.
 	//   - A tool_result never introduces an id of its own (0 of 23,123), and
