@@ -3,21 +3,8 @@ package store
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"time"
 )
-
-// CrewStopLock is `projects/<project>/crews/<crew>.stop.lock`, held for the
-// whole of one `crew stop`: from before the agent is stopped until the meta
-// says the task is over.
-//
-// The observer reads it. Between the two moments Herdr no longer has the
-// agent while the meta still names it, and without the lock the observer
-// reads that window as the agent having vanished: every stop of
-// hellovietnam's crews up to 2026-10-13 left a `runtime_lost` incident open.
-func (p Paths) CrewStopLock(project, crew string) string {
-	return filepath.Join(p.CrewsDir(project), crew+".stop.lock")
-}
 
 // LockCrewStop waits for the crew's stop lock and returns what releases it.
 // The wait ends with ctx. The lock is advisory and dies with the process, so

@@ -292,7 +292,11 @@ keep writing files directly.
 ## 3. State files in `.mate/`
 
 Paths are relative to `.mate/`; `<p>` is a project, `<c>` a crew. Path
-helpers live in `internal/store/layout.go`. `internal/store` says it is the
+helpers are methods of `store.Paths` in `internal/store/layout*.go`:
+`layout.go` for the workspace's own files, `layout_project.go`,
+`layout_mate.go` and `layout_crew.go` for the rest. Every other file of
+`internal/store` holds one responsibility group, listed in
+`internal/store/doc.go` (CON-239). `internal/store` says it is the
 only package that touches `.mate/`; the Owner column shows where that is not
 true yet. Splitting `store.Workspace` by responsibility, with narrow
 interfaces on the side of each reader, is planned in
@@ -338,7 +342,7 @@ creates and removes; `teardown` first stops what the worktree started.
 
 Each test fails `make check` when its rule breaks. The first four are the
 ones CON-179 names; the next three came with CON-184, CON-206 and CON-207,
-the last with CON-190.
+then one each with CON-190 and CON-239.
 They add local rules to the repo-wide layer rule, which
 `internal/archtest/layers_test.go` checks (section 1).
 
@@ -352,6 +356,7 @@ They add local rules to the repo-wide layer rule, which
 | `internal/coreapi/boundary_test.go` | `internal/coreapi` imports the standard library and `internal/query` only |
 | `internal/core/boundary_test.go` | Nothing `internal/core` links, transitively, is under `cmd/` or `internal/ui/` |
 | `internal/runtime/herdr/boundary_test.go` | Outside `internal/runtime/herdr`, only `internal/spawn` (which builds the live adapter in `LiveDeps`) imports it in a non-test file; the rest of mate reaches Herdr through `runtime.Adapter`, `runtime.ReadAdapter` and `runtime.SessionStream` |
+| `internal/store/groups_test.go` | Every non-test file of `internal/store` that declares a method of `Workspace`, `Paths` or `Migration` is in one group of `methodGroups`; each method the table lists is in a file of its group; `workspace.go` declares no method; `Paths` methods are only in `layout*.go`, which hold no other method of these types and import only `fmt` and `path/filepath` |
 
 ## 5. Where to make a change
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -132,6 +131,22 @@ func (w *Workspace) ReadSent(project string, from int64) ([]SentEntry, int64, er
 	return entries, next, nil
 }
 
+// SentLogSize is the current size of sent.log, zero when it does not exist:
+// the offset an item records as SentLogFrom.
+func (w *Workspace) SentLogSize(project string) (int64, error) {
+	if err := ValidateProjectName(project); err != nil {
+		return 0, err
+	}
+	info, err := os.Stat(w.SentLog(project))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
 func parseSent(line string) (SentEntry, bool) {
 	fields := strings.SplitN(line, sentSep, 4)
 	if len(fields) != 4 {
@@ -149,28 +164,6 @@ func parseSent(line string) (SentEntry, bool) {
 // LogLine); newlines in it become spaces.
 func (w *Workspace) AppendJevLog(line string) error {
 	return w.appendLine(w.JevLog(), oneLine(line))
-}
-
-// appendLine writes line plus a newline to path in one O_APPEND write, holding
-// an exclusive lock for the write.
-func (w *Workspace) appendLine(path, line string) error {
-	if _, err := w.resolve(path); err != nil {
-		return err
-	}
-	if err := w.mkdirAll(filepath.Dir(path)); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := lockFile(f, true); err != nil {
-		return err
-	}
-	defer unlockFile(f)
-	_, err = f.WriteString(line + "\n")
-	return err
 }
 
 type rawLine struct {

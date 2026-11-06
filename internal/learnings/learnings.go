@@ -73,7 +73,7 @@ var bullet = regexp.MustCompile(`^(?:[-*]|(\d+)[.)])\s+(.*?)\s*(?:[-—–|;·]+
 
 // Open is every open prediction of a project's records, records in name
 // order, bullets in file order. A record without the section has none.
-func Open(w *store.Workspace, project string) ([]Prediction, error) {
+func Open(w Workspace, project string) ([]Prediction, error) {
 	all, err := List(w, project)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func Open(w *store.Workspace, project string) ([]Prediction, error) {
 }
 
 // List is every prediction of a project's records, open or closed.
-func List(w *store.Workspace, project string) ([]Prediction, error) {
+func List(w Workspace, project string) ([]Prediction, error) {
 	entries, err := os.ReadDir(w.LearningsDir(project))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -115,7 +115,7 @@ func List(w *store.Workspace, project string) ([]Prediction, error) {
 }
 
 // Read is one record's predictions.
-func Read(w *store.Workspace, project, crew string) ([]Prediction, error) {
+func Read(w Workspace, project, crew string) ([]Prediction, error) {
 	path := w.CrewLearning(project, crew)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -146,7 +146,7 @@ var ErrBadOutcome = errors.New("learnings: outcome must be one of " + strings.Jo
 // up to `outcome:` verbatim: `outcome: <outcome> (<evidence>, <date>)`. A
 // closed prediction may be closed again when later evidence changes the
 // verdict; the previous one is overwritten, the record's history is git's.
-func Close(w *store.Workspace, project, crew, id, outcome, evidence string, today time.Time) (Prediction, error) {
+func Close(w Workspace, project, crew, id, outcome, evidence string, today time.Time) (Prediction, error) {
 	outcome = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(outcome, "-", " ")))
 	known := false
 	for _, o := range Outcomes {

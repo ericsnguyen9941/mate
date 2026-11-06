@@ -29,7 +29,7 @@ const (
 // page's diagnostics as one bounded page of text. It reads through
 // dashboard.Server so the two can never disagree, and it adds no
 // measurement of its own: every number is the ledger's or the projection's.
-func writeWhy(ctx context.Context, out io.Writer, w *store.Workspace, handle *db.DB, deps dashboard.Deps, project, crew string) error {
+func writeWhy(ctx context.Context, out io.Writer, w Workspace, handle *db.DB, deps dashboard.Deps, project, crew string) error {
 	if err := store.ValidateCrewID(crew); err != nil {
 		return err
 	}

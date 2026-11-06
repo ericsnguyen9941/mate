@@ -88,7 +88,7 @@ var Alive = func(pid int) bool {
 }
 
 // ReadPID is the pid in the crew's `.prwatch` file; 0 when there is none.
-func ReadPID(w *store.Workspace, project, crew string) int {
+func ReadPID(w Workspace, project, crew string) int {
 	data, err := os.ReadFile(w.CrewPRWatch(project, crew))
 	if err != nil {
 		return 0
@@ -101,7 +101,7 @@ func ReadPID(w *store.Workspace, project, crew string) int {
 }
 
 // WritePID records the watcher's pid in the crew's `.prwatch` file.
-func WritePID(w *store.Workspace, project, crew string, pid int) error {
+func WritePID(w Workspace, project, crew string, pid int) error {
 	if err := store.ValidateProjectName(project); err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func WritePID(w *store.Workspace, project, crew string, pid int) error {
 
 // RemovePID deletes the `.prwatch` file when it still names pid, so a
 // watcher that is exiting never removes the file of the one that replaced it.
-func RemovePID(w *store.Workspace, project, crew string, pid int) {
+func RemovePID(w Workspace, project, crew string, pid int) {
 	if ReadPID(w, project, crew) == pid {
 		_ = os.Remove(w.CrewPRWatch(project, crew))
 	}
@@ -124,7 +124,7 @@ func RemovePID(w *store.Workspace, project, crew string, pid int) {
 
 // Running reports whether the crew's watcher is alive according to its pid
 // file.
-func Running(w *store.Workspace, project, crew string) bool {
+func Running(w Workspace, project, crew string) bool {
 	pid := ReadPID(w, project, crew)
 	return pid != 0 && Alive(pid)
 }
@@ -140,7 +140,7 @@ type Started struct {
 // request: a live pid in `.prwatch` is left alone, otherwise one is started
 // through st and its pid recorded. It is what `mate pr watch` does, and what
 // recovery does for a crew whose watcher died (docs/mvp.md M18).
-func Ensure(w *store.Workspace, st Starter, project, crew, url string) (Started, error) {
+func Ensure(w Workspace, st Starter, project, crew, url string) (Started, error) {
 	if pid := ReadPID(w, project, crew); pid != 0 && Alive(pid) {
 		return Started{PID: pid, Already: true}, nil
 	}

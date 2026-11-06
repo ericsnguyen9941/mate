@@ -126,15 +126,6 @@ type OutboxItem struct {
 // Queued reports whether the item is still waiting.
 func (i OutboxItem) Queued() bool { return i.State == OutboxQueued }
 
-// OutboxFile is `projects/<project>/mate/.outbox`.
-func (p Paths) OutboxFile(project string) string {
-	return filepath.Join(p.MateDir(project), outboxName)
-}
-
-func (p Paths) outboxLockFile(project string) string {
-	return filepath.Join(p.MateDir(project), outboxLockName)
-}
-
 // ReadOutbox returns a project's outbox, oldest first. A missing file is an
 // empty outbox. It takes no lock: the file is only ever replaced by rename,
 // so a reader sees one whole version of it. A line that does not parse is
@@ -269,20 +260,4 @@ func compactOutbox(items []OutboxItem, now time.Time) []OutboxItem {
 		}
 	}
 	return out
-}
-
-// SentLogSize is the current size of sent.log, zero when it does not exist:
-// the offset an item records as SentLogFrom.
-func (w *Workspace) SentLogSize(project string) (int64, error) {
-	if err := ValidateProjectName(project); err != nil {
-		return 0, err
-	}
-	info, err := os.Stat(w.SentLog(project))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	return info.Size(), nil
 }

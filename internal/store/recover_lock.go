@@ -3,18 +3,12 @@ package store
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"time"
 )
 
 // recoverLockName is the lock two consoles opened at once take turns on, so
 // only one of them restarts what a machine restart took.
 const recoverLockName = "recover.lock"
-
-// RecoverLockFile is `.mate/recover.lock`.
-func (p Paths) RecoverLockFile() string {
-	return filepath.Join(p.StateDir(), recoverLockName)
-}
 
 // LockRecover waits for the recovery lock and returns what releases it. The
 // wait ends with ctx. The lock is advisory and dies with the process, so a
