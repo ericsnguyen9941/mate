@@ -40,12 +40,12 @@ func (w *Workspace) SetMode(project string, auto bool) error {
 		if err := w.removeFlag(w.ManualHold(project)); err != nil {
 			return err
 		}
-		return w.SetAuto(project, true)
+		return w.setAuto(project, true)
 	}
 	if err := w.writeFile(w.ManualHold(project), nil, 0o644); err != nil {
 		return err
 	}
-	return w.SetAuto(project, false)
+	return w.setAuto(project, false)
 }
 
 func (w *Workspace) removeFlag(path string) error {
@@ -58,9 +58,9 @@ func (w *Workspace) removeFlag(path string) error {
 	return nil
 }
 
-// SetAuto creates or removes `mate/.auto`. It records the mode, it does not
+// setAuto creates or removes `mate/.auto`. It records the mode, it does not
 // decide it: only the hold does (Auto). Choosing a mode is SetMode.
-func (w *Workspace) SetAuto(project string, on bool) error {
+func (w *Workspace) setAuto(project string, on bool) error {
 	if err := ValidateProjectName(project); err != nil {
 		return err
 	}

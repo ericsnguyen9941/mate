@@ -13,7 +13,7 @@ func (w *Workspace) LockCrewStop(ctx context.Context, project, crew string) (unl
 	if err := os.MkdirAll(w.CrewsDir(project), 0o755); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(w.CrewStopLock(project, crew), os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(w.crewStopLock(project, crew), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (w *Workspace) LockCrewStop(ctx context.Context, project, crew string) (unl
 // any process. It creates nothing: a crew that was never stopped has no lock
 // file, and nobody holds it.
 func (w *Workspace) CrewStopping(project, crew string) (bool, error) {
-	f, err := os.OpenFile(w.CrewStopLock(project, crew), os.O_RDWR, 0)
+	f, err := os.OpenFile(w.crewStopLock(project, crew), os.O_RDWR, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil

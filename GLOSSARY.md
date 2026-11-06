@@ -77,7 +77,7 @@ _Trong code_: `internal/outbox`; `store.OutboxItem`
 
 **Wake**:
 Lần đọc Mate làm khi bị đánh thức: mọi việc đang mở, các dòng trạng thái mới và trạng thái từng Crew, gom trong một lần.
-_Trong code_: `internal/wake` (`wake.Render`); `store.Workspace.WakeCursorFile`
+_Trong code_: `internal/wake` (`wake.Render`); `store.Workspace.ReadWakeCursor`
 
 **Stow**:
 Lời mate nhắc Mate ghi lại những gì chỉ có trong hội thoại, ngay trước khi Mate bị restart hay đổi phiên.

@@ -20,7 +20,7 @@ const (
 // The lock dies with the process, so a migrate that crashed leaves nothing
 // to clean up.
 func (w *Workspace) LockMigrate() (unlock func(), acquired bool, err error) {
-	f, err := os.OpenFile(w.MigrateLockFile(), os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(w.migrateLockFile(), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, false, err
 	}
@@ -39,7 +39,7 @@ func (w *Workspace) LockMigrate() (unlock func(), acquired bool, err error) {
 // It creates nothing: a workspace that never ran a migrate has no lock file,
 // and nobody holds it.
 func (w *Workspace) MigrateLocked() (bool, error) {
-	f, err := os.OpenFile(w.MigrateLockFile(), os.O_RDWR, 0)
+	f, err := os.OpenFile(w.migrateLockFile(), os.O_RDWR, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil

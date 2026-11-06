@@ -83,10 +83,10 @@ func Init(workspaceDir string, defaults Defaults) (*Workspace, error) {
 		Root:     root,
 		Defaults: defaults,
 	})
-	if err := w.mkdirAll(w.ProjectsDir()); err != nil {
+	if err := w.mkdirAll(w.projectsDir()); err != nil {
 		return nil, err
 	}
-	if err := w.SaveConfig(); err != nil {
+	if err := w.saveConfig(); err != nil {
 		return nil, err
 	}
 	// The captain's rules for every Mate. Every Mate's bootstrap reads this

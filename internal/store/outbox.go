@@ -134,7 +134,7 @@ func (w *Workspace) ReadOutbox(project string) ([]OutboxItem, error) {
 	if err := ValidateProjectName(project); err != nil {
 		return nil, err
 	}
-	return readOutboxFile(w.OutboxFile(project))
+	return readOutboxFile(w.outboxFile(project))
 }
 
 func readOutboxFile(path string) ([]OutboxItem, error) {
@@ -192,7 +192,7 @@ func (w *Workspace) UpdateOutbox(project string, now time.Time,
 	}
 	defer unlockFile(lock)
 
-	items, err := readOutboxFile(w.OutboxFile(project))
+	items, err := readOutboxFile(w.outboxFile(project))
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func (w *Workspace) writeOutbox(project string, items []OutboxItem) error {
 		b.Write(line)
 		b.WriteByte('\n')
 	}
-	return w.writeFile(w.OutboxFile(project), b.Bytes(), 0o644)
+	return w.writeFile(w.outboxFile(project), b.Bytes(), 0o644)
 }
 
 // compactOutbox applies the retention rule of the package comment, keeping

@@ -2,12 +2,12 @@ package store
 
 import "path/filepath"
 
-// ProjectsDir is `<root>/.mate/projects`.
-func (p Paths) ProjectsDir() string { return filepath.Join(p.StateDir(), projectsDirName) }
+// projectsDir is `<root>/.mate/projects`.
+func (p Paths) projectsDir() string { return filepath.Join(p.StateDir(), projectsDirName) }
 
 // ProjectDir is `<root>/.mate/projects/<project>`.
 func (p Paths) ProjectDir(project string) string {
-	return filepath.Join(p.ProjectsDir(), project)
+	return filepath.Join(p.projectsDir(), project)
 }
 
 // ProjectHome is `<root>/<project>`, the project's own directory: the user's,

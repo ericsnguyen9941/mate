@@ -96,11 +96,11 @@ func (l *CoreLock) Unlock() {
 	_ = l.f.Close()
 }
 
-// CoreHolder reads who wrote core.lock last. It says nothing about whether
+// coreHolder reads who wrote core.lock last. It says nothing about whether
 // that engine still runs; CoreRunning does. While the lock is held the
 // record may be read in the instant its holder writes it; readHeldRecord
 // tries again then.
-func (w *Workspace) CoreHolder() (CoreHolder, error) {
+func (w *Workspace) coreHolder() (CoreHolder, error) {
 	var h CoreHolder
 	err := readHolder(w.CoreLockFile(), &h)
 	return h, err

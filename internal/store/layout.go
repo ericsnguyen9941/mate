@@ -78,11 +78,11 @@ func (p Paths) PricingFile() string { return filepath.Join(p.StateDir(), pricing
 // it holds switches and paths, never a secret itself.
 func (p Paths) EnvFile() string { return filepath.Join(p.StateDir(), envFileName) }
 
-// JevLog is `<root>/.mate/jev.log`: one line per request the Jev observer
+// jevLog is `<root>/.mate/jev.log`: one line per request the Jev observer
 // chain sent (internal/screen/chain), only while `.mate/.env` turns the
 // chain on (a readable key, MATE_JEV not off or fixture). It never holds
 // screen text or a key.
-func (p Paths) JevLog() string { return filepath.Join(p.StateDir(), jevLogName) }
+func (p Paths) jevLog() string { return filepath.Join(p.StateDir(), jevLogName) }
 
 // ScreensDir is `<root>/.mate/screens`: the text of every screen the Jev
 // observer chain was asked to name a pane state for, one file per screen
@@ -111,17 +111,17 @@ func (p Paths) CoreSocket() string { return filepath.Join(p.StateDir(), coreSock
 // the background (CON-213).
 func (p Paths) CoreLogFile() string { return filepath.Join(p.StateDir(), coreLogName) }
 
-// TUILockFile is `.mate/tui.lock`.
-func (p Paths) TUILockFile() string { return filepath.Join(p.StateDir(), tuiLockName) }
+// tuiLockFile is `.mate/tui.lock`.
+func (p Paths) tuiLockFile() string { return filepath.Join(p.StateDir(), tuiLockName) }
 
-// RecoverLockFile is `.mate/recover.lock`.
-func (p Paths) RecoverLockFile() string {
+// recoverLockFile is `.mate/recover.lock`.
+func (p Paths) recoverLockFile() string {
 	return filepath.Join(p.StateDir(), recoverLockName)
 }
 
-// MigrateLockFile is `.mate/migrate.lock`, held for the whole of one
+// migrateLockFile is `.mate/migrate.lock`, held for the whole of one
 // `mate migrate`.
-func (p Paths) MigrateLockFile() string {
+func (p Paths) migrateLockFile() string {
 	return filepath.Join(p.StateDir(), migrateLockName)
 }
 
