@@ -297,10 +297,11 @@ func whyDuration(ms *int64) string {
 	return (time.Duration(*ms) * time.Millisecond).String()
 }
 
-// The helpers below are private copies of internal/usage's, kept here so
-// this package does not depend on usage; they are part of the `--why` head
-// and of the learning record's usage section, and must render a duration
-// the way usage's ledger renders it (its WAITED column).
+// waitedWord and formatAge are private copies of internal/usage's, kept
+// here so this package does not depend on usage; they are part of the
+// `--why` head and of the learning record's usage section, and must render
+// a duration the way usage's ledger renders it (its WAITED column).
+// oneLineMsg moved here from usage with RecordAtClose, its only user there.
 
 // waitedWord renders a millisecond total the way formatAge renders an age:
 // the largest whole unit that keeps the number readable.
