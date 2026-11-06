@@ -35,12 +35,17 @@ func harnessChoices(role harness.AgentRole, sep string) string {
 	return strings.Join(names, sep)
 }
 
-// runsMate reports whether a registered harness can run a Mate: the rule
+// runsMate reports whether a registered harness can run a Mate: the rules
 // `mate mate start` refuses by (spawn.StartMate), a verified Hooks
-// capability, because a Mate's memory and inbox rest on its hooks.
+// capability, because a Mate's memory and inbox rest on its hooks, and
+// headless turns, because a Mate runs only on such a harness (CON-236).
 func runsMate(k harness.Kind) bool {
 	p, err := harnesses.Lookup(k)
-	return err == nil && p.Capabilities().Hooks.Verified()
+	if err != nil || !p.Capabilities().Hooks.Verified() {
+		return false
+	}
+	_, ok := p.(harness.HeadlessTurns)
+	return ok
 }
 
 // pluginHarness is the dashboard's Deps.PluginHarness: nil when a Mate on

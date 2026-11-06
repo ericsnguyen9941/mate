@@ -165,6 +165,10 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 			"the %s harness cannot run a Mate: it declares no verified Hooks capability (%s); it can still run a Crew",
 			kind, capReason(hooks.Status, hooks.Reason)))
 	}
+	if _, ok := profile.(harness.HeadlessTurns); deps.MateNeedsHeadless && !ok {
+		return StartResult{}, observability.NewError(observability.CodeUsage, fmt.Sprintf(
+			"the %s harness cannot run a Mate: a Mate runs only on a harness with headless turns; it can still run a Crew", kind))
+	}
 
 	// 1. The recorded Mate, re-checked against Herdr. The meta alone is
 	// never trusted: a stale one is reported and overwritten.

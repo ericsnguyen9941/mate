@@ -48,10 +48,10 @@ func TestNewWorkspaceRecordsTheRegistryDefaults(t *testing.T) {
 }
 
 // A harness offered for a Mate - in the Console's catalog and on `mate mate
-// start`'s usage line - is exactly one whose Hooks are verified, the rule
-// StartMate refuses by. Every harness is still in the catalog, because a
-// Crew runs on it either way.
-func TestOnlyAHarnessWithHooksIsOfferedForAMate(t *testing.T) {
+// start`'s usage line - is exactly one with verified Hooks and headless
+// turns, the rules StartMate refuses by (CON-236). Every harness is still in
+// the catalog, because a Crew runs on it either way.
+func TestOnlyAHarnessWithHooksAndHeadlessTurnsIsOfferedForAMate(t *testing.T) {
 	t.Parallel()
 	mates := strings.Split(harnessChoices(harness.RoleMate, "|"), "|")
 	for _, h := range consoleHarnesses().List {
@@ -59,12 +59,13 @@ func TestOnlyAHarnessWithHooksIsOfferedForAMate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		hooks := p.Capabilities().Hooks.Verified()
-		if h.Mate != hooks {
-			t.Errorf("%s: offered for a Mate = %v, Hooks verified = %v", h.Kind, h.Mate, hooks)
+		_, headless := p.(harness.HeadlessTurns)
+		runs := p.Capabilities().Hooks.Verified() && headless
+		if h.Mate != runs {
+			t.Errorf("%s: offered for a Mate = %v, verified Hooks and headless turns = %v", h.Kind, h.Mate, runs)
 		}
-		if got := slices.Contains(mates, string(h.Kind)); got != hooks {
-			t.Errorf("%s: in the Mate usage choices %q = %v, Hooks verified = %v", h.Kind, mates, got, hooks)
+		if got := slices.Contains(mates, string(h.Kind)); got != runs {
+			t.Errorf("%s: in the Mate usage choices %q = %v, verified Hooks and headless turns = %v", h.Kind, mates, got, runs)
 		}
 	}
 }

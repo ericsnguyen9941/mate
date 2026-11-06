@@ -124,6 +124,12 @@ type Deps struct {
 	// nor the last run names one. LiveDeps sets ModeHeadless (2026-10-15);
 	// empty is ModePane.
 	DefaultMode string
+	// MateNeedsHeadless refuses a Mate on a harness without headless turns
+	// (harness.HeadlessTurns), pane mode included: a Mate runs only on such
+	// a harness (CON-236, the captain's call of 2026-11-06). LiveDeps sets
+	// it; false lets a test start a Mate on any harness the other rules
+	// take.
+	MateNeedsHeadless bool
 	// HostStopWait bounds how long a stop lets a headless Mate finish its
 	// turn; zero means HostStopWait.
 	HostStopWait time.Duration
@@ -206,7 +212,7 @@ func LiveDeps(harnesses harness.Registry, opts ...LiveOption) Deps {
 	rt := herdr.NewHerdr(process.ExecRunner{})
 	rt.Binary = o.herdrBinary
 	rt.Names = names
-	return Deps{Runtime: rt, Harnesses: harnesses, Names: names, DefaultMode: ModeHeadless, Cleaner: teardown.Live()}
+	return Deps{Runtime: rt, Harnesses: harnesses, Names: names, DefaultMode: ModeHeadless, MateNeedsHeadless: true, Cleaner: teardown.Live()}
 }
 
 // Cleaner is what a crew stop asks to tear a worktree's resources down.

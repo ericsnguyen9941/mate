@@ -18,7 +18,7 @@ Agent điều phối của một Project: nhận việc từ captain, giao cho C
 _Trong code_: `harness.RoleMate`; `internal/spawn` khởi động và dừng Mate
 
 **Headless**:
-Kiểu chạy của agent Mate: không có TUI của harness, mỗi tin nhắn là một lần `claude -p`. Các lượt chạy trong host của Mate (`mate mate host`), một process nền riêng nằm ngoài Herdr, không có tab hay pane. Socket `host.sock` của host cho biết Mate còn sống hay không. REPL chỉ là một client của host. Kiểu còn lại là pane: TUI của harness chạy trong pane Herdr (Codex, pi, `mate.mode: pane`).
+Kiểu chạy của agent Mate: không có TUI của harness, mỗi tin nhắn là một lần `claude -p`. Các lượt chạy trong host của Mate (`mate mate host`), một process nền riêng nằm ngoài Herdr, không có tab hay pane. Socket `host.sock` của host cho biết Mate còn sống hay không. REPL chỉ là một client của host. Kiểu còn lại là pane: TUI của Claude Code chạy trong pane Herdr (`mate.mode: pane`). Từ CON-236 Mate chỉ chạy trên harness có headless turns, tức Claude Code; Codex và pi chỉ chạy Crew.
 _Avoid_: dùng "headless" cho mate core hay cho bất kỳ process nào khác
 _Trong code_: `spawn.ModeHeadless`; `internal/matehost`; `store.MateHostDetached`
 

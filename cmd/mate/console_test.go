@@ -75,12 +75,11 @@ func TestConsoleGalleryRendersRegisteredProjects(t *testing.T) {
 	}
 }
 
-// TestConsoleHarnessPickerPutsTheWorkspaceDefaultFirst is the picker on
-// the real wire: a workspace whose workspace.yaml says `mate_harness: codex`,
-// read through query.Load, must open the create-a-Mate picker with codex
-// first and under the cursor, so Enter alone creates the Mate the workspace
-// is configured for.
-func TestConsoleHarnessPickerPutsTheWorkspaceDefaultFirst(t *testing.T) {
+// TestConsoleHarnessPickerOffersOnlyAMateHarness is the picker on the real
+// wire: a workspace whose workspace.yaml says `mate_harness: codex`, read
+// through query.Load, opens the create-a-Mate picker without codex, which
+// cannot run a Mate (CON-236), so Enter alone creates a Claude Mate.
+func TestConsoleHarnessPickerOffersOnlyAMateHarness(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	ws, err := store.Init(root, workspaceDefaults())
@@ -125,17 +124,16 @@ func TestConsoleHarnessPickerPutsTheWorkspaceDefaultFirst(t *testing.T) {
 	step(tea.KeyMsg{Type: tea.KeyEnter})                     // into shop; its Mate row
 	step(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")}) // create: the harness picker
 	frame := model.View()
-	codex, claude := strings.Index(frame, "codex"), strings.Index(frame, "claude")
-	if codex < 0 || claude < 0 || codex > claude {
-		t.Fatalf("picker order: codex at %d, claude at %d; want the workspace default codex first:\n%s", codex, claude, frame)
+	if strings.Contains(frame, "codex") || !strings.Contains(frame, "claude") {
+		t.Fatalf("picker offers codex or no claude; want claude alone:\n%s", frame)
 	}
 	cmd := step(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatalf("Enter on the picker dispatched nothing:\n%s", model.View())
 	}
 	cmd()
-	if len(got) != 1 || got[0].Harness != query.HarnessKind("codex") {
-		t.Fatalf("requests = %+v, want one create carrying the workspace default codex", got)
+	if len(got) != 1 || got[0].Harness != query.HarnessKind("claude") {
+		t.Fatalf("requests = %+v, want one create carrying claude", got)
 	}
 }
 
