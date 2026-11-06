@@ -1,8 +1,9 @@
-<p align="center">
-  <img src="docs/readme/logo.svg" width="88" height="88" alt="mate">
-</p>
-
-<h1 align="center">mate</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/readme/logo-dark.svg">
+    <img src="docs/readme/logo-light.svg" alt="mate" height="56">
+  </picture>
+</h1>
 
 <p align="center">
   <b>Một đội agent lập trình trên máy của bạn: bạn nói với Mate, Mate điều phối Crew.</b>
@@ -18,6 +19,12 @@
   <a href="https://mate.lovableai.space">Website</a> ·
   <a href="docs/architecture.md">Kiến trúc</a> ·
   <a href="GLOSSARY.md">Thuật ngữ</a>
+</p>
+
+<p align="center">
+  <img src="docs/readme/console.jpg" alt="mate console: danh sách workspace và project bên trái, khung chat với Mate bên phải">
+  <br>
+  <sub><b>mate console</b>: giao diện terminal</sub>
 </p>
 
 <table>
@@ -267,5 +274,5 @@ Test bị skip mà không khai trong `scripts/gotestreport/expected-skips.txt` l
 đỏ. Suite xanh khi test live bị skip không chứng minh tính năng chạy với Herdr thật.
 Quy ước cho agent làm việc trên repo này: [AGENTS.md](AGENTS.md).
 
-<sub>Ảnh Office và City chụp từ giao diện thật trong repo, với dữ liệu mẫu của test
-(`internal/dashboard/testdata/office/busy.json`).</sub>
+<sub>Ảnh console chụp từ một workspace đang chạy. Ảnh Office và City chụp từ giao diện
+thật trong repo, với dữ liệu mẫu của test (`internal/dashboard/testdata/office/busy.json`).</sub>
