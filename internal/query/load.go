@@ -35,7 +35,7 @@ import (
 // resolves the workspace's default Mate harness against it. commands are the
 // console keys of the workspace's command configuration, which the snapshot carries
 // as given.
-func Load(ctx context.Context, ws *store.Workspace, harnesses Harnesses, commands []CommandBinding) (Snapshot, error) {
+func Load(ctx context.Context, ws Workspace, harnesses Harnesses, commands []CommandBinding) (Snapshot, error) {
 	return load(ctx, ws, harnesses, commands, Liveness{}, time.Now)
 }
 
@@ -43,12 +43,12 @@ func Load(ctx context.Context, ws *store.Workspace, harnesses Harnesses, command
 // Mate or Crew whose meta records a pane but whom Herdr does not list is
 // stopped, not running: after a machine restart the file still names a pane
 // that no longer exists, and `s` must be able to bring the agent back.
-func LoadLive(ctx context.Context, ws *store.Workspace, harnesses Harnesses, commands []CommandBinding, live Liveness) (Snapshot, error) {
+func LoadLive(ctx context.Context, ws Workspace, harnesses Harnesses, commands []CommandBinding, live Liveness) (Snapshot, error) {
 	return load(ctx, ws, harnesses, commands, live, time.Now)
 }
 
-func load(ctx context.Context, ws *store.Workspace, harnesses Harnesses, commands []CommandBinding, live Liveness, now func() time.Time) (Snapshot, error) {
-	if ws == nil {
+func load(ctx context.Context, ws Workspace, harnesses Harnesses, commands []CommandBinding, live Liveness, now func() time.Time) (Snapshot, error) {
+	if noWorkspace(ws) {
 		return Snapshot{}, fmt.Errorf("query: no workspace is open")
 	}
 	if err := ctx.Err(); err != nil {
@@ -93,7 +93,7 @@ func load(ctx context.Context, ws *store.Workspace, harnesses Harnesses, command
 // `mate_harness`, else the catalog's default for a Mate. It is "" when the
 // workspace names a kind the catalog does not hold, so a UI never offers
 // first a kind nothing can start.
-func defaultMateHarness(ws *store.Workspace, harnesses Harnesses) HarnessKind {
+func defaultMateHarness(ws Workspace, harnesses Harnesses) HarnessKind {
 	recorded := strings.ToLower(strings.TrimSpace(ws.Defaults().MateHarness))
 	if recorded == "" {
 		return harnesses.MateDefault
@@ -104,7 +104,7 @@ func defaultMateHarness(ws *store.Workspace, harnesses Harnesses) HarnessKind {
 	return ""
 }
 
-func loadProject(ws *store.Workspace, ref store.ProjectRef, live Liveness, w *warnings) ProjectNode {
+func loadProject(ws Workspace, ref store.ProjectRef, live Liveness, w *warnings) ProjectNode {
 	row := RowRef{Kind: RowProject, ID: ref.Name, Label: ref.Name}
 	// The mode is the presence of `mate/.auto` and nothing else: there is no
 	// separate record of it, so a project whose flag file cannot be read at
@@ -168,7 +168,7 @@ func loadProject(ws *store.Workspace, ref store.ProjectRef, live Liveness, w *wa
 // without an answer the caveat that this does not prove the agent is alive
 // rides on the Binding field, which is where the Console already renders
 // it. With one, a pane Herdr does not list reads as stopped.
-func loadMate(ws *store.Workspace, project string, live Liveness, w *warnings) MateNode {
+func loadMate(ws Workspace, project string, live Liveness, w *warnings) MateNode {
 	row := RowRef{Kind: RowMate, ID: project, Label: project}
 	path := ws.MateMeta(project)
 
@@ -263,7 +263,7 @@ func detachedBinding(project string, meta map[string]string, agent string, live 
 
 // loadNews reads the news a headless Mate has open from `mate/news.jsonl`,
 // newest first.
-func loadNews(ws *store.Workspace, project string) Field[[]NewsItem] {
+func loadNews(ws Workspace, project string) Field[[]NewsItem] {
 	path := matehost.NewsPath(ws.MateDir(project))
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -288,7 +288,7 @@ func loadNews(ws *store.Workspace, project string) Field[[]NewsItem] {
 
 // loadWork reads a Mate's work board from `mate/work.jsonl`, every row
 // including the okayed ones, latest move first.
-func loadWork(ws *store.Workspace, project string) Field[[]WorkItem] {
+func loadWork(ws Workspace, project string) Field[[]WorkItem] {
 	path := matehost.WorkPath(ws.MateDir(project))
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -367,7 +367,7 @@ const noTimeline = "no timeline database has been read for this row yet"
 // again: box.Load read it in this same refresh and resolved it through the
 // same first rule of crewstate.Declare, and a closed crew stays closed. A
 // workspace keeps every crew it ever closed, so they are most of its crews.
-func loadCrews(ws *store.Workspace, project string, repos Field[[]RepoValue], view box.View, viewOK bool, live Liveness, w *warnings) ([]CrewNode, int) {
+func loadCrews(ws Workspace, project string, repos Field[[]RepoValue], view box.View, viewOK bool, live Liveness, w *warnings) ([]CrewNode, int) {
 	ids, err := crewIDs(ws.CrewsDir(project))
 	if err != nil {
 		// A project whose crews directory cannot be listed gets no Crew
@@ -417,7 +417,7 @@ func crewIDs(dir string) ([]string, error) {
 	return ids, nil
 }
 
-func loadCrew(ws *store.Workspace, project, id string, repos Field[[]RepoValue], view box.View, viewOK bool, live Liveness, w *warnings) CrewNode {
+func loadCrew(ws Workspace, project, id string, repos Field[[]RepoValue], view box.View, viewOK bool, live Liveness, w *warnings) CrewNode {
 	row := RowRef{Kind: RowCrew, ID: id, Label: "crew " + id}
 	c := CrewNode{
 		CrewID:    id,
@@ -521,7 +521,7 @@ func loadCrew(ws *store.Workspace, project, id string, repos Field[[]RepoValue],
 // from there. Only when the box could not be read - one unreadable status
 // file fails it for the whole project - is the crew's own file read, so
 // every other crew still shows its state and the unreadable one says why.
-func lastStatusVerb(ws *store.Workspace, project, id string, view box.View, viewOK bool, w *warnings, row RowRef) string {
+func lastStatusVerb(ws Workspace, project, id string, view box.View, viewOK bool, w *warnings, row RowRef) string {
 	verb := box.StateUnknown
 	if viewOK {
 		verb = box.LastCrewVerb(view, id)

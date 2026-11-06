@@ -12,7 +12,6 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/coreapi"
 	"github.com/nguyenngocanh94/mate/internal/db"
-	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 	"github.com/nguyenngocanh94/mate/internal/timeline/read"
 )
@@ -523,7 +522,7 @@ func (s *Server) project(r *http.Request) (string, error) {
 	return name, nil
 }
 
-func unknownProject(ws *store.Workspace, name string) string {
+func unknownProject(ws Workspace, name string) string {
 	var have []string
 	for _, ref := range ws.Projects() {
 		have = append(have, ref.Name)
@@ -535,7 +534,7 @@ func unknownProject(ws *store.Workspace, name string) string {
 }
 
 // modeWord is docs/mvp.md section 5's two modes, as the card prints them.
-func modeWord(ws *store.Workspace, project string) string {
+func modeWord(ws Workspace, project string) string {
 	if ws.Auto(project) {
 		return "auto"
 	}
