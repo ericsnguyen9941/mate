@@ -90,7 +90,7 @@ func (e *Engine) stopMate(ctx context.Context, req coreapi.ActionRequest) (strin
 	return fmt.Sprintf("Mate %s stop confirmed in session %s", res.Agent, res.Session), nil
 }
 
-// repairMate is repair. `mate status` is the repair: it re-asks Herdr
+// repairMate is repair. `mate mate-agent status` is the repair: it re-asks Herdr
 // about the agent mate.meta names and reports what it found. It never
 // rewrites the meta, so the one line it returns is an observation, not a
 // claim that anything was fixed.

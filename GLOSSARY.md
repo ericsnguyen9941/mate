@@ -14,8 +14,7 @@ _Avoid_: user, operator
 _Trong code_: `brief.Deciders`; `store.SourceUser` là dòng của captain trong `sent.log`
 
 **Mate**:
-Agent điều phối của một Project: nhận việc từ captain, giao cho Crew và xét kết quả Crew bàn giao. Mỗi Project có đúng một Mate. Nhóm lệnh của nó là `mate mate-agent` (CON-251); `mate mate` là tên cũ, vẫn chạy nhưng không hiện trong usage.
-_Avoid_: viết `mate mate …` trong code, doc hay lời gợi ý mới
+Agent điều phối của một Project: nhận việc từ captain, giao cho Crew và xét kết quả Crew bàn giao. Mỗi Project có đúng một Mate. Nhóm lệnh của nó là `mate mate-agent` (CON-251); `mate mate` là tên cũ, vẫn chạy nhưng không hiện trong usage; code, doc và lời gợi ý mới không viết `mate mate …`.
 _Trong code_: `harness.RoleMate`; `internal/spawn` khởi động và dừng Mate
 
 **Headless**:

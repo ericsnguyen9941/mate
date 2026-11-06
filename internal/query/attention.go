@@ -41,7 +41,7 @@ const (
 	// AttentionMateStale: the Project's Mate binding is recorded stale.
 	AttentionMateStale AttentionKind = "mate stale"
 	// AttentionMateUnknown: the Project's Mate is itself recorded unknown
-	// (MateUnknown) - `mate stop` calls RecordMateUnknown when Herdr's
+	// (MateUnknown) - `mate mate-agent stop` calls RecordMateUnknown when Herdr's
 	// stop fails or the re-listed inventory still shows the agent, and that
 	// path does not stale the binding, so the Mate can sit unknown with an
 	// active-looking binding. mateErrorRef already treats this as the one

@@ -76,7 +76,7 @@ func TestMateStatusPrintsOneLineForAStoppedProject(t *testing.T) {
 
 	var out, errw bytes.Buffer
 	if err := testCLI().run([]string{"mate-agent", "status", "shop", "--workspace", w.Root()}, &out, &errw); err != nil {
-		t.Fatalf("mate status: %v", err)
+		t.Fatalf("mate mate-agent status: %v", err)
 	}
 	line := strings.TrimSpace(out.String())
 	if strings.Count(line, "\n") != 0 {
@@ -90,6 +90,16 @@ func TestMateStatusPrintsOneLineForAStoppedProject(t *testing.T) {
 	}
 	if !strings.Contains(line, "last start: fresh") {
 		t.Fatalf("out = %q, want the last-start resume state", line)
+	}
+
+	// The old name `mate mate`, which `tui` scripts and hosts from before
+	// CON-251 still run, answers the same (CON-251).
+	var oldOut, oldErr bytes.Buffer
+	if err := testCLI().run([]string{"mate", "status", "shop", "--workspace", w.Root()}, &oldOut, &oldErr); err != nil {
+		t.Fatalf("mate mate status: %v", err)
+	}
+	if oldOut.String() != out.String() {
+		t.Fatalf("mate mate status = %q, mate mate-agent status = %q; want the same", oldOut.String(), out.String())
 	}
 }
 

@@ -195,7 +195,7 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 		return StartResult{}, err
 	}
 	if staleMeta && strings.TrimSpace(priorMeta[MetaSessionID]) == "" {
-		// A Mate that died without `mate stop` never had a session named
+		// A Mate that died without `mate mate-agent stop` never had a session named
 		// after launch recorded (StopMate is where Herdr is asked); what the
 		// harness wrote on disk can still say which one it was.
 		prior, _ := deps.Harnesses.Parse(priorMeta[MetaHarness])

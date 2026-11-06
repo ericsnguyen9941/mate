@@ -354,7 +354,7 @@ interfaces on the side of each reader, is planned in
 | `projects/<p>/mate/memory.md`, `backlog.md` | `memory` format, `store` I/O | the Mate (`mate remember`, `mate backlog`) | `mate recall` |
 | `projects/<p>/mate/news.jsonl` | `matehost` | `mate news`; the friction check of `mate wake`, `land` and `merge`; the host (answers) | query, dashboard, REPL, notifications |
 | `projects/<p>/mate/work.jsonl` | `matehost` | `mate work`, `mate land`, the console (the captain's tick) | query, dashboard, REPL |
-| `projects/<p>/mate/tui` | `matehost` (text), `spawn` | every headless start: `exec <mate> mate tui <p> --workspace <root>` (CON-227) | the captain, in the Mate's shell pane |
+| `projects/<p>/mate/tui` | `matehost` (text), `spawn` | every headless start: `exec <mate> mate-agent tui <p> --workspace <root>` (CON-227) | the captain, in the Mate's shell pane |
 | `projects/<p>/mate/host.sock`, `host.jsonl`, `host.launch.json`, `topics/` | `matehost` | the headless host; spawn (`host.launch.json`); `mate mate-agent tui` (`host.launch.json`, when the TUI left another session) | outbox, spawn, `mate mate-agent …`, Office chat, City, notifications, the snapshot's liveness |
 | `projects/<p>/mate/host.log`, `host.log.1` | `matehost` (path), `spawn` (rotation) | the headless host's stdout and stderr (CON-225); a start moves a log of `spawn.HostLogMax` (1 MiB) or more to `host.log.1` | the captain; a failed start quotes its last lines |
 | `projects/<p>/mate/learnings/<c>.md` | `learnings` | the Mate; the app (`## Usage (app)` through `usage/why`, predictions) | `mate wake`, `mate learnings` |
@@ -412,9 +412,9 @@ Panes it creates run `mate pane serve` (`cmd/mate/pane.go`).
 **A CLI command.** Add one row to `commands()` in `cmd/mate/dispatch.go`
 (names, one-line summary, handler, and `internal` for a command only mate
 itself runs); dispatch and the usage text both come from that table, and
-`aliases` keeps an old name working without usage showing it (`mate mate`
-for `mate mate-agent`, CON-251), and
-`cmd/mate/dispatch_test.go` checks every row is reachable and listed. Put the
+`cmd/mate/dispatch_test.go` checks every row is reachable and listed. A row's
+`aliases` keep an old name working without usage showing it (`mate mate` for
+`mate mate-agent`, CON-251). Put the
 handler `cmdX` in `cmd/mate/<x>.go`, with only flag parsing and output there,
 and the logic in an `internal/` package, as `internal/wake` does for
 `mate wake` and `internal/recall` for `mate recall` (CON-164). A command the
