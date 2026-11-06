@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"path/filepath"
 )
 
@@ -90,194 +89,41 @@ func (p Paths) JevLog() string { return filepath.Join(p.StateDir(), jevLogName) 
 // (docs/plans/pane-state-jev-2026-10-13.md section 6).
 func (p Paths) ScreensDir() string { return filepath.Join(p.StateDir(), "screens") }
 
-// ProjectsDir is `<root>/.mate/projects`.
-func (p Paths) ProjectsDir() string { return filepath.Join(p.StateDir(), projectsDirName) }
-
-// ProjectDir is `<root>/.mate/projects/<project>`.
-func (p Paths) ProjectDir(project string) string {
-	return filepath.Join(p.ProjectsDir(), project)
-}
-
-// ProjectHome is `<root>/<project>`, the project's own directory: the user's,
-// not mate's state. Every repo of the project lives under it (docs/mvp.md
-// section 3). Mate's state for the project stays in ProjectDir.
-func (p Paths) ProjectHome(project string) string {
-	return filepath.Join(p.root, project)
-}
-
-// ProjectFile is `projects/<project>/project.yaml`.
-func (p Paths) ProjectFile(project string) string {
-	return filepath.Join(p.ProjectDir(project), projectFileName)
-}
-
-// ProjectDoc is `projects/<project>/PROJECT.md`.
-func (p Paths) ProjectDoc(project string) string {
-	return filepath.Join(p.ProjectDir(project), projectDocName)
-}
-
-// ProjectCrewDoc is `projects/<project>/CREW.md`, the captain's standing
-// rules for every Crew of one project, appended after the workspace's.
-// Optional.
-func (p Paths) ProjectCrewDoc(project string) string {
-	return filepath.Join(p.ProjectDir(project), crewDocName)
-}
-
-// SentLog is `projects/<project>/sent.log`.
-func (p Paths) SentLog(project string) string {
-	return filepath.Join(p.ProjectDir(project), sentLogName)
-}
-
-// IncidentsLog is `projects/<project>/incidents.log`, the observer's
-// append-only record of the incidents it opened and resolved (docs/mvp.md
-// section 4b). Only internal/watch writes it; internal/box reads it.
-func (p Paths) IncidentsLog(project string) string {
-	return filepath.Join(p.ProjectDir(project), incidentsLogName)
-}
-
-// MateDir is `projects/<project>/mate`, the working directory of Mate.
-func (p Paths) MateDir(project string) string {
-	return filepath.Join(p.ProjectDir(project), mateDirName)
-}
-
-// MateMeta is `projects/<project>/mate/mate.meta`.
-func (p Paths) MateMeta(project string) string {
-	return filepath.Join(p.MateDir(project), mateMetaName)
-}
-
-// AutoFlag is `projects/<project>/mate/.auto`; its presence means auto mode.
-func (p Paths) AutoFlag(project string) string {
-	return filepath.Join(p.MateDir(project), autoFlagName)
-}
-
-// ManualHold is `projects/<project>/mate/.manual`; its presence means the
-// captain chose manual mode with the console's `m` key, so context refresh
-// does not run on its own while the captain holds the Mate. Its mtime is when
-// they chose it: the auto daemon releases a hold the captain has left alone
-// for QuietAfter (docs/mvp.md M21).
-func (p Paths) ManualHold(project string) string {
-	return filepath.Join(p.MateDir(project), manualHoldName)
-}
-
-// AutoCursorFile is `projects/<project>/mate/.auto-cursor`; it records how
-// far the auto daemon has digested (mvp.md section 5).
-func (p Paths) AutoCursorFile(project string) string {
-	return filepath.Join(p.MateDir(project), autoCursorName)
-}
-
-// WakeCursorFile is `projects/<project>/mate/.wake-cursor`; it records how
-// far `mate wake` has shown the project's status lines to the Mate.
-func (p Paths) WakeCursorFile(project string) string {
-	return filepath.Join(p.MateDir(project), wakeCursorName)
-}
-
-// MemoryFile is `projects/<project>/mate/memory.md`.
-func (p Paths) MemoryFile(project string) string {
-	return filepath.Join(p.MateDir(project), memoryFileName)
-}
-
-// BacklogFile is `projects/<project>/mate/backlog.md`.
-func (p Paths) BacklogFile(project string) string {
-	return filepath.Join(p.MateDir(project), backlogFileName)
-}
-
-// CrewsDir is `projects/<project>/crews`.
-func (p Paths) CrewsDir(project string) string {
-	return filepath.Join(p.ProjectDir(project), crewsDirName)
-}
-
-// CrewMeta is `projects/<project>/crews/<crew>.meta`.
-func (p Paths) CrewMeta(project, crew string) string {
-	return filepath.Join(p.CrewsDir(project), crew+".meta")
-}
-
-// CrewStatus is `projects/<project>/crews/<crew>.status`, the append-only log
-// a crew writes with echo.
-func (p Paths) CrewStatus(project, crew string) string {
-	return filepath.Join(p.CrewsDir(project), crew+".status")
-}
-
-// CrewPRWatch is `projects/<project>/crews/<crew>.prwatch`: the pid of the
-// background `mate pr watch` of the crew's pull request, one number per file
-// (docs/mvp.md M18).
-func (p Paths) CrewPRWatch(project, crew string) string {
-	return filepath.Join(p.CrewsDir(project), crew+".prwatch")
-}
-
-// CrewPRWatchLog is `projects/<project>/crews/<crew>/prwatch.log`, where the
-// detached watcher writes what it did.
-func (p Paths) CrewPRWatchLog(project, crew string) string {
-	return filepath.Join(p.CrewDir(project, crew), "prwatch.log")
-}
-
-// CrewTeardownLog is `projects/<project>/crews/<crew>/teardown.log`, the
-// output of the repo's teardown command at the crew's stop (CON-111).
-func (p Paths) CrewTeardownLog(project, crew string) string {
-	return filepath.Join(p.CrewDir(project, crew), "teardown.log")
-}
-
-// CrewDir is `projects/<project>/crews/<crew>`, kept after teardown.
-func (p Paths) CrewDir(project, crew string) string {
-	return filepath.Join(p.CrewsDir(project), crew)
-}
-
-// CrewBrief is `projects/<project>/crews/<crew>/brief.md`.
-func (p Paths) CrewBrief(project, crew string) string {
-	return filepath.Join(p.CrewDir(project, crew), briefFileName)
-}
-
-// CrewReport is `projects/<project>/crews/<crew>/report.md`.
-func (p Paths) CrewReport(project, crew string) string {
-	return filepath.Join(p.CrewDir(project, crew), reportFileName)
-}
-
-// CrewHandback is `projects/<project>/crews/<crew>/handback.md`, the ship
-// Crew's own account of its acceptance checks, written before `wait-mate`
-// (docs/mvp.md M7). Like the report it lives outside the worktree, so it
-// outlives the Crew.
-func (p Paths) CrewHandback(project, crew string) string {
-	return filepath.Join(p.CrewDir(project, crew), handbackFileName)
-}
-
-// CrewLearning is `projects/<project>/mate/learnings/<crew>.md`, the one
-// learning record the Mate keeps per crew (skill task-learning, CON-129).
-// It lives under the Mate's own directory, not the crew's: the Mate writes
-// it, and `mate wake` reads it to say whether a hand-back has one.
-func (p Paths) CrewLearning(project, crew string) string {
-	return filepath.Join(p.LearningsDir(project), crew+".md")
-}
-
-// LearningsDir is `projects/<project>/mate/learnings`, one record per crew.
-func (p Paths) LearningsDir(project string) string {
-	return filepath.Join(p.MateDir(project), learningsDirName)
-}
-
-// LearningPredictionsSection is the `## ` heading of a learning record under
-// which the Mate lists what its lessons predict, one bullet each with an
-// `outcome:` (CON-131); internal/learnings reads and closes them.
-const LearningPredictionsSection = "Predictions"
-
-// LearningUsageSection is the `## ` heading of the one section of a
-// learning record the app writes at a crew's close (CON-130): the crew's
-// usage as the ledger has it. The Mate's skill names it and leaves it alone.
-const LearningUsageSection = "Usage (app)"
-
-// CrewSessionInput is `projects/<project>/crews/<crew>/session-<n>.md`: the
-// opening input of the crew's n-th session (CON-73), composed by a fresh
-// relaunch out of the brief, the last hand-back, the Mate's message and
-// the diff since the last review. Like the hand-back it outlives the Crew.
-func (p Paths) CrewSessionInput(project, crew string, n int) string {
-	return filepath.Join(p.CrewDir(project, crew), fmt.Sprintf("session-%d.md", n))
-}
-
 // WorktreesDir is `<root>/.worktrees`.
 func (p Paths) WorktreesDir() string { return filepath.Join(p.root, WorktreesDirName) }
-
-// WorktreeDir is `<root>/.worktrees/<project>-<crew>`, the git worktree a crew
-// runs in.
-func (p Paths) WorktreeDir(project, crew string) string {
-	return filepath.Join(p.WorktreesDir(), project+"-"+crew)
-}
 
 // RepoDir is the absolute path of a registered repository, from the relative
 // path stored in workspace.yaml.
 func (p Paths) RepoDir(repo string) string { return filepath.Join(p.root, repo) }
+
+// ConsoleLockFile is `.mate/console.lock`.
+func (p Paths) ConsoleLockFile() string {
+	return filepath.Join(p.StateDir(), consoleLockName)
+}
+
+// CoreLockFile is `.mate/core.lock`.
+func (p Paths) CoreLockFile() string { return filepath.Join(p.StateDir(), coreLockName) }
+
+// CoreSocket is `.mate/core.sock`, where `mate core` serves its HTTP routes.
+func (p Paths) CoreSocket() string { return filepath.Join(p.StateDir(), coreSocketName) }
+
+// CoreLogFile is `.mate/core.log`, the output of a `mate core` started in
+// the background (CON-213).
+func (p Paths) CoreLogFile() string { return filepath.Join(p.StateDir(), coreLogName) }
+
+// RecoverLockFile is `.mate/recover.lock`.
+func (p Paths) RecoverLockFile() string {
+	return filepath.Join(p.StateDir(), recoverLockName)
+}
+
+// MigrateLockFile is `.mate/migrate.lock`, held for the whole of one
+// `mate migrate`.
+func (p Paths) MigrateLockFile() string {
+	return filepath.Join(p.StateDir(), migrateLockName)
+}
+
+// MigrateLog is `.mate/migrate.log`, the append-only record of every
+// directory `mate migrate` renamed and every repo it finished moving.
+func (p Paths) MigrateLog() string {
+	return filepath.Join(p.StateDir(), migrateLogName)
+}

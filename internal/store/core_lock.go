@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -54,16 +53,6 @@ type CoreHolder struct {
 	LANURL   string `json:"lan_url,omitempty"`
 	TCPError string `json:"tcp_error,omitempty"`
 }
-
-// CoreLockFile is `.mate/core.lock`.
-func (p Paths) CoreLockFile() string { return filepath.Join(p.StateDir(), coreLockName) }
-
-// CoreSocket is `.mate/core.sock`, where `mate core` serves its HTTP routes.
-func (p Paths) CoreSocket() string { return filepath.Join(p.StateDir(), coreSocketName) }
-
-// CoreLogFile is `.mate/core.log`, the output of a `mate core` started in
-// the background (CON-213).
-func (p Paths) CoreLogFile() string { return filepath.Join(p.StateDir(), coreLogName) }
 
 // CoreLock is core.lock held by this process.
 type CoreLock struct {

@@ -3,7 +3,6 @@ package store
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -26,11 +25,6 @@ type ConsoleHolder struct {
 	// (CON-211). A console built before that writes no such field, and runs
 	// an engine `mate core` cannot see: `mate core run` refuses beside it.
 	CoreLock bool `json:"core_lock,omitempty"`
-}
-
-// ConsoleLockFile is `.mate/console.lock`.
-func (p Paths) ConsoleLockFile() string {
-	return filepath.Join(p.StateDir(), consoleLockName)
 }
 
 // LockConsole takes the console lock without waiting and writes holder into
