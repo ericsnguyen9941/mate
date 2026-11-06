@@ -105,6 +105,7 @@ func handlePrompt(w Workspace, project string, raw []byte) error {
 // HandleStop implements `mate hook mate-stop`. It appends one sent.log
 // line for Claude's last answer and updates `mate.meta` with the session id
 // and transcript path the payload carries, keeping every other key as-is.
+// It keeps *store.Workspace for the reason HandlePrompt does.
 func HandleStop(w *store.Workspace, project string, raw []byte) error {
 	return handleStop(w, project, raw)
 }
