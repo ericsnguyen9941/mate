@@ -50,11 +50,6 @@ type ProfileDocument struct {
 	State  string `json:"state"`
 }
 
-// CrewHarnessProfile is `projects/<project>/crews/<crew>/harness-profile.json`.
-func (p Paths) CrewHarnessProfile(project, crew string) string {
-	return filepath.Join(p.CrewDir(project, crew), "harness-profile.json")
-}
-
 // FingerprintProfile compares configuration independently of task text,
 // timestamps and worktree paths. Actual code revision stays in RepoCommit.
 func FingerprintProfile(p HarnessProfile) string {

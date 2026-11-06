@@ -19,4 +19,31 @@
 // workspace makes the write fail with *BoundaryError and nothing is created.
 // Registered repositories must be inside the workspace too; they need not be
 // direct children of it.
+//
+// Files. Each file holds the methods of one responsibility group, so changes
+// made for different reasons land in different files
+// (docs/plans/store-split-2026-11-06.md section 2). groups_test.go keeps it
+// that way; a new file is added to its table.
+//
+//   - Paths, string joins only: layout.go (the workspace's own files),
+//     layout_project.go, layout_mate.go, layout_crew.go.
+//   - workspace.yaml, .env and pricing.yaml: workspace_config.go, env.go,
+//     pricing.go.
+//   - Projects and repos: project.go, repo.go; project.yaml's schema is in
+//     project_config.go.
+//   - Auto and Manual mode: mode.go.
+//   - Crew records: meta.go, harness_profile.go, crewdoc.go, review.go,
+//     scout.go.
+//   - Mate records: mate_meta.go, mate_sessions.go, backlog.go, memory.go.
+//   - Append-only logs (`.status`, `sent.log`, `incidents.log`, `jev.log`):
+//     log.go.
+//   - Outbox and cursors: outbox.go, auto.go.
+//   - Locks between processes: console_lock.go, core_lock.go, tui_lock.go,
+//     crew_stop_lock.go, recover_lock.go, maintenance.go, crew_send.go,
+//     lock.go.
+//   - Migrating layout 1 to 2: migrate.go.
+//   - The boundary and the file writers: boundary.go, fsio.go.
+//
+// workspace.go holds the handle and how it is opened (Init, Open,
+// OpenForMigrate), and no method.
 package store

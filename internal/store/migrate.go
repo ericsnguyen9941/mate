@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -14,18 +13,6 @@ const (
 	migrateLockName = "migrate.lock"
 	migrateLogName  = "migrate.log"
 )
-
-// MigrateLockFile is `.mate/migrate.lock`, held for the whole of one
-// `mate migrate`.
-func (p Paths) MigrateLockFile() string {
-	return filepath.Join(p.StateDir(), migrateLockName)
-}
-
-// MigrateLog is `.mate/migrate.log`, the append-only record of every
-// directory `mate migrate` renamed and every repo it finished moving.
-func (p Paths) MigrateLog() string {
-	return filepath.Join(p.StateDir(), migrateLogName)
-}
 
 // LockMigrate takes `.mate/migrate.lock` without waiting, the advisory flock
 // LockRecover takes on recover.lock. acquired is false while another process

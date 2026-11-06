@@ -40,26 +40,6 @@ This comment is never sent.
 `, project)
 }
 
-// seedOnce writes body to path unless path already exists. It never
-// overwrites: from the moment it exists the file is the captain's.
-func (w *Workspace) seedOnce(path, body string) error {
-	if _, err := w.resolve(path); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		if os.IsExist(err) {
-			return nil
-		}
-		return err
-	}
-	_, werr := f.WriteString(body)
-	if cerr := f.Close(); werr == nil {
-		werr = cerr
-	}
-	return werr
-}
-
 // CrewRules returns the text of the workspace's and the project's CREW.md,
 // HTML comments removed and surrounding blank lines trimmed. A missing file
 // is an empty string, not an error.

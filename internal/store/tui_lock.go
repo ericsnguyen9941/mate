@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -38,9 +37,6 @@ type TUIHolder struct {
 	// started still runs, and may still write the Mate's session.
 	Orphaned bool `json:"-"`
 }
-
-// TUILockFile is `.mate/tui.lock`.
-func (p Paths) TUILockFile() string { return filepath.Join(p.StateDir(), tuiLockName) }
 
 // TUILock is tui.lock held by this process.
 type TUILock struct {

@@ -120,6 +120,38 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+// MetaBudget is the crew `.meta` key holding the crew's own token budget
+// (CON-76): the dispatch rule's budget `mate crew spawn --budget` recorded,
+// else a copy of the project's crew_tokens at spawn. The observer's budget
+// check reads it before the project's block. It lives here, beside
+// MetaRepo, because both the writer (internal/spawn) and the reader
+// (internal/timeline) already import this package.
+const MetaBudget = "budget"
+
+// The crew `.meta` keys of CON-94's budget enforcement. budget_line is when
+// the daemon typed the "budget reached" line into the crew's pane, so it is
+// typed once per ceiling; budget_stop is what the daemon did at the hard
+// ceiling, so it acts once. budget_extensions counts `mate crew budget
+// --extend`, budget_reason is the last extension's reason, and
+// budget_original the ceiling the crew was spawned with. An extension
+// deletes budget_line and budget_stop, which re-arms both against the new
+// ceiling.
+const (
+	MetaBudgetLine       = "budget_line"
+	MetaBudgetStop       = "budget_stop"
+	MetaBudgetExtensions = "budget_extensions"
+	MetaBudgetReason     = "budget_reason"
+	MetaBudgetOriginal   = "budget_original"
+)
+
+// MetaFollowups is the crew `.meta` key `mate merge --followups` writes
+// (CON-74): where the findings a passing review left standing were
+// recorded before the merge - a `backlog:<text>` line under the project's
+// `## Queued`, or a tracker issue id such as `HVN-12`. It is the record a
+// reader of the closed crew (`mate usage`, the Office) can show for "what
+// happened to the reviewer's findings".
+const MetaFollowups = "followups"
+
 // ReadCrewMeta reads `crews/<crew>.meta`.
 func (w *Workspace) ReadCrewMeta(project, crew string) (map[string]string, error) {
 	if err := validatePair(project, crew); err != nil {
@@ -159,24 +191,30 @@ func (w *Workspace) UpdateCrewMeta(project, crew string, set map[string]string) 
 	return w.WriteCrewMeta(project, crew, meta)
 }
 
-// ReadMateMeta reads `mate/mate.meta`.
-func (w *Workspace) ReadMateMeta(project string) (map[string]string, error) {
+// CrewIDs are the ids with a `.meta` under the project's `crews/`, sorted. A
+// file whose name is not a valid crew id is ignored rather than reported:
+// `crews/` is a directory the user can also put things in.
+func (w *Workspace) CrewIDs(project string) ([]string, error) {
 	if err := ValidateProjectName(project); err != nil {
 		return nil, err
 	}
-	return ReadMeta(w.MateMeta(project))
-}
-
-// WriteMateMeta writes `mate/mate.meta` atomically, inside the workspace.
-func (w *Workspace) WriteMateMeta(project string, meta map[string]string) error {
-	if err := ValidateProjectName(project); err != nil {
-		return err
-	}
-	data, err := encodeMeta(meta)
+	entries, err := os.ReadDir(w.CrewsDir(project))
 	if err != nil {
-		return err
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	return w.writeFile(w.MateMeta(project), data, 0o644)
+	var ids []string
+	for _, e := range entries {
+		id, ok := strings.CutSuffix(e.Name(), ".meta")
+		if !ok || ValidateCrewID(id) != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids, nil
 }
 
 func validatePair(project, crew string) error {
