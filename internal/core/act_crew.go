@@ -8,7 +8,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
-	"github.com/nguyenngocanh94/mate/internal/usage"
+	"github.com/nguyenngocanh94/mate/internal/usage/why"
 )
 
 // A Crew's actions (CON-232): stop it, restart it, read its diff and merge
@@ -35,7 +35,7 @@ func (e *Engine) stopCrew(ctx context.Context, req coreapi.ActionRequest) (strin
 	}
 	line := res.CrewLine(req.Target, req.Crew)
 	if !res.AlreadyClosed {
-		line += "\n" + usage.RecordAtClose(ctx, ws, req.Target, req.Crew, "console stop")
+		line += "\n" + why.RecordAtClose(ctx, ws, req.Target, req.Crew, "console stop")
 	}
 	return line, nil
 }
@@ -99,5 +99,5 @@ func (e *Engine) mergeCrew(ctx context.Context, req coreapi.ActionRequest) (stri
 	if err != nil {
 		return "", err
 	}
-	return res.Line() + "\n" + usage.RecordAtClose(ctx, ws, req.Target, req.Crew, "console merge"), nil
+	return res.Line() + "\n" + why.RecordAtClose(ctx, ws, req.Target, req.Crew, "console merge"), nil
 }

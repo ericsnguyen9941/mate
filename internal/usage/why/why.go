@@ -1,4 +1,14 @@
-package usage
+// Package why builds `mate usage <project> <crew> --why`, what a task's
+// model calls were spent on, and writes the head of that page into a
+// crew's learning record when the crew closes (RecordAtClose, CON-130).
+// cmd/mate's cmdUsage reads the flags and opens the database.
+//
+// It reads through dashboard.Server, so the page and the dashboard's Task
+// page can never disagree, and it adds no measurement of its own: every
+// number is the ledger's or the projection's. It sits apart from
+// internal/usage (CON-234) so that usage, the ledger and the per-call
+// pages, imports nothing of dashboard's and dashboard can import it.
+package why
 
 import (
 	"context"
@@ -25,11 +35,14 @@ const (
 	whyTextWidth    = 160
 )
 
-// writeWhy is `mate usage <project> <crew> --why`: the dashboard Task
-// page's diagnostics as one bounded page of text. It reads through
-// dashboard.Server so the two can never disagree, and it adds no
-// measurement of its own: every number is the ledger's or the projection's.
-func writeWhy(ctx context.Context, out io.Writer, w Workspace, handle *db.DB, deps dashboard.Deps, project, crew string) error {
+// Write writes `mate usage <project> <crew> --why` to out: the dashboard
+// Task page's diagnostics as one bounded page of text, reading the
+// timeline through handle and the workspace through w. deps is what the
+// dashboard.Server needs beyond those two: cmd/mate's dashboardDeps. It
+// reads through dashboard.Server so the two can never disagree, and it
+// adds no measurement of its own: every number is the ledger's or the
+// projection's.
+func Write(ctx context.Context, out io.Writer, w Workspace, handle *db.DB, deps dashboard.Deps, project, crew string) error {
 	if err := store.ValidateCrewID(crew); err != nil {
 		return err
 	}
@@ -282,4 +295,38 @@ func whyDuration(ms *int64) string {
 		return "?"
 	}
 	return (time.Duration(*ms) * time.Millisecond).String()
+}
+
+// The helpers below are private copies of internal/usage's, kept here so
+// this package does not depend on usage; they are part of the `--why` head
+// and of the learning record's usage section, and must render a duration
+// the way usage's ledger renders it (its WAITED column).
+
+// waitedWord renders a millisecond total the way formatAge renders an age:
+// the largest whole unit that keeps the number readable.
+func waitedWord(ms int64) string {
+	if ms <= 0 {
+		return "0s"
+	}
+	return formatAge(time.Duration(ms) * time.Millisecond)
+}
+
+// formatAge is an age in its largest whole unit, rounded down.
+func formatAge(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
+}
+
+// oneLineMsg is an error's first line.
+func oneLineMsg(err error) string {
+	msg, _, _ := strings.Cut(err.Error(), "\n")
+	return strings.TrimSpace(msg)
 }

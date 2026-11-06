@@ -1,7 +1,6 @@
 package usage
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 
 // A crew that has made no model call yet gets each crew page's header and
 // a line saying nothing was recorded, never an error or an empty page
-// (CON-168, Trường hợp đặc biệt).
+// (CON-168, Trường hợp đặc biệt). `--why`'s case is in package why.
 func TestUsageOfACrewWithNoTurnsSaysSo(t *testing.T) {
 	w := usageWorkspace(t)
 	if err := w.WriteCrewMeta("shop", "idle", map[string]string{"harness": "codex", "task": "wait", "state": "spawned"}); err != nil {
@@ -47,9 +46,5 @@ func TestUsageOfACrewWithNoTurnsSaysSo(t *testing.T) {
 				t.Fatalf("got:\n%q\nwant:\n%q", got, tc.want)
 			}
 		})
-	}
-	why := writePage(t, w, Request{Project: "shop", Crew: "idle", Why: true})
-	if !strings.HasPrefix(why, "usage why shop idle\n") || !strings.HasSuffix(why, "\nno model calls recorded for idle; there is nothing to explain yet\n") {
-		t.Fatalf("--why of a crew with no calls:\n%s", why)
 	}
 }

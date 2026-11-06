@@ -17,7 +17,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/send"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
-	"github.com/nguyenngocanh94/mate/internal/usage"
+	"github.com/nguyenngocanh94/mate/internal/usage/why"
 )
 
 // cmdCrewBudget implements
@@ -175,7 +175,7 @@ func consoleBudgetActions(ws *store.Workspace, deps spawn.Deps) *autopilot.Budge
 func budgetStop(ctx context.Context, ws *store.Workspace, deps spawn.Deps, project, crew string) (string, error) {
 	res, err := spawn.StopCrew(ctx, ws, deps, project, crew, false)
 	if err == nil {
-		return "crew stopped, state " + res.State + "; " + usage.RecordAtClose(ctx, ws, project, crew, "budget stop"), nil
+		return "crew stopped, state " + res.State + "; " + why.RecordAtClose(ctx, ws, project, crew, "budget stop"), nil
 	}
 	if !errors.Is(err, spawn.ErrUnlandedWork) {
 		return "", err

@@ -14,7 +14,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/memory"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
-	"github.com/nguyenngocanh94/mate/internal/usage"
+	"github.com/nguyenngocanh94/mate/internal/usage/why"
 )
 
 // cmdMerge implements `mate merge <project> <crew>`: docs/mvp.md task 22.
@@ -57,7 +57,7 @@ func (c cli) cmdMerge(args []string, stdout, stderr io.Writer) error {
 	// The record is written on every merge (CON-130); the merge's own
 	// output stays its one line, and `wake` is where the Mate reads the
 	// record's state.
-	usage.RecordAtClose(context.Background(), w, project, crew, "mate merge")
+	why.RecordAtClose(context.Background(), w, project, crew, "mate merge")
 	if err := recordFollowups(stdout, w, project, crew, followups); err != nil {
 		return err
 	}
