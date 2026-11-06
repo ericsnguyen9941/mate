@@ -276,6 +276,8 @@ Theo câu trả lời của captain ở mục 9: S8 có thể bỏ (câu 4), S4.
 
 ## 9. Câu hỏi còn mở
 
+Captain nhận cả 5 mặc định dưới đây ngày 2026-11-06. Các bước S1–S8 làm theo đúng mặc định.
+
 | # | Câu hỏi | Mặc định đề xuất |
 | -- | -- | -- |
 | 1 | Giữ một handle `*store.Workspace`, chia file theo nhóm và cho bên dùng khai báo interface hẹp, thay vì tách thành nhiều kiểu hay package con có lớp chuyển tiếp? | Giữ một handle. Tách kiểu riêng chỉ cho G1 (`Paths`) và G10 (`Migration`), lý do ở mục 2 |
