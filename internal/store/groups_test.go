@@ -553,16 +553,29 @@ var osWrites = map[string]bool{
 	"Chmod": true, "Chtimes": true, "Create": true, "CreateTemp": true,
 	"Link": true, "Mkdir": true, "MkdirAll": true, "MkdirTemp": true,
 	"Remove": true, "RemoveAll": true, "Rename": true, "Symlink": true,
-	"Truncate": true, "WriteFile": true,
+	"Truncate": true, "WriteFile": true, "Chown": true, "Lchown": true,
 }
 
 var osWriteFlags = map[string]bool{"O_WRONLY": true, "O_APPEND": true, "O_TRUNC": true}
 
-// fileWrites are methods that rewrite an open file in place (a lock's
-// holder record). Write and WriteString are left out: strings.Builder has
-// them too, and every file this package writes with them was first opened
-// or created by one of the calls above.
-var fileWrites = map[string]bool{"WriteAt": true, "Truncate": true}
+// fileWrites are the methods of an *os.File that write it. WriteAt and
+// Truncate count on any receiver (a lock's holder record is rewritten
+// through a field, l.f). The others count on a variable the same function
+// set from os.OpenFile, os.Create or os.CreateTemp, so a strings.Builder's
+// WriteString does not; so does passing such a variable first to another
+// package's writer (fmt.Fprintf, json.NewEncoder, io.Copy...).
+var fileWrites = map[string]bool{"Write": true, "WriteAt": true, "WriteString": true, "Truncate": true, "ReadFrom": true}
+
+// fileOpeners are the functions of package os whose first result is a file
+// that fileWrites can write.
+var fileOpeners = map[string]bool{"OpenFile": true, "Create": true, "CreateTemp": true}
+
+// writerFuncs are the functions of other packages that write the file passed
+// as their first argument, matched by name.
+var writerFuncs = map[string]bool{
+	"Fprint": true, "Fprintf": true, "Fprintln": true, "NewEncoder": true,
+	"NewWriter": true, "Copy": true, "CopyN": true, "WriteString": true,
+}
 
 // diskWrites returns, for each function and method of the package that
 // writes the disk, directly or through the functions it calls, one chain of
@@ -577,7 +590,8 @@ func diskWrites(files map[string]*ast.File) map[string]string {
 		osName  string
 	}
 	bodies := map[string][]body{}
-	for _, f := range files {
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		f := files[name]
 		imports := map[string]bool{}
 		osName := ""
 		for _, spec := range f.Imports {
@@ -600,8 +614,18 @@ func diskWrites(files map[string]*ast.File) map[string]string {
 
 	writes := map[string]string{}
 	calls := map[string][]string{}
-	for name, bs := range bodies {
-		for _, b := range bs {
+	for _, name := range slices.Sorted(maps.Keys(bodies)) {
+		for _, b := range bodies[name] {
+			fileVars := openedFiles(b.node, b.osName)
+			isFileVar := func(e ast.Expr) bool {
+				id, ok := e.(*ast.Ident)
+				return ok && fileVars[id.Name]
+			}
+			write := func(what string) {
+				if _, ok := writes[name]; !ok {
+					writes[name] = what
+				}
+			}
 			ast.Inspect(b.node, func(n ast.Node) bool {
 				switch n := n.(type) {
 				case *ast.CallExpr:
@@ -613,11 +637,16 @@ func diskWrites(files map[string]*ast.File) map[string]string {
 					switch {
 					case x != nil && b.osName != "" && x.Name == b.osName:
 						if osWrites[sel.Sel.Name] || (sel.Sel.Name == "OpenFile" && len(n.Args) > 1 && opensToWrite(n.Args[1], b.osName)) {
-							writes[name] = "os." + sel.Sel.Name
+							write("os." + sel.Sel.Name)
 						}
 					case x != nil && b.imports[x.Name]:
-					case fileWrites[sel.Sel.Name]:
-						writes[name] = sel.Sel.Name
+						if writerFuncs[sel.Sel.Name] && len(n.Args) > 0 && isFileVar(n.Args[0]) {
+							write(x.Name + "." + sel.Sel.Name)
+						}
+					case sel.Sel.Name == "WriteAt" || sel.Sel.Name == "Truncate":
+						write(sel.Sel.Name)
+					case fileWrites[sel.Sel.Name] && isFileVar(sel.X):
+						write(sel.Sel.Name)
 					}
 				case *ast.SelectorExpr:
 					if x, ok := n.X.(*ast.Ident); ok && b.imports[x.Name] {
@@ -656,19 +685,51 @@ func diskWrites(files map[string]*ast.File) map[string]string {
 	return writes
 }
 
-// opensToWrite reports whether the flags of an os.OpenFile call name a flag
-// that writes.
-func opensToWrite(flags ast.Expr, osName string) bool {
-	found := false
-	ast.Inspect(flags, func(n ast.Node) bool {
-		if sel, ok := n.(*ast.SelectorExpr); ok {
-			if x, ok := sel.X.(*ast.Ident); ok && x.Name == osName && osWriteFlags[sel.Sel.Name] {
-				found = true
+// openedFiles returns the names of the variables body sets from an
+// os.OpenFile, os.Create or os.CreateTemp call.
+func openedFiles(body ast.Node, osName string) map[string]bool {
+	vars := map[string]bool{}
+	if osName == "" {
+		return vars
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok || len(as.Rhs) != 1 || len(as.Lhs) == 0 {
+			return true
+		}
+		call, ok := as.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if x, ok := sel.X.(*ast.Ident); ok && x.Name == osName && fileOpeners[sel.Sel.Name] {
+			if id, ok := as.Lhs[0].(*ast.Ident); ok && id.Name != "_" {
+				vars[id.Name] = true
 			}
 		}
 		return true
 	})
-	return found
+	return vars
+}
+
+// opensToWrite reports whether the flags of an os.OpenFile call name a flag
+// that writes, or name no os.O_* flag at all (flags held in a variable):
+// those count as a write.
+func opensToWrite(flags ast.Expr, osName string) bool {
+	named, writes := false, false
+	ast.Inspect(flags, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			if x, ok := sel.X.(*ast.Ident); ok && x.Name == osName && strings.HasPrefix(sel.Sel.Name, "O_") {
+				named = true
+				writes = writes || osWriteFlags[sel.Sel.Name]
+			}
+		}
+		return true
+	})
+	return writes || !named
 }
 
 // checkWriteNames returns what breaks the naming rule, one line each: an
@@ -679,18 +740,22 @@ func opensToWrite(flags ast.Expr, osName string) bool {
 func checkWriteNames(groups []methodGroup, files map[string]*ast.File, exceptions map[string]string) []string {
 	var problems []string
 	kindOfFile := map[string]groupKind{}
+	groupOfFile := map[string]string{}
 	for _, g := range groups {
-		if g.kind == 0 && len(g.methods) > 0 {
-			problems = append(problems, fmt.Sprintf("group %q in methodGroups has methods but no kind: give it pathKind or recordKind", g.name))
-		}
 		for _, f := range g.files {
 			kindOfFile[f] = g.kind
+			groupOfFile[f] = g.name
 		}
 	}
 	writes := diskWrites(files)
 	methods, _ := scanStore(files)
 	declared := map[string]bool{}
+	noKind := map[string]bool{}
 	for _, m := range methods {
+		if g, ok := groupOfFile[m.file]; ok && kindOfFile[m.file] == 0 && !noKind[g] {
+			noKind[g] = true
+			problems = append(problems, fmt.Sprintf("group %q in methodGroups holds methods (%s) but has no kind: give it pathKind or recordKind", g, m.file))
+		}
 		if !ast.IsExported(m.name) {
 			continue
 		}
@@ -726,7 +791,8 @@ func TestStoreWritesCarryAWriteName(t *testing.T) {
 }
 
 // The naming check itself: a read name that writes through a helper, a
-// method value or an open file, a path with a write name, a group with no
+// method value, an open file (WriteAt, WriteString, fmt.Fprintln) or
+// OpenFile flags it cannot read, a path with a write name, a group with no
 // kind and stale exceptions are each reported; a lock file opened to be
 // locked, a builder's WriteString and a write name are not.
 func TestCheckWriteNamesReportsHiddenWrites(t *testing.T) {
@@ -739,6 +805,7 @@ func TestCheckWriteNamesReportsHiddenWrites(t *testing.T) {
 		"layout.go": "package store\nfunc (p Paths) StateDir() string { return \"\" }\nfunc (p Paths) SetDir() string { return \"\" }\n",
 		"log.go": `package store
 import (
+	"fmt"
 	"os"
 	"strings"
 )
@@ -748,6 +815,9 @@ func (w *Workspace) Cursor() { f, _ := os.OpenFile("", os.O_RDWR, 0); f.WriteAt(
 func (w *Workspace) Tail() { do(w.flush) }
 func (w *Workspace) AppendSent() { w.store("") }
 func (w *Workspace) Count() {}
+func (w *Workspace) Holder() { f, _ := os.OpenFile("", os.O_RDWR, 0); f.WriteString("") }
+func (w *Workspace) Note() { f, _ := os.OpenFile("", os.O_RDWR, 0); fmt.Fprintln(f, "") }
+func (w *Workspace) Flags(flag int) { os.OpenFile("", flag, 0) }
 func (w *Workspace) store(s string) { os.OpenFile(s, os.O_WRONLY|os.O_APPEND, 0) }
 func (w *Workspace) flush() { os.Rename("", "") }
 func do(f func()) { f() }
@@ -770,8 +840,11 @@ func do(f func()) { f() }
 		"Workspace.ReadSent writes the disk (ReadSent → store → os.OpenFile) but its name has no write prefix",
 		"Workspace.Cursor writes the disk (Cursor → WriteAt)",
 		"Workspace.Tail writes the disk (Tail → flush → os.Rename)",
+		"Workspace.Holder writes the disk (Holder → WriteString)",
+		"Workspace.Note writes the disk (Note → fmt.Fprintln)",
+		"Workspace.Flags writes the disk (Flags → os.OpenFile)",
 		"Paths.SetDir in layout.go is in a path group but has a write name",
-		"group \"no kind\" in methodGroups has methods but no kind",
+		"group \"no kind\" in methodGroups holds methods (mode.go) but has no kind",
 		"writesWithoutPrefix lists AppendSent, but it has a write prefix or no longer writes",
 		"writesWithoutPrefix lists Count, but it has a write prefix or no longer writes",
 		"writesWithoutPrefix lists Gone, but no file declares it",
@@ -780,8 +853,8 @@ func do(f func()) { f() }
 			t.Errorf("checkWriteNames did not report %q; it reported:\n%s", want, got)
 		}
 	}
-	if len(problems) != 8 {
-		t.Errorf("got %d problems, want 8 (ReadStatus, Auto and StateDir are fine):\n%s", len(problems), got)
+	if len(problems) != 11 {
+		t.Errorf("got %d problems, want 11 (ReadStatus, Auto and StateDir are fine):\n%s", len(problems), got)
 	}
 }
 

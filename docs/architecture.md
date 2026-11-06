@@ -105,7 +105,7 @@ only read through theirs; `timeline`, `watch`, `autopilot`, `outbox`,
 `spawn`, `core`, `recovery`, `refresh`, `migrate`, `wake` and `recall` keep
 `*store.Workspace`. A store method writes when its name says so: a prefix
 of `writePrefixes` in `internal/store/groups_test.go` (`Set`, `Append`,
-`Write`...) followed by an upper-case letter, or an entry of
+`Write`...) followed by an upper-case letter or nothing, or an entry of
 `writesWithoutPrefix` there (`TUIRunning`). Two tests of section 4 hold
 this: the store's methods keep the naming rule, and the readers' interfaces
 hold no write (CON-244).
@@ -374,7 +374,7 @@ They add local rules to the repo-wide layer rule, which
 | `internal/core/boundary_test.go` | Nothing `internal/core` links, transitively, is under `cmd/` or `internal/ui/` |
 | `internal/runtime/herdr/boundary_test.go` | Outside `internal/runtime/herdr`, only `internal/spawn` (which builds the live adapter in `LiveDeps`) imports it in a non-test file; the rest of mate reaches Herdr through `runtime.Adapter`, `runtime.ReadAdapter` and `runtime.SessionStream` |
 | `internal/store/groups_test.go` | Every non-test file of `internal/store` that declares a method of `Workspace`, `Paths` or `Migration` is in one group of `methodGroups`; each method the table lists is in a file of its group; `workspace.go` declares no method; `Paths` methods are only in `layout*.go`, which hold no other method of these types and import only `fmt` and `path/filepath`. Since CON-244 each group has a kind (paths, records), and an exported method that writes the disk, directly or through the package's functions (calls matched by name), has a name that starts with a write prefix of `writePrefixes` followed by an upper-case letter, or is listed with a reason in `writesWithoutPrefix`; a path method has neither |
-| `internal/archtest/store_readers_test.go` | For the readers of the store in `storeReaders` (`box`, `query`, `dashboard`, `usage`, `learnings`, `db`, and `spawn.CrewReader`), type-checked against `go list -export` data: their interfaces, embedded ones included, have no method that writes by the store's rule, read from `internal/store/groups_test.go`; and, except in `spawn`, no non-test file holds a `*store.Workspace` outside `var _ Workspace = (*store.Workspace)(nil)` and the `noWorkspace` nil check, nor calls a write of the store through any interface |
+| `internal/archtest/store_readers_test.go` | For the readers of the store in `storeReaders` (`box`, `query`, `dashboard`, `usage`, `learnings`, `db`, and `spawn.CrewReader`), type-checked against `go list -export` data: their interfaces, embedded ones included, have no method that writes by the store's rule, read from `internal/store/groups_test.go`; and, except in `spawn`, no non-test file holds a `*store.Workspace` outside `var _ Workspace = (*store.Workspace)(nil)` and the `noWorkspace` nil check, holds or calls through an interface that has a write of the store (a writer's `Workspace` included), or calls a function of `store` that writes or returns a `*store.Workspace` (`store.Open`, `store.Init`) |
 
 ## 5. Where to make a change
 

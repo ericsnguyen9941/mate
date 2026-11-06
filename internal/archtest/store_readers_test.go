@@ -25,7 +25,8 @@ import (
 // storeReader is a package that reads the store through narrow interfaces
 // of its own and writes nothing through it: the rows of the table in
 // docs/plans/store-split-2026-11-06.md section 3 whose "Ghi qua store?"
-// column says no (step S7, CON-244).
+// column says no, or, for db, that it writes only its own mate.db (step S7,
+// CON-244). S7 names box, query and dashboard; the table adds the others.
 type storeReader struct {
 	pkg string
 	// ifaces are the interfaces the package takes instead of
@@ -120,7 +121,11 @@ func loadStoreWriteRule(t *testing.T) storeWriteRule {
 				}
 			case "writesWithoutPrefix":
 				for _, e := range lit.Elts {
-					rule.exceptions[str(e.(*ast.KeyValueExpr).Key)] = true
+					kv, ok := e.(*ast.KeyValueExpr)
+					if !ok {
+						t.Fatalf("%s: writesWithoutPrefix holds a %T, not a `\"Method\": \"why\"` entry", path, e)
+					}
+					rule.exceptions[str(kv.Key)] = true
 				}
 			}
 		}
@@ -178,9 +183,10 @@ func listExports(t *testing.T, pkgs []string) map[string]listedPackage {
 //   - no interface of ifaces has a method that writes by the store's rule
 //     (groups_test.go: a write prefix, or listed in writesWithoutPrefix);
 //   - in a whole package, no non-test file holds a *store.Workspace outside
-//     the compile-time assertion and the nil check, so no write is reached
-//     through the concrete handle (store.Open included), and no write
-//     method of the store is called through an interface of its own.
+//     the compile-time assertion and the nil check, holds or calls through
+//     an interface that has a write of the store (a writer package's
+//     Workspace included), or calls a function of package store that
+//     writes or returns a *store.Workspace (store.Open, store.Init).
 func TestStoreReadersDoNotWrite(t *testing.T) {
 	rule := loadStoreWriteRule(t)
 	var pkgs []string
@@ -228,7 +234,7 @@ func TestStoreReadersDoNotWrite(t *testing.T) {
 			}
 		}
 		if r.whole {
-			for _, problem := range concreteStoreUses(fset, files, info, storeWrites) {
+			for _, problem := range concreteStoreUses(fset, files, info, rule, storeWrites) {
 				t.Errorf("%s", problem)
 			}
 		}
@@ -250,6 +256,7 @@ func typeCheck(t *testing.T, fset *token.FileSet, imp types.Importer, p listedPa
 	info := &types.Info{
 		Types:      map[ast.Expr]types.TypeAndValue{},
 		Defs:       map[*ast.Ident]types.Object{},
+		Uses:       map[*ast.Ident]types.Object{},
 		Selections: map[*ast.SelectorExpr]*types.Selection{},
 	}
 	pkg, err := (&types.Config{Importer: imp}).Check(p.ImportPath, fset, files, info)
@@ -287,8 +294,10 @@ func writesInInterface(fset *token.FileSet, pkg *types.Package, name string, rul
 
 // concreteStoreUses returns a line for each place in files that holds a
 // *store.Workspace outside the compile-time assertion and the nil check,
-// and for each call of a store write method through an interface.
-func concreteStoreUses(fset *token.FileSet, files []*ast.File, info *types.Info, storeWrites map[string]bool) []string {
+// calls a store write method through an interface or holds an interface
+// that has one, or calls a function of package store that writes or
+// returns a *store.Workspace.
+func concreteStoreUses(fset *token.FileSet, files []*ast.File, info *types.Info, rule storeWriteRule, storeWrites map[string]bool) []string {
 	var allowed []ast.Node
 	for _, f := range files {
 		for _, d := range f.Decls {
@@ -338,6 +347,38 @@ func concreteStoreUses(fset *token.FileSet, files []*ast.File, info *types.Info,
 			report(sel.Pos(), fmt.Sprintf("calls %s on a *store.Workspace; a reader of the store calls it through its Workspace interface", s.Obj().Name()))
 		case types.IsInterface(recv) && storeWrites[s.Obj().Name()]:
 			report(sel.Pos(), fmt.Sprintf("calls %s, a write of the store, through an interface: a package that only reads the store calls no write of it", s.Obj().Name()))
+		}
+	}
+	// An interface value with a write of the store in its method set (a
+	// writer package's Workspace, say) is a way to write; so is a function
+	// of package store that writes or opens a handle (store.Open, Init).
+	for expr, tv := range info.Types {
+		if tv.Type == nil || !types.IsInterface(tv.Type) || inAllowed(expr.Pos()) {
+			continue
+		}
+		mset := types.NewMethodSet(tv.Type)
+		for i := range mset.Len() {
+			if name := mset.At(i).Obj().Name(); storeWrites[name] {
+				report(expr.Pos(), fmt.Sprintf("holds an interface with %s, a write of the store: a package that only reads the store holds no interface that writes it", name))
+				break
+			}
+		}
+	}
+	for id, obj := range info.Uses {
+		fn, ok := obj.(*types.Func)
+		if !ok || fn.Pkg() == nil || fn.Pkg().Path() != storePkg {
+			continue
+		}
+		sig := fn.Type().(*types.Signature)
+		if sig.Recv() != nil {
+			continue
+		}
+		opens := false
+		for v := range sig.Results().Variables() {
+			opens = opens || isStoreWorkspace(v.Type())
+		}
+		if opens || rule.writes(fn.Name()) {
+			report(id.Pos(), fmt.Sprintf("calls store.%s, which writes or opens a *store.Workspace: a package that only reads the store gets its workspace from its caller", fn.Name()))
 		}
 	}
 	sort.Strings(problems)
