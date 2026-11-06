@@ -133,7 +133,7 @@ mate core: Mate shop: host pid 4242 died; started again (1 of 3 in 10m), resumed
 | The captain stopped the Mate | Nothing: the stop drops `agent`, `pid` and `socket` from `mate.meta`. |
 | The host holds its host lock but does not answer | Nothing: it is alive and wedged; stop it. |
 | A UI is stopping, starting or restarting that Mate | Nothing this time: that action decides. |
-| A Mate in a Herdr pane (Codex, pi, `mate.mode: pane`) | Nothing: Herdr reports it. |
+| A Mate in a Herdr pane (`mate.mode: pane`) | Nothing: Herdr reports it. |
 | A Manual project | The same as an Auto one: starting the host types nothing into the Mate. |
 | A fourth death within 10 minutes | Starts nothing more. A notification, unless `MATE_NOTIFICATIONS=off`, and the notice `Mate shop: host died 4 times in 10m; not restarting` on the console's status line, on the Mate's row and in `mate core status` (when the engine is the core's; a console's engine serves no socket to ask). |
 | A host the core did not start (a start by hand, a UI's restart, recovery) | A new count, even before the core gave up. |

@@ -193,6 +193,23 @@ func TestStartMateRefusesAHarnessWithoutHooks(t *testing.T) {
 	}
 }
 
+// Under MateNeedsHeadless, as LiveDeps sets it, a Mate on a harness
+// without headless turns is refused before anything is launched, pane mode
+// included (CON-236); the same harness still runs a Crew.
+func TestStartMateRefusesAHarnessWithoutHeadlessTurns(t *testing.T) {
+	w := newWorkspace(t, "shop")
+	rt := runtime.NewFake()
+	deps := fakeDeps(t, rt)
+	deps.MateNeedsHeadless = true
+	_, err := spawn.StartMate(context.Background(), w, deps, spawn.StartRequest{Project: "shop", Harness: codex.KindCodex, Mode: spawn.ModePane})
+	if err == nil || !strings.Contains(err.Error(), "the codex harness cannot run a Mate: a Mate runs only on a harness with headless turns") {
+		t.Fatalf("StartMate = %v, want a refusal naming headless turns", err)
+	}
+	if len(rt.StartArgv) != 0 || len(rt.Tabs) != 0 {
+		t.Fatalf("a refused Mate start launched %v and opened %d tab(s)", rt.StartArgv, len(rt.Tabs))
+	}
+}
+
 // The same harness still runs a Crew: hooks are a Mate's need only.
 func TestSpawnCrewNeedsNoHooks(t *testing.T) {
 	w := crewWorkspace(t, "shop")
