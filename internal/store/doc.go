@@ -41,7 +41,8 @@
 //   - Locks between processes: console_lock.go, core_lock.go, tui_lock.go,
 //     crew_stop_lock.go, recover_lock.go, maintenance.go, crew_send.go,
 //     lock.go.
-//   - Migrating layout 1 to 2: migrate.go.
+//   - Migrating layout 1 to 2: migrate.go (the Migration view, which only
+//     `mate migrate` uses).
 //   - The boundary and the file writers: boundary.go, fsio.go.
 //
 // workspace.go holds the handle and how it is opened (Init, Open,
