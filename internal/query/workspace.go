@@ -19,7 +19,8 @@ type BoxWorkspace interface {
 // Workspace is the part of *store.Workspace that Load and LoadLive read:
 // the box of every project (BoxWorkspace), plus workspace.yaml, each
 // project.yaml and each Mate's files. LoadConfig re-reads workspace.yaml
-// into memory and writes nothing; every other method only reads.
+// into the handle's memory and writes nothing to disk; every other method
+// only reads.
 type Workspace interface {
 	BoxWorkspace
 	Defaults() store.Defaults

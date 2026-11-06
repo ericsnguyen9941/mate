@@ -6,9 +6,11 @@ import (
 )
 
 // Workspace is the part of *store.Workspace that the server reads: each
-// project's box (query.BoxWorkspace, for query.LoadBox), plus the project
-// list, project.yaml, the Mate's files and the paths of a crew's brief,
-// hand-back, report and review record. Every method only reads, which is
+// project's box (query.BoxWorkspace, for query.LoadBox), plus the root and
+// workspace.yaml's defaults as loaded, the project list, project.yaml, the
+// Mate's files, which crews are scouts and who reviews whom, and the paths
+// of a crew's brief, hand-back, report and review record. Every method only
+// reads, which is
 // the store side of the dashboard's claim that it cannot change the
 // workspace. It has no LoadConfig: re-reading workspace.yaml is the
 // engine's job (CON-238, plan docs/plans/store-split-2026-11-06.md
