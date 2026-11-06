@@ -93,6 +93,23 @@ reads `store`, `db`, `timeline` and `matehost` itself; its SQL is in
 pages it serves. Since CON-165 it no longer imports `spawn`
 (`store.Workspace.CrewIsScout`).
 
+A package that uses the store without opening it takes an interface of its
+own instead of `*store.Workspace`: `Workspace` in its `workspace.go`, the
+methods it calls plus the interfaces of the packages it passes the
+workspace to, and `var _ Workspace = (*store.Workspace)(nil)`
+([plans/store-split-2026-11-06.md](plans/store-split-2026-11-06.md)
+section 3, CON-238, CON-240, CON-241). `box`, `query`, `dashboard`,
+`usage`, `learnings`, `db` and `spawn`'s `CrewReader` (for `ListCrews`)
+only read through theirs; `timeline`, `watch`, `autopilot`, `outbox`,
+`prwatch` and `hook` name their writes in theirs. `cmd/mate`, the rest of
+`spawn`, `core`, `recovery`, `refresh`, `migrate`, `wake` and `recall` keep
+`*store.Workspace`. A store method writes when its name says so: a prefix
+of `writePrefixes` in `internal/store/groups_test.go` (`Set`, `Append`,
+`Write`...) followed by an upper-case letter or nothing, or an entry of
+`writesWithoutPrefix` there (`TUIRunning`). Two tests of section 4 hold
+this: the store's methods keep the naming rule, and the readers' interfaces
+hold no write (CON-244).
+
 `usage` (CON-168) builds the pages `mate usage` prints; `cmd/mate/usage.go`
 only reads the flags. It also writes the `## Usage (app)` section of a
 crew's learning record when the crew closes (`usage.RecordAtClose`,
@@ -345,7 +362,7 @@ creates and removes; `teardown` first stops what the worktree started.
 
 Each test fails `make check` when its rule breaks. The first four are the
 ones CON-179 names; the next three came with CON-184, CON-206 and CON-207,
-then one each with CON-190 and CON-239.
+then one each with CON-190, CON-239 and CON-244.
 They add local rules to the repo-wide layer rule, which
 `internal/archtest/layers_test.go` checks (section 1).
 
@@ -359,7 +376,8 @@ They add local rules to the repo-wide layer rule, which
 | `internal/coreapi/boundary_test.go` | `internal/coreapi` imports the standard library and `internal/query` only |
 | `internal/core/boundary_test.go` | Nothing `internal/core` links, transitively, is under `cmd/` or `internal/ui/` |
 | `internal/runtime/herdr/boundary_test.go` | Outside `internal/runtime/herdr`, only `internal/spawn` (which builds the live adapter in `LiveDeps`) imports it in a non-test file; the rest of mate reaches Herdr through `runtime.Adapter`, `runtime.ReadAdapter` and `runtime.SessionStream` |
-| `internal/store/groups_test.go` | Every non-test file of `internal/store` that declares a method of `Workspace`, `Paths` or `Migration` is in one group of `methodGroups`; each method the table lists is in a file of its group; `workspace.go` declares no method; `Paths` methods are only in `layout*.go`, which hold no other method of these types and import only `fmt` and `path/filepath` |
+| `internal/store/groups_test.go` | Every non-test file of `internal/store` that declares a method of `Workspace`, `Paths` or `Migration` is in one group of `methodGroups`; each method the table lists is in a file of its group; `workspace.go` declares no method; `Paths` methods are only in `layout*.go`, which hold no other method of these types and import only `fmt` and `path/filepath`. Since CON-244 each group has a kind (paths, records), and an exported method that writes the disk, directly or through the package's functions (calls matched by name), has a name that starts with a write prefix of `writePrefixes` followed by an upper-case letter, or is listed with a reason in `writesWithoutPrefix`; a path method has neither |
+| `internal/archtest/store_readers_test.go` | For the readers of the store in `storeReaders` (`box`, `query`, `dashboard`, `usage`, `learnings`, `db`, and `spawn.CrewReader`), type-checked against `go list -export` data: their interfaces, embedded ones included, have no method that writes by the store's rule, read from `internal/store/groups_test.go`; and, except in `spawn`, no non-test file holds a `*store.Workspace` outside `var _ Workspace = (*store.Workspace)(nil)` and the `noWorkspace` nil check, holds or calls through an interface that has a write of the store (a writer's `Workspace` included), or calls a function of `store` that writes or returns a `*store.Workspace` (`store.Open`, `store.Init`) |
 
 ## 5. Where to make a change
 
