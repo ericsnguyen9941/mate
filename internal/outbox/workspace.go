@@ -10,9 +10,10 @@ import (
 // projects and their mode (LoadConfig re-reads workspace.yaml into the
 // handle's memory), the Mate's outbox, meta and logs, the maintenance lock
 // a delivery takes, and the TUI lock that says the Mate's session is open
-// in its harness's TUI (TUIRunning only reads it). Its writes are
-// UpdateOutbox, AppendSent, AppendIncident and WriteAutoCursor (CON-241,
-// plan docs/plans/store-split-2026-11-06.md section 3).
+// in its harness's TUI. Its writes are UpdateOutbox, AppendSent,
+// AppendIncident and WriteAutoCursor, and TUIRunning, which rewrites
+// tui.lock's record when the orphan TUI it names has ended (CON-241,
+// CON-244, plan docs/plans/store-split-2026-11-06.md section 3).
 type Workspace interface {
 	AppendIncident(project string, entry store.IncidentEntry) error
 	AppendSent(project string, entry store.SentEntry) error
