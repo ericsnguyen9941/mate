@@ -430,6 +430,7 @@
   var diffView = null;        // {key, body} | {key, error} | {key, loading}: a crew's branch diff
   var peekView = null;        // {key, text} | {key, error} | {key, loading}: a crew's screen
   var wsReadOnly = null;      // why this dashboard cannot act ("" when it can, null until known)
+  var wsTUI = "";             // a Mate's session open in its TUI (CON-227): the page only looks
   var mateTab = "details";    // the Mate drawer's tab: "details" or "talk"
   var talkOpen = {};          // turn time -> true when an older turn is opened up
   var talkDraft = {};         // project -> what the captain is writing to the Mate
@@ -1818,12 +1819,20 @@
 
   function noteReadOnly(body) {
     if (body && typeof body.read_only === "string") wsReadOnly = body.read_only;
+    if (body && !body.read_only) wsTUI = typeof body.tui === "string" ? body.tui : "";
   }
 
-  // probeActions asks the first room's buttons once, so the band can say
-  // from the start that this dashboard only reads.
+  // viewOnly is why nothing can be pressed on this page right now: a
+  // read-only dashboard, or a Mate's TUI open (CON-227); "" when it can.
+  function viewOnly() {
+    return wsReadOnly ? "read-only dashboard" : wsTUI.replace(/ \(.*\)$/, "");
+  }
+
+  // probeActions asks the first room's buttons on each poll, so the band
+  // can say from the start that this dashboard only reads, and when a
+  // Mate's TUI opens or closes (CON-227).
   function probeActions(wsBody) {
-    if (wsReadOnly !== null) return null;
+    if (wsReadOnly) return null;
     var first = (wsBody.projects || [])[0];
     if (!first) return null;
     return api(actionsPath(first.name)).then(noteReadOnly, function () { /* the drawers say it when they open */ });
@@ -1832,6 +1841,7 @@
   function bands() {
     var out = [];
     if (wsReadOnly) out.push(el("div", { class: "band ro", role: "status" }, [icon("lock"), el("b", { text: "Read-only." }), el("span", { text: wsReadOnly })]));
+    else if (wsTUI) out.push(el("div", { class: "band ro", role: "status" }, [icon("lock"), el("b", { text: "View only." }), el("span", { text: wsTUI + " · close it in its terminal to act here" })]));
     return out;
   }
 
@@ -1940,7 +1950,7 @@
   }
 
   function heldLine(x, label, focus, onUndo) {
-    var undo = el("button", { class: "link news-more", type: "button", "data-focus": focus }, "Undo");
+    var undo = el("button", { class: "link news-more", type: "button", "data-focus": focus, disabled: !!wsTUI, title: wsTUI ? viewOnly() : null }, "Undo");
     undo.addEventListener("click", function (e) { if (e && e.stopPropagation) e.stopPropagation(); onUndo(); });
     return [el("span", { text: label + " in " + leftOf(x) + "s · " }), undo];
   }
@@ -2201,7 +2211,7 @@
       if (b.action === "assign" && i.assign_key && b.key === i.assign_key) btn = b;
     });
     var busy = running[okey];
-    var why = wsReadOnly ? "read-only dashboard" : !a ? "loading…" : a.error ? "Actions: ?" : !btn ? "the Mate cannot be handed this one"
+    var why = viewOnly() ? viewOnly() : !a ? "loading…" : a.error ? "Actions: ?" : !btn ? "the Mate cannot be handed this one"
       : !btn.available ? btn.reason || "?" : "";
     var b = el("button", { class: "btn", type: "button", disabled: !!why || !!busy, "aria-label": "Assign to Mate", "data-focus": "assign:" + i.seq },
       [icon("assign"), busy ? "Assigning…" : "Assign to Mate"]);
@@ -2317,7 +2327,7 @@
   // addProject is the City's `add_project` (CON-142): the console adds the
   // room, and the floor reads it at once.
   function addProject() {
-    if (addProblem() || wsReadOnly || running.add) return;
+    if (addProblem() || viewOnly() || running.add) return;
     var body = { action: "add_project", project: addForm.name.trim(), repo: addForm.repo.trim() };
     running.add = { action: "add_project", label: "Add project" };
     delete outcomes.add;
@@ -2346,8 +2356,8 @@
     name.setAttribute("class", "inp" + (p && p.field ? " err" : ""));
     if (why) { why.textContent = p && p.field ? p.field : "Lowercase letters, digits and dashes. It names the room."; why.setAttribute("class", p && p.field ? "ferr" : "fhelp"); }
     var go = root.querySelector("#add-go");
-    if (go) setDisabled(go, !!p || !!wsReadOnly || !!running.add);
-    if (goWhy) goWhy.textContent = p ? p.why : wsReadOnly ? "read-only dashboard" : "";
+    if (go) setDisabled(go, !!p || !!viewOnly() || !!running.add);
+    if (goWhy) goWhy.textContent = p ? p.why : viewOnly();
     if (cmd) { if (p) cmd.setAttribute("hidden", ""); else cmd.removeAttribute("hidden"); }
     if (cmdT) cmdT.textContent = p ? "" : addCommand();
   }
@@ -2389,7 +2399,7 @@
       return o ? "[" + o.key + "] " + o.text : "";
     };
     var whyNot = function () {
-      if (wsReadOnly) return "read-only dashboard";
+      if (viewOnly()) return viewOnly();
       if (sending) return "";
       if (held) return "the answer above goes when its undo is over";
       return answer() ? "" : "pick an option or type an answer";
@@ -2708,7 +2718,7 @@
     w.rows.forEach(function (r) { (by[r.status] || (by[r.status] = [])).push(r); });
     var nodes = [];
     var done = workSection(name, "For you to OK", by.done, "Nothing waits for your OK.");
-    if (by.done.length && wsReadOnly) done.appendChild(el("small", { class: "why", text: "read-only dashboard" }));
+    if (by.done.length && viewOnly()) done.appendChild(el("small", { class: "why", text: viewOnly() }));
     nodes.push(done);
     nodes.push(workSection(name, "In progress", by.working, "Nothing in progress."));
     nodes.push(workSection(name, "Waiting on a topic", by.waiting, "Nothing waiting on a topic."));
@@ -2739,7 +2749,7 @@
     var pressing = !!okaying[key];
     var pending = r.status === "done" ? heldOf(name).filter(function (x) { return x.kind === "okay" && x.work === r.id; })[0] : null;
     var okayed = r.status === "okayed";
-    var canTick = r.status === "done" && !wsReadOnly && !pending && !pressing;
+    var canTick = r.status === "done" && !viewOnly() && !pending && !pressing;
 
     var tick;
     if (okayed) {

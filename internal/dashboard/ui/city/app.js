@@ -105,6 +105,7 @@ const S = {
   inbox: new Map(), // project → inbox rows (what still waits)
   acts: new Map(), // project → its buttons (GET /api/actions)
   readOnly: '', // why this dashboard cannot act, when it cannot
+  tui: '', // a Mate's session open in its TUI (CON-227): the page only looks
   news: new Map(), // project → its news (GET /api/news)
   work: new Map(), // project → { logged, error, rows } (GET /api/work, the Mate's work board)
   workAll: new Set(), // projects whose okayed rows are all shown
@@ -275,6 +276,7 @@ async function loadActions() {
   try {
     const body = await api('/api/actions');
     S.readOnly = body.read_only ?? '';
+    S.tui = body.tui ?? '';
     S.acts = new Map(Object.entries(body.projects ?? {}));
   } catch {
     // The buttons stay as they were; the stale band says why.
@@ -699,9 +701,13 @@ function resultEl(key) {
 const outcome = (e) => (e.status === 422 ? 'failed' : 'refused');
 const readOnlyBand = () => h('div', { class: 'band ro' }, h('span', { class: 'g' }, '⊘'), h('span', {}, `Read-only: ${S.readOnly.replace(/^this dashboard is read-only: /, '')}.`));
 
+// A Mate's TUI open (CON-227), as a button's reason: "Mate shop đang mở TUI".
+const tuiReason = () => S.tui.replace(/ \(.*\)$/, '');
+
 // Why a button cannot run right now, beyond what the API says: the page's own state.
 function blockedBy(key) {
   if (S.readOnly) return 'read-only dashboard';
+  if (S.tui) return tuiReason();
   if (S.stale) return `stale since ${clock(S.staleSince)}; wait for live`;
   if (room && mode !== 'live') return 'replaying; go Live to act';
   const running = S.busy.get(key);
@@ -718,6 +724,7 @@ function actionsBlock({ project, crew, buttons, extra = [], links = [] }) {
   if (S.readOnly) return [h('h3', { class: 'sec' }, 'Actions'), readOnlyBand(), links.length ? h('div', { class: 'links' }, links) : null];
   const running = S.busy.get(key);
   const page = blockedBy(key);
+  const band = S.tui ? h('div', { class: 'band ro' }, h('span', { class: 'g' }, '⊘'), h('span', {}, `View only: ${S.tui} · close it in its terminal to act here.`)) : null;
   const els = [...(buttons ?? []), ...extra].map((b) => {
     const isRunning = running && running === b.label;
     const why = isRunning ? 'running…' : b.toggle ? (b.available ? '' : b.reason) : page || (b.available ? '' : b.reason);
@@ -728,7 +735,7 @@ function actionsBlock({ project, crew, buttons, extra = [], links = [] }) {
         isRunning ? h('span', { class: 'g', 'aria-hidden': 'true' }, '⟳') : null, isRunning ? `Running ${b.label.replace(/…$/, '').toLowerCase()}…` : b.label),
       h('small', { id: `why-${key}-${b.action}` }, why));
   });
-  return [h('h3', { class: 'sec' }, 'Actions', crew ? null : h('span', { class: 'r' }, projectOf(project)?.mode === 'auto' ? '● auto' : '○ manual')), h('div', { class: 'actions' }, els), resultEl(key), links.length ? h('div', { class: 'links' }, links) : null];
+  return [h('h3', { class: 'sec' }, 'Actions', crew ? null : h('span', { class: 'r' }, projectOf(project)?.mode === 'auto' ? '● auto' : '○ manual')), band, h('div', { class: 'actions' }, els), resultEl(key), links.length ? h('div', { class: 'links' }, links) : null];
 }
 
 // A destructive press asks first, Cancel focused; then runs and reports one line.
@@ -853,7 +860,7 @@ async function undoHeld(project, x, key, back) {
   await loadChat(project);
 }
 const heldLine = (x, label, onUndo) =>
-  h('div', { class: 'meta' }, `${label} in ${leftOf(x)}s `, h('button', { type: 'button', class: 'undo', dataset: { held: String(x.id) }, onclick: onUndo }, 'Undo'));
+  h('div', { class: 'meta' }, `${label} in ${leftOf(x)}s `, h('button', { type: 'button', class: 'undo', dataset: { held: String(x.id) }, disabled: Boolean(S.tui), title: S.tui ? tuiReason() : null, onclick: onUndo }, 'Undo'));
 function textarea(id, attrs = {}) {
   const el = h('textarea', { id, ...attrs, oninput: attrs.oninput ?? ((e) => S.drafts.set(id, e.target.value)) });
   el.value = S.drafts.get(id) ?? '';
@@ -1036,7 +1043,7 @@ function workRow(project, x) {
   const pressing = S.busy.get(`work:${key}`);
   const done = x.status === 'done';
   const glyph = done
-    ? h('span', { class: 'g tick' }, h('input', { type: 'checkbox', 'aria-label': `OK: ${x.title}`, disabled: Boolean(S.readOnly) || Boolean(pend) || Boolean(pressing), checked: Boolean(pend) || Boolean(pressing), onchange: (e) => e.target.checked && okayWork(project, x) }))
+    ? h('span', { class: 'g tick' }, h('input', { type: 'checkbox', 'aria-label': `OK: ${x.title}`, disabled: Boolean(S.readOnly) || Boolean(S.tui) || Boolean(pend) || Boolean(pressing), checked: Boolean(pend) || Boolean(pressing), onchange: (e) => e.target.checked && okayWork(project, x) }))
     : h('span', { class: 'g', 'aria-hidden': 'true' }, x.status === 'working' ? '▶' : x.status === 'waiting' ? '?' : '✓');
   const side = x.status === 'waiting' && x.topic
     ? h('button', { type: 'button', class: 'link', onclick: () => select({ kind: 'hall', tab: 'topics', topic: topicKey(project, x.topic) }, { fly: false }) }, `topic #${x.topic} ›`)
@@ -1053,7 +1060,7 @@ function workRow(project, x) {
     h('b', {}, x.title),
     h('div', { class: 'side' }, side),
     pend
-      ? h('small', { class: 'okaying', role: 'status' }, `Okaying in ${leftOf(pend)}s `, h('button', { type: 'button', class: 'undo', dataset: { held: String(pend.id) }, onclick: () => undoHeld(project, pend, `${project}#work`, () => render()) }, 'Undo'))
+      ? h('small', { class: 'okaying', role: 'status' }, `Okaying in ${leftOf(pend)}s `, h('button', { type: 'button', class: 'undo', dataset: { held: String(pend.id) }, disabled: Boolean(S.tui), title: S.tui ? tuiReason() : null, onclick: () => undoHeld(project, pend, `${project}#work`, () => render()) }, 'Undo'))
       : h('small', {}, x.kind === 'proposed' ? h('span', { class: 'tag' }, 'proposed') : 'assigned', x.last ? ` · ${x.last}` : ''),
     S.workOpen.has(key) ? h('ol', { class: 'notes' }, (x.notes ?? []).map((n) => h('li', {}, `${clock(n.at)} · ${n.op}${n.topic ? ` #${n.topic}` : ''}${n.text ? ` · ${n.text}` : ''}`))) : null);
 }
@@ -1495,7 +1502,8 @@ function forkView(x, fork) {
     fork.running || fork.asking ? h('div', { class: 'turn' }, h('span', { class: 'g' }, '◐'), 'thinking…') : null,
     fork.note ? h('p', { class: 'note' }, fork.note) : null,
     fork.error ? h('p', { class: 'note' }, fork.error) : null,
-    S.readOnly ? null : h('div', { class: 'composer', style: 'position:static;margin:0;padding:0;border:0;background:none' }, textarea(`fork-in-${x.key}`, { rows: 2, placeholder: 'Ask the fork', 'aria-label': 'Ask the private session', onkeydown: (e) => {
+    S.tui && !S.readOnly ? h('p', { class: 'note' }, `${tuiReason()}: the session waits until it closes`) : null,
+    S.readOnly || S.tui ? null : h('div', { class: 'composer', style: 'position:static;margin:0;padding:0;border:0;background:none' }, textarea(`fork-in-${x.key}`, { rows: 2, placeholder: 'Ask the fork', 'aria-label': 'Ask the private session', onkeydown: (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         askFork(x);

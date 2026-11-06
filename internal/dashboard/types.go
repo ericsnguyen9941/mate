@@ -455,6 +455,9 @@ type ErrorResponse struct {
 	envelope
 	Error  string `json:"error"`
 	Reason string `json:"reason,omitempty"`
+	// Code names a refusal a page tells apart: coreapi.CodeTUI while a
+	// Mate's TUI is open (CON-227).
+	Code string `json:"code,omitempty"`
 }
 
 // BoardResponse is GET /api/board: the Office's whiteboard (CON-84). Dates

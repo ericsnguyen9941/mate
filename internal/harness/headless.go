@@ -72,3 +72,16 @@ type ForkTurns interface {
 	// rules; dir is where the run's own files go.
 	ForkTurnArgs(launch []string, fork string, allow []string, dir string) ([]string, error)
 }
+
+// TUIResume is what a harness offers to open a headless Mate's session in
+// its own TUI for a while (CON-227): the same launch, interactive, on the
+// session the host's turns run on, so what is said there is in the
+// session's history when the host's next turn resumes it. Claude Code is
+// the only one today.
+type TUIResume interface {
+	// TUIArgs is the TUI's argv after the program: the launch args
+	// (Launcher.Build) with the session flag replaced, resuming the
+	// session when opened and creating it otherwise, and none of a
+	// headless turn's flags.
+	TUIArgs(launch []string, sessionID string, opened bool) []string
+}

@@ -176,6 +176,20 @@ func TurnArgs(launch []string, sessionID string, opened bool) []string {
 	return append(out, StreamTurnFlags...)
 }
 
+// TUIArgs is the Mate's launch args with the session flag replaced, as
+// TurnArgs makes them, without StreamTurnFlags: `claude --resume <id>` in
+// the terminal, with the Mate's settings and hooks, MCP config, model,
+// tools and system prompt (CON-227).
+func TUIArgs(launch []string, sessionID string, opened bool) []string {
+	turn := TurnArgs(launch, sessionID, opened)
+	return turn[:len(turn)-len(StreamTurnFlags)]
+}
+
+// TUIArgs implements harness.TUIResume.
+func (Claude) TUIArgs(launch []string, sessionID string, opened bool) []string {
+	return TUIArgs(launch, sessionID, opened)
+}
+
 // LaunchSessionID is the session a launch's args name, by either flag.
 func LaunchSessionID(launch []string) string {
 	for _, flag := range []string{"--resume", "--session-id"} {

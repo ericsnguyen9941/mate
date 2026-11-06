@@ -159,6 +159,9 @@ type Host struct {
 	// releaseMu runs one release at a time (release); it is taken before
 	// mu, never after it.
 	releaseMu sync.Mutex
+	// paused is Options.Paused: true while the Mate's session is open in
+	// the harness's TUI (CON-227).
+	paused func() bool
 
 	// Sessions (session.go): the open ones by news, and what they run with.
 	sessions  map[int]*session
@@ -200,6 +203,13 @@ type Options struct {
 	// time.AfterFunc. Tests give their own clock. It is called under the
 	// host's lock, so it must not run fn before it returns.
 	After func(d time.Duration, fn func()) (stop func() bool)
+	// Paused reports whether the workspace's TUI flag is up (CON-227):
+	// `mate mate tui` holds `.mate/tui.lock`. While it is, the host starts
+	// no turn - what waits stays queued and goes once the TUI closes -
+	// refuses what the captain sends (ErrTUI), and refuses app lines and a
+	// reload as a busy Mate does, so the outbox keeps them. Nil is never
+	// paused.
+	Paused func() bool
 }
 
 // New makes a host for runner.
@@ -211,6 +221,7 @@ func New(runner *Runner, opts Options) *Host {
 		h.now = time.Now
 	}
 	h.after = opts.After
+	h.paused = opts.Paused
 	if h.after == nil {
 		h.after = realAfter
 	}
@@ -234,6 +245,9 @@ func (h *Host) Subscribe(fn func(Event)) {
 var (
 	ErrStopping = errors.New("the Mate is stopping")
 	ErrQueued   = errors.New("the captain has messages waiting")
+	// ErrTUI is what the host answers while the Mate's session is open in
+	// the harness's TUI (CON-227, Options.Paused), in the captain's words.
+	ErrTUI = errors.New("Mate đang mở TUI")
 )
 
 // message is one turn to run: what the captain or the app said, the prompt
@@ -313,6 +327,9 @@ func (h *Host) submit(msg message) {
 // outbox keeps the line and its own retry and wedged rules (docs/mvp.md
 // M21). It returns once the turn has started.
 func (h *Host) Deliver(text string) error {
+	// Read before the host's lock: it is a file, and the turn lock still
+	// keeps a TUI that opens meanwhile and a turn apart.
+	paused := h.isPaused()
 	h.mu.Lock()
 	switch {
 	case h.stopping:
@@ -324,16 +341,26 @@ func (h *Host) Deliver(text string) error {
 	case len(h.queue) > 0 || h.heldWordsLocked():
 		h.mu.Unlock()
 		return ErrQueued
+	case paused:
+		h.mu.Unlock()
+		return ErrTUI
 	}
 	h.mu.Unlock()
 	return h.start(message{Source: SourceApp, Text: text, Prompt: text})
 }
 
+// isPaused reports whether the Mate's session is open in the harness's
+// TUI (Options.Paused).
+func (h *Host) isPaused() bool { return h.paused != nil && h.paused() }
+
 // start runs one turn. Only one start can win: run is checked again under
-// the lock it is set under.
+// the lock it is set under. While the TUI is open it starts nothing and
+// says ErrBusy, as when another process holds the turn lock: a captain
+// message waits in the queue and goes once the TUI closes.
 func (h *Host) start(msg message) error {
+	paused := h.isPaused()
 	h.mu.Lock()
-	if h.run != nil {
+	if h.run != nil || paused {
 		h.mu.Unlock()
 		return ErrBusy
 	}
@@ -561,6 +588,7 @@ func (h *Host) Reload(l Launch) error {
 	if err := l.valid(); err != nil {
 		return err
 	}
+	paused := h.isPaused()
 	h.mu.Lock()
 	cur := h.runner.Launch
 	switch {
@@ -573,6 +601,10 @@ func (h *Host) Reload(l Launch) error {
 	case len(h.queue) > 0 || h.heldWordsLocked():
 		h.mu.Unlock()
 		return ErrQueued
+	case paused:
+		// The TUI runs on the current session: a refresh waits for it.
+		h.mu.Unlock()
+		return ErrTUI
 	case l.Project != cur.Project || l.Agent != cur.Agent || l.Harness != cur.Harness:
 		h.mu.Unlock()
 		return fmt.Errorf("matehost: a reload is for %s as %s on %s, this host runs %s as %s on %s",
@@ -581,6 +613,37 @@ func (h *Host) Reload(l Launch) error {
 	h.runner.Launch, h.runner.turns = l, 0
 	ev := h.eventLocked(nil)
 	ev.Note = "context refreshed; new session " + l.SessionID
+	h.mu.Unlock()
+	h.emit(ev)
+	return nil
+}
+
+// SetSession makes every turn from now on resume session id, in the same
+// launch: the session the Mate's TUI left the conversation in (CON-227),
+// when Claude moved it to a new id. Unlike Reload it is not refused for
+// what waits - captain messages queued before the TUI opened go on the
+// new session - only while a turn runs or the host stops; the TUI holds
+// the turn lock while it calls, so none can.
+func (h *Host) SetSession(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("matehost: a session change names no session")
+	}
+	h.mu.Lock()
+	switch {
+	case h.stopping:
+		h.mu.Unlock()
+		return ErrStopping
+	case h.run != nil:
+		h.mu.Unlock()
+		return ErrBusy
+	case h.runner.Launch.SessionID == id:
+		h.mu.Unlock()
+		return nil
+	}
+	h.runner.Launch.SessionID = id
+	ev := h.eventLocked(nil)
+	ev.Note = "TUI đã đóng; Mate tiếp tục trên session " + id
 	h.mu.Unlock()
 	h.emit(ev)
 	return nil

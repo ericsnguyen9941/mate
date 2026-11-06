@@ -152,6 +152,11 @@ const (
 	ActionFork      Action = "fork"
 	ActionForkClose Action = "fork_close"
 	ActionUndo      Action = "undo"
+	// ActionCloseTUI ends the Mate's TUI that holds the workspace's TUI
+	// flag (CON-227): SIGTERM to `mate mate tui`, then a wait of up to
+	// ten seconds for the flag to go. It is the one action the flag lets
+	// through, and a console asks the captain before it sends it.
+	ActionCloseTUI Action = "close_tui"
 	// TODO: v1 also had retry, discard and switch_harness. mate has no
 	// retry (a Crew runs once), and no discard action: throwing work away
 	// is `mate crew stop --discard`, on the captain's explicit word.
@@ -223,6 +228,22 @@ var ErrBusy = errors.New("another action is still running on the target")
 // ErrStopping is an action the core refused because it is stopping
 // (CON-210): nothing of it started. Its text is the whole line a UI shows.
 var ErrStopping = errors.New("mate core is stopping · nothing started")
+
+// ErrTUI is an action the core refused because a Mate's session is open
+// in the harness's TUI (CON-227): Office, Agent City and the console only
+// look meanwhile, and nothing started. errors.Is finds it in a *TUIError.
+var ErrTUI = errors.New("a Mate's TUI is open · nothing started")
+
+// TUIError is ErrTUI with who holds the flag; its text is the line a UI
+// shows, verbatim.
+type TUIError struct {
+	TUI query.TUIStatus `json:"tui"`
+}
+
+func (e *TUIError) Error() string { return e.TUI.Line() + " · nothing started" }
+
+// Is makes errors.Is(err, ErrTUI) true for a *TUIError.
+func (e *TUIError) Is(target error) bool { return target == ErrTUI }
 
 // BusyError is ErrBusy with what is running and where: Running is the
 // action that holds the target, Target the target as a UI names it (a

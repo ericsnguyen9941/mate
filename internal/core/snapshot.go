@@ -200,5 +200,8 @@ func (e *Engine) assemble(ctx context.Context) (query.Snapshot, error) {
 	if e.o.Pilot != nil {
 		snap = withAutoStatus(snap, e.o.Pilot.Snapshot())
 	}
-	return withTokens(snap, ws), nil
+	snap = withTokens(snap, ws)
+	// A Mate's session open in its TUI (CON-227): the UIs only look.
+	snap.TUI = tuiOpen(ws)
+	return snap, nil
 }
