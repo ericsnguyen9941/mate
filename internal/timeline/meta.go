@@ -303,7 +303,7 @@ func (p *pass) ingestMode(ctx context.Context) error {
 // listCrewMetas reads every `crews/<id>.meta` of a project, closed ones
 // included: a finished crew is most of the story, and a timeline that dropped
 // it would answer "who did this" with silence.
-func listCrewMetas(ws *store.Workspace, project string) ([]crewRecord, error) {
+func listCrewMetas(ws Workspace, project string) ([]crewRecord, error) {
 	entries, err := os.ReadDir(ws.CrewsDir(project))
 	if err != nil {
 		if os.IsNotExist(err) {

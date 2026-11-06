@@ -14,7 +14,6 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/harness"
-	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // HealthReading is one observation of one agent's pane. It is the only input
@@ -131,7 +130,7 @@ func (d Deps) health() []HealthReading {
 // observer's poll loop), and internal/db has already refused a second
 // process.
 type Ingester struct {
-	ws          *store.Workspace
+	ws          Workspace
 	d           *db.DB
 	deps        Deps
 	transcripts map[string]transcriptCache
@@ -187,7 +186,7 @@ func (i *Ingester) notePass(project string, err error) {
 }
 
 // New builds an ingest over an opened workspace and a writable database.
-func New(ws *store.Workspace, d *db.DB, deps Deps) *Ingester {
+func New(ws Workspace, d *db.DB, deps Deps) *Ingester {
 	return &Ingester{ws: ws, d: d, deps: deps}
 }
 

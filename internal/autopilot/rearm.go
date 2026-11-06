@@ -27,7 +27,7 @@ type talk struct {
 	asked  time.Time
 }
 
-func (t *talk) read(ws *store.Workspace, project string) error {
+func (t *talk) read(ws Workspace, project string) error {
 	entries, next, err := ws.ReadSent(project, t.offset)
 	if err != nil {
 		return err
