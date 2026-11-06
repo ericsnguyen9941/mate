@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/core"
 	"github.com/nguyenngocanh94/mate/internal/harness"
 	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/query"
@@ -107,7 +108,14 @@ func (f *tuiFlag) Started(pid int) error {
 	return f.lock.Write(f.holder)
 }
 
-func (f *tuiFlag) Release() { f.lock.Unlock() }
+// Release says the harness has ended, then lets the lock go: a record
+// that still named the harness would keep the flag up while that pid ran
+// (store.TUIRunning's orphan).
+func (f *tuiFlag) Release() {
+	f.holder.HarnessPID = 0
+	_ = f.lock.Write(f.holder)
+	f.lock.Unlock()
+}
 
 // takeTUIFlag takes `.mate/tui.lock` for project, or refuses with who
 // holds it: "Mate shop đang mở TUI (pid 4242, từ 09:30)".
@@ -127,6 +135,4 @@ func takeTUIFlag(w *store.Workspace, project string) (*tuiFlag, error) {
 }
 
 // tuiStatus is the flag's holder as the snapshot says it.
-func tuiStatus(h store.TUIHolder) query.TUIStatus {
-	return query.TUIStatus{Project: h.Project, PID: h.PID, Since: h.Started}
-}
+func tuiStatus(h store.TUIHolder) query.TUIStatus { return core.TUIStatus(h) }

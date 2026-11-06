@@ -90,8 +90,9 @@ type TUIRun struct {
 	// any of them gives up.
 	Signals <-chan os.Signal
 	// Poll is how often the turn lock is tried; zero is 200 ms. Grace is
-	// how long a TUI passed SIGTERM has before it is killed; zero is 8 s,
-	// within the 10 s a force close waits.
+	// how long a TUI passed SIGTERM has before it is killed; zero is 6 s,
+	// so with the host told (moveWait) the flag goes within the 10 s a
+	// force close waits.
 	Poll, Grace time.Duration
 }
 
@@ -194,7 +195,7 @@ func (r TUIRun) waitTurn(ctx context.Context) (func(), error) {
 func (r TUIRun) forward(p *os.Process, done <-chan struct{}) {
 	grace := r.Grace
 	if grace <= 0 {
-		grace = 8 * time.Second
+		grace = 6 * time.Second
 	}
 	var kill <-chan time.Time
 	for {
@@ -229,6 +230,8 @@ func (r TUIRun) move(ctx context.Context, id string) {
 	if r.MoveHost == nil {
 		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, moveWait)
+	defer cancel()
 	err := r.MoveHost(ctx, id)
 	var dial *net.OpError
 	switch {
@@ -240,6 +243,9 @@ func (r TUIRun) move(ctx context.Context, id string) {
 		fmt.Fprintf(r.Notes, "mate: the host could not be moved to session %s (%v); restart the Mate to resume it\n", id, err)
 	}
 }
+
+// moveWait bounds telling the host its new session.
+const moveWait = 2 * time.Second
 
 // launchEnv is the environment a launch runs with: base without what the
 // launch unsets, the nested-session variables of whatever Claude Code

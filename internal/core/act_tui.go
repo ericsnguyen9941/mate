@@ -35,7 +35,19 @@ func tuiOpen(ws *store.Workspace) *query.TUIStatus {
 	if err != nil || !held {
 		return nil
 	}
-	return &query.TUIStatus{Project: h.Project, PID: h.PID, Since: h.Started}
+	st := TUIStatus(h)
+	return &st
+}
+
+// TUIStatus is the flag's holder as the UIs say it: the pid is the
+// harness's, the TUI the captain sees, once it runs - a kill -9 of it ends
+// the TUI and the flag with it - and `mate mate tui`'s before.
+func TUIStatus(h store.TUIHolder) query.TUIStatus {
+	pid := h.PID
+	if h.HarnessPID > 0 {
+		pid = h.HarnessPID
+	}
+	return query.TUIStatus{Project: h.Project, PID: pid, Since: h.Started}
 }
 
 // refuseForTUI is Act's refusal of req while a TUI is open, nil when it
@@ -55,15 +67,28 @@ func (e *Engine) refuseForTUI(req coreapi.ActionRequest) error {
 // to go. A signal goes only to the pid the lock's holder wrote, and only
 // while the lock is held.
 func (e *Engine) closeTUI(ctx context.Context, _ coreapi.ActionRequest) (string, error) {
-	open := tuiOpen(e.o.Workspace)
-	if open == nil {
+	if e.o.Workspace == nil {
+		return "", errNoWorkspace
+	}
+	h, held, err := e.o.Workspace.TUIRunning()
+	if err != nil {
+		return "", err
+	}
+	if !held {
 		return "no Mate's TUI is open · nothing changed", nil
 	}
-	if open.PID <= 0 {
+	open := TUIStatus(h)
+	// `mate mate tui` passes SIGTERM on to the harness and cleans up after
+	// it; with it gone (Orphaned) the harness itself is told.
+	target := h.PID
+	if h.Orphaned {
+		target = h.HarnessPID
+	}
+	if target <= 0 {
 		return "", fmt.Errorf("%s, but its record names no process; close it in its terminal", open.Line())
 	}
-	if err := e.signalTUI(open.PID, syscall.SIGTERM); err != nil {
-		return "", fmt.Errorf("could not signal the TUI of %s (pid %d): %w", open.Project, open.PID, err)
+	if err := e.signalTUI(target, syscall.SIGTERM); err != nil {
+		return "", fmt.Errorf("could not signal the TUI of %s (pid %d): %w", open.Project, target, err)
 	}
 	wait := tuiCloseWait
 	if e.tuiWait > 0 {
@@ -81,7 +106,7 @@ func (e *Engine) closeTUI(ctx context.Context, _ coreapi.ActionRequest) (string,
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-deadline.C:
-			return "", fmt.Errorf("the TUI of %s (pid %d) was sent SIGTERM and is still open after %s; close it in its terminal", open.Project, open.PID, durationWord(wait))
+			return "", fmt.Errorf("the TUI of %s (pid %d) was sent SIGTERM and is still open after %s; close it in its terminal", open.Project, target, durationWord(wait))
 		case <-tick.C:
 		}
 	}

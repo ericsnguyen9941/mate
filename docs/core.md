@@ -110,7 +110,7 @@ new core, which writes its own record over the old one.
 | -- | -- |
 | `core.lock` | Held by the running engine. JSON: `pid`, `owner` (`core` or `console`), `started`, `version`, `binary`, `build` (sha256 of the binary when it started), `socket`, `url`, `lan_url`, `tcp_error`. The file stays after the engine ends. |
 | `core.sock` | The core's unix socket (0600): Office/City's routes and the clients' API (`/api/core`, `/api/snapshot`, `/api/act`, CON-212). Removed when the core stops. |
-| `tui.lock` | Held by `mate mate tui` while a Mate's session is open in the TUI (CON-227). JSON: `project`, `pid`, `started`, `harness_pid`. The file stays after it ends. |
+| `tui.lock` | Held by `mate mate tui` while a Mate's session is open in the TUI (CON-227). JSON: `project`, `pid` (`mate mate tui`), `started`, `harness_pid` (Claude, while it runs). The file stays after it ends. |
 | `core.log` | The output of every core: `mate core start` sends the core's output there, and a core in the foreground (`mate`, `mate core run`) appends what it prints to the terminal. Before it opens the log, either moves a log larger than 10 MB to `core.log.1`, keeping that one old log. The log of a core that is running is never rotated. |
 
 ## The headless Mates' hosts
@@ -177,8 +177,16 @@ While the flag is up:
 | That Mate's host | Runs no turn; alive, so the watch below restarts nothing |
 | The engine's loops | Run on: the observer, the PR sweep, the auto daemon of the other Projects, the watch over the hosts |
 
-`mate mate tui` killed outright lets the flag go with it; Claude, left
-in the terminal, is stopped by the shell's job control when it reads.
+The `pid` the UIs show is Claude's once it runs: `kill -9` of it ends the
+TUI, and `mate mate tui` lets the flag go and the host run on.
+`mate mate tui` killed outright lets its lock go, but Claude may run on
+and write the session: the flag stays up while the `harness_pid` its
+record names still runs, and a force close then signals that process.
+While the TUI is open its lines wait in the outbox untried, so a TUI kept
+open long opens no `wedged` incident.
+
+The flag goes up before the wait for the turn in flight, so the UIs only
+look during that wait too.
 
 ## After installing a new mate
 

@@ -79,13 +79,14 @@ func TestHostRunsNoTurnWhileTheTUIIsOpen(t *testing.T) {
 // or a run that ends on SIGTERM ("term").
 const fakeTUI = `#!/bin/sh
 dir=$(dirname "$0")
+case "$TUI_DO" in term) trap 'echo term > "$dir/tui-term.log"; exit 0' TERM;; esac
 echo "$*" > "$dir/tui-argv.log"
 echo "CLAUDECODE=${CLAUDECODE:-} MATE_HOST_TURN=${MATE_HOST_TURN:-} MATE_PROJECT_ID=${MATE_PROJECT_ID:-}" > "$dir/tui-env.log"
 echo "said in the TUI" >> "$dir/transcript-$(echo "$*" | sed 's/.*--resume //')"
 case "$TUI_DO" in
 moved) echo s2 > "$dir/meta-session";;
 sleep) sleep 30;;
-term) trap 'echo term > "$dir/tui-term.log"; exit 0' TERM; while :; do sleep 0.1; done;;
+term) trap 'echo term > "$dir/tui-term.log"; exit 0' TERM; : > "$dir/tui-ready"; while :; do sleep 0.1; done;;
 esac
 `
 
@@ -296,13 +297,27 @@ func TestRunTUIPassesSIGTERMOn(t *testing.T) {
 	x := newTUIFixture(t, "term")
 	done := x.start(t)
 	waitStarted(t, x.flag)
-	time.Sleep(200 * time.Millisecond)
+	waitFile(t, filepath.Join(x.dir, "tui-ready"))
 	x.sigs <- syscall.SIGTERM
 	x.wait(t, done)
 	if data, _ := os.ReadFile(filepath.Join(x.dir, "tui-term.log")); strings.TrimSpace(string(data)) != "term" {
 		t.Fatalf("the TUI was not passed SIGTERM: %q", data)
 	}
 	x.released(t)
+}
+
+func waitFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s never appeared", path)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func waitStarted(t *testing.T, f *tuiFlag) int {

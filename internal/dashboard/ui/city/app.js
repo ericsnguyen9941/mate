@@ -701,10 +701,13 @@ function resultEl(key) {
 const outcome = (e) => (e.status === 422 ? 'failed' : 'refused');
 const readOnlyBand = () => h('div', { class: 'band ro' }, h('span', { class: 'g' }, '⊘'), h('span', {}, `Read-only: ${S.readOnly.replace(/^this dashboard is read-only: /, '')}.`));
 
+// A Mate's TUI open (CON-227), as a button's reason: "Mate shop đang mở TUI".
+const tuiReason = () => S.tui.replace(/ \(.*\)$/, '');
+
 // Why a button cannot run right now, beyond what the API says: the page's own state.
 function blockedBy(key) {
   if (S.readOnly) return 'read-only dashboard';
-  if (S.tui) return S.tui;
+  if (S.tui) return tuiReason();
   if (S.stale) return `stale since ${clock(S.staleSince)}; wait for live`;
   if (room && mode !== 'live') return 'replaying; go Live to act';
   const running = S.busy.get(key);
@@ -857,7 +860,7 @@ async function undoHeld(project, x, key, back) {
   await loadChat(project);
 }
 const heldLine = (x, label, onUndo) =>
-  h('div', { class: 'meta' }, `${label} in ${leftOf(x)}s `, h('button', { type: 'button', class: 'undo', dataset: { held: String(x.id) }, onclick: onUndo }, 'Undo'));
+  h('div', { class: 'meta' }, `${label} in ${leftOf(x)}s `, h('button', { type: 'button', class: 'undo', dataset: { held: String(x.id) }, disabled: Boolean(S.tui), title: S.tui ? tuiReason() : null, onclick: onUndo }, 'Undo'));
 function textarea(id, attrs = {}) {
   const el = h('textarea', { id, ...attrs, oninput: attrs.oninput ?? ((e) => S.drafts.set(id, e.target.value)) });
   el.value = S.drafts.get(id) ?? '';
@@ -1057,7 +1060,7 @@ function workRow(project, x) {
     h('b', {}, x.title),
     h('div', { class: 'side' }, side),
     pend
-      ? h('small', { class: 'okaying', role: 'status' }, `Okaying in ${leftOf(pend)}s `, h('button', { type: 'button', class: 'undo', dataset: { held: String(pend.id) }, onclick: () => undoHeld(project, pend, `${project}#work`, () => render()) }, 'Undo'))
+      ? h('small', { class: 'okaying', role: 'status' }, `Okaying in ${leftOf(pend)}s `, h('button', { type: 'button', class: 'undo', dataset: { held: String(pend.id) }, disabled: Boolean(S.tui), title: S.tui ? tuiReason() : null, onclick: () => undoHeld(project, pend, `${project}#work`, () => render()) }, 'Undo'))
       : h('small', {}, x.kind === 'proposed' ? h('span', { class: 'tag' }, 'proposed') : 'assigned', x.last ? ` · ${x.last}` : ''),
     S.workOpen.has(key) ? h('ol', { class: 'notes' }, (x.notes ?? []).map((n) => h('li', {}, `${clock(n.at)} · ${n.op}${n.topic ? ` #${n.topic}` : ''}${n.text ? ` · ${n.text}` : ''}`))) : null);
 }
@@ -1499,7 +1502,8 @@ function forkView(x, fork) {
     fork.running || fork.asking ? h('div', { class: 'turn' }, h('span', { class: 'g' }, '◐'), 'thinking…') : null,
     fork.note ? h('p', { class: 'note' }, fork.note) : null,
     fork.error ? h('p', { class: 'note' }, fork.error) : null,
-    S.readOnly ? null : h('div', { class: 'composer', style: 'position:static;margin:0;padding:0;border:0;background:none' }, textarea(`fork-in-${x.key}`, { rows: 2, placeholder: 'Ask the fork', 'aria-label': 'Ask the private session', onkeydown: (e) => {
+    S.tui && !S.readOnly ? h('p', { class: 'note' }, `${tuiReason()}: the session waits until it closes`) : null,
+    S.readOnly || S.tui ? null : h('div', { class: 'composer', style: 'position:static;margin:0;padding:0;border:0;background:none' }, textarea(`fork-in-${x.key}`, { rows: 2, placeholder: 'Ask the fork', 'aria-label': 'Ask the private session', onkeydown: (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         askFork(x);

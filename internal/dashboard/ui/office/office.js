@@ -1825,7 +1825,7 @@
   // viewOnly is why nothing can be pressed on this page right now: a
   // read-only dashboard, or a Mate's TUI open (CON-227); "" when it can.
   function viewOnly() {
-    return wsReadOnly ? "read-only dashboard" : wsTUI;
+    return wsReadOnly ? "read-only dashboard" : wsTUI.replace(/ \(.*\)$/, "");
   }
 
   // probeActions asks the first room's buttons on each poll, so the band
@@ -1950,7 +1950,7 @@
   }
 
   function heldLine(x, label, focus, onUndo) {
-    var undo = el("button", { class: "link news-more", type: "button", "data-focus": focus }, "Undo");
+    var undo = el("button", { class: "link news-more", type: "button", "data-focus": focus, disabled: !!wsTUI, title: wsTUI ? viewOnly() : null }, "Undo");
     undo.addEventListener("click", function (e) { if (e && e.stopPropagation) e.stopPropagation(); onUndo(); });
     return [el("span", { text: label + " in " + leftOf(x) + "s · " }), undo];
   }

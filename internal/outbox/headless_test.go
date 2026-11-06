@@ -101,6 +101,54 @@ func TestAHeadlessMateGetsTheLineThroughItsHost(t *testing.T) {
 	}
 }
 
+// While the Mate's session is open in its TUI (CON-227) its lines wait,
+// untried, however long the TUI stays open: no attempt counts and no
+// wedged incident opens. Once the TUI closes the line is delivered. A TUI
+// of another project's Mate holds nothing back.
+func TestALineWaitsUntriedWhileTheMatesTUIIsOpen(t *testing.T) {
+	f, prompts := headlessFixture(t, true)
+	s := f.sender()
+	lock, err := f.ws.LockTUI(store.TUIHolder{Project: project, PID: os.Getpid(), Started: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.assign(s, "crews/k3.status@0", resolveLine)
+	f.drain(s)
+	f.clock.Advance(outbox.DefaultWedgedAfter + time.Minute)
+	f.drain(s)
+	items := f.items()
+	if len(items) != 1 || !items[0].Queued() || items[0].Attempts != 0 {
+		t.Fatalf("outbox with the TUI open = %+v, want the line queued and untried", items)
+	}
+	if got := f.incidents(); len(got) != 0 {
+		t.Fatalf("incidents with the TUI open = %+v, want none", got)
+	}
+	if data, _ := os.ReadFile(prompts); len(data) != 0 {
+		t.Fatalf("the host ran %q with the TUI open", data)
+	}
+
+	lock.Unlock()
+	f.drain(s)
+	if items := f.items(); len(items) != 1 || items[0].State != store.OutboxSent {
+		t.Fatalf("outbox once the TUI closed = %+v, want the line sent", items)
+	}
+	if got := f.incidents(); len(got) != 0 {
+		t.Fatalf("incidents = %+v, want none", got)
+	}
+
+	other, err := f.ws.LockTUI(store.TUIHolder{Project: "another", PID: os.Getpid(), Started: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Unlock()
+	f.assign(s, "crews/k4.status@0", resolveLine+" again")
+	f.drain(s)
+	// Tried at once: the host may still be on the first line's turn.
+	if items := f.items(); len(items) != 2 || items[1].Attempts != 1 {
+		t.Fatalf("outbox with another Mate's TUI open = %+v, want the line tried", items)
+	}
+}
+
 func TestABusyHeadlessMateKeepsTheLineQueued(t *testing.T) {
 	f, _ := headlessFixture(t, false)
 	s := f.sender()

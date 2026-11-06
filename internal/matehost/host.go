@@ -327,6 +327,9 @@ func (h *Host) submit(msg message) {
 // outbox keeps the line and its own retry and wedged rules (docs/mvp.md
 // M21). It returns once the turn has started.
 func (h *Host) Deliver(text string) error {
+	// Read before the host's lock: it is a file, and the turn lock still
+	// keeps a TUI that opens meanwhile and a turn apart.
+	paused := h.isPaused()
 	h.mu.Lock()
 	switch {
 	case h.stopping:
@@ -338,7 +341,7 @@ func (h *Host) Deliver(text string) error {
 	case len(h.queue) > 0 || h.heldWordsLocked():
 		h.mu.Unlock()
 		return ErrQueued
-	case h.isPaused():
+	case paused:
 		h.mu.Unlock()
 		return ErrTUI
 	}
@@ -355,8 +358,9 @@ func (h *Host) isPaused() bool { return h.paused != nil && h.paused() }
 // says ErrBusy, as when another process holds the turn lock: a captain
 // message waits in the queue and goes once the TUI closes.
 func (h *Host) start(msg message) error {
+	paused := h.isPaused()
 	h.mu.Lock()
-	if h.run != nil || h.isPaused() {
+	if h.run != nil || paused {
 		h.mu.Unlock()
 		return ErrBusy
 	}
@@ -584,6 +588,7 @@ func (h *Host) Reload(l Launch) error {
 	if err := l.valid(); err != nil {
 		return err
 	}
+	paused := h.isPaused()
 	h.mu.Lock()
 	cur := h.runner.Launch
 	switch {
@@ -596,7 +601,7 @@ func (h *Host) Reload(l Launch) error {
 	case len(h.queue) > 0 || h.heldWordsLocked():
 		h.mu.Unlock()
 		return ErrQueued
-	case h.isPaused():
+	case paused:
 		// The TUI runs on the current session: a refresh waits for it.
 		h.mu.Unlock()
 		return ErrTUI

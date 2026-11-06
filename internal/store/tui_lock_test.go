@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -55,6 +56,51 @@ func TestOneTUIHoldsTheWorkspaceAtATime(t *testing.T) {
 	again, err := w.LockTUI(store.TUIHolder{Project: "blog", PID: 7})
 	if err != nil {
 		t.Fatalf("LockTUI after Unlock: %v", err)
+	}
+	again.Unlock()
+}
+
+// `mate mate tui` killed outright lets the lock go, but the harness it
+// started may run on and write the Mate's session: the flag stays up,
+// Orphaned, until that process ends; then the record forgets its pid.
+func TestATUIWhoseHolderWasKilledStaysOpenWhileItsHarnessRuns(t *testing.T) {
+	t.Parallel()
+	w := newWorkspace(t)
+	harness := exec.Command("sleep", "30")
+	if err := harness.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = harness.Process.Kill(); _ = harness.Wait() })
+	lock, err := w.LockTUI(store.TUIHolder{Project: "shop", PID: 4242, Started: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lock.Write(store.TUIHolder{Project: "shop", PID: 4242, HarnessPID: harness.Process.Pid}); err != nil {
+		t.Fatal(err)
+	}
+	lock.Unlock() // the holder is gone; its harness is not
+
+	h, held, err := w.TUIRunning()
+	if err != nil || !held || !h.Orphaned || h.Project != "shop" || h.HarnessPID != harness.Process.Pid {
+		t.Fatalf("TUIRunning with the harness alive = %+v, %v, %v; want it open, orphaned", h, held, err)
+	}
+	if _, err := w.LockTUI(store.TUIHolder{Project: "blog", PID: 7}); !errors.Is(err, store.ErrTUIOpen) {
+		t.Fatalf("LockTUI beside an orphaned harness = %v; want ErrTUIOpen", err)
+	}
+
+	_ = harness.Process.Kill()
+	_ = harness.Wait()
+	if _, held, err := w.TUIRunning(); err != nil || held {
+		t.Fatalf("TUIRunning once the harness ended = %v, %v; want closed", held, err)
+	}
+	var rec map[string]any
+	data, _ := os.ReadFile(w.TUILockFile())
+	if err := json.Unmarshal(data, &rec); err != nil || rec["harness_pid"] != nil {
+		t.Fatalf("record after the orphan ended = %s; want no harness pid", data)
+	}
+	again, err := w.LockTUI(store.TUIHolder{Project: "blog", PID: 7})
+	if err != nil {
+		t.Fatalf("LockTUI once the orphan ended: %v", err)
 	}
 	again.Unlock()
 }
