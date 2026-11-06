@@ -15,10 +15,10 @@ const (
 )
 
 // Migration is the part of the store only `mate migrate` uses: its lock,
-// its log, the brief rewrite and the switch to layout 2 (CON-242). The rest
-// of mate reaches none of it through Workspace, so removing layout 1 later
-// removes this file, and no other caller can overwrite a brief or the
-// layout by mistake.
+// its log, the brief rewrite and the switch to layout 2 (CON-242). Workspace
+// has none of these methods, so a caller reaches them only by asking for
+// ws.Migration(): overwriting a brief or the layout is a deliberate call that
+// grep finds, and removing layout 1 later removes this file.
 type Migration struct{ w *Workspace }
 
 // Migration returns the view `mate migrate` writes through.
