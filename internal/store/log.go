@@ -163,7 +163,7 @@ func parseSent(line string) (SentEntry, bool) {
 // lock as the other logs. The line is the chain's (internal/screen/chain
 // LogLine); newlines in it become spaces.
 func (w *Workspace) AppendJevLog(line string) error {
-	return w.appendLine(w.JevLog(), oneLine(line))
+	return w.appendLine(w.jevLog(), oneLine(line))
 }
 
 type rawLine struct {

@@ -50,9 +50,9 @@ type ProfileDocument struct {
 	State  string `json:"state"`
 }
 
-// FingerprintProfile compares configuration independently of task text,
+// fingerprintProfile compares configuration independently of task text,
 // timestamps and worktree paths. Actual code revision stays in RepoCommit.
-func FingerprintProfile(p HarnessProfile) string {
+func fingerprintProfile(p HarnessProfile) string {
 	type document struct{ Role, SHA256, State string }
 	docs := make([]document, 0, len(p.Documents))
 	for _, d := range p.Documents {
@@ -83,13 +83,13 @@ func (w *Workspace) WriteCrewHarnessProfile(project, crew string, p HarnessProfi
 		return err
 	}
 	p.Version, p.Project, p.Crew = 1, project, crew
-	p.Fingerprint = FingerprintProfile(p)
+	p.Fingerprint = fingerprintProfile(p)
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	path := w.CrewHarnessProfile(project, crew)
+	path := w.crewHarnessProfile(project, crew)
 	resolved, err := w.resolve(path)
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func (w *Workspace) ReadCrewHarnessProfile(project, crew string) (*HarnessProfil
 	if err := validatePair(project, crew); err != nil {
 		return nil, err
 	}
-	return w.readHarnessProfile(w.CrewHarnessProfile(project, crew))
+	return w.readHarnessProfile(w.crewHarnessProfile(project, crew))
 }
 
 func (w *Workspace) readHarnessProfile(path string) (*HarnessProfile, error) {

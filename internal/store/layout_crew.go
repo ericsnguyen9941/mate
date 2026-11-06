@@ -21,7 +21,7 @@ func (p Paths) CrewStatus(project, crew string) string {
 	return filepath.Join(p.CrewsDir(project), crew+".status")
 }
 
-// CrewStopLock is `projects/<project>/crews/<crew>.stop.lock`, held for the
+// crewStopLock is `projects/<project>/crews/<crew>.stop.lock`, held for the
 // whole of one `crew stop`: from before the agent is stopped until the meta
 // says the task is over.
 //
@@ -29,7 +29,7 @@ func (p Paths) CrewStatus(project, crew string) string {
 // agent while the meta still names it, and without the lock the observer
 // reads that window as the agent having vanished: every stop of
 // hellovietnam's crews up to 2026-10-13 left a `runtime_lost` incident open.
-func (p Paths) CrewStopLock(project, crew string) string {
+func (p Paths) crewStopLock(project, crew string) string {
 	return filepath.Join(p.CrewsDir(project), crew+".stop.lock")
 }
 
@@ -81,8 +81,8 @@ func (p Paths) CrewReviewMeta(project, crew string) string {
 	return filepath.Join(p.CrewDir(project, crew), reviewMetaFileName)
 }
 
-// CrewHarnessProfile is `projects/<project>/crews/<crew>/harness-profile.json`.
-func (p Paths) CrewHarnessProfile(project, crew string) string {
+// crewHarnessProfile is `projects/<project>/crews/<crew>/harness-profile.json`.
+func (p Paths) crewHarnessProfile(project, crew string) string {
 	return filepath.Join(p.CrewDir(project, crew), "harness-profile.json")
 }
 

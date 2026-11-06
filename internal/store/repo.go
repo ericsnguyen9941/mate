@@ -17,8 +17,8 @@ var ErrNoRepo = errors.New("store: no such repo")
 // ErrRepoExists is returned for a repo name or path already registered.
 var ErrRepoExists = errors.New("store: repo already registered")
 
-// ErrAmbiguousRepo is returned by SoleRepo for a project with several repos:
-// the caller has to say which one.
+// ErrAmbiguousRepo is returned for a project with several repos when the
+// caller did not say which one (CrewRepo).
 var ErrAmbiguousRepo = errors.New("store: project has several repos")
 
 // ErrRepoOutsideProject is matched (errors.Is) by the refusal of a repo path
@@ -86,10 +86,10 @@ func (cfg ProjectConfig) RepoNames() []string {
 	return names
 }
 
-// SoleRepo is the project's one repo. It is what every caller that has no
-// crew to ask uses: ErrNoRepo for a project without a repo, ErrAmbiguousRepo
-// for one with several, each naming the fix.
-func (cfg ProjectConfig) SoleRepo() (RepoConfig, error) {
+// soleRepo is the project's one repo: ErrNoRepo for a project without a
+// repo, ErrAmbiguousRepo for one with several, each naming the fix. Only the
+// tests call it today; CrewRepo makes the same choice for a crew.
+func (cfg ProjectConfig) soleRepo() (RepoConfig, error) {
 	switch len(cfg.Repos) {
 	case 0:
 		return RepoConfig{}, fmt.Errorf("%w: the project has no repo yet; add one with `mate project repo add <project> <repo-path>`", ErrNoRepo)
@@ -105,7 +105,7 @@ func (cfg ProjectConfig) SoleRepo() (RepoConfig, error) {
 func (cfg ProjectConfig) CrewRepo(meta map[string]string) (RepoConfig, error) {
 	name := strings.TrimSpace(meta[MetaRepo])
 	if name == "" {
-		// SoleRepo's own fix (`--repo`) is a spawn flag and means nothing
+		// soleRepo's own fix (`--repo`) is a spawn flag and means nothing
 		// for a crew that already exists; the fix here is the meta line.
 		switch len(cfg.Repos) {
 		case 0:
@@ -123,9 +123,9 @@ func (cfg ProjectConfig) CrewRepo(meta map[string]string) (RepoConfig, error) {
 	return r, nil
 }
 
-// ValidateRepoName accepts the names a repo may have inside its project, the
+// validateRepoName accepts the names a repo may have inside its project, the
 // same shape as a project name: `[a-z][a-z0-9-]{0,31}`.
-func ValidateRepoName(name string) error {
+func validateRepoName(name string) error {
 	if !names.ValidProject(name) {
 		return fmt.Errorf("store: invalid repo name %q: want [a-z][a-z0-9-]{0,31}", name)
 	}
@@ -134,11 +134,11 @@ func ValidateRepoName(name string) error {
 
 var repoNameInvalid = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// DefaultRepoName derives a valid repo name from a repo path: its last
+// defaultRepoName derives a valid repo name from a repo path: its last
 // element, lowercased, with every run of other characters turned into one
 // '-'. It is deterministic, so the name a legacy project.yaml is read with
 // is the same on every read.
-func DefaultRepoName(repoPath string) string {
+func defaultRepoName(repoPath string) string {
 	name := strings.ToLower(path.Base(strings.TrimRight(strings.ReplaceAll(repoPath, "\\", "/"), "/")))
 	name = strings.Trim(repoNameInvalid.ReplaceAllString(name, "-"), "-")
 	name = strings.TrimLeft(name, "0123456789-")
@@ -161,7 +161,7 @@ func (w *Workspace) normaliseRepos(project string, repos []RepoConfig) ([]RepoCo
 	names := map[string]bool{}
 	paths := map[string]string{}
 	for _, r := range repos {
-		rel, err := w.RelRepo(r.Path)
+		rel, err := w.relRepo(r.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -170,9 +170,9 @@ func (w *Workspace) normaliseRepos(project string, repos []RepoConfig) ([]RepoCo
 		}
 		r.Path = rel
 		if r.Name == "" {
-			r.Name = DefaultRepoName(rel)
+			r.Name = defaultRepoName(rel)
 		}
-		if err := ValidateRepoName(r.Name); err != nil {
+		if err := validateRepoName(r.Name); err != nil {
 			return nil, err
 		}
 		if r.DefaultBranch == "" {
@@ -214,7 +214,7 @@ func (w *Workspace) checkReposUnclaimed(project string, repos []RepoConfig) erro
 }
 
 // AddRepo registers one more repo in an existing project and returns it as
-// stored. An empty Name is derived from the path (DefaultRepoName).
+// stored. An empty Name is derived from the path (defaultRepoName).
 func (w *Workspace) AddRepo(project string, repo RepoConfig) (RepoConfig, error) {
 	cfg, added, err := w.addRepoPlan(project, repo)
 	if err != nil {
