@@ -447,8 +447,8 @@ type CrewSummary struct {
 // project's box. It asks Herdr nothing: a list is a view of what was
 // recorded, and `mate state <crew>` (task 13) is where a live answer -
 // the health column - comes from.
-func ListCrews(w *store.Workspace, project string) ([]CrewSummary, error) {
-	if w == nil {
+func ListCrews(w CrewReader, project string) ([]CrewSummary, error) {
+	if noWorkspace(w) {
 		return nil, errUsage("spawn: a workspace is required")
 	}
 	if err := store.ValidateProjectName(project); err != nil {
@@ -532,6 +532,6 @@ func readDirNames(dir string) ([]string, error) {
 }
 
 // crewIDs are the ids with a `.meta` under `crews/`, sorted (store.CrewIDs).
-func crewIDs(w *store.Workspace, project string) ([]string, error) {
+func crewIDs(w CrewReader, project string) ([]string, error) {
 	return w.CrewIDs(project)
 }

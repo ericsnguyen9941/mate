@@ -31,7 +31,7 @@ const LearningHeading = "## " + store.LearningUsageSection
 // read is written as unknown rather than skipped, so the record says what
 // is missing. The outcome is one line for the caller; it never fails the
 // close.
-func RecordAtClose(ctx context.Context, w *store.Workspace, project, crew, event string) string {
+func RecordAtClose(ctx context.Context, w Workspace, project, crew, event string) string {
 	path := w.CrewLearning(project, crew)
 	block, err := usageBlock(ctx, w, project, crew, event)
 	word := "written"
@@ -49,7 +49,7 @@ func RecordAtClose(ctx context.Context, w *store.Workspace, project, crew, event
 // buckets, call shape and timing lanes, with the scope every number has.
 // CrewPerformance reads only Deps.Now of the dashboard's dependencies, so
 // the zero Deps (the wall clock) is all it needs.
-func usageBlock(ctx context.Context, w *store.Workspace, project, crew, event string) (string, error) {
+func usageBlock(ctx context.Context, w Workspace, project, crew, event string) (string, error) {
 	handle, err := db.OpenRead(w)
 	if err != nil {
 		return "", err
