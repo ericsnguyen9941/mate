@@ -12,8 +12,9 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
 
-// The pages `mate usage` prints are internal/usage's, and so are the tests
-// of what they say (CON-168). These test what cmdUsage owns: reading the
+// The pages `mate usage` prints are internal/usage's, `--why`'s
+// internal/usage/why's, and so are the tests of what they say (CON-168,
+// CON-234). These test what cmdUsage owns: reading the
 // flags, refusing a wrong combination, and handing each form to the page
 // it names.
 

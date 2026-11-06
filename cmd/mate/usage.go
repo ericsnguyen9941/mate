@@ -8,6 +8,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/usage"
+	"github.com/nguyenngocanh94/mate/internal/usage/why"
 )
 
 // cmdUsage is `mate usage <project> [crew] [--top <n>] [--why] [--workspace
@@ -21,9 +22,10 @@ import (
 // rather than the whole-task summary; `--why` prints what those calls were
 // spent on instead.
 //
-// internal/usage builds every page (CON-168); this reads the flags, refuses
-// a wrong combination before it opens the database, and hands the package
-// the harness registry and the dashboard's deps `--why` reads through.
+// internal/usage builds every page (CON-168) but `--why`, which
+// internal/usage/why builds (CON-234); this reads the flags, refuses a
+// wrong combination before it opens the database, and hands usage the
+// harness registry and why the dashboard's deps it reads through.
 func cmdUsage(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("usage", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -32,7 +34,7 @@ func cmdUsage(args []string, stdout, stderr io.Writer) error {
 	}
 	workspaceFlag := fs.String("workspace", "", "workspace directory")
 	top := fs.Int("top", 0, "print only the Mate and the n largest tasks by TOTAL")
-	why := fs.Bool("why", false, "print what a crew's tokens were spent on instead of its model calls")
+	whyFlag := fs.Bool("why", false, "print what a crew's tokens were spent on instead of its model calls")
 	sessions := fs.Bool("sessions", false, "print a crew's tokens per session (one row per harness session, CON-73) instead of its model calls")
 	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return &usageError{err}
@@ -48,13 +50,13 @@ func cmdUsage(args []string, stdout, stderr io.Writer) error {
 	if *top > 0 && fs.NArg() == 2 {
 		return newUsageError("mate usage: --top ranks the project's tasks; drop the crew")
 	}
-	if *why && fs.NArg() == 1 {
+	if *whyFlag && fs.NArg() == 1 {
 		return newUsageError("mate usage: --why explains one task; name the crew")
 	}
 	if *sessions && fs.NArg() == 1 {
 		return newUsageError("mate usage: --sessions splits one task; name the crew")
 	}
-	if *sessions && *why {
+	if *sessions && *whyFlag {
 		return newUsageError("mate usage: --sessions and --why are two different pages; pick one")
 	}
 
@@ -72,12 +74,13 @@ func cmdUsage(args []string, stdout, stderr io.Writer) error {
 	}
 	defer handle.Close()
 
-	deps := usage.Deps{Harnesses: harnesses, Dashboard: dashboardDeps(w)}
-	return usage.Write(context.Background(), stdout, w, handle, deps, usage.Request{
+	if *whyFlag {
+		return why.Write(context.Background(), stdout, w, handle, dashboardDeps(w), project, fs.Arg(1))
+	}
+	return usage.Write(context.Background(), stdout, w, handle, usage.Deps{Harnesses: harnesses}, usage.Request{
 		Project:  project,
 		Crew:     fs.Arg(1),
 		Top:      *top,
-		Why:      *why,
 		Sessions: *sessions,
 	})
 }
