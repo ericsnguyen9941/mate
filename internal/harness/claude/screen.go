@@ -296,7 +296,7 @@ func claudeComposerRows(lines []string) ([]string, bool) {
 	return nil, false
 }
 
-// Measured 2026-09-14 (ADR 0028) and 2026-09-18 (the Codex update prompt)
+// Measured 2026-09-14 (the trust dialogs) and 2026-09-18 (the Codex update prompt)
 // through `herdr agent read --source recent-unwrapped` against codex-cli
 // 0.154.0 and Claude Code 2.1.270; Claude's captures are testdata/startup.
 // Every string below is a literal from those captures, and the catalog's

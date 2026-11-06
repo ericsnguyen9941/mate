@@ -208,8 +208,8 @@ func claudeParseRange(state harness.TranscriptParseState, data []byte, final boo
 			// classify it into the kind vocabulary, so it is not copied. The
 			// count lets a caller notice an unrecognised type without trusting
 			// it. Known harness housekeeping observed in 330 sessions of CLI
-			// 2.1.269 (ADR 0016 names the first group; the rest were censused
-			// here): attachment, file-history-snapshot, file-history-delta,
+			// 2.1.269 (v1 had already counted the first eight; the rest were
+			// censused here): attachment, file-history-snapshot, file-history-delta,
 			// ai-title, atis-latch, mode, permission-mode, last-prompt,
 			// queue-operation, pr-link, cost-state, agent-name, custom-title.
 			p.batch.Skipped[head.Type]++
@@ -618,7 +618,7 @@ func (p *claudeParse) addUser(rec claudeRecord, raw string, offset int64, ordina
 	// measured:
 	//
 	//   - A prompt is not only a plain-string one. Restricting openers to
-	//     string content (ADR 0016's first draft) misses the 28 turns opened
+	//     string content (v1's first draft of this rule) misses the 28 turns opened
 	//     by a block-array prompt - one carrying an image or an attachment -
 	//     which misattributes 81 assistant records to the previous turn and
 	//     leaves 196 with no turn at all, against 6 under this rule.
@@ -836,9 +836,9 @@ func ClassifyClaudeTool(name string) harness.CommandClass {
 //
 // The encoding is collision-resistant, not injective: '.' and '-' both map to
 // '-' ("a.b" and "a-b" share a slug). It is a search optimization only -
-// adoption must still validate the file's owner and provider session id (ADR
-// 0016, "Unproven": correctness does not depend on the slug when the validated
-// Stop path/session id identifies the file).
+// adoption must still validate the file's owner and provider session id
+// (correctness does not depend on the slug when the validated Stop
+// path/session id identifies the file).
 //
 // A slug longer than claudeSlugMax is cut to that length and suffixed with
 // '-' and a hash of the whole cwd, so a deep path still fits in one directory

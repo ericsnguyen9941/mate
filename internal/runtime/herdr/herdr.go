@@ -294,8 +294,8 @@ const herdrDefaultRootTabLabel = "1"
 
 // herdrServerEnv is the environment for a herdr server mate itself
 // cold-starts (EnsureSession's startNamedServer, when no session is already
-// running). ADR 0007 (G4-04) originally allowlisted a small, fixed set of
-// keys "so operator MATE_* / secrets are not inherited" and explicitly
+// running). v1's Herdr adapter (G4-04) originally allowlisted a small,
+// fixed set of keys "so operator MATE_* / secrets are not inherited" and explicitly
 // flagged "whether Herdr needs env keys beyond the server allowlist" as
 // unproven.
 //
@@ -318,8 +318,9 @@ const herdrDefaultRootTabLabel = "1"
 // is not viable, so the fix is directional rather than another fixed list:
 // inherit the calling process's own environment (which is already just the
 // operator's login shell environment - mate itself runs under it) and strip
-// only mate's own MATE_* namespace, the one thing ADR 0007 named as
-// deliberately not ambient here (it is injected explicitly, per pane, via
+// only mate's own MATE_* namespace, the one thing that must not be ambient
+// here, because identity belongs to a pane, not a server (it is injected
+// explicitly, per pane, via
 // `--env` at tab/workspace create - runtime.AllowlistedEnv - not via the
 // server's own startup environment).
 func herdrServerEnv() []string {
@@ -1134,7 +1135,7 @@ func (h *Herdr) paneOccupant(ctx context.Context, session, pane string) (string,
 // The title is a *positive* signal only. Its absence does not prove the pane
 // cannot host an agent: a live shell blocked on an interactive startup prompt
 // never draws a title at all, and `agent start` on such a pane is accepted by
-// Herdr rather than refused (lab evidence in ADR 0011: a pane whose zsh sat on
+// Herdr rather than refused (v1's Herdr lab: a pane whose zsh sat on
 // "[oh-my-zsh] Would you like to update? [Y/n]" stayed titleless indefinitely
 // at revision 0, and `agent start` engaged it). Treating a missing title as a
 // failure cost a whole gate's worth of starts, because callers closed and
@@ -1410,7 +1411,8 @@ func (h *Herdr) SendText(ctx context.Context, handle runtime.AgentHandle, text s
 // agent name may be dead and the recorded pane may belong to someone else.
 //
 // Detach is the shared config binding DetachKey and does not stop the agent
-// (ADR 0003, re-verified live for G4-07). Ghostty-native TTY restore after the
+// (seen on a PTY attach cycle in v1's Herdr spike, re-verified live for
+// G4-07). Ghostty-native TTY restore after the
 // handoff remains unproven (AssumptionGhosttyTTYRestore); nothing here claims
 // it.
 func (h *Herdr) AttachAgent(ctx context.Context, handle runtime.AgentHandle, target runtime.AttachTarget) (runtime.AttachedTo, error) {

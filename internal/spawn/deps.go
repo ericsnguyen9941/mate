@@ -153,7 +153,8 @@ type Deps struct {
 	// ReadinessTimeout bounds the wait for Herdr to report the agent ready.
 	ReadinessTimeout time.Duration
 	// StartupPromptTimeout bounds the startup-screen settle. Zero means the
-	// readiness timeout (ADR 0028).
+	// readiness timeout, since the settle is part of waiting for the agent
+	// to become ready.
 	StartupPromptTimeout time.Duration
 	// StartTimeout is passed to `agent start --timeout`.
 	StartTimeout time.Duration

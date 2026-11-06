@@ -88,7 +88,7 @@ type Fake struct {
 	// an in-flight delivery (claim committed, outcome not yet recorded).
 	PromptGate func()
 	// StaleListEntries are appended to every ListAgents result unconditionally,
-	// regardless of f.Agents. This models the real divergence ADR 0011 cites
+	// regardless of f.Agents. This models a real Herdr divergence
 	// between Herdr's per-target `agent get` (backing InspectAgent/PromptAgent,
 	// which key off f.Agents here) and its full `agent list` inventory: a name
 	// `agent get` already reports gone can still be named by `agent list` for a
@@ -100,9 +100,10 @@ type Fake struct {
 	// so a caller can assert the agent/terminal distinction was detected.
 	AttachModes []AttachMode
 	// ListOmit hides a live agent (keyed by "session/name") from ListAgents
-	// while InspectAgent still finds it - the false-positive shape ADR 0016
-	// amendment item 6's gate 1 exists to close (a ListAgents omission alone
-	// is not proof of absence). Without it ListAgents and InspectAgent can
+	// while InspectAgent still finds it - the false positive a stop closes by
+	// confirming absence only when ListAgents omits the name and InspectAgent
+	// also answers agent_not_found (a ListAgents omission alone is not proof
+	// of absence). Without it ListAgents and InspectAgent can
 	// only ever agree on liveness in this fake, leaving that gate
 	// structurally untested.
 	ListOmit map[string]bool

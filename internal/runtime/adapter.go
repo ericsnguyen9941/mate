@@ -52,7 +52,9 @@ type Adapter interface {
 	// SendKeys presses named keys (Herdr `pane send-keys` names such as
 	// "down", "1", "enter") into the pane the agent currently occupies. It
 	// exists for exactly one caller - the startup-prompt settle step that
-	// answers a recognised directory-trust dialog (ADR 0028) - and is not a
+	// answers a recognised directory-trust dialog, which a harness launched
+	// in a directory it never trusted stops on while Herdr still reports it
+	// started - and is not a
 	// general typing primitive: PromptAgent is how text reaches a harness.
 	SendKeys(ctx context.Context, handle AgentHandle, keys []string) error
 	// SendText types one line of literal text into the pane the agent
@@ -539,7 +541,8 @@ const SessionNameScope = "\x00herdr-sessions"
 // so ws_A1 and ws_a1 no longer share a slug. The registry is still required
 // for explicit SessionSpec.Name values. persistence.NameRegistry refuses this
 // scope by design; cross-process ownership of derived names is the hash,
-// and of every name is the config-home owner marker (ADR 0007).
+// and of every name is the config-home owner marker, because a
+// per-workspace database cannot arbitrate names shared across workspaces.
 func AllocateSessionName(reg LiveNameRegistry, id WorkspaceID, policy CollisionPolicy) (string, error) {
 	if reg == nil {
 		return "", fmt.Errorf("allocate session name: live-name registry is required")
@@ -572,8 +575,8 @@ func AllocateSessionName(reg LiveNameRegistry, id WorkspaceID, policy CollisionP
 //
 // The name is "mate-" plus 32 hex characters of SHA-256 over the raw
 // workspace id (case-sensitive, not folded). That width is 128 bits, so
-// distinct Mate-generated ids including the ADR 0004 pair ws_A1 / ws_a1
-// produce distinct session addresses. It is still a hash, not a Go-level
+// distinct Mate-generated ids including ws_A1 / ws_a1, which v1's
+// lowercasing slug made collide, produce distinct session addresses. It is still a hash, not a Go-level
 // injection; SHA-256 collision remains the residual. Explicit SessionSpec.Name
 // is not derived this way and can still join an existing server; EnsureSession
 // writes a config-home owner marker for that case.
@@ -660,9 +663,10 @@ func ResolveSession(spec SessionSpec) (SessionHandle, error) {
 		// one: it is reserved in the live-name registry for the owning
 		// workspace, so within one registry instance two workspaces cannot
 		// silently bind the same Herdr session (counter-review of PR #3).
-		// The cross-process contract a backer owes is in ADR 0004, Runtime
-		// port; the per-workspace persistence.NameRegistry (ADR 0005)
-		// refuses this session scope, so a backer that arbitrates session
+		// A backer owes that across processes too, which one registry
+		// instance cannot give; the per-workspace persistence.NameRegistry
+		// refuses this session scope, because one workspace's database
+		// cannot arbitrate between workspaces, so a backer that arbitrates session
 		// names is still a G4 decision. Same-owner re-resolution is
 		// idempotent.
 		raw := strings.TrimSpace(spec.WorkspaceID.String())

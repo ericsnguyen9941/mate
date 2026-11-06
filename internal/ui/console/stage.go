@@ -39,7 +39,9 @@ const (
 
 // StageTarget identifies the Mate or Crew to show, built from an
 // already-loaded query.Snapshot node: this package never resolves a target
-// itself, and a raw Herdr pane or tab id is never a valid ID here (ADR 0010).
+// itself, and a raw Herdr pane or tab id is never a valid ID here: Herdr owns
+// those ids and a closed one was never proven not to be reused, so they are
+// passing handles, not the identity of an agent mate owns.
 type StageTarget struct {
 	Kind        StageTargetKind
 	ID          string // Mate id or Crew id
@@ -117,7 +119,8 @@ func stageLabel(t StageTarget) string {
 
 // stageRefusal decides, from the snapshot alone, whether Enter can show
 // this row, and says why not. A stale binding means mate could not confirm
-// the agent stopped (ADR 0027) and `herdr agent attach` would reach nothing
+// the agent stopped (a stop it could not verify marks the binding stale
+// instead of releasing it) and `herdr agent attach` would reach nothing
 // mate owns, so the host is never asked. A held but not active (reserved)
 // binding is deliberately not a refusal; see the reserved case below.
 //
@@ -165,10 +168,12 @@ func (m Model) stageRefusal(r row) (string, bool) {
 	switch binding.Value.Status {
 	case query.BindingActive, query.BindingReserved:
 		// reserved is not a refusal. application.ResolveAttachTarget (the
-		// CLI's own resolution, ADR 0010) accepts any held binding that is
-		// not stale - reserved included - and a reserved binding is
-		// frequently a live agent: a SIGKILL mid-spawn leaves `preparing` +
-		// reserved binding + live agent (ADR 0012). Refusing it here would
+		// CLI's own resolution, which reads only recorded state) accepts any
+		// held binding that is not stale - reserved included - and a
+		// reserved binding is frequently a live agent: a SIGKILL after the
+		// agent started but before the spawn recorded it running leaves
+		// `preparing` + reserved binding + live agent, and nothing adopts or
+		// reaps that on its own. Refusing it here would
 		// refuse an attach the CLI allows, and would hide the one session a
 		// crash recovery most needs to reach. The Agent View is enterable
 		// for the same reason (stageTargetAvailable, session_mode.go).
