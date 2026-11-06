@@ -21,7 +21,6 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/dashboard"
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/harness"
-	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // Deps are what a usage page needs from its caller.
@@ -52,7 +51,7 @@ type Request struct {
 
 // Write writes the page req names to out, reading the timeline through
 // handle and the workspace through w.
-func Write(ctx context.Context, out io.Writer, w *store.Workspace, handle *db.DB, deps Deps, req Request) error {
+func Write(ctx context.Context, out io.Writer, w Workspace, handle *db.DB, deps Deps, req Request) error {
 	switch {
 	case req.Crew == "":
 		return writeLedger(ctx, out, w, handle, deps.Harnesses, req.Project, req.Top)

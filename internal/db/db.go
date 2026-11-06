@@ -10,8 +10,6 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite" // pure Go SQLite driver; no cgo, so `make check` cross-compiles
-
-	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // FileName is the database file inside `.mate/`, and LockName the advisory
@@ -69,14 +67,14 @@ type DB struct {
 // Path is `<workspace>/.mate/mate.db`, resolved through the workspace
 // boundary so a symlink at that name cannot move the database out of the
 // workspace.
-func Path(ws *store.Workspace) (string, error) {
+func Path(ws Workspace) (string, error) {
 	return ws.Resolve(filepath.Join(ws.StateDir(), FileName))
 }
 
 // Open opens the workspace's database for writing: it takes the advisory
 // lock, applies every outstanding migration and returns a handle. A second
 // writer gets ErrLocked and nothing is changed.
-func Open(ws *store.Workspace) (*DB, error) {
+func Open(ws Workspace) (*DB, error) {
 	path, err := Path(ws)
 	if err != nil {
 		return nil, err
@@ -111,7 +109,7 @@ func OpenPath(path string) (*DB, error) {
 // readers can follow the timeline while the observer ingests. It never
 // migrates: a reader that finds an older schema says so rather than
 // rewriting a file it does not own.
-func OpenRead(ws *store.Workspace) (*DB, error) {
+func OpenRead(ws Workspace) (*DB, error) {
 	path, err := Path(ws)
 	if err != nil {
 		return nil, err

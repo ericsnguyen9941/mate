@@ -69,7 +69,7 @@ type ledgerRow struct {
 // A positive top keeps the Mate's row and the top largest tasks by TOTAL,
 // largest first; the footer still counts every row, and a last line says
 // how many tasks were left out.
-func writeLedger(ctx context.Context, out io.Writer, w *store.Workspace, handle *db.DB, harnesses harness.Registry, project string, top int) error {
+func writeLedger(ctx context.Context, out io.Writer, w Workspace, handle *db.DB, harnesses harness.Registry, project string, top int) error {
 	mate, err := mateLedgerRow(ctx, handle, w, project)
 	if err != nil {
 		return err
@@ -285,7 +285,7 @@ func printCompactWarning(out io.Writer, harnesses harness.Registry, tasks []ledg
 // Mate - its turns belong to the project rather than to any one task
 // (docs/timeline.md) - so State and Span are dashes and Asked/WaitedMs are
 // zero: those columns are a task's shape, not a Mate's.
-func mateLedgerRow(ctx context.Context, handle *db.DB, w *store.Workspace, project string) (ledgerRow, error) {
+func mateLedgerRow(ctx context.Context, handle *db.DB, w Workspace, project string) (ledgerRow, error) {
 	row := ledgerRow{ID: "mate", State: "-", Span: "-"}
 	actorID := timeline.MateActorID(project)
 
@@ -407,7 +407,7 @@ func taskTotalWord(r ledgerRow) string {
 // fillBudgets sets each task row's Budget: the crew's own `budget=` (the
 // dispatch rule's, or an extension), else the project's crew_tokens. A
 // reviewer row has none of its own; its tokens count in its task's.
-func fillBudgets(w *store.Workspace, project string, rows []ledgerRow) error {
+func fillBudgets(w Workspace, project string, rows []ledgerRow) error {
 	cfg, err := w.LoadProject(project)
 	if err != nil {
 		return err
