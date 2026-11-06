@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -125,32 +124,12 @@ func (r *Runner) opened(dir, sessionID string) bool {
 	return r.Turns != nil && r.Turns.SessionOpened(dir, sessionID)
 }
 
-// turnEnv is the run's environment: the host's own, without what the
-// launch unsets and without the nested-session variables of whatever
-// Claude Code session started the Herdr server (harness.NestedSessionEnv:
-// measured 2026-10-15, a `claude -p` that inherits them fails with 401),
-// then the launch's own variables and EnvHostTurn, the run's number in
-// this host.
+// turnEnv is the run's environment: the launch's (launchEnv), then
+// EnvHostTurn, the run's number in this host. A `claude -p` that inherits
+// the nested-session variables of whatever Claude Code session started the
+// Herdr server fails with 401 (measured 2026-10-15), which launchEnv drops.
 func turnEnv(base []string, l Launch, turn int) []string {
-	drop := func(key string) bool {
-		if harness.IsNestedSessionEnv(key) || slices.Contains(l.UnsetEnv, key) || key == EnvHostTurn {
-			return true
-		}
-		for _, kv := range l.Env {
-			if k, _, _ := strings.Cut(kv, "="); k == key {
-				return true
-			}
-		}
-		return false
-	}
-	out := make([]string, 0, len(base)+len(l.Env)+1)
-	for _, kv := range base {
-		if k, _, _ := strings.Cut(kv, "="); !drop(k) {
-			out = append(out, kv)
-		}
-	}
-	out = append(out, l.Env...)
-	return append(out, fmt.Sprintf("%s=%d", EnvHostTurn, turn))
+	return append(launchEnv(base, l), fmt.Sprintf("%s=%d", EnvHostTurn, turn))
 }
 
 // Interrupt asks the run to stop (SIGINT to its process group), and kills

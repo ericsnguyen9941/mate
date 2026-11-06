@@ -45,6 +45,10 @@ const (
 	// (hold.go, CON-222): a submit, an answer or a work-okay, each held
 	// UndoDelay before it goes.
 	OpUndo = "undo"
+	// OpSetSession moves the host's turns to another session of the same
+	// launch (Host.SetSession): the one the Mate's TUI left the
+	// conversation in (CON-227).
+	OpSetSession = "set-session"
 )
 
 type request struct {
@@ -105,6 +109,7 @@ var errorCodes = []struct {
 	{"no-session", ErrNoSession},
 	{"session-busy", ErrSessionBusy},
 	{"not-held", ErrNotHeld},
+	{"tui", ErrTUI},
 }
 
 // failed is the answer to an op whose Host method returned err.
@@ -211,7 +216,7 @@ func (h *Host) answer(req request) response {
 		return response{OK: true, State: &s}
 	case OpDeliver:
 		if err := h.Deliver(req.Text); err != nil {
-			busy := errors.Is(err, ErrBusy) || errors.Is(err, ErrQueued) || errors.Is(err, ErrStopping)
+			busy := errors.Is(err, ErrBusy) || errors.Is(err, ErrQueued) || errors.Is(err, ErrStopping) || errors.Is(err, ErrTUI)
 			return response{Error: err.Error(), Busy: busy}
 		}
 		s := h.State()
@@ -229,7 +234,7 @@ func (h *Host) answer(req request) response {
 			return response{Error: "a reload names no launch"}
 		}
 		if err := h.Reload(*req.Launch); err != nil {
-			busy := errors.Is(err, ErrBusy) || errors.Is(err, ErrQueued) || errors.Is(err, ErrStopping)
+			busy := errors.Is(err, ErrBusy) || errors.Is(err, ErrQueued) || errors.Is(err, ErrStopping) || errors.Is(err, ErrTUI)
 			return response{Error: err.Error(), Busy: busy}
 		}
 		return response{OK: true}
@@ -295,6 +300,11 @@ func (h *Host) answer(req request) response {
 		return response{OK: true, Held: &held}
 	case OpWorkRefresh:
 		h.RefreshWork()
+		return response{OK: true}
+	case OpSetSession:
+		if err := h.SetSession(req.Text); err != nil {
+			return failed(err)
+		}
 		return response{OK: true}
 	}
 	return response{Error: fmt.Sprintf("unknown op %q", req.Op)}
@@ -532,6 +542,13 @@ func (c Client) OkayWork(ctx context.Context, id int) (Held, error) {
 func (c Client) Undo(ctx context.Context, id int) (Held, error) {
 	resp, err := c.call(ctx, request{Op: OpUndo, Held: id})
 	return heldOf(resp), err
+}
+
+// SetSession moves the host's turns to session id (Host.SetSession). A
+// host older than the op answers it as unknown.
+func (c Client) SetSession(ctx context.Context, id string) error {
+	_, err := c.call(ctx, request{Op: OpSetSession, Text: id})
+	return err
 }
 
 // RefreshWork has the host read the work board again (Host.RefreshWork).

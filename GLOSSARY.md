@@ -95,6 +95,11 @@ Process lõi của một workspace: chạy engine (observer, outbox, auto, recov
 _Avoid_: headless (chữ đó chỉ kiểu chạy của Mate)
 _Trong code_: `core.Engine` (`internal/core`)
 
+**TUI của Mate** (cờ TUI):
+Lúc session của một Mate headless được mở trong TUI gốc của harness (`./tui` trong pane shell của Mate, tức `mate mate tui`). Trong lúc đó host của Mate đó không chạy lượt nào, và Office, Agent City, console chỉ được xem; cờ là của cả workspace và tắt khi TUI tắt.
+_Avoid_: dùng "TUI" cho console hay REPL của mate
+_Trong code_: `store.TUIHolder` (`.mate/tui.lock`); `query.TUIStatus`; `matehost.RunTUI`; `coreapi.ErrTUI`
+
 ### Công cụ
 
 **Tool**:

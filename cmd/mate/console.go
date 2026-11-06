@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync/atomic"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/term"
@@ -211,36 +212,60 @@ func runConsole(dir string, stdout, stderr io.Writer) error {
 			}
 		}
 	}
-	model := console.New(load, act).
-		WithNoticeClassifier(status.Jev).
-		WithContext(ctx).
-		WithStage(consoleStage(ws, deps, columns)).
-		WithCommandView(consolePluginView(links, hostOpener(), runConsoleLauncher, consoleCommandView(ws, columns, commands, runConsoleLauncher))).
-		WithNoHostHint(noHost).
-		WithKindGlyphs(probeKindGlyphs(os.Getenv)).
-		WithHarnessIcons(probeNerdIcons(os.Getenv, execOutput)).
-		WithNotice(notice).
-		WithClipboard(func(seq []byte) {
-			// One write per sequence: the renderer also writes this file
-			// from its own goroutine, one frame per write, so a single
-			// write lands between two frames rather than inside one.
-			_, _ = stdoutFile.Write(seq)
-		})
-
-	// Cell motion, not all motion: the Console answers presses and the
-	// wheel, and nothing in it follows a bare pointer.
-	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx),
-		tea.WithInput(stdinFile), tea.WithOutput(stdoutFile), tea.WithMouseCellMotion())
-	final, err := program.Run()
-	if err != nil {
-		return fmt.Errorf("console exited with an error: %w", err)
+	newModel := func(load coreapi.LoadFunc) console.Model {
+		return console.New(load, act).
+			WithNoticeClassifier(status.Jev).
+			WithContext(ctx).
+			WithStage(consoleStage(ws, deps, columns)).
+			WithCommandView(consolePluginView(links, hostOpener(), runConsoleLauncher, consoleCommandView(ws, columns, commands, runConsoleLauncher))).
+			WithNoHostHint(noHost).
+			WithKindGlyphs(probeKindGlyphs(os.Getenv)).
+			WithHarnessIcons(probeNerdIcons(os.Getenv, execOutput)).
+			WithNotice(notice).
+			WithClipboard(func(seq []byte) {
+				// One write per sequence: the renderer also writes this file
+				// from its own goroutine, one frame per write, so a single
+				// write lands between two frames rather than inside one.
+				_, _ = stdoutFile.Write(seq)
+			})
 	}
-	if cm, ok := final.(console.Model); ok {
-		if desc, abandoned := cm.AbandonedAction(); abandoned {
-			sayAbandoned(stderr, desc)
+
+	// A Mate's session open in its TUI (CON-227): the console asks before
+	// it draws, and again whenever the flag goes up while it is open.
+	gate := tuiGate{load: boundedLoad(client.Snapshot, consoleReadWait), act: client.Act, in: stdinFile, out: stdoutFile}
+	for {
+		if err := gate.check(ctx); err != nil {
+			return err
+		}
+		seen := make(chan struct{}, 1)
+		// Cell motion, not all motion: the Console answers presses and the
+		// wheel, and nothing in it follows a bare pointer.
+		program := tea.NewProgram(newModel(watchTUI(load, seen)), tea.WithAltScreen(), tea.WithContext(ctx),
+			tea.WithInput(stdinFile), tea.WithOutput(stdoutFile), tea.WithMouseCellMotion())
+		ended := make(chan struct{})
+		var tuiOpened atomic.Bool
+		go func() {
+			select {
+			case <-seen:
+				tuiOpened.Store(true)
+				program.Quit()
+			case <-ended:
+			}
+		}()
+		final, err := program.Run()
+		close(ended)
+		if err != nil {
+			return fmt.Errorf("console exited with an error: %w", err)
+		}
+		if cm, ok := final.(console.Model); ok {
+			if desc, abandoned := cm.AbandonedAction(); abandoned {
+				sayAbandoned(stderr, desc)
+			}
+		}
+		if !tuiOpened.Load() {
+			return nil
 		}
 	}
-	return nil
 }
 
 // sayAbandoned is the console's quit in the middle of an action, once the

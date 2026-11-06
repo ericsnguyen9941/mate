@@ -21,6 +21,7 @@ func pathCases(p Paths) map[string]struct{ got, want string } {
 		"Root":             {p.Root(), "/ws"},
 		"StateDir":         {p.StateDir(), "/ws/.mate"},
 		"GCLog":            {p.GCLog(), "/ws/.mate/gc.log"},
+		"TUILockFile":      {p.TUILockFile(), "/ws/.mate/tui.lock"},
 		"WorkspaceFile":    {p.WorkspaceFile(), "/ws/.mate/workspace.yaml"},
 		"WorkspaceDoc":     {p.WorkspaceDoc(), "/ws/.mate/WORKSPACE.md"},
 		"WorkspaceCrewDoc": {p.WorkspaceCrewDoc(), "/ws/.mate/CREW.md"},

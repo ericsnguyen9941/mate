@@ -1,6 +1,8 @@
 package query
 
 import (
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -49,7 +51,42 @@ type Snapshot struct {
 	// about itself (M17). cmd/mate merges it after Load; the zero value is a
 	// workspace with nothing to recover or one that has not started.
 	Recovery RecoveryStatus
+	// TUI is the workspace's TUI flag (CON-227): a headless Mate's session
+	// open in the harness's own TUI, `mate mate tui` holding
+	// `.mate/tui.lock`. Nil when none is open. While it is set every UI only
+	// looks. The engine puts it in after Load, as it does Recovery.
+	TUI *TUIStatus `json:"tui,omitempty"`
 }
+
+// TUIStatus is who holds the workspace's TUI flag.
+type TUIStatus struct {
+	// Project is the Mate whose session is open in the TUI.
+	Project string `json:"project"`
+	// PID is `mate mate tui`'s process.
+	PID int `json:"pid"`
+	// Since is when it took the flag.
+	Since time.Time `json:"since"`
+}
+
+// Line is the flag in the captain's words: "Mate shop đang mở TUI (pid
+// 4242, từ 09:30)", the time local.
+func (t TUIStatus) Line() string {
+	line := "Mate " + t.Project + " đang mở TUI"
+	var parts []string
+	if t.PID > 0 {
+		parts = append(parts, "pid "+strconv.Itoa(t.PID))
+	}
+	if !t.Since.IsZero() {
+		parts = append(parts, "từ "+t.Since.Local().Format("15:04"))
+	}
+	if len(parts) > 0 {
+		line += " (" + strings.Join(parts, ", ") + ")"
+	}
+	return line
+}
+
+// Reason is the short why on a button the flag turns off.
+func (t TUIStatus) Reason() string { return "Mate " + t.Project + " đang mở TUI" }
 
 // RecoveryStatus is the one line the status line shows for recovery: its
 // progress while it runs, then a summary.

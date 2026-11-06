@@ -55,6 +55,11 @@ type StartRequest struct {
 	// restarts mate makes on its own (context refresh, recovery) leave it
 	// false.
 	HeadlessOnly bool
+	// NoHerdrServer is a restart mate makes on its own (recovery, the
+	// core's watch over the hosts): a headless Mate's shell pane (CON-227)
+	// is then opened only in a Herdr session already running, so bringing
+	// a host back never starts a Herdr server.
+	NoHerdrServer bool
 }
 
 // StartResult is what a successful start recorded. Every field is also a
@@ -102,6 +107,11 @@ type StartResult struct {
 	// start ran headless although project.yaml's `mate.mode` is pane
 	// (CON-220). Empty when nothing needed saying.
 	ModeNote string
+	// ShellPane is the Herdr pane of a headless Mate's shell (CON-227),
+	// where `./tui` opens its session in the harness's TUI; ShellNote says
+	// why there is none. The Mate runs either way.
+	ShellPane string
+	ShellNote string
 }
 
 // Place is where the started Mate runs, for a one-line result: "in pane
@@ -232,6 +242,9 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 			adopted, ok, err := adoptInterruptedHost(ctx, w, deps, project, kind, mateDir, session)
 			if err != nil || ok {
 				adopted.StaleMeta, adopted.ModeNote = staleMeta, modeNote
+				if err == nil {
+					withMateShell(ctx, w, deps, sessionSpec, req, mateDir, &adopted)
+				}
 				return adopted, err
 			}
 		}
@@ -240,6 +253,7 @@ func StartMate(ctx context.Context, w *store.Workspace, deps Deps, req StartRequ
 			return StartResult{}, err
 		}
 		result.StaleMeta, result.ModeNote = staleMeta, modeNote
+		withMateShell(ctx, w, deps, sessionSpec, req, mateDir, &result)
 		return result, nil
 	}
 

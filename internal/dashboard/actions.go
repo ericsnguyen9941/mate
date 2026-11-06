@@ -122,6 +122,10 @@ type ActionsResponse struct {
 	ReadOnly string              `json:"read_only,omitempty"`
 	Mate     []Button            `json:"mate"`
 	Crews    map[string][]Button `json:"crews"`
+	// TUI is set, with the flag's line, while a Mate's session is open in
+	// the harness's TUI (CON-227): every button but a peek is off, its
+	// reason saying which Mate.
+	TUI string `json:"tui,omitempty"`
 	// The City's buttons beyond the console sheet (CON-142); see city.go.
 	MateMore  []Button            `json:"mate_more"`
 	CrewMore  map[string][]Button `json:"crew_more"`
@@ -174,6 +178,30 @@ func (s *Server) fillActions(out *ActionsResponse, snap query.Snapshot, node que
 	}
 	out.Harnesses = harnessChoices(snap)
 	out.Daemon = daemonOf(node)
+	if snap.TUI != nil {
+		out.TUI = snap.TUI.Line()
+		viewOnly(out, snap.TUI.Reason())
+	}
+}
+
+// viewOnly turns off every button of out but a peek, which only reads,
+// with why: a Mate's TUI is open (CON-227).
+func viewOnly(out *ActionsResponse, why string) {
+	off := func(list []Button) {
+		for i := range list {
+			if list[i].Action != actPeek {
+				list[i].Available, list[i].Reason = false, why
+			}
+		}
+	}
+	off(out.Mate)
+	off(out.MateMore)
+	for _, list := range out.Crews {
+		off(list)
+	}
+	for _, list := range out.CrewMore {
+		off(list)
+	}
 }
 
 // AllActionsResponse is GET /api/actions: every project's buttons from one
@@ -181,7 +209,9 @@ func (s *Server) fillActions(out *ActionsResponse, snap query.Snapshot, node que
 // snapshot per answer however many projects there are.
 type AllActionsResponse struct {
 	envelope
-	ReadOnly string                     `json:"read_only,omitempty"`
+	ReadOnly string `json:"read_only,omitempty"`
+	// TUI is ActionsResponse.TUI, for the whole workspace.
+	TUI      string                     `json:"tui,omitempty"`
 	Projects map[string]ActionsResponse `json:"projects"`
 }
 
@@ -194,6 +224,9 @@ func (s *Server) handleAllActions(ctx context.Context, _ *http.Request, env enve
 	snap, err := s.deps.Snapshot(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if snap.TUI != nil {
+		out.TUI = snap.TUI.Line()
 	}
 	for _, ref := range s.ws.Projects() {
 		node, err := nodeOf(snap, ref.Name)
@@ -210,16 +243,17 @@ func (s *Server) handleAllActions(ctx context.Context, _ *http.Request, env enve
 
 // freshProjectNode is one Project of a snapshot read anew, not one the core
 // handed out a moment ago: what a press is checked against.
-func (s *Server) freshProjectNode(ctx context.Context, project string) (query.ProjectNode, error) {
+func (s *Server) freshProjectNode(ctx context.Context, project string) (query.ProjectNode, *query.TUIStatus, error) {
 	read := s.deps.FreshSnapshot
 	if read == nil {
 		read = s.deps.Snapshot
 	}
 	snap, err := read(ctx)
 	if err != nil {
-		return query.ProjectNode{}, err
+		return query.ProjectNode{}, nil, err
 	}
-	return nodeOf(snap, project)
+	node, err := nodeOf(snap, project)
+	return node, snap.TUI, err
 }
 
 func nodeOf(snap query.Snapshot, project string) (query.ProjectNode, error) {
@@ -347,7 +381,7 @@ func (s *Server) handleAct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
-	node, err := s.freshProjectNode(ctx, req.Project)
+	node, open, err := s.freshProjectNode(ctx, req.Project)
 	if err != nil {
 		var missing errNotFound
 		if errors.Is(err, coreapi.ErrStopping) {
@@ -361,6 +395,11 @@ func (s *Server) handleAct(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.writeError(w, r, http.StatusInternalServerError, "the workspace could not be read", err.Error())
+		return
+	}
+	if open != nil && req.Action != actPeek {
+		// A Mate's TUI is open (CON-227): the pages only look.
+		s.writeTUIRefusal(w, r, &coreapi.TUIError{TUI: *open})
 		return
 	}
 	buttons := append(mateButtons(node), s.mateMore(node)...)
@@ -418,6 +457,11 @@ func (s *Server) handleAct(w http.ResponseWriter, r *http.Request) {
 // 422: it ran and failed.
 func (s *Server) run(w http.ResponseWriter, r *http.Request, ctx context.Context, req ActionRequest) {
 	line, err := s.deps.Act(ctx, coreRequest(req))
+	var open *coreapi.TUIError
+	if errors.As(err, &open) {
+		s.writeTUIRefusal(w, r, open)
+		return
+	}
 	if errors.Is(err, coreapi.ErrStopping) {
 		s.writeError(w, r, http.StatusConflict, coreapi.ErrStopping.Error(), "")
 		return
@@ -442,6 +486,12 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request, ctx context.Context
 		return
 	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// writeTUIRefusal answers a press while a Mate's TUI is open: a 409 with
+// code coreapi.CodeTUI and the flag's line. Nothing started.
+func (s *Server) writeTUIRefusal(w http.ResponseWriter, r *http.Request, open *coreapi.TUIError) {
+	s.writeCodedError(w, r, http.StatusConflict, "Action refused: "+open.Error(), "", coreapi.CodeTUI)
 }
 
 // sameOrigin is true when the request carries no Origin (a same-origin GET

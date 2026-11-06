@@ -186,12 +186,15 @@ func (e *Error) Is(target error) bool {
 		return target == coreapi.ErrNoMateREPL
 	case coreapi.CodeStopping:
 		return target == coreapi.ErrStopping
+	case coreapi.CodeTUI:
+		return target == coreapi.ErrTUI
 	}
 	return false
 }
 
 // decodeError reads a coreapi.ErrorBody. A busy target comes back as the
-// engine's own *coreapi.BusyError when the body carries it; a body that is
+// engine's own *coreapi.BusyError, and an open TUI as its
+// *coreapi.TUIError, when the body carries it; a body that is
 // not one is said with its status.
 func decodeError(status int, data []byte) error {
 	var body coreapi.ErrorBody
@@ -204,6 +207,9 @@ func decodeError(status int, data []byte) error {
 	}
 	if body.Code == coreapi.CodeBusy && body.Busy != nil {
 		return body.Busy
+	}
+	if body.Code == coreapi.CodeTUI && body.TUI != nil {
+		return &coreapi.TUIError{TUI: *body.TUI}
 	}
 	return &Error{Status: status, Code: body.Code, Message: body.Error}
 }

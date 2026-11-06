@@ -1,6 +1,10 @@
 package coreapi
 
-import "time"
+import (
+	"time"
+
+	"github.com/nguyenngocanh94/mate/internal/query"
+)
 
 // The routes a client of the core reaches on `.mate/core.sock` (CON-212),
 // and only there: over TCP each answers 404. A client is a program of
@@ -64,11 +68,13 @@ type ActResult struct {
 // ErrorBody is every refusal and failure on the core's socket. Error is
 // the sentence a UI shows, verbatim; Code says which of this package's
 // errors it is, so a client hands errors.Is the same error the engine
-// returned. Busy is the refusal's detail when Code is CodeBusy.
+// returned. Busy is the refusal's detail when Code is CodeBusy, TUI when
+// it is CodeTUI.
 type ErrorBody struct {
-	Error string     `json:"error"`
-	Code  string     `json:"code"`
-	Busy  *BusyError `json:"busy,omitempty"`
+	Error string           `json:"error"`
+	Code  string           `json:"code"`
+	Busy  *BusyError       `json:"busy,omitempty"`
+	TUI   *query.TUIStatus `json:"tui,omitempty"`
 }
 
 // The codes of ErrorBody. An action that ran and failed for any other
@@ -81,4 +87,7 @@ const (
 	// CodeStopping is ErrStopping: an action or a snapshot asked while the
 	// core stops, as a 409 or a 503.
 	CodeStopping = "stopping"
+	// CodeTUI is ErrTUI: an action asked while a Mate's TUI is open, as a
+	// 409.
+	CodeTUI = "tui"
 )

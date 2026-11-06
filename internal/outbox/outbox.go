@@ -423,6 +423,14 @@ func (s *Sender) Attempt(ctx context.Context, project string) (Attempt, error) {
 			return items, true, nil
 		}
 
+		if s.tuiOpen(project) {
+			// The Mate's session is open in its TUI (CON-227): the line
+			// waits for it to close, as for a busy Mate, but nothing is
+			// tried, so no attempt counts and no wedged clock runs out
+			// against a TUI the captain keeps open.
+			out = Attempt{Item: *item, Refusal: matehost.ErrTUI}
+			return items, false, nil
+		}
 		report, err := s.deliver(ctx, project, *item)
 		if errors.Is(err, errWithdrawn) {
 			item.State = store.OutboxDropped
@@ -478,6 +486,13 @@ func (s *Sender) settle(project string, item *store.OutboxItem, at time.Time, ag
 	}
 	errs = append(errs, s.resolveWedged(project, at, fmt.Sprintf("a queued line was verified into %s's composer", who)))
 	return errors.Join(errs...)
+}
+
+// tuiOpen reports whether project's Mate has its session open in the
+// harness's TUI (CON-227): `.mate/tui.lock` names it.
+func (s *Sender) tuiOpen(project string) bool {
+	h, held, err := s.ws.TUIRunning()
+	return err == nil && held && h.Project == project
 }
 
 // errWithdrawn is the one refusal that is not one: the captain took the
