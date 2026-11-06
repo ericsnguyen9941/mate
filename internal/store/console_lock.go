@@ -29,8 +29,8 @@ type ConsoleHolder struct {
 }
 
 // ConsoleLockFile is `.mate/console.lock`.
-func (w *Workspace) ConsoleLockFile() string {
-	return filepath.Join(w.StateDir(), consoleLockName)
+func (p Paths) ConsoleLockFile() string {
+	return filepath.Join(p.StateDir(), consoleLockName)
 }
 
 // LockConsole takes the console lock without waiting and writes holder into

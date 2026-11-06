@@ -12,8 +12,8 @@ import (
 const recoverLockName = "recover.lock"
 
 // RecoverLockFile is `.mate/recover.lock`.
-func (w *Workspace) RecoverLockFile() string {
-	return filepath.Join(w.StateDir(), recoverLockName)
+func (p Paths) RecoverLockFile() string {
+	return filepath.Join(p.StateDir(), recoverLockName)
 }
 
 // LockRecover waits for the recovery lock and returns what releases it. The

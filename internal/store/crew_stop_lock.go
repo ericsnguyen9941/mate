@@ -15,8 +15,8 @@ import (
 // agent while the meta still names it, and without the lock the observer
 // reads that window as the agent having vanished: every stop of
 // hellovietnam's crews up to 2026-10-13 left a `runtime_lost` incident open.
-func (w *Workspace) CrewStopLock(project, crew string) string {
-	return filepath.Join(w.CrewsDir(project), crew+".stop.lock")
+func (p Paths) CrewStopLock(project, crew string) string {
+	return filepath.Join(p.CrewsDir(project), crew+".stop.lock")
 }
 
 // LockCrewStop waits for the crew's stop lock and returns what releases it.

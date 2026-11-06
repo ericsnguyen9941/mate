@@ -152,7 +152,8 @@ const DefaultCrewContextHigh = 200000
 // and undo it. Two Workspace values on one directory still each hold their
 // own copy, and the last one to save wins.
 type Workspace struct {
-	root string
+	// Paths is the resolved root and every path helper built from it.
+	Paths
 	// cfg is the loaded workspace.yaml: set once Init or OpenForMigrate
 	// returns, and never changed in place.
 	cfg atomic.Pointer[WorkspaceConfig]
@@ -175,7 +176,7 @@ func Init(workspaceDir string, defaults Defaults) (*Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &Workspace{root: root}
+	w := &Workspace{Paths: Paths{root: root}}
 	if _, err := os.Stat(w.WorkspaceFile()); err == nil {
 		return Open(root)
 	} else if !os.IsNotExist(err) {
@@ -250,7 +251,7 @@ func OpenForMigrate(workspaceDir string) (*Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &Workspace{root: root}
+	w := &Workspace{Paths: Paths{root: root}}
 	if fi, err := os.Stat(w.StateDir()); err != nil || !fi.IsDir() {
 		return nil, fmt.Errorf("%w: %s has no %s directory", ErrNotWorkspace, root, StateDirName)
 	}
