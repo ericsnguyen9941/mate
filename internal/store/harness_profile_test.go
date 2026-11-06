@@ -12,22 +12,22 @@ func TestHarnessProfileFingerprintSeparatesConfigurationFromTask(t *testing.T) {
 		{Path: "first/brief.md", Role: "task_brief", SHA256: "task-a", State: "configured"},
 		{Path: "embedded:crew/brief.md.tmpl", Role: "crew_prompt_template", SHA256: "template-a", State: "configured"},
 	}}
-	before := FingerprintProfile(p)
+	before := fingerprintProfile(p)
 	p.Crew = "different"
 	p.CapturedAt = "later"
 	p.RepoCommit = "another-commit"
 	p.Documents[0].Path = "another/AGENTS.md"
 	p.Documents[1].SHA256 = "task-b"
-	if FingerprintProfile(p) != before {
+	if fingerprintProfile(p) != before {
 		t.Fatal("different worktree/task changed configuration fingerprint")
 	}
 	p.Documents[0].SHA256 = "rules-b"
-	if FingerprintProfile(p) == before {
+	if fingerprintProfile(p) == before {
 		t.Fatal("changed instructions kept the same fingerprint")
 	}
-	before = FingerprintProfile(p)
+	before = fingerprintProfile(p)
 	p.Documents[2].SHA256 = "template-b"
-	if FingerprintProfile(p) == before {
+	if fingerprintProfile(p) == before {
 		t.Fatal("changed harness template kept the same fingerprint")
 	}
 }
@@ -57,7 +57,7 @@ func TestHarnessProfileRetainsPriorLaunchAndRejectsEscapingSource(t *testing.T) 
 	if err != nil || missing != nil {
 		t.Fatalf("historical missing profile should be unknown: %+v, %v", missing, err)
 	}
-	path := w.CrewHarnessProfile("shop", "k1")
+	path := w.crewHarnessProfile("shop", "k1")
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}

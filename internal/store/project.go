@@ -130,7 +130,7 @@ func (w *Workspace) LoadProject(name string) (ProjectConfig, error) {
 	cfg := file.ProjectConfig
 	if file.LegacyRepo != "" && len(cfg.Repos) == 0 {
 		cfg.Repos = []RepoConfig{{
-			Name: DefaultRepoName(file.LegacyRepo), Path: file.LegacyRepo, DefaultBranch: file.LegacyDefaultBranch,
+			Name: defaultRepoName(file.LegacyRepo), Path: file.LegacyRepo, DefaultBranch: file.LegacyDefaultBranch,
 		}}
 	}
 	for i := range cfg.Repos {
@@ -181,12 +181,12 @@ func (w *Workspace) normaliseProject(project string, cfg ProjectConfig) (Project
 	return cfg, nil
 }
 
-// RelRepo turns a repository path - absolute, or relative to the workspace
+// relRepo turns a repository path - absolute, or relative to the workspace
 // root - into the path stored in the configuration: relative to the root,
 // slash separated, and proven to be inside the workspace. The repository need
 // not be a direct child of the root, but it must not be the root itself and
 // must not live under `.mate/`.
-func (w *Workspace) RelRepo(repo string) (string, error) {
+func (w *Workspace) relRepo(repo string) (string, error) {
 	if repo == "" {
 		return "", fmt.Errorf("store: repo path is empty")
 	}

@@ -132,9 +132,9 @@ func (cfg *WorkspaceConfig) clone() WorkspaceConfig {
 	return out
 }
 
-// Config is the loaded workspace.yaml. The copy is the caller's; changes reach
+// config is the loaded workspace.yaml. The copy is the caller's; changes reach
 // disk only through the methods on Workspace.
-func (w *Workspace) Config() WorkspaceConfig { return w.snapshot().clone() }
+func (w *Workspace) config() WorkspaceConfig { return w.snapshot().clone() }
 
 // Session is the Herdr session name of this workspace.
 func (w *Workspace) Session() string { return w.snapshot().Session }
@@ -259,8 +259,8 @@ func emptyDocument(doc *yaml.Node) bool {
 	return false
 }
 
-// SaveConfig writes workspace.yaml atomically.
-func (w *Workspace) SaveConfig() error {
+// saveConfig writes workspace.yaml atomically.
+func (w *Workspace) saveConfig() error {
 	return w.updateConfig(func(*WorkspaceConfig) error { return nil })
 }
 

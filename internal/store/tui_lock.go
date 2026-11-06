@@ -51,7 +51,7 @@ type TUILock struct {
 // A lock left free by a `mate mate tui` that was killed while its harness
 // runs on is still refused (ErrTUIOpen): see TUIRunning.
 func (w *Workspace) LockTUI(holder TUIHolder) (*TUILock, error) {
-	f, err := os.OpenFile(w.TUILockFile(), os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(w.tuiLockFile(), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (w *Workspace) LockTUI(holder TUIHolder) (*TUILock, error) {
 	}
 	l := &TUILock{f: f}
 	var last TUIHolder
-	if readHolder(w.TUILockFile(), &last) == nil && harnessAlive(last) {
+	if readHolder(w.tuiLockFile(), &last) == nil && harnessAlive(last) {
 		l.Unlock()
 		return nil, ErrTUIOpen
 	}
@@ -103,16 +103,16 @@ func (l *TUILock) Unlock() {
 // started still runs (Orphaned, `mate mate tui` killed outright). The
 // holder is zero when the lock is held but its record cannot be read.
 func (w *Workspace) TUIRunning() (TUIHolder, bool, error) {
-	held, err := lockHeld(w.TUILockFile())
+	held, err := lockHeld(w.tuiLockFile())
 	if err != nil {
 		return TUIHolder{}, false, err
 	}
 	var h TUIHolder
 	if held {
-		readHeldRecord(w.TUILockFile(), &h)
+		readHeldRecord(w.tuiLockFile(), &h)
 		return h, true, nil
 	}
-	if readHolder(w.TUILockFile(), &h) != nil || h.HarnessPID <= 0 {
+	if readHolder(w.tuiLockFile(), &h) != nil || h.HarnessPID <= 0 {
 		return TUIHolder{}, false, nil
 	}
 	if harnessAlive(h) {
@@ -128,7 +128,7 @@ func (w *Workspace) TUIRunning() (TUIHolder, bool, error) {
 // forgetHarness writes h again without its harness pid, under the lock,
 // unless another TUI took it meanwhile.
 func (w *Workspace) forgetHarness(h TUIHolder) {
-	f, err := os.OpenFile(w.TUILockFile(), os.O_RDWR, 0o644)
+	f, err := os.OpenFile(w.tuiLockFile(), os.O_RDWR, 0o644)
 	if err != nil {
 		return
 	}
@@ -139,7 +139,7 @@ func (w *Workspace) forgetHarness(h TUIHolder) {
 	}
 	defer l.Unlock()
 	var now TUIHolder
-	if readHolder(w.TUILockFile(), &now) == nil && now.PID == h.PID && now.HarnessPID == h.HarnessPID {
+	if readHolder(w.tuiLockFile(), &now) == nil && now.PID == h.PID && now.HarnessPID == h.HarnessPID {
 		now.HarnessPID = 0
 		_ = l.Write(now)
 	}

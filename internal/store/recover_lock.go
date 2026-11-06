@@ -14,7 +14,7 @@ const recoverLockName = "recover.lock"
 // wait ends with ctx. The lock is advisory and dies with the process, so a
 // console that crashed mid-recovery leaves nothing to clean up.
 func (w *Workspace) LockRecover(ctx context.Context) (unlock func(), err error) {
-	f, err := os.OpenFile(w.RecoverLockFile(), os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(w.recoverLockFile(), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}
