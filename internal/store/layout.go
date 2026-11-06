@@ -111,6 +111,9 @@ func (p Paths) CoreSocket() string { return filepath.Join(p.StateDir(), coreSock
 // the background (CON-213).
 func (p Paths) CoreLogFile() string { return filepath.Join(p.StateDir(), coreLogName) }
 
+// TUILockFile is `.mate/tui.lock`.
+func (p Paths) TUILockFile() string { return filepath.Join(p.StateDir(), tuiLockName) }
+
 // RecoverLockFile is `.mate/recover.lock`.
 func (p Paths) RecoverLockFile() string {
 	return filepath.Join(p.StateDir(), recoverLockName)

@@ -39,8 +39,8 @@ var methodGroups = []methodGroup{
 		methods: []string{
 			"Root", "StateDir", "GCLog", "WorkspaceFile", "WorkspaceDoc", "WorkspaceCrewDoc",
 			"PricingFile", "EnvFile", "JevLog", "ScreensDir", "WorktreesDir", "RepoDir",
-			"ConsoleLockFile", "CoreLockFile", "CoreSocket", "CoreLogFile", "RecoverLockFile",
-			"MigrateLockFile", "MigrateLog",
+			"ConsoleLockFile", "CoreLockFile", "CoreSocket", "CoreLogFile", "TUILockFile",
+			"RecoverLockFile", "MigrateLockFile", "MigrateLog",
 		},
 	},
 	{
@@ -130,13 +130,13 @@ var methodGroups = []methodGroup{
 	{
 		name: "G9 locks between processes",
 		files: []string{
-			"console_lock.go", "core_lock.go", "crew_stop_lock.go", "recover_lock.go",
-			"maintenance.go", "crew_send.go", "lock.go",
+			"console_lock.go", "core_lock.go", "tui_lock.go", "crew_stop_lock.go",
+			"recover_lock.go", "maintenance.go", "crew_send.go", "lock.go",
 		},
 		methods: []string{
 			"LockConsole", "ConsoleHolder", "LockCore", "CoreHolder", "CoreRunning",
-			"ConsoleRunning", "LockCrewStop", "CrewStopping", "LockRecover",
-			"TryMateMaintenance", "TryMateLock", "WithCrewSend",
+			"ConsoleRunning", "LockTUI", "TUIRunning", "forgetHarness", "LockCrewStop",
+			"CrewStopping", "LockRecover", "TryMateMaintenance", "TryMateLock", "WithCrewSend",
 		},
 	},
 	{
