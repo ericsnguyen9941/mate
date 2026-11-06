@@ -189,11 +189,11 @@ func (d Deps) wedgedAfter() time.Duration {
 // immediate attempt an `[assign]` makes, and the auto daemon's own attempt
 // right after it enqueues.
 //
-// A Sender that runs its loop (Start) must own its *store.Workspace, for the
+// A Sender that runs its loop (Start) must own its workspace handle, for the
 // reason the observer and the daemon own theirs: Drain re-reads
 // workspace.yaml, which rewrites the handle's cache.
 type Sender struct {
-	ws   *store.Workspace
+	ws   Workspace
 	deps Deps
 
 	mu     sync.Mutex
@@ -202,7 +202,7 @@ type Sender struct {
 }
 
 // New builds a sender. It sends nothing until Attempt, Drain or Start.
-func New(ws *store.Workspace, deps Deps) *Sender {
+func New(ws Workspace, deps Deps) *Sender {
 	return &Sender{ws: ws, deps: deps}
 }
 

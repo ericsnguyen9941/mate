@@ -114,7 +114,7 @@ func (s Status) Sent() bool { return s.Sends > 0 }
 // while the console reloads on its own goroutine); cmd/mate does the
 // opening, and gives the Outbox sender the same handle.
 type Pilot struct {
-	ws   *store.Workspace
+	ws   Workspace
 	deps Deps
 
 	// talk is each project's sent.log as far as rearm has read it. Only
@@ -130,7 +130,7 @@ type Pilot struct {
 
 // New builds a daemon over a workspace. It queues nothing until Start or
 // Tick is called.
-func New(ws *store.Workspace, deps Deps) *Pilot {
+func New(ws Workspace, deps Deps) *Pilot {
 	return &Pilot{ws: ws, deps: deps, seen: make(map[string]bool), talk: make(map[string]*talk), notices: make(map[string]Status)}
 }
 

@@ -50,7 +50,7 @@ type Swept struct {
 // pull request is left alone - its watcher already reported it - and so is a
 // crew whose watcher is alive. It is what recovery runs when a console
 // opens, and what the console's daemon runs every tick.
-func Sweep(w *store.Workspace, st Starter) []Swept {
+func Sweep(w Workspace, st Starter) []Swept {
 	var out []Swept
 	for _, ref := range w.Projects() {
 		ids, err := w.CrewIDs(ref.Name)
@@ -66,7 +66,7 @@ func Sweep(w *store.Workspace, st Starter) []Swept {
 	return out
 }
 
-func sweepCrew(w *store.Workspace, st Starter, project, crew string) (Swept, bool) {
+func sweepCrew(w Workspace, st Starter, project, crew string) (Swept, bool) {
 	meta, err := w.ReadCrewMeta(project, crew)
 	if err != nil || len(meta) == 0 || crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed() {
 		return Swept{}, false

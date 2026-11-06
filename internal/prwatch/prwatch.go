@@ -52,7 +52,7 @@ const (
 // Deps are the watcher's collaborators; every one is a seam, so a test never
 // reaches GitHub, a real remote or a real Herdr.
 type Deps struct {
-	WS     *store.Workspace
+	WS     Workspace
 	GH     github.Client
 	Git    gitx.Git
 	Outbox *outbox.Sender
@@ -115,7 +115,7 @@ func (d Deps) logf(format string, args ...any) {
 // as it could be), when the crew was closed meanwhile, and ctx's error when it
 // was cancelled; a failed `gh pr view` is logged and tried again, never fatal.
 func Watch(ctx context.Context, d Deps, project, crew, url string) error {
-	if d.WS == nil || d.Outbox == nil {
+	if noWorkspace(d.WS) || d.Outbox == nil {
 		return errors.New("prwatch: a workspace and an outbox are required")
 	}
 	cfg, err := d.WS.LoadProject(project)

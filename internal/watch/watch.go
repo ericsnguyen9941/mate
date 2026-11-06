@@ -232,7 +232,7 @@ func (d Deps) herdrTimeout() time.Duration {
 // second handle rather than sharing the console's (cmd/mate does the
 // opening).
 type Watcher struct {
-	ws   *store.Workspace
+	ws   Workspace
 	deps Deps
 
 	// crews is the per-crew memory of the previous rounds. Only the polling
@@ -293,7 +293,7 @@ type observation struct {
 
 // New builds an observer over a workspace. It does not poll until Start or
 // Poll is called.
-func New(ws *store.Workspace, deps Deps) *Watcher {
+func New(ws Workspace, deps Deps) *Watcher {
 	return &Watcher{
 		ws:     ws,
 		deps:   deps,
@@ -906,7 +906,7 @@ func (w *Watcher) appendIncident(ref CrewRef, kind box.IncidentKind, state strin
 //
 // A meta that cannot be read is skipped rather than watched: an unreadable
 // record is not evidence of a running crew.
-func openCrews(ws *store.Workspace, project string) ([]string, error) {
+func openCrews(ws Workspace, project string) ([]string, error) {
 	entries, err := os.ReadDir(ws.CrewsDir(project))
 	if err != nil {
 		if os.IsNotExist(err) {

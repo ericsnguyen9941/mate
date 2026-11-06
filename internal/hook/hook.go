@@ -1,6 +1,6 @@
 // Package hook implements the Mate side of Claude Code's own hooks
 // (docs/mvp.md task 08): UserPromptSubmit and Stop. Both handlers are pure
-// functions of an already-open *store.Workspace, a project name, and the
+// functions of an already-open workspace (Workspace), a project name, and the
 // hook's raw JSON stdin payload, so the CLI glue in cmd/mate - which
 // resolves the workspace and project and never blocks a prompt on a
 // failure here - is the only part that touches the process environment.
@@ -70,7 +70,17 @@ type stopPayload struct {
 // changes the mode. A plain prompt used to delete `.auto`, and a crew's
 // `wait-mate` that landed afterwards was told to nobody (docs/mvp.md M18);
 // the mode is now only what the captain chose with the console's `m` key.
+//
+// HandlePrompt and HandleStop keep *store.Workspace in their signature:
+// cmd/mate passes them as values of type
+// func(*store.Workspace, string, []byte) error (runHook in
+// cmd/mate/hook.go). Their bodies see only this package's Workspace
+// (CON-241).
 func HandlePrompt(w *store.Workspace, project string, raw []byte) error {
+	return handlePrompt(w, project, raw)
+}
+
+func handlePrompt(w Workspace, project string, raw []byte) error {
 	var payload promptPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return fmt.Errorf("hook: malformed UserPromptSubmit payload: %w", err)
@@ -95,7 +105,12 @@ func HandlePrompt(w *store.Workspace, project string, raw []byte) error {
 // HandleStop implements `mate hook mate-stop`. It appends one sent.log
 // line for Claude's last answer and updates `mate.meta` with the session id
 // and transcript path the payload carries, keeping every other key as-is.
+// It keeps *store.Workspace for the reason HandlePrompt does.
 func HandleStop(w *store.Workspace, project string, raw []byte) error {
+	return handleStop(w, project, raw)
+}
+
+func handleStop(w Workspace, project string, raw []byte) error {
 	var payload stopPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return fmt.Errorf("hook: malformed Stop payload: %w", err)
@@ -170,7 +185,7 @@ func (s SessionStart) LiveOnly() bool { return s.Source == SourceResume }
 // written one yet, and StartMate writes the same id itself), so it is left
 // alone. A payload that does not parse is still a session start: the caller
 // prints the full digest.
-func HandleSessionStart(w *store.Workspace, project string, raw []byte) (SessionStart, error) {
+func HandleSessionStart(w Workspace, project string, raw []byte) (SessionStart, error) {
 	var payload sessionPayload
 	if len(strings.TrimSpace(string(raw))) > 0 {
 		if err := json.Unmarshal(raw, &payload); err != nil {
