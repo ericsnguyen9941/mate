@@ -50,8 +50,9 @@ type ProfileDocument struct {
 	State  string `json:"state"`
 }
 
-func (w *Workspace) CrewHarnessProfile(project, crew string) string {
-	return filepath.Join(w.CrewDir(project, crew), "harness-profile.json")
+// CrewHarnessProfile is `projects/<project>/crews/<crew>/harness-profile.json`.
+func (p Paths) CrewHarnessProfile(project, crew string) string {
+	return filepath.Join(p.CrewDir(project, crew), "harness-profile.json")
 }
 
 // FingerprintProfile compares configuration independently of task text,

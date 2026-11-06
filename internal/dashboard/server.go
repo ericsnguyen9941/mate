@@ -14,7 +14,6 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/coreapi"
 	"github.com/nguyenngocanh94/mate/internal/db"
-	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/timeline"
 )
 
@@ -95,7 +94,7 @@ func (d Deps) now() time.Time {
 // both required: the workspace answers which projects exist and what mode
 // each is in, the database answers everything else.
 type Options struct {
-	Workspace *store.Workspace
+	Workspace Workspace
 	// DB must be a read-only handle (db.OpenRead). The server never closes
 	// it; whoever opened it owns it.
 	DB *db.DB
@@ -109,7 +108,7 @@ type Options struct {
 
 // Server is a bound-but-not-yet-serving dashboard.
 type Server struct {
-	ws     *store.Workspace
+	ws     Workspace
 	db     *db.DB
 	deps   Deps
 	cache  *cache
@@ -126,7 +125,7 @@ type Server struct {
 // that refused to start because a project's files were mid-write would be
 // worse than one whose first page says so.
 func New(opts Options) (*Server, error) {
-	if opts.Workspace == nil {
+	if noWorkspace(opts.Workspace) {
 		return nil, errors.New("dashboard: a workspace is required")
 	}
 	if opts.DB == nil {

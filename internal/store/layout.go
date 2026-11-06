@@ -39,108 +39,114 @@ const (
 	crewDocName       = "CREW.md"
 )
 
-// Every helper below returns an absolute path built from the resolved
-// workspace root. They are pure string joins: they do not touch the
-// filesystem and they do not validate names, because the methods that write
-// validate first and resolve the result through the workspace boundary.
+// Paths names every file and directory of a workspace from its resolved
+// root. Workspace embeds it, so each helper is called on the workspace
+// handle as before (`ws.CrewMeta(p, c)`). Its methods are pure string joins:
+// they do not touch the filesystem and they do not validate names, because
+// the methods that write validate first and resolve the result through the
+// workspace boundary. Paths holds only the root, so a helper cannot reach
+// the boundary check, the file writers or workspace.yaml (CON-237).
+type Paths struct {
+	root string
+}
 
 // Root is the resolved absolute path of the workspace.
-func (w *Workspace) Root() string { return w.root }
+func (p Paths) Root() string { return p.root }
 
 // StateDir is `<root>/.mate`.
-func (w *Workspace) StateDir() string { return filepath.Join(w.root, StateDirName) }
+func (p Paths) StateDir() string { return filepath.Join(p.root, StateDirName) }
 
 // GCLog is `.mate/gc.log`, where the console's periodic `mate gc` writes
 // what it removed and what it could not (CON-114).
-func (w *Workspace) GCLog() string { return filepath.Join(w.StateDir(), "gc.log") }
+func (p Paths) GCLog() string { return filepath.Join(p.StateDir(), "gc.log") }
 
 // WorkspaceFile is `<root>/.mate/workspace.yaml`.
-func (w *Workspace) WorkspaceFile() string { return filepath.Join(w.StateDir(), workspaceFileName) }
+func (p Paths) WorkspaceFile() string { return filepath.Join(p.StateDir(), workspaceFileName) }
 
 // WorkspaceDoc is `<root>/.mate/WORKSPACE.md`, the user's rules for every Mate.
-func (w *Workspace) WorkspaceDoc() string { return filepath.Join(w.StateDir(), workspaceDocName) }
+func (p Paths) WorkspaceDoc() string { return filepath.Join(p.StateDir(), workspaceDocName) }
 
 // WorkspaceCrewDoc is `<root>/.mate/CREW.md`, the captain's standing rules
 // for every Crew in the workspace, appended to the end of every brief
 // (docs/mvp.md M7). Optional.
-func (w *Workspace) WorkspaceCrewDoc() string { return filepath.Join(w.StateDir(), crewDocName) }
+func (p Paths) WorkspaceCrewDoc() string { return filepath.Join(p.StateDir(), crewDocName) }
 
 // PricingFile is `<root>/.mate/pricing.yaml`, unused before the token monitor.
-func (w *Workspace) PricingFile() string { return filepath.Join(w.StateDir(), pricingFileName) }
+func (p Paths) PricingFile() string { return filepath.Join(p.StateDir(), pricingFileName) }
 
 // EnvFile is `<root>/.mate/.env`, the workspace's settings for this machine
 // (docs/mvp.md section 3): `KEY=VALUE` lines that LoadEnv reads. Optional;
 // it holds switches and paths, never a secret itself.
-func (w *Workspace) EnvFile() string { return filepath.Join(w.StateDir(), envFileName) }
+func (p Paths) EnvFile() string { return filepath.Join(p.StateDir(), envFileName) }
 
 // JevLog is `<root>/.mate/jev.log`: one line per request the Jev observer
 // chain sent (internal/screen/chain), only while `.mate/.env` turns the
 // chain on (a readable key, MATE_JEV not off or fixture). It never holds
 // screen text or a key.
-func (w *Workspace) JevLog() string { return filepath.Join(w.StateDir(), jevLogName) }
+func (p Paths) JevLog() string { return filepath.Join(p.StateDir(), jevLogName) }
 
 // ScreensDir is `<root>/.mate/screens`: the text of every screen the Jev
 // observer chain was asked to name a pane state for, one file per screen
 // (docs/plans/pane-state-jev-2026-10-13.md section 6).
-func (w *Workspace) ScreensDir() string { return filepath.Join(w.StateDir(), "screens") }
+func (p Paths) ScreensDir() string { return filepath.Join(p.StateDir(), "screens") }
 
 // ProjectsDir is `<root>/.mate/projects`.
-func (w *Workspace) ProjectsDir() string { return filepath.Join(w.StateDir(), projectsDirName) }
+func (p Paths) ProjectsDir() string { return filepath.Join(p.StateDir(), projectsDirName) }
 
 // ProjectDir is `<root>/.mate/projects/<project>`.
-func (w *Workspace) ProjectDir(project string) string {
-	return filepath.Join(w.ProjectsDir(), project)
+func (p Paths) ProjectDir(project string) string {
+	return filepath.Join(p.ProjectsDir(), project)
 }
 
 // ProjectHome is `<root>/<project>`, the project's own directory: the user's,
 // not mate's state. Every repo of the project lives under it (docs/mvp.md
 // section 3). Mate's state for the project stays in ProjectDir.
-func (w *Workspace) ProjectHome(project string) string {
-	return filepath.Join(w.root, project)
+func (p Paths) ProjectHome(project string) string {
+	return filepath.Join(p.root, project)
 }
 
 // ProjectFile is `projects/<project>/project.yaml`.
-func (w *Workspace) ProjectFile(project string) string {
-	return filepath.Join(w.ProjectDir(project), projectFileName)
+func (p Paths) ProjectFile(project string) string {
+	return filepath.Join(p.ProjectDir(project), projectFileName)
 }
 
 // ProjectDoc is `projects/<project>/PROJECT.md`.
-func (w *Workspace) ProjectDoc(project string) string {
-	return filepath.Join(w.ProjectDir(project), projectDocName)
+func (p Paths) ProjectDoc(project string) string {
+	return filepath.Join(p.ProjectDir(project), projectDocName)
 }
 
 // ProjectCrewDoc is `projects/<project>/CREW.md`, the captain's standing
 // rules for every Crew of one project, appended after the workspace's.
 // Optional.
-func (w *Workspace) ProjectCrewDoc(project string) string {
-	return filepath.Join(w.ProjectDir(project), crewDocName)
+func (p Paths) ProjectCrewDoc(project string) string {
+	return filepath.Join(p.ProjectDir(project), crewDocName)
 }
 
 // SentLog is `projects/<project>/sent.log`.
-func (w *Workspace) SentLog(project string) string {
-	return filepath.Join(w.ProjectDir(project), sentLogName)
+func (p Paths) SentLog(project string) string {
+	return filepath.Join(p.ProjectDir(project), sentLogName)
 }
 
 // IncidentsLog is `projects/<project>/incidents.log`, the observer's
 // append-only record of the incidents it opened and resolved (docs/mvp.md
 // section 4b). Only internal/watch writes it; internal/box reads it.
-func (w *Workspace) IncidentsLog(project string) string {
-	return filepath.Join(w.ProjectDir(project), incidentsLogName)
+func (p Paths) IncidentsLog(project string) string {
+	return filepath.Join(p.ProjectDir(project), incidentsLogName)
 }
 
 // MateDir is `projects/<project>/mate`, the working directory of Mate.
-func (w *Workspace) MateDir(project string) string {
-	return filepath.Join(w.ProjectDir(project), mateDirName)
+func (p Paths) MateDir(project string) string {
+	return filepath.Join(p.ProjectDir(project), mateDirName)
 }
 
 // MateMeta is `projects/<project>/mate/mate.meta`.
-func (w *Workspace) MateMeta(project string) string {
-	return filepath.Join(w.MateDir(project), mateMetaName)
+func (p Paths) MateMeta(project string) string {
+	return filepath.Join(p.MateDir(project), mateMetaName)
 }
 
 // AutoFlag is `projects/<project>/mate/.auto`; its presence means auto mode.
-func (w *Workspace) AutoFlag(project string) string {
-	return filepath.Join(w.MateDir(project), autoFlagName)
+func (p Paths) AutoFlag(project string) string {
+	return filepath.Join(p.MateDir(project), autoFlagName)
 }
 
 // ManualHold is `projects/<project>/mate/.manual`; its presence means the
@@ -148,101 +154,101 @@ func (w *Workspace) AutoFlag(project string) string {
 // does not run on its own while the captain holds the Mate. Its mtime is when
 // they chose it: the auto daemon releases a hold the captain has left alone
 // for QuietAfter (docs/mvp.md M21).
-func (w *Workspace) ManualHold(project string) string {
-	return filepath.Join(w.MateDir(project), manualHoldName)
+func (p Paths) ManualHold(project string) string {
+	return filepath.Join(p.MateDir(project), manualHoldName)
 }
 
 // AutoCursorFile is `projects/<project>/mate/.auto-cursor`; it records how
 // far the auto daemon has digested (mvp.md section 5).
-func (w *Workspace) AutoCursorFile(project string) string {
-	return filepath.Join(w.MateDir(project), autoCursorName)
+func (p Paths) AutoCursorFile(project string) string {
+	return filepath.Join(p.MateDir(project), autoCursorName)
 }
 
 // WakeCursorFile is `projects/<project>/mate/.wake-cursor`; it records how
 // far `mate wake` has shown the project's status lines to the Mate.
-func (w *Workspace) WakeCursorFile(project string) string {
-	return filepath.Join(w.MateDir(project), wakeCursorName)
+func (p Paths) WakeCursorFile(project string) string {
+	return filepath.Join(p.MateDir(project), wakeCursorName)
 }
 
 // MemoryFile is `projects/<project>/mate/memory.md`.
-func (w *Workspace) MemoryFile(project string) string {
-	return filepath.Join(w.MateDir(project), memoryFileName)
+func (p Paths) MemoryFile(project string) string {
+	return filepath.Join(p.MateDir(project), memoryFileName)
 }
 
 // BacklogFile is `projects/<project>/mate/backlog.md`.
-func (w *Workspace) BacklogFile(project string) string {
-	return filepath.Join(w.MateDir(project), backlogFileName)
+func (p Paths) BacklogFile(project string) string {
+	return filepath.Join(p.MateDir(project), backlogFileName)
 }
 
 // CrewsDir is `projects/<project>/crews`.
-func (w *Workspace) CrewsDir(project string) string {
-	return filepath.Join(w.ProjectDir(project), crewsDirName)
+func (p Paths) CrewsDir(project string) string {
+	return filepath.Join(p.ProjectDir(project), crewsDirName)
 }
 
 // CrewMeta is `projects/<project>/crews/<crew>.meta`.
-func (w *Workspace) CrewMeta(project, crew string) string {
-	return filepath.Join(w.CrewsDir(project), crew+".meta")
+func (p Paths) CrewMeta(project, crew string) string {
+	return filepath.Join(p.CrewsDir(project), crew+".meta")
 }
 
 // CrewStatus is `projects/<project>/crews/<crew>.status`, the append-only log
 // a crew writes with echo.
-func (w *Workspace) CrewStatus(project, crew string) string {
-	return filepath.Join(w.CrewsDir(project), crew+".status")
+func (p Paths) CrewStatus(project, crew string) string {
+	return filepath.Join(p.CrewsDir(project), crew+".status")
 }
 
 // CrewPRWatch is `projects/<project>/crews/<crew>.prwatch`: the pid of the
 // background `mate pr watch` of the crew's pull request, one number per file
 // (docs/mvp.md M18).
-func (w *Workspace) CrewPRWatch(project, crew string) string {
-	return filepath.Join(w.CrewsDir(project), crew+".prwatch")
+func (p Paths) CrewPRWatch(project, crew string) string {
+	return filepath.Join(p.CrewsDir(project), crew+".prwatch")
 }
 
 // CrewPRWatchLog is `projects/<project>/crews/<crew>/prwatch.log`, where the
 // detached watcher writes what it did.
-func (w *Workspace) CrewPRWatchLog(project, crew string) string {
-	return filepath.Join(w.CrewDir(project, crew), "prwatch.log")
+func (p Paths) CrewPRWatchLog(project, crew string) string {
+	return filepath.Join(p.CrewDir(project, crew), "prwatch.log")
 }
 
 // CrewTeardownLog is `projects/<project>/crews/<crew>/teardown.log`, the
 // output of the repo's teardown command at the crew's stop (CON-111).
-func (w *Workspace) CrewTeardownLog(project, crew string) string {
-	return filepath.Join(w.CrewDir(project, crew), "teardown.log")
+func (p Paths) CrewTeardownLog(project, crew string) string {
+	return filepath.Join(p.CrewDir(project, crew), "teardown.log")
 }
 
 // CrewDir is `projects/<project>/crews/<crew>`, kept after teardown.
-func (w *Workspace) CrewDir(project, crew string) string {
-	return filepath.Join(w.CrewsDir(project), crew)
+func (p Paths) CrewDir(project, crew string) string {
+	return filepath.Join(p.CrewsDir(project), crew)
 }
 
 // CrewBrief is `projects/<project>/crews/<crew>/brief.md`.
-func (w *Workspace) CrewBrief(project, crew string) string {
-	return filepath.Join(w.CrewDir(project, crew), briefFileName)
+func (p Paths) CrewBrief(project, crew string) string {
+	return filepath.Join(p.CrewDir(project, crew), briefFileName)
 }
 
 // CrewReport is `projects/<project>/crews/<crew>/report.md`.
-func (w *Workspace) CrewReport(project, crew string) string {
-	return filepath.Join(w.CrewDir(project, crew), reportFileName)
+func (p Paths) CrewReport(project, crew string) string {
+	return filepath.Join(p.CrewDir(project, crew), reportFileName)
 }
 
 // CrewHandback is `projects/<project>/crews/<crew>/handback.md`, the ship
 // Crew's own account of its acceptance checks, written before `wait-mate`
 // (docs/mvp.md M7). Like the report it lives outside the worktree, so it
 // outlives the Crew.
-func (w *Workspace) CrewHandback(project, crew string) string {
-	return filepath.Join(w.CrewDir(project, crew), handbackFileName)
+func (p Paths) CrewHandback(project, crew string) string {
+	return filepath.Join(p.CrewDir(project, crew), handbackFileName)
 }
 
 // CrewLearning is `projects/<project>/mate/learnings/<crew>.md`, the one
 // learning record the Mate keeps per crew (skill task-learning, CON-129).
 // It lives under the Mate's own directory, not the crew's: the Mate writes
 // it, and `mate wake` reads it to say whether a hand-back has one.
-func (w *Workspace) CrewLearning(project, crew string) string {
-	return filepath.Join(w.LearningsDir(project), crew+".md")
+func (p Paths) CrewLearning(project, crew string) string {
+	return filepath.Join(p.LearningsDir(project), crew+".md")
 }
 
 // LearningsDir is `projects/<project>/mate/learnings`, one record per crew.
-func (w *Workspace) LearningsDir(project string) string {
-	return filepath.Join(w.MateDir(project), learningsDirName)
+func (p Paths) LearningsDir(project string) string {
+	return filepath.Join(p.MateDir(project), learningsDirName)
 }
 
 // LearningPredictionsSection is the `## ` heading of a learning record under
@@ -259,19 +265,19 @@ const LearningUsageSection = "Usage (app)"
 // opening input of the crew's n-th session (CON-73), composed by a fresh
 // relaunch out of the brief, the last hand-back, the Mate's message and
 // the diff since the last review. Like the hand-back it outlives the Crew.
-func (w *Workspace) CrewSessionInput(project, crew string, n int) string {
-	return filepath.Join(w.CrewDir(project, crew), fmt.Sprintf("session-%d.md", n))
+func (p Paths) CrewSessionInput(project, crew string, n int) string {
+	return filepath.Join(p.CrewDir(project, crew), fmt.Sprintf("session-%d.md", n))
 }
 
 // WorktreesDir is `<root>/.worktrees`.
-func (w *Workspace) WorktreesDir() string { return filepath.Join(w.root, WorktreesDirName) }
+func (p Paths) WorktreesDir() string { return filepath.Join(p.root, WorktreesDirName) }
 
 // WorktreeDir is `<root>/.worktrees/<project>-<crew>`, the git worktree a crew
 // runs in.
-func (w *Workspace) WorktreeDir(project, crew string) string {
-	return filepath.Join(w.WorktreesDir(), project+"-"+crew)
+func (p Paths) WorktreeDir(project, crew string) string {
+	return filepath.Join(p.WorktreesDir(), project+"-"+crew)
 }
 
 // RepoDir is the absolute path of a registered repository, from the relative
 // path stored in workspace.yaml.
-func (w *Workspace) RepoDir(repo string) string { return filepath.Join(w.root, repo) }
+func (p Paths) RepoDir(repo string) string { return filepath.Join(p.root, repo) }

@@ -127,12 +127,12 @@ type OutboxItem struct {
 func (i OutboxItem) Queued() bool { return i.State == OutboxQueued }
 
 // OutboxFile is `projects/<project>/mate/.outbox`.
-func (w *Workspace) OutboxFile(project string) string {
-	return filepath.Join(w.MateDir(project), outboxName)
+func (p Paths) OutboxFile(project string) string {
+	return filepath.Join(p.MateDir(project), outboxName)
 }
 
-func (w *Workspace) outboxLockFile(project string) string {
-	return filepath.Join(w.MateDir(project), outboxLockName)
+func (p Paths) outboxLockFile(project string) string {
+	return filepath.Join(p.MateDir(project), outboxLockName)
 }
 
 // ReadOutbox returns a project's outbox, oldest first. A missing file is an

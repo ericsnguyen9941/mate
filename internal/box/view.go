@@ -65,7 +65,7 @@ type Summary struct {
 
 // Load reads every crew status file, sent.log and incidents.log for project
 // from the start, and returns the full View.
-func Load(ws *store.Workspace, project string) (View, error) {
+func Load(ws Workspace, project string) (View, error) {
 	return load(ws, project, Cursor{})
 }
 
@@ -73,11 +73,11 @@ func Load(ws *store.Workspace, project string) (View, error) {
 // since's per-file offsets. The returned View's Entries hold only the new
 // lines - a caller wanting the full history keeps its own accumulation
 // across calls.
-func LoadSince(ws *store.Workspace, project string, since Cursor) (View, error) {
+func LoadSince(ws Workspace, project string, since Cursor) (View, error) {
 	return load(ws, project, since)
 }
 
-func load(ws *store.Workspace, project string, cursor Cursor) (View, error) {
+func load(ws Workspace, project string, cursor Cursor) (View, error) {
 	crews, err := listCrews(ws, project)
 	if err != nil {
 		return View{}, err
@@ -183,7 +183,7 @@ func load(ws *store.Workspace, project string, cursor Cursor) (View, error) {
 
 // listCrews returns the crew ids of a project, from the `<id>.status`
 // filenames under `crews/`. A project with no crews dir yet has none.
-func listCrews(ws *store.Workspace, project string) ([]string, error) {
+func listCrews(ws Workspace, project string) ([]string, error) {
 	dir := ws.CrewsDir(project)
 	entries, err := os.ReadDir(dir)
 	if err != nil {

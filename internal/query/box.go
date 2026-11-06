@@ -168,7 +168,7 @@ func (v BoxView) ToResolve() int { return len(v.Inbox) }
 // A read failure degrades to an Unknown field rather than an error, the way
 // every other field in this package does: an unreadable sent.log must not
 // blank the project.
-func LoadBox(ws *store.Workspace, project string) Field[BoxView] {
+func LoadBox(ws BoxWorkspace, project string) Field[BoxView] {
 	_, _, field := loadBox(ws, project)
 	return field
 }
@@ -182,8 +182,8 @@ func LoadBox(ws *store.Workspace, project string) Field[BoxView] {
 //
 // ok is false when the read failed, in which case the View is zero and the
 // Field carries the reason.
-func loadBox(ws *store.Workspace, project string) (box.View, bool, Field[BoxView]) {
-	if ws == nil {
+func loadBox(ws BoxWorkspace, project string) (box.View, bool, Field[BoxView]) {
+	if noWorkspace(ws) {
 		return box.View{}, false, UnknownField[BoxView]("no workspace is open")
 	}
 	// box.Load reads the observer's `incidents.log` itself (mvp.md section
@@ -197,7 +197,7 @@ func loadBox(ws *store.Workspace, project string) (box.View, bool, Field[BoxView
 	return v, true, KnownField(boxView(ws, project, v))
 }
 
-func boxView(ws *store.Workspace, project string, v box.View) BoxView {
+func boxView(ws BoxWorkspace, project string, v box.View) BoxView {
 	sum := box.Summarize(v)
 	assigned := assignedByKey(ws, project)
 	digested, _ := ws.ReadAutoCursor(project)
@@ -234,7 +234,7 @@ func digestedEntry(item box.Item, cursor map[string]int64) bool {
 	return ok && item.Entry.Ref.Offset <= last
 }
 
-func boxEntry(ws *store.Workspace, project string, e box.Entry) BoxEntry {
+func boxEntry(ws BoxWorkspace, project string, e box.Entry) BoxEntry {
 	out := BoxEntry{
 		Seq:    e.Seq,
 		At:     e.At,
@@ -293,7 +293,7 @@ func BoxAssignKey(projectDir, file string, offset int64) string {
 // and the session rail's own refresh - then shows the same suffix. An
 // unreadable outbox shows no suffix, which says less than it could but
 // nothing false.
-func assignedByKey(ws *store.Workspace, project string) map[string]BoxAssign {
+func assignedByKey(ws BoxWorkspace, project string) map[string]BoxAssign {
 	items, err := ws.ReadOutbox(project)
 	if err != nil {
 		return nil

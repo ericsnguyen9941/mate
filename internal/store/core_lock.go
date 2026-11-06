@@ -56,14 +56,14 @@ type CoreHolder struct {
 }
 
 // CoreLockFile is `.mate/core.lock`.
-func (w *Workspace) CoreLockFile() string { return filepath.Join(w.StateDir(), coreLockName) }
+func (p Paths) CoreLockFile() string { return filepath.Join(p.StateDir(), coreLockName) }
 
 // CoreSocket is `.mate/core.sock`, where `mate core` serves its HTTP routes.
-func (w *Workspace) CoreSocket() string { return filepath.Join(w.StateDir(), coreSocketName) }
+func (p Paths) CoreSocket() string { return filepath.Join(p.StateDir(), coreSocketName) }
 
 // CoreLogFile is `.mate/core.log`, the output of a `mate core` started in
 // the background (CON-213).
-func (w *Workspace) CoreLogFile() string { return filepath.Join(w.StateDir(), coreLogName) }
+func (p Paths) CoreLogFile() string { return filepath.Join(p.StateDir(), coreLogName) }
 
 // CoreLock is core.lock held by this process.
 type CoreLock struct {
