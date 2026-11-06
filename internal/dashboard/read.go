@@ -315,7 +315,7 @@ func (x *agentIndex) used(ctx context.Context, q read.Querier, project string) (
 }
 
 // taskRole is Task.Role: a reviewer first, then a scout, else a ship.
-func taskRole(ws *store.Workspace, project, crew, review string, meta map[string]string) string {
+func taskRole(ws Workspace, project, crew, review string, meta map[string]string) string {
 	switch {
 	case review != "":
 		return store.WorkflowRoleReview

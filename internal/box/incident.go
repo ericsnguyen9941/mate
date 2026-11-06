@@ -3,8 +3,6 @@ package box
 import (
 	"strings"
 	"time"
-
-	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // IncidentKind is the kind of trouble the observer (task 18) detected.
@@ -112,7 +110,7 @@ type Incident struct {
 // The consequence a caller must know: LoadSince reports an incident once,
 // when it opens, and never re-reports the same one as resolved - a caller
 // tracking resolution across polls reloads from the start.
-func loadIncidents(ws *store.Workspace, project string, from int64) ([]Entry, int64, error) {
+func loadIncidents(ws Workspace, project string, from int64) ([]Entry, int64, error) {
 	lines, next, err := ws.ReadIncidents(project, 0)
 	if err != nil {
 		return nil, from, err
