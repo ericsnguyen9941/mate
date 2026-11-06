@@ -295,7 +295,7 @@ func TestMigrateMovesTwoReposOfAProject(t *testing.T) {
 	if got := readFile(t, w.CrewBrief("shop", "k1")); got != wantBrief {
 		t.Fatalf("brief = %q\nwant  %q", got, wantBrief)
 	}
-	entries, err := w.ReadMigrateLog()
+	entries, err := w.Migration().ReadMigrateLog()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,7 +579,7 @@ func TestMigrateFinishesAfterACrashAfterTheYAML(t *testing.T) {
 	if err := os.Rename(filepath.Join(root, "web"), filepath.Join(root, "shop", "web")); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.AppendMigrateLog(store.MigrateEntry{Project: "shop", Old: root + "/web", New: root + "/shop/web", Step: store.MigrateRenamed}); err != nil {
+	if err := w.Migration().AppendMigrateLog(store.MigrateEntry{Project: "shop", Old: root + "/web", New: root + "/shop/web", Step: store.MigrateRenamed}); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, w.ProjectFile("shop"), "repos:\n    - name: web\n      path: shop/web\n      default_branch: main\n")
@@ -651,7 +651,7 @@ func TestMigrateSameNameFinishesAfterAFailedSecondRename(t *testing.T) {
 func TestMigrateLockRefusesASecondMigrate(t *testing.T) {
 	w := oldWorkspace(t, project{"shop", []string{"web"}})
 	deps, _, _ := liveDeps(t)
-	unlock, ok, err := w.LockMigrate()
+	unlock, ok, err := w.Migration().LockMigrate()
 	if err != nil || !ok {
 		t.Fatalf("LockMigrate: %v %v", ok, err)
 	}

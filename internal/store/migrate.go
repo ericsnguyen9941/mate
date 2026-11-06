@@ -14,13 +14,23 @@ const (
 	migrateLogName  = "migrate.log"
 )
 
+// Migration is the part of the store only `mate migrate` uses: its lock,
+// its log, the brief rewrite and the switch to layout 2 (CON-242). The rest
+// of mate reaches none of it through Workspace, so removing layout 1 later
+// removes this file, and no other caller can overwrite a brief or the
+// layout by mistake.
+type Migration struct{ w *Workspace }
+
+// Migration returns the view `mate migrate` writes through.
+func (w *Workspace) Migration() Migration { return Migration{w: w} }
+
 // LockMigrate takes `.mate/migrate.lock` without waiting, the advisory flock
 // LockRecover takes on recover.lock. acquired is false while another process
 // holds it: a second migrate refuses rather than queueing behind the first.
 // The lock dies with the process, so a migrate that crashed leaves nothing
 // to clean up.
-func (w *Workspace) LockMigrate() (unlock func(), acquired bool, err error) {
-	f, err := os.OpenFile(w.MigrateLockFile(), os.O_CREATE|os.O_RDWR, 0o644)
+func (m Migration) LockMigrate() (unlock func(), acquired bool, err error) {
+	f, err := os.OpenFile(m.w.MigrateLockFile(), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, false, err
 	}
@@ -38,8 +48,8 @@ func (w *Workspace) LockMigrate() (unlock func(), acquired bool, err error) {
 // MigrateLocked reports whether another process holds `.mate/migrate.lock`.
 // It creates nothing: a workspace that never ran a migrate has no lock file,
 // and nobody holds it.
-func (w *Workspace) MigrateLocked() (bool, error) {
-	f, err := os.OpenFile(w.MigrateLockFile(), os.O_RDWR, 0)
+func (m Migration) MigrateLocked() (bool, error) {
+	f, err := os.OpenFile(m.w.MigrateLockFile(), os.O_RDWR, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -86,7 +96,7 @@ const (
 func (e MigrateEntry) Done() bool { return e.Step == "" }
 
 // AppendMigrateLog appends one line to `.mate/migrate.log`.
-func (w *Workspace) AppendMigrateLog(e MigrateEntry) error {
+func (m Migration) AppendMigrateLog(e MigrateEntry) error {
 	fields := []string{e.Time.UTC().Format(time.RFC3339), e.Project, e.Old, e.New}
 	if e.Step != "" {
 		fields = append(fields, e.Step)
@@ -96,14 +106,14 @@ func (w *Workspace) AppendMigrateLog(e MigrateEntry) error {
 			return fmt.Errorf("store: migrate log field %q is empty or holds a tab or newline", f)
 		}
 	}
-	return w.appendLine(w.MigrateLog(), strings.Join(fields, "\t"))
+	return m.w.appendLine(m.w.MigrateLog(), strings.Join(fields, "\t"))
 }
 
 // ReadMigrateLog reads `.mate/migrate.log` in order; a workspace that never
 // migrated has none. A line that does not parse is skipped: the log is a
 // record, and one torn line must not hide the others.
-func (w *Workspace) ReadMigrateLog() ([]MigrateEntry, error) {
-	f, err := os.Open(w.MigrateLog())
+func (m Migration) ReadMigrateLog() ([]MigrateEntry, error) {
+	f, err := os.Open(m.w.MigrateLog())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -139,21 +149,21 @@ func (w *Workspace) ReadMigrateLog() ([]MigrateEntry, error) {
 // WriteCrewBrief replaces `crews/<crew>/brief.md` atomically. It is for a
 // rewrite of a brief that already exists, such as `mate migrate` changing
 // the repo paths it names.
-func (w *Workspace) WriteCrewBrief(project, crew string, data []byte) error {
+func (m Migration) WriteCrewBrief(project, crew string, data []byte) error {
 	if err := ValidateProjectName(project); err != nil {
 		return err
 	}
 	if err := ValidateCrewID(crew); err != nil {
 		return err
 	}
-	return w.writeFile(w.CrewBrief(project, crew), data, 0o644)
+	return m.w.writeFile(m.w.CrewBrief(project, crew), data, 0o644)
 }
 
 // SetLayoutProjectDirs records layout 2 in workspace.yaml: every repo now
 // lives under its project's directory. `mate migrate` writes it once every
 // project is moved.
-func (w *Workspace) SetLayoutProjectDirs() error {
-	return w.updateConfig(func(next *WorkspaceConfig) error {
+func (m Migration) SetLayoutProjectDirs() error {
+	return m.w.updateConfig(func(next *WorkspaceConfig) error {
 		next.Layout = layoutProjectDirs
 		return nil
 	})

@@ -138,7 +138,7 @@ func TestStoreChangesSurviveAReloadBesideThem(t *testing.T) {
 	}
 	stop := reloading(t, w)
 
-	if err := w.SetLayoutProjectDirs(); err != nil {
+	if err := w.Migration().SetLayoutProjectDirs(); err != nil {
 		t.Fatalf("SetLayoutProjectDirs: %v", err)
 	}
 	for i := range 8 {

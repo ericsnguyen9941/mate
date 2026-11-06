@@ -262,6 +262,7 @@ var methodGroups = []methodGroup{
 		name:  "G10 migrate from layout 1 to 2",
 		files: []string{"migrate.go"},
 		methods: []string{
+			"Migration",
 			"LockMigrate",
 			"MigrateLocked",
 			"AppendMigrateLog",

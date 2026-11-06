@@ -296,7 +296,10 @@ helpers are methods of `store.Paths` in `internal/store/layout*.go`:
 `layout.go` for the workspace's own files, `layout_project.go`,
 `layout_mate.go` and `layout_crew.go` for the rest. Every other file of
 `internal/store` holds one responsibility group, listed in
-`internal/store/doc.go` (CON-239). `internal/store` says it is the
+`internal/store/doc.go` (CON-239). What only `mate migrate` does
+(`migrate.lock`, `migrate.log`, rewriting a brief, writing layout 2) is a
+method of `store.Migration`, which `ws.Migration()` returns, not of
+`store.Workspace` (CON-242). `internal/store` says it is the
 only package that touches `.mate/`; the Owner column shows where that is not
 true yet. Splitting `store.Workspace` by responsibility, with narrow
 interfaces on the side of each reader, is planned in

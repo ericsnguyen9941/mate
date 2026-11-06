@@ -230,7 +230,7 @@ func Plan(ctx context.Context, ws *store.Workspace, deps Deps) ([]Move, []Refusa
 	if err := ws.LoadConfig(); err != nil {
 		return nil, nil, err
 	}
-	journal, err := ws.ReadMigrateLog()
+	journal, err := ws.Migration().ReadMigrateLog()
 	if err != nil {
 		return nil, nil, fmt.Errorf("read %s: %w", ws.MigrateLog(), err)
 	}
@@ -515,7 +515,7 @@ func DryRun(ctx context.Context, ws *store.Workspace, deps Deps, out io.Writer) 
 	if err != nil {
 		return Summary{}, err
 	}
-	if held, err := ws.MigrateLocked(); err != nil {
+	if held, err := ws.Migration().MigrateLocked(); err != nil {
 		return Summary{}, fmt.Errorf("migrate lock: %w", err)
 	} else if held {
 		refusals = append([]Refusal{{Reason: lockHeld}}, refusals...)
@@ -548,7 +548,7 @@ func DryRun(ctx context.Context, ws *store.Workspace, deps Deps, out io.Writer) 
 // plan is then refused. A refusal is a *RefusedError and nothing was moved;
 // any other error stopped the run half way, and the next run finishes it.
 func Run(ctx context.Context, ws *store.Workspace, deps Deps, out io.Writer) (Summary, error) {
-	unlock, ok, err := ws.LockMigrate()
+	unlock, ok, err := ws.Migration().LockMigrate()
 	if err != nil {
 		return Summary{}, fmt.Errorf("migrate lock: %w", err)
 	}
@@ -608,7 +608,7 @@ func Run(ctx context.Context, ws *store.Workspace, deps Deps, out io.Writer) (Su
 	for _, w := range sum.Warnings[printed:] {
 		fmt.Fprintln(out, "warning: "+w)
 	}
-	if err := ws.SetLayoutProjectDirs(); err != nil {
+	if err := ws.Migration().SetLayoutProjectDirs(); err != nil {
 		return sum, err
 	}
 	sum.Layout = true
@@ -630,7 +630,7 @@ type executor struct {
 }
 
 func (ex *executor) log(m Move, step string) error {
-	return ex.ws.AppendMigrateLog(store.MigrateEntry{Time: ex.deps.now(), Project: m.Project, Old: m.Old, New: m.New, Step: step})
+	return ex.ws.Migration().AppendMigrateLog(store.MigrateEntry{Time: ex.deps.now(), Project: m.Project, Old: m.Old, New: m.New, Step: step})
 }
 
 // move is steps 1 to 6 of the plan for one repo, from the stage Plan found
@@ -893,7 +893,7 @@ func (ex *executor) rewriteBrief(m Move, id string) error {
 	if next == string(data) {
 		return nil
 	}
-	if err := ex.ws.WriteCrewBrief(m.Project, id, []byte(next)); err != nil {
+	if err := ex.ws.Migration().WriteCrewBrief(m.Project, id, []byte(next)); err != nil {
 		return err
 	}
 	ex.briefs[path] = true
