@@ -76,7 +76,8 @@ type ReadinessKind string
 
 const (
 	// ReadinessReady is idle or done with a live handle. done is
-	// settled-ready after background work (ADR 0003), distinct from idle.
+	// settled-ready after background work, distinct from idle: Herdr reports
+	// done instead of idle when the agent finished while no focused UI saw it.
 	ReadinessReady ReadinessKind = "ready"
 	// ReadinessBlocked is a matching wait condition, not an error.
 	// `agent wait --until blocked` exits 0.

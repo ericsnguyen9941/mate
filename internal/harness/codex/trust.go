@@ -46,7 +46,9 @@ type CodexTrustRequest struct {
 
 // CodexTrustReport is what CheckCodexProjectTrust found. It is a reading of a
 // file codex owns, taken before launch; the launch itself is still measured
-// against the pane (ADR 0028), this only says what the file predicted.
+// against the pane, which stays the authority because only the user-level
+// config.toml is read here and a managed layer granting or denying trust is
+// not seen; this only says what the file predicted.
 type CodexTrustReport struct {
 	ConfigPath string
 	// LookupKeys are the locations codex would look up, in order: the cwd,

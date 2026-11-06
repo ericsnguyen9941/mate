@@ -30,7 +30,8 @@ const (
 	// HerdrTabNotFound is `tab close <id>` on a tab that no longer exists -
 	// including a tab whose sole pane was already closed by `pane close`,
 	// which closes the tab (and a sole tab's workspace) with it. Measured
-	// live on Herdr 0.8.2, 2026-09-14 (ADR 0028).
+	// live on Herdr 0.8.2, 2026-09-14: a force stop closes the agent's sole
+	// pane and with it the tab, so a cleanup's `tab close` then gets this.
 	HerdrTabNotFound         = "tab_not_found"
 	HerdrInvalidAgentTimeout = "invalid_agent_timeout"
 	HerdrAgentPaneBusy       = "agent_pane_busy"
@@ -225,9 +226,9 @@ type AgentStartCommand struct {
 	extra   []string
 }
 
-// Herdr 0.8.2 `agent start --timeout` bounds from the CLI help, live-verified
-// in ADR 0003: the value must be > 3000 and <= 300000 ms. Zero means the flag
-// is not emitted at all.
+// Herdr 0.8.2 `agent start --timeout` bounds from the CLI help, read during
+// v1's live Herdr spike: the value must be > 3000 and <= 300000 ms. Zero
+// means the flag is not emitted at all.
 const (
 	startTimeoutMinExclusiveMS = 3000
 	startTimeoutMaxMS          = 300000

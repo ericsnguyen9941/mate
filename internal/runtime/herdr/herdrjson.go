@@ -303,7 +303,8 @@ func parseAgentInfo(data []byte) (agentInfo, error) {
 // parseAgentList is the live inventory. Empty is a valid inventory, not an
 // error. Unlike parseAgentInfo it does not require exactly one agent.
 // focused / active_tab_id are not on agentInfo: they are UI state and must
-// not answer an identity question (ADR 0007).
+// not answer an identity question: a focused Crew worktree must not make
+// mate miss the Project's workspace and create a second one.
 func parseAgentList(data []byte) ([]agentInfo, error) {
 	var raw struct {
 		Agents []agentJSON `json:"agents"`

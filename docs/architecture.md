@@ -17,7 +17,8 @@ and the Project's actions (CON-231); `mate core start|stop|restart|status`
 and plain `mate` running the core (CON-213); `internal/refresh`
 (CON-170); `internal/platform` (CON-184, CON-185); `CrewIsScout` in `store`
 (CON-165); the CLI command table (CON-171); `internal/wake` (CON-169);
-`internal/usage` (CON-168); `internal/recall` (CON-167); the Herdr adapter
+`internal/usage` (CON-168) and `--why` out of it in `internal/usage/why`
+(CON-234); `internal/recall` (CON-167); the Herdr adapter
 in `internal/runtime/herdr` (CON-190). Every
 part marked **Target** below is planned, not built; the issue named beside it
 owns the change. A PR that moves a package or a process updates the
@@ -42,7 +43,7 @@ names the layers its imports and importers allow.
 | 2 storage (lưu trữ) | The workspace store and the database and config files beside it | `store`, `db`, `plugin`, `learnings` |
 | 3 read (đọc) | Read models over stored state, and the ports they read through | `query`, `coreapi`, `box`, `timeline/scene`, `timeline/read`, `diagnostics`, `dispatch`, `harness`, `runtime` |
 | 4 integration (tích hợp) | Adapters to something outside mate: harness CLIs, Herdr, the terminal host, git, `gh`, Jev, OS notifications | `harness/catalog`, `harness/claude`, `harness/codex`, `harness/grok`, `harness/pi`, `screen`, `screen/fixture`, `screen/jev`, `screen/chain`, `send`, `notice`, `host`, `panerun`, `gitx`, `github`, `facts`, `quota`, `teardown`, `notifications`, `matehost`, `coreclient`, `runtime/herdr` |
-| 5 service (dịch vụ) | Application logic that combines the layers below, and the core that runs it | `spawn`, `outbox`, `autopilot`, `watch`, `timeline`, `recovery`, `refresh`, `prwatch`, `migrate`, `mateassets`, `hook`, `wake`, `recall`, `dashboard`, `usage`, `core` |
+| 5 service (dịch vụ) | Application logic that combines the layers below, and the core that runs it | `spawn`, `outbox`, `autopilot`, `watch`, `timeline`, `recovery`, `refresh`, `prwatch`, `migrate`, `mateassets`, `hook`, `wake`, `recall`, `dashboard`, `usage`, `usage/why`, `core` |
 | 6 UI (giao diện) | What the captain looks at; Office and City are web pages in `internal/dashboard/ui/`, served by `dashboard` (service) | `ui/console` |
 | 7 binary | Wiring and CLI | `cmd/mate` |
 
@@ -99,8 +100,8 @@ methods it calls plus the interfaces of the packages it passes the
 workspace to, and `var _ Workspace = (*store.Workspace)(nil)`
 ([plans/store-split-2026-11-06.md](plans/store-split-2026-11-06.md)
 section 3, CON-238, CON-240, CON-241). `box`, `query`, `dashboard`,
-`usage`, `learnings`, `db` and `spawn`'s `CrewReader` (for `ListCrews`)
-only read through theirs; `timeline`, `watch`, `autopilot`, `outbox`,
+`usage`, `usage/why`, `learnings`, `db` and `spawn`'s `CrewReader` (for
+`ListCrews`) only read through theirs; `timeline`, `watch`, `autopilot`, `outbox`,
 `prwatch` and `hook` name their writes in theirs. `cmd/mate`, the rest of
 `spawn`, `core`, `recovery`, `refresh`, `migrate`, `wake` and `recall` keep
 `*store.Workspace`. A store method writes when its name says so: a prefix
@@ -110,15 +111,18 @@ of `writePrefixes` in `internal/store/groups_test.go` (`Set`, `Append`,
 this: the store's methods keep the naming rule, and the readers' interfaces
 hold no write (CON-244).
 
-`usage` (CON-168) builds the pages `mate usage` prints; `cmd/mate/usage.go`
-only reads the flags. It also writes the `## Usage (app)` section of a
-crew's learning record when the crew closes (`usage.RecordAtClose`,
-CON-230), in the words of `--why`'s head. It is in service because `--why`
-reads through `dashboard.Server`, so that page and the Task page cannot
-disagree, and the ledger reads the crews through `spawn`. Its reads of
-`mate.db` are in `timeline/read`; it holds no SQL. Because `usage` imports
-`dashboard`, `dashboard` cannot import `usage`: the Office's usage page
-reusing the ledger needs `--why` split out of `usage` first.
+`usage` (CON-168) builds the pages `mate usage` prints but `--why`: the
+project's ledger, and a task's model calls per call or per session;
+`cmd/mate/usage.go` only reads the flags. It is in service because the
+ledger reads the crews through `spawn`. `usage/why` (CON-234) builds
+`mate usage <p> <crew> --why` and writes the `## Usage (app)` section of a
+crew's learning record when the crew closes (`why.RecordAtClose`,
+CON-230), in the words of `--why`'s head. It reads through
+`dashboard.Server`, so that page and the Task page cannot disagree. Their
+reads of `mate.db` are in `timeline/read`; neither holds SQL. `usage`
+imports nothing that reaches `dashboard` (`internal/usage/boundary_test.go`),
+so `dashboard` can import `usage` to reuse the ledger; `usage/why` does not
+import `usage`.
 
 ## 2. Processes and how they talk
 
@@ -353,7 +357,7 @@ interfaces on the side of each reader, is planned in
 | `projects/<p>/mate/tui` | `matehost` (text), `spawn` | every headless start: `exec <mate> mate tui <p> --workspace <root>` (CON-227) | the captain, in the Mate's shell pane |
 | `projects/<p>/mate/host.sock`, `host.jsonl`, `host.launch.json`, `topics/` | `matehost` | the headless host; spawn (`host.launch.json`); `mate mate tui` (`host.launch.json`, when the TUI left another session) | outbox, spawn, `mate mate …`, Office chat, City, notifications, the snapshot's liveness |
 | `projects/<p>/mate/host.log`, `host.log.1` | `matehost` (path), `spawn` (rotation) | the headless host's stdout and stderr (CON-225); a start moves a log of `spawn.HostLogMax` (1 MiB) or more to `host.log.1` | the captain; a failed start quotes its last lines |
-| `projects/<p>/mate/learnings/<c>.md` | `learnings` | the Mate; the app (`## Usage (app)` through `usage`, predictions) | `mate wake`, `mate learnings` |
+| `projects/<p>/mate/learnings/<c>.md` | `learnings` | the Mate; the app (`## Usage (app)` through `usage/why`, predictions) | `mate wake`, `mate learnings` |
 
 Crews work in `.worktrees/<project>-<crew>`, git worktrees that `spawn`
 creates and removes; `teardown` first stops what the worktree started.
@@ -362,7 +366,7 @@ creates and removes; `teardown` first stops what the worktree started.
 
 Each test fails `make check` when its rule breaks. The first four are the
 ones CON-179 names; the next three came with CON-184, CON-206 and CON-207,
-then one each with CON-190, CON-239 and CON-244.
+then one each with CON-190, CON-239, CON-244 and CON-234.
 They add local rules to the repo-wide layer rule, which
 `internal/archtest/layers_test.go` checks (section 1).
 
@@ -377,7 +381,8 @@ They add local rules to the repo-wide layer rule, which
 | `internal/core/boundary_test.go` | Nothing `internal/core` links, transitively, is under `cmd/` or `internal/ui/` |
 | `internal/runtime/herdr/boundary_test.go` | Outside `internal/runtime/herdr`, only `internal/spawn` (which builds the live adapter in `LiveDeps`) imports it in a non-test file; the rest of mate reaches Herdr through `runtime.Adapter`, `runtime.ReadAdapter` and `runtime.SessionStream` |
 | `internal/store/groups_test.go` | Every non-test file of `internal/store` that declares a method of `Workspace`, `Paths` or `Migration` is in one group of `methodGroups`; each method the table lists is in a file of its group; `workspace.go` declares no method; `Paths` methods are only in `layout*.go`, which hold no other method of these types and import only `fmt` and `path/filepath`. Since CON-244 each group has a kind (paths, records), and an exported method that writes the disk, directly or through the package's functions (calls matched by name), has a name that starts with a write prefix of `writePrefixes` followed by an upper-case letter, or is listed with a reason in `writesWithoutPrefix`; a path method has neither |
-| `internal/archtest/store_readers_test.go` | For the readers of the store in `storeReaders` (`box`, `query`, `dashboard`, `usage`, `learnings`, `db`, and `spawn.CrewReader`), type-checked against `go list -export` data: their interfaces, embedded ones included, have no method that writes by the store's rule, read from `internal/store/groups_test.go`; and, except in `spawn`, no non-test file holds a `*store.Workspace` outside `var _ Workspace = (*store.Workspace)(nil)` and the `noWorkspace` nil check, holds or calls through an interface that has a write of the store (a writer's `Workspace` included), or calls a function of `store` that writes or returns a `*store.Workspace` (`store.Open`, `store.Init`) |
+| `internal/archtest/store_readers_test.go` | For the readers of the store in `storeReaders` (`box`, `query`, `dashboard`, `usage`, `usage/why`, `learnings`, `db`, and `spawn.CrewReader`), type-checked against `go list -export` data: their interfaces, embedded ones included, have no method that writes by the store's rule, read from `internal/store/groups_test.go`; and, except in `spawn`, no non-test file holds a `*store.Workspace` outside `var _ Workspace = (*store.Workspace)(nil)` and the `noWorkspace` nil check, holds or calls through an interface that has a write of the store (a writer's `Workspace` included), or calls a function of `store` that writes or returns a `*store.Workspace` (`store.Open`, `store.Init`) |
+| `internal/usage/boundary_test.go` | Nothing `internal/usage` links, transitively, is `internal/dashboard` or under it, so `dashboard` can import `usage` (CON-234); `--why`, which reads through `dashboard.Server`, is in `internal/usage/why` |
 
 ## 5. Where to make a change
 

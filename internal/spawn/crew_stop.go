@@ -75,7 +75,8 @@ var ErrUnlandedWork = errors.New("crew has unlanded work")
 //
 // Like StopMate, the proof the agent is gone is Herdr's own answer: absent
 // from `agent get` and from the session inventory. A tab Herdr already does
-// not know about (`tab_not_found`, ADR 0028 in v1) counts as closed, and an
+// not know about (`tab_not_found`, what Herdr answers once a force stop
+// closed the tab's sole pane and with it the tab) counts as closed, and an
 // agent Herdr already has no record of is not an error - it is the normal
 // shape of a crew that crashed, or of a rerun after a previous refusal.
 func StopCrew(ctx context.Context, w *store.Workspace, deps Deps, project, crew string, discard bool) (StopResult, error) {

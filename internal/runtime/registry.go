@@ -9,10 +9,11 @@ import (
 
 // MemoryNameRegistry is an in-process LiveNameRegistry: it lives and dies
 // with one mate invocation, so it protects nothing across processes or
-// workspaces. The fake runtime uses it. The contract a durable G3/G4 backing
-// must meet (runtime_binding unique constraint for agent names, a
-// cross-workspace owner record for session names, Herdr's live list for
-// staleness) is in ADR 0004, Runtime port.
+// workspaces. The fake runtime uses it. A durable backing needs what a map
+// in one process cannot give, because every mate invocation is its own
+// process: a runtime_binding unique constraint for agent names, a
+// cross-workspace owner record for session names, and Herdr's live list for
+// staleness.
 type MemoryNameRegistry struct {
 	mu    sync.Mutex
 	names map[string]string // session\x00name -> rawID

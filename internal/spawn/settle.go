@@ -14,7 +14,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/screen/fixture"
 )
 
-// Startup-prompt settlement, ported from v1's ADR 0028. Measured 2026-09-14
+// Startup-prompt settlement, ported from v1. Measured 2026-09-14
 // against Herdr 0.8.2: a Codex pane sitting on its directory-trust dialog is
 // reported by `agent start` as idle and interactive, and a Claude pane on the
 // same dialog is reported blocked, which the default wait accepts as
@@ -319,7 +319,8 @@ func answerStartupDialog(ctx context.Context, rt runtime.Adapter, handle runtime
 	var presses []string
 	var screen string
 	// One key per call with a re-read in between: sending `down` and `enter`
-	// in a single send-keys call left the dialog on screen (ADR 0028), and
+	// in a single send-keys call left Claude's dialog on screen (measured
+	// 2026-09-14), and
 	// the read after the last press is what the accept check is made on.
 	for _, key := range answer.SelectKeys {
 		if err := rt.SendKeys(ctx, handle, []string{key}); err != nil {

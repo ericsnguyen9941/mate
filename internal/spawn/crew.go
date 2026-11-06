@@ -196,9 +196,9 @@ type CrewResult struct {
 	// longer had its agent, so this spawn replaced it.
 	StaleMeta bool
 	// TrustDialog is true when the startup settle answered a directory-trust
-	// dialog. v1's ADR 0028 expected this to stay false for a crew, because a
-	// linked worktree inherits the primary repo's trust decision - but a live
-	// Codex 0.154 crew was measured showing the dialog on 2026-09-17
+	// dialog. v1 expected this to stay false for a crew, because it measured
+	// a linked worktree inheriting the primary repo's trust decision - but a
+	// live Codex 0.154 crew was measured showing the dialog on 2026-09-17
 	// (TestLiveSpawnCrewCodex): Codex confirms trust per absolute path, and a
 	// crew worktree is always a path it has never seen. The settle step is
 	// therefore load-bearing for crews, not a formality.

@@ -495,18 +495,18 @@ type CodexFile struct {
 
 // CodexProjectDocMarker is the exact byte sequence codex-cli 0.151.0 renders
 // between the global $CODEX_HOME document and the project chain (live probe,
-// ADR 0004). It is rendered, not metered: project_doc_max_bytes never
+// 2026-09-01). It is rendered, not metered: project_doc_max_bytes never
 // charges it.
 const CodexProjectDocMarker = "\n\n--- project-doc ---\n\n"
 
 // CodexChainJoiner is the exact joiner codex-cli 0.151.0 renders between
-// concatenated project files (live probe, ADR 0004). Rendered, not metered.
+// concatenated project files (live probe, 2026-09-01). Rendered, not metered.
 const CodexChainJoiner = "\n\n"
 
 // CodexChain is the effective instruction chain codex-cli 0.151.0 would load.
 // The global document is structurally separate from the project chain because
 // the two are budgeted differently: project_doc_max_bytes meters only the
-// project files (live probe, ADR 0004), so a global byte cannot be charged
+// project files (live probe, 2026-09-01), so a global byte cannot be charged
 // by construction.
 type CodexChain struct {
 	// Global is the $CODEX_HOME document (override-else-base), rendered
@@ -586,7 +586,7 @@ func (c CodexChain) meter() ([]byte, []meteredExtent) {
 }
 
 // MeteredProjectBytes is the exact stream codex-cli 0.151.0 meters against
-// project_doc_max_bytes (live probe, ADR 0004): raw project-file content
+// project_doc_max_bytes (live probe, 2026-09-01): raw project-file content
 // only. The global doc, the project-doc marker, and the per-file joiners are
 // rendered after metering and are exempt; overflow silently truncates the
 // tail of this stream.
@@ -598,7 +598,7 @@ func (c CodexChain) MeteredProjectBytes() []byte {
 // RenderedInstructions is the instruction text codex-cli 0.151.0 renders
 // inside its <INSTRUCTIONS> block: the global doc, then CodexProjectDocMarker
 // when both sides exist, then the project files joined with CodexChainJoiner
-// (live probe, ADR 0004). This is what the agent sees; MeteredProjectBytes is
+// (live probe, 2026-09-01). This is what the agent sees; MeteredProjectBytes is
 // what the cap charges. Budget decisions must never use this stream.
 func (c CodexChain) RenderedInstructions() []byte {
 	var buf bytes.Buffer

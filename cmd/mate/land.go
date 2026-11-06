@@ -20,7 +20,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/recall"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
-	"github.com/nguyenngocanh94/mate/internal/usage"
+	"github.com/nguyenngocanh94/mate/internal/usage/why"
 	"github.com/nguyenngocanh94/mate/internal/wake"
 )
 
@@ -99,7 +99,7 @@ func (c cli) cmdLand(args []string, stdout, stderr io.Writer) error {
 		}
 		writeCrewStopReport(stdout, project, crew, res, c.caller())
 		if !res.AlreadyClosed {
-			fmt.Fprintln(stdout, usage.RecordAtClose(ctx, w, project, crew, "mate land"))
+			fmt.Fprintln(stdout, why.RecordAtClose(ctx, w, project, crew, "mate land"))
 		}
 	} else {
 		res, f, err := mergeReviewed(ctx, w, project, crew, c.caller(), *reviewFlag, *followupsFlag)
@@ -108,7 +108,7 @@ func (c cli) cmdLand(args []string, stdout, stderr io.Writer) error {
 		}
 		followups, landed = f, res.After
 		fmt.Fprintln(stdout, res.Line())
-		fmt.Fprintln(stdout, usage.RecordAtClose(ctx, w, project, crew, "mate land"))
+		fmt.Fprintln(stdout, why.RecordAtClose(ctx, w, project, crew, "mate land"))
 		if err := recordFollowups(stdout, w, project, crew, followups); err != nil {
 			fmt.Fprintf(stdout, "followups: not recorded: %v\n", err)
 		}
@@ -175,7 +175,7 @@ func landReadFile(path string) string {
 }
 
 // landLearningPending is how the app opens a record it wrote the usage
-// section into before the Mate wrote anything (usage.RecordAtClose).
+// section into before the Mate wrote anything (why.RecordAtClose).
 const landLearningPending = "Learning: pending"
 
 // learningLine is a hand-back's `Learning:` line, bulleted or not,

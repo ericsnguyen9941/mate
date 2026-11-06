@@ -116,7 +116,8 @@ type RuntimeStatus struct {
 
 // WorkspaceValue is where the open workspace lives. Name is the root
 // directory's base name: there is no workspace name column and no
-// `workspace` table (ADR 0005), so the directory is the only name a UI can
+// `workspace` table (a workspace is identified by its resolved directory,
+// not by a stored record), so the directory is the only name a UI can
 // truthfully show.
 type WorkspaceValue struct {
 	Name string
@@ -455,7 +456,8 @@ type WorktreeValue struct {
 //
 // WorktreeRecorded* is the recorded outcome of the last worktree operation,
 // never a live check: WorktreeRecordedUnknown means mate could not prove
-// what happened (ADR 0012 - cleanup must not act on it), not that this
+// what happened (cleanup must not act on it: a leftover not proven gone is
+// left for an explicit repair), not that this
 // snapshot failed to read the row. That failure is Field.State == Unknown,
 // which is a different thing and must render differently.
 type WorktreeStatus string
@@ -482,8 +484,9 @@ const (
 
 // BindingValue is the held runtime_binding row for a Mate or Crew - a
 // durable database fact, not a fresh Herdr call. Status carries the
-// binding's own recorded status: per ADR 0027 a stale binding means mate
-// could not confirm the agent actually stopped, and
+// binding's own recorded status: a stale binding means mate could not
+// confirm the agent actually stopped (an unverified stop marks the binding
+// stale instead of releasing it), and
 // application.ResolveAttachTarget refuses to attach to one, so rendering
 // only the agent name would make a stale binding indistinguishable from a
 // live one - exactly the falsehood this field exists to prevent. An active
@@ -501,8 +504,8 @@ type BindingValue struct {
 	Runtime string
 	Session string
 	// Workspace is the Herdr workspace id the binding recorded. It is the
-	// handle that goes stale first (ADR 0011: a force pane-close of the last
-	// pane closes the workspace), so it is shown as recorded, never as the
+	// handle that goes stale first (a force pane-close of the last pane
+	// closes the workspace), so it is shown as recorded, never as the
 	// place to look now.
 	Workspace string
 	Tab       string

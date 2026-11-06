@@ -11,12 +11,12 @@ import (
 // CodexOverridePlan is what one cwd's Mate-written AGENTS.override.md has to
 // fit into, computed before the file is written. It exists because Codex
 // 0.151.0 fails open: an override that overflows project_doc_max_bytes is
-// silently truncated and the agent starts anyway (ADR 0004). Composing the
+// silently truncated and the agent starts anyway (probed live). Composing the
 // override first and discovering afterwards that it does not fit would leave
 // a truncated file on disk at the agent's cwd; the plan lets the caller size
 // the content, or refuse, before anything is written.
 //
-// The arithmetic is the one ADR 0004 probed live against codex-cli 0.151.0
+// The arithmetic was probed live against codex-cli 0.151.0 on 2026-09-01
 // (re-checked on 0.152.1): project_doc_max_bytes meters only the raw content
 // bytes of project files, summed in load order. The global $CODEX_HOME
 // document, the `--- project-doc ---` marker and the per-file `\n\n` joiners
@@ -36,7 +36,8 @@ type CodexOverridePlan struct {
 	// Shadowed is the project document that would load at cwd if Mate wrote
 	// no override there - in the Phase 1 Crew layout, the worktree's own
 	// tracked AGENTS.md. Codex drops it entirely once the override exists
-	// (ADR 0004, "Crew layout"), so a caller that wants the repository's
+	// (probed live on 0.151.0: removing the override makes the tracked file
+	// render again), so a caller that wants the repository's
 	// instructions to reach the agent has to embed these bytes in the
 	// override it composes, inside Budget. Nil when there is none.
 	Shadowed *CodexFile
@@ -58,8 +59,8 @@ type CodexOverridePlan struct {
 //
 // An override already at cwd is deliberately not charged: it is the previous
 // start's file, which this launch replaces. Charging it would refuse a
-// launch that fits, and ADR 0004 requires the override to be regenerated on
-// every start anyway.
+// launch that fits, and the override is regenerated on every start anyway,
+// so an updated AGENTS.md is never served stale.
 func PlanCodexOverride(req DiscoverRequest, maxBytes int) (CodexOverridePlan, error) {
 	if maxBytes <= 0 {
 		maxBytes = CodexDefaultMaxBytes

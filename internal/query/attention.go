@@ -5,7 +5,8 @@ import "fmt"
 // AttentionKind is why a row needs a human's attention now. It is derived
 // from recorded state only - a status the database holds, or a field this
 // snapshot failed to read - never from a live probe of an agent, a pane or
-// a worktree on disk (ADR 0019's health observer does not exist).
+// a worktree on disk: probing liveness is the observer's job, and what it
+// finds reaches this package only as the incidents it recorded.
 //
 // This vocabulary is the one definition of "needs attention" in the
 // codebase. It lives here rather than in the Console so that `mate`

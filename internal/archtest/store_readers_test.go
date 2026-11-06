@@ -27,6 +27,7 @@ import (
 // docs/plans/store-split-2026-11-06.md section 3 whose "Ghi qua store?"
 // column says no, or, for db, that it writes only its own mate.db (step S7,
 // CON-244). S7 names box, query and dashboard; the table adds the others.
+// usage/why holds what CON-234 split out of the table's usage row.
 type storeReader struct {
 	pkg string
 	// ifaces are the interfaces the package takes instead of
@@ -50,6 +51,7 @@ var storeReaders = []storeReader{
 	{pkg: "internal/query", ifaces: []string{"BoxWorkspace", "Workspace"}, whole: true},
 	{pkg: "internal/dashboard", ifaces: []string{"Workspace"}, whole: true},
 	{pkg: "internal/usage", ifaces: []string{"Workspace"}, whole: true},
+	{pkg: "internal/usage/why", ifaces: []string{"Workspace"}, whole: true},
 	{pkg: "internal/learnings", ifaces: []string{"Workspace"}, whole: true},
 	{pkg: "internal/db", ifaces: []string{"Workspace"}, whole: true},
 	{pkg: "internal/spawn", ifaces: []string{"CrewReader"}},

@@ -1,24 +1,22 @@
 // Package usage builds the pages `mate usage` prints (mvp.md M5 task 27):
-// the token ledger of a project, one task's model calls, its sessions, and
-// `--why`, what a task's calls were spent on. cmd/mate's cmdUsage reads the
-// flags, opens the database and prints what Write writes (CON-168). It also
-// writes the head of `--why` into a crew's learning record when the crew
-// closes (RecordAtClose, CON-130, moved here by CON-230).
+// the token ledger of a project, and one task's model calls, per call or
+// per session. cmd/mate's cmdUsage reads the flags, opens the database and
+// prints what Write writes (CON-168). `--why`, what a task's calls were
+// spent on, and the usage section of a crew's learning record are in
+// internal/usage/why (CON-234): they read through dashboard.Server, and
+// this package imports nothing of dashboard's, so dashboard can import it.
 //
 // Every read of the timeline goes through internal/timeline/read; this
-// package holds no SQL. `--why` reads through dashboard.Server, so the page
-// and the dashboard's Task page can never disagree. No page adds a
-// measurement of its own: every number is the ledger's or the projection's.
+// package holds no SQL. No page adds a measurement of its own: every
+// number is the ledger's or the projection's.
 package usage
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
-	"github.com/nguyenngocanh94/mate/internal/dashboard"
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/harness"
 )
@@ -29,13 +27,11 @@ type Deps struct {
 	// autocompact warning names only Crews whose harness takes the
 	// threshold (harness.Info.Autocompact); a zero Registry names none.
 	Harnesses harness.Registry
-	// Dashboard is what `--why`'s dashboard.Server needs beyond the
-	// workspace and the database: cmd/mate's dashboardDeps.
-	Dashboard dashboard.Deps
 }
 
-// Request is one `mate usage` page. Write does not check the flags'
-// combinations; cmdUsage refuses a wrong one before it opens the database.
+// Request is one `mate usage` page other than `--why` (package why).
+// Write does not check the flags' combinations; cmdUsage refuses a wrong
+// one before it opens the database.
 type Request struct {
 	Project string
 	// Crew names one task; empty is the project's ledger.
@@ -43,9 +39,7 @@ type Request struct {
 	// Top keeps the Mate and the Top largest tasks by TASK-TOTAL; zero
 	// keeps every task. Only the ledger reads it.
 	Top int
-	// Why prints what Crew's tokens were spent on instead of its model
-	// calls; Sessions prints them per harness session (CON-73).
-	Why      bool
+	// Sessions prints Crew's model calls per harness session (CON-73).
 	Sessions bool
 }
 
@@ -55,8 +49,6 @@ func Write(ctx context.Context, out io.Writer, w Workspace, handle *db.DB, deps 
 	switch {
 	case req.Crew == "":
 		return writeLedger(ctx, out, w, handle, deps.Harnesses, req.Project, req.Top)
-	case req.Why:
-		return writeWhy(ctx, out, w, handle, deps.Dashboard, req.Project, req.Crew)
 	case req.Sessions:
 		return writeCrewSessions(ctx, out, handle, req.Project, req.Crew)
 	default:
@@ -65,9 +57,9 @@ func Write(ctx context.Context, out io.Writer, w Workspace, handle *db.DB, deps 
 }
 
 // The helpers below are private copies of cmd/mate's, kept here so the
-// usage pages do not depend on cmd/mate; they are part of those pages and
-// of the learning record's usage section, so a change to one is a change
-// to `mate usage`'s output or to that section.
+// usage pages do not depend on cmd/mate; they are part of those pages, so
+// a change to one is a change to `mate usage`'s output. Package why keeps
+// its own copies of formatAge and waitedWord, for `--why`'s head.
 
 // dashIfEmpty keeps a table cell from reading as a missing column.
 func dashIfEmpty(s string) string {
@@ -89,10 +81,4 @@ func formatAge(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
-}
-
-// oneLineMsg is an error's first line.
-func oneLineMsg(err error) string {
-	msg, _, _ := strings.Cut(err.Error(), "\n")
-	return strings.TrimSpace(msg)
 }

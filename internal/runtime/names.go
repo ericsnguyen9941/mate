@@ -31,8 +31,9 @@ var (
 
 // CollisionPolicy is the explicit contract for sanitized-name collisions.
 // SanitizeAgentName is collision-resistant, not injective: a truncated hash
-// cannot guarantee uniqueness. G1 produced a real colliding pair (see
-// docs/phase1/decisions/0003-g1-herdr-feasibility.md). No caller may assume
+// cannot guarantee uniqueness. G1 produced a real colliding pair: with prefix
+// abcdefghijklmnopqrstuv, raw ids id-120227X and id-139869X both sanitize to
+// abcdefghijklmnopqrstuv--87b98bfa. No caller may assume
 // a sanitized name is unique.
 type CollisionPolicy int
 
@@ -49,13 +50,13 @@ const (
 // Uniqueness comes from this registry, never from SanitizeAgentName alone.
 //
 // MemoryNameRegistry is process-local (tests, G2); since G3 the durable
-// backer is persistence.NameRegistry, one per workspace database (ADR
-// 0005), so a reservation is a cross-process fact within one workspace but
+// backer is persistence.NameRegistry, one per workspace database, so a
+// reservation is a cross-process fact within one workspace but
 // still Mate's recorded intent. Herdr's agent_name_taken is the final
 // arbiter for agent names; nothing arbitrates session names (the durable
-// registry refuses that scope). ADR 0004 (Runtime port) states what every
-// backer must guarantee, including how a reservation left by a crash is
-// treated.
+// registry refuses that scope). Every backer must treat a reservation as
+// intent, not truth: one left by a crash with no live Herdr agent behind it
+// is stale, surfaced for repair and never reused silently.
 type LiveNameRegistry interface {
 	// Occupied reports whether name is reserved in session and, if so, which
 	// raw domain id owns it. ownerRawID is empty when occupied is false.
