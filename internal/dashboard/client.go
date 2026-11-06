@@ -117,6 +117,13 @@ func clientActError(err error) (int, coreapi.ErrorBody) {
 		return http.StatusConflict, coreapi.ErrorBody{Error: err.Error(), Code: coreapi.CodeBusy}
 	case errors.Is(err, coreapi.ErrStopping):
 		return http.StatusConflict, coreapi.ErrorBody{Error: err.Error(), Code: coreapi.CodeStopping}
+	case errors.Is(err, coreapi.ErrTUI):
+		body := coreapi.ErrorBody{Error: err.Error(), Code: coreapi.CodeTUI}
+		var open *coreapi.TUIError
+		if errors.As(err, &open) {
+			body.Error, body.TUI = open.Error(), &open.TUI
+		}
+		return http.StatusConflict, body
 	case errors.Is(err, coreapi.ErrNoMateREPL):
 		return http.StatusUnprocessableEntity, coreapi.ErrorBody{Error: err.Error(), Code: coreapi.CodeNoMateREPL}
 	}

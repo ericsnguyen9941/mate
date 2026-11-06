@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/autopilot"
@@ -194,6 +195,11 @@ type Engine struct {
 	now   func() time.Time
 	// stopWait is StopWait; a test shortens it.
 	stopWait time.Duration
+	// tuiSignal stands in for the signal a force close of a Mate's TUI
+	// sends (closeTUI); nil is platform.Signal.
+	tuiSignal func(pid int, sig syscall.Signal) error
+	// tuiWait is tuiCloseWait; a test shortens it.
+	tuiWait time.Duration
 
 	// claim is the workspace's core.lock while the engine runs; Start
 	// takes it first (or the one Options.Claim handed in) and Stop

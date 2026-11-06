@@ -195,7 +195,9 @@ func TestStartMateHeadlessRunsTheHostOutsideHerdrAndRecordsIt(t *testing.T) {
 	if res.Place() != "headless, host pid 4101" {
 		t.Fatalf("place = %q", res.Place())
 	}
-	noHerdr(t, rt, 0)
+	// Herdr is asked for the captain's shell pane beside the Mate
+	// (CON-227), and for nothing the Mate runs in.
+	onlyShellPane(t, rt, 0)
 	if len(play.starts) != 1 {
 		t.Fatalf("host starts = %+v", play.starts)
 	}
@@ -345,7 +347,7 @@ func TestAKilledHostReadsAsStoppedAndAStartResumesIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartMate again: %v", err)
 	}
-	noHerdr(t, rt, calls)
+	onlyShellPane(t, rt, calls)
 	if !again.StaleMeta || !again.Headless || !again.Resumed || again.SessionID != first.SessionID || again.PID == first.PID {
 		t.Fatalf("restart = %+v, want the dead host's session %s resumed in a new host", again, first.SessionID)
 	}
@@ -449,7 +451,7 @@ func TestRestartMovesAPaneHostOutOfHerdrAndKeepsItsSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartMate: %v", err)
 	}
-	noHerdr(t, rt, calls)
+	onlyShellPane(t, rt, calls)
 	if !res.Headless || !res.Resumed || res.ResumedFrom != old || res.SessionID != old || res.Pane != "" || len(play.starts) != 1 {
 		t.Fatalf("start = %+v, want session %s resumed by a host outside Herdr", res, old)
 	}

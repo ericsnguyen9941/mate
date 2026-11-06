@@ -68,6 +68,10 @@ func (h *Host) Say(text string) (Held, error) {
 	if text == "" {
 		return Held{}, errors.New("a message has no text")
 	}
+	if h.isPaused() {
+		// The captain talks to the Mate in its TUI meanwhile (CON-227).
+		return Held{}, ErrTUI
+	}
 	return h.hold(Held{Kind: HeldSay, Text: text})
 }
 
@@ -78,6 +82,9 @@ func (h *Host) Answer(id int, text string) (Held, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return Held{}, errors.New("an answer has no text")
+	}
+	if h.isPaused() {
+		return Held{}, ErrTUI
 	}
 	if err := h.checkAnswer(id); err != nil {
 		return Held{}, err

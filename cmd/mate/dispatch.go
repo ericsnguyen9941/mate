@@ -50,7 +50,7 @@ func (c cli) commands() []command {
 	return []command{
 		{names: []string{"init"}, summary: "create a workspace, or open the one there", run: cmdInit},
 		{names: []string{"project"}, summary: "add, list, remove and configure projects", run: c.cmdProject},
-		{names: []string{"mate"}, summary: "start, stop, refresh or check a project's Mate", run: c.cmdMate},
+		{names: []string{"mate"}, summary: "start, stop, refresh or check a project's Mate, or open a headless one's TUI", run: c.cmdMate},
 		{names: []string{"crew"}, summary: "spawn, list, stop, relaunch and budget crews", run: withStdin(c.cmdCrew)},
 		{names: []string{"brief"}, summary: "check, append to or revise a crew's brief", run: withStdin(cmdBrief)},
 		{names: []string{"remember"}, summary: "add one entry to a project's memory", run: cmdRemember},

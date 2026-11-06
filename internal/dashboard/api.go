@@ -564,10 +564,15 @@ func writeJSON(w http.ResponseWriter, status int, body []byte) {
 }
 
 func (s *Server) writeError(w http.ResponseWriter, r *http.Request, status int, message, reason string) {
+	s.writeCodedError(w, r, status, message, reason, "")
+}
+
+// writeCodedError is writeError with ErrorResponse.Code.
+func (s *Server) writeCodedError(w http.ResponseWriter, r *http.Request, status int, message, reason, code string) {
 	id, _ := s.lastEventID(r.Context())
 	body, err := json.Marshal(ErrorResponse{
 		envelope: envelope{GeneratedAt: db.FormatTime(s.deps.now()), LastEventID: id},
-		Error:    message, Reason: reason,
+		Error:    message, Reason: reason, Code: code,
 	})
 	if err != nil {
 		http.Error(w, message, status)

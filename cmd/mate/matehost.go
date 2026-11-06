@@ -82,7 +82,8 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 		Turns:  turns,
 		Lock:   func() (func(), bool, error) { return w.TryMateLock(project, matehost.TurnLock) },
 	}
-	opts := matehost.Options{History: matehost.HistoryPath(mateDir), News: matehost.NewsPath(mateDir), Topics: matehost.TopicsPath(mateDir), PID: os.Getpid()}
+	opts := matehost.Options{History: matehost.HistoryPath(mateDir), News: matehost.NewsPath(mateDir), Topics: matehost.TopicsPath(mateDir), PID: os.Getpid(),
+		Paused: hostPaused(w, project)}
 	bin, _ := os.Executable()
 	if forks, ok := profile.(harness.ForkTurns); ok {
 		// A topic's session (CON-104) runs the binary the Mate's manual
@@ -112,6 +113,17 @@ func cmdMateHost(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 	return host.Live(ctx, live)
+}
+
+// hostPaused is a host's Options.Paused: true while this Mate's session is
+// open in the harness's TUI (CON-227), so the host runs no turn until it
+// closes. Another Mate's TUI leaves this host running; it holds back only
+// the UIs.
+func hostPaused(w *store.Workspace, project string) func() bool {
+	return func() bool {
+		h, held, err := w.TUIRunning()
+		return err == nil && held && h.Project == project
+	}
 }
 
 // hostLockWait is how long a host tries for its lock: a stop, a start or

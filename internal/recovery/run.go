@@ -252,7 +252,9 @@ func restart(ctx context.Context, ws *store.Workspace, deps spawn.Deps, it Item)
 		it.Resumed, it.Note, it.Err = res.Resumed, res.ResumeNote, err
 		return it
 	}
-	req := spawn.StartRequest{Project: it.Project, Resume: true}
+	// A host brought back opens its shell pane (CON-227) only where Herdr
+	// already runs: recovery never starts a Herdr server for it.
+	req := spawn.StartRequest{Project: it.Project, Resume: true, NoHerdrServer: true}
 	if meta, err := ws.ReadMateMeta(it.Project); err == nil && strings.TrimSpace(meta[spawn.MetaHarness]) != "" {
 		// A restart keeps the harness the Mate was running (task 38).
 		kind, err := deps.Harnesses.Parse(meta[spawn.MetaHarness])

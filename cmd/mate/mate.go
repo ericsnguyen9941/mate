@@ -11,10 +11,10 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// cmdMate dispatches `mate mate <start|stop|status|refresh|host|repl>`.
+// cmdMate dispatches `mate mate <start|stop|status|refresh|host|repl|tui>`.
 func (c cli) cmdMate(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return newUsageError("usage: mate mate <start|stop|status|refresh|host|repl> <project> ...")
+		return newUsageError("usage: mate mate <start|stop|status|refresh|host|repl|tui> <project> ...")
 	}
 	switch args[0] {
 	case "start":
@@ -29,6 +29,8 @@ func (c cli) cmdMate(args []string, stdout, stderr io.Writer) error {
 		return cmdMateHost(args[1:], stdout, stderr)
 	case "repl":
 		return cmdMateREPL(args[1:], stdout, stderr)
+	case "tui":
+		return cmdMateTUI(args[1:], stdout, stderr)
 	default:
 		return newUsageErrorf("unknown mate subcommand %q", args[0])
 	}
@@ -90,8 +92,14 @@ func cmdMateStart(args []string, stdout, stderr io.Writer) error {
 	if res.Resumed {
 		resumed = fmt.Sprintf("resumed session %s", res.ResumedFrom)
 	}
+	if res.ShellNote != "" {
+		fmt.Fprintf(stderr, "note: %s\n", res.ShellNote)
+	}
 	fmt.Fprintf(stdout, "started %s: agent %s %s (session %s, harness %s, %s)\n",
 		res.Project, res.Agent, res.Place(), res.Session, res.Harness, resumed)
+	if res.ShellPane != "" {
+		fmt.Fprintf(stdout, "shell pane %s (Herdr session %s): ./tui there opens the Mate's TUI\n", spawn.ShellPaneLabel(res.Project), res.Session)
+	}
 	return nil
 }
 

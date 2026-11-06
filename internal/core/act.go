@@ -22,6 +22,10 @@ import (
 // and sheet, and every press on a Mate Office or Agent City page, chat
 // included.
 //
+// While a Mate's session is open in the harness's TUI (CON-227) it refuses
+// every action but a peek and ActionCloseTUI with a *coreapi.TUIError,
+// before it takes any lock: every UI only looks.
+//
 // It takes the action's target first (lockOf). While another action holds
 // that target, from whichever UI, Act refuses with a *coreapi.BusyError
 // and starts nothing. The chat runs here, on the headless Mate's host
@@ -49,6 +53,10 @@ func (e *Engine) Act(ctx context.Context, req coreapi.ActionRequest) (string, er
 		return "", err
 	}
 	defer e.acts.end(run)
+	// A Mate's session open in its TUI (CON-227): every UI only looks.
+	if err := e.refuseForTUI(req); err != nil {
+		return "", err
+	}
 	if err := e.locks.take(key, shown, req.Action); err != nil {
 		return "", err
 	}
@@ -130,6 +138,8 @@ func (e *Engine) ownAction(req coreapi.ActionRequest) coreapi.ActionFunc {
 		return e.reply
 	case coreapi.ActionPeek:
 		return e.peek
+	case coreapi.ActionCloseTUI:
+		return e.closeTUI
 	case coreapi.ActionNotice:
 		if e.o.Notice == nil {
 			// No Jev: refused as an action this build has no body for,
@@ -169,9 +179,13 @@ var ownLock = map[coreapi.Action]bool{
 // starts with "#", which no Project name does (store.ValidateProjectName),
 // so a Project named "workspace" has a lock of its own.
 func lockOf(req coreapi.ActionRequest) (key, shown string) {
-	if req.Action == coreapi.ActionOnboard && req.TargetKind == "workspace" {
+	switch {
+	case req.Action == coreapi.ActionOnboard && req.TargetKind == "workspace":
 		key, shown = "#workspace", "the workspace"
-	} else {
+	case req.Action == coreapi.ActionCloseTUI:
+		// The workspace's one TUI flag, whichever Mate holds it.
+		key, shown = "#tui", "the workspace's TUI"
+	default:
 		key = req.Target
 		if req.Crew != "" {
 			key += "/" + req.Crew

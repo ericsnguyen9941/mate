@@ -105,6 +105,7 @@ const S = {
   inbox: new Map(), // project → inbox rows (what still waits)
   acts: new Map(), // project → its buttons (GET /api/actions)
   readOnly: '', // why this dashboard cannot act, when it cannot
+  tui: '', // a Mate's session open in its TUI (CON-227): the page only looks
   news: new Map(), // project → its news (GET /api/news)
   work: new Map(), // project → { logged, error, rows } (GET /api/work, the Mate's work board)
   workAll: new Set(), // projects whose okayed rows are all shown
@@ -275,6 +276,7 @@ async function loadActions() {
   try {
     const body = await api('/api/actions');
     S.readOnly = body.read_only ?? '';
+    S.tui = body.tui ?? '';
     S.acts = new Map(Object.entries(body.projects ?? {}));
   } catch {
     // The buttons stay as they were; the stale band says why.
@@ -702,6 +704,7 @@ const readOnlyBand = () => h('div', { class: 'band ro' }, h('span', { class: 'g'
 // Why a button cannot run right now, beyond what the API says: the page's own state.
 function blockedBy(key) {
   if (S.readOnly) return 'read-only dashboard';
+  if (S.tui) return S.tui;
   if (S.stale) return `stale since ${clock(S.staleSince)}; wait for live`;
   if (room && mode !== 'live') return 'replaying; go Live to act';
   const running = S.busy.get(key);
@@ -718,6 +721,7 @@ function actionsBlock({ project, crew, buttons, extra = [], links = [] }) {
   if (S.readOnly) return [h('h3', { class: 'sec' }, 'Actions'), readOnlyBand(), links.length ? h('div', { class: 'links' }, links) : null];
   const running = S.busy.get(key);
   const page = blockedBy(key);
+  const band = S.tui ? h('div', { class: 'band ro' }, h('span', { class: 'g' }, '⊘'), h('span', {}, `View only: ${S.tui} · close it in its terminal to act here.`)) : null;
   const els = [...(buttons ?? []), ...extra].map((b) => {
     const isRunning = running && running === b.label;
     const why = isRunning ? 'running…' : b.toggle ? (b.available ? '' : b.reason) : page || (b.available ? '' : b.reason);
@@ -728,7 +732,7 @@ function actionsBlock({ project, crew, buttons, extra = [], links = [] }) {
         isRunning ? h('span', { class: 'g', 'aria-hidden': 'true' }, '⟳') : null, isRunning ? `Running ${b.label.replace(/…$/, '').toLowerCase()}…` : b.label),
       h('small', { id: `why-${key}-${b.action}` }, why));
   });
-  return [h('h3', { class: 'sec' }, 'Actions', crew ? null : h('span', { class: 'r' }, projectOf(project)?.mode === 'auto' ? '● auto' : '○ manual')), h('div', { class: 'actions' }, els), resultEl(key), links.length ? h('div', { class: 'links' }, links) : null];
+  return [h('h3', { class: 'sec' }, 'Actions', crew ? null : h('span', { class: 'r' }, projectOf(project)?.mode === 'auto' ? '● auto' : '○ manual')), band, h('div', { class: 'actions' }, els), resultEl(key), links.length ? h('div', { class: 'links' }, links) : null];
 }
 
 // A destructive press asks first, Cancel focused; then runs and reports one line.
@@ -1036,7 +1040,7 @@ function workRow(project, x) {
   const pressing = S.busy.get(`work:${key}`);
   const done = x.status === 'done';
   const glyph = done
-    ? h('span', { class: 'g tick' }, h('input', { type: 'checkbox', 'aria-label': `OK: ${x.title}`, disabled: Boolean(S.readOnly) || Boolean(pend) || Boolean(pressing), checked: Boolean(pend) || Boolean(pressing), onchange: (e) => e.target.checked && okayWork(project, x) }))
+    ? h('span', { class: 'g tick' }, h('input', { type: 'checkbox', 'aria-label': `OK: ${x.title}`, disabled: Boolean(S.readOnly) || Boolean(S.tui) || Boolean(pend) || Boolean(pressing), checked: Boolean(pend) || Boolean(pressing), onchange: (e) => e.target.checked && okayWork(project, x) }))
     : h('span', { class: 'g', 'aria-hidden': 'true' }, x.status === 'working' ? '▶' : x.status === 'waiting' ? '?' : '✓');
   const side = x.status === 'waiting' && x.topic
     ? h('button', { type: 'button', class: 'link', onclick: () => select({ kind: 'hall', tab: 'topics', topic: topicKey(project, x.topic) }, { fly: false }) }, `topic #${x.topic} ›`)
