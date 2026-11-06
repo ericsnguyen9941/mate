@@ -73,7 +73,7 @@ func TestHeadlessStartOpensOneShellPaneInTheMateDir(t *testing.T) {
 		t.Fatalf("tui script = %v, %v; want an executable file", info, err)
 	}
 	data, _ := os.ReadFile(script)
-	if want := "exec " + deps.Binary + " mate tui shop --workspace " + w.Root(); !strings.Contains(string(data), want) || !strings.HasPrefix(string(data), "#!/bin/sh\n") {
+	if want := "exec " + deps.Binary + " mate-agent tui shop --workspace " + w.Root(); !strings.Contains(string(data), want) || !strings.HasPrefix(string(data), "#!/bin/sh\n") {
 		t.Fatalf("tui script = %q, want it to %s", data, want)
 	}
 

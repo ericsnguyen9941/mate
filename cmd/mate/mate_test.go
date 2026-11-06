@@ -15,7 +15,7 @@ import (
 func TestRunUnknownMateSubcommandIsUsageError(t *testing.T) {
 	t.Parallel()
 	var out, errw bytes.Buffer
-	err := testCLI().run([]string{"mate", "bogus"}, &out, &errw)
+	err := testCLI().run([]string{"mate-agent", "bogus"}, &out, &errw)
 	var ue *usageError
 	if !errors.As(err, &ue) {
 		t.Fatalf("err = %v, want *usageError", err)
@@ -26,10 +26,10 @@ func TestMateSubcommandsRequireExactlyOneProject(t *testing.T) {
 	t.Parallel()
 	for _, sub := range []string{"start", "stop", "status"} {
 		var out, errw bytes.Buffer
-		err := testCLI().run([]string{"mate", sub}, &out, &errw)
+		err := testCLI().run([]string{"mate-agent", sub}, &out, &errw)
 		var ue *usageError
 		if !errors.As(err, &ue) {
-			t.Fatalf("mate %s with no project: err = %v, want *usageError", sub, err)
+			t.Fatalf("mate-agent %s with no project: err = %v, want *usageError", sub, err)
 		}
 	}
 }
@@ -37,7 +37,7 @@ func TestMateSubcommandsRequireExactlyOneProject(t *testing.T) {
 func TestMateStartRejectsAnUnknownHarness(t *testing.T) {
 	t.Parallel()
 	var out, errw bytes.Buffer
-	err := testCLI().run([]string{"mate", "start", "shop", "--harness", "gemini"}, &out, &errw)
+	err := testCLI().run([]string{"mate-agent", "start", "shop", "--harness", "gemini"}, &out, &errw)
 	var ue *usageError
 	if !errors.As(err, &ue) {
 		t.Fatalf("err = %v, want *usageError", err)
@@ -49,7 +49,7 @@ func TestMateStartRejectsAnUnknownHarness(t *testing.T) {
 func TestMateStartRefusesACrewOnlyHarness(t *testing.T) {
 	t.Parallel()
 	var out, errw bytes.Buffer
-	err := testCLI().run([]string{"mate", "start", "shop", "--harness", "grok"}, &out, &errw)
+	err := testCLI().run([]string{"mate-agent", "start", "shop", "--harness", "grok"}, &out, &errw)
 	var ue *usageError
 	if !errors.As(err, &ue) || !strings.Contains(err.Error(), "Hooks") {
 		t.Fatalf("err = %v, want a *usageError naming Hooks", err)
@@ -75,7 +75,7 @@ func TestMateStatusPrintsOneLineForAStoppedProject(t *testing.T) {
 	}
 
 	var out, errw bytes.Buffer
-	if err := testCLI().run([]string{"mate", "status", "shop", "--workspace", w.Root()}, &out, &errw); err != nil {
+	if err := testCLI().run([]string{"mate-agent", "status", "shop", "--workspace", w.Root()}, &out, &errw); err != nil {
 		t.Fatalf("mate status: %v", err)
 	}
 	line := strings.TrimSpace(out.String())
@@ -99,7 +99,7 @@ func TestMateStatusPrintsOneLineForAStoppedProject(t *testing.T) {
 func TestMateStartAcceptsFreshFlag(t *testing.T) {
 	t.Parallel()
 	var out, errw bytes.Buffer
-	err := testCLI().run([]string{"mate", "start", "shop", "--fresh", "--workspace", t.TempDir()}, &out, &errw)
+	err := testCLI().run([]string{"mate-agent", "start", "shop", "--fresh", "--workspace", t.TempDir()}, &out, &errw)
 	var ue *usageError
 	if errors.As(err, &ue) {
 		t.Fatalf("--fresh must be a recognised flag, got usage error: %v", err)

@@ -60,7 +60,7 @@ func TestOneTUIHoldsTheWorkspaceAtATime(t *testing.T) {
 	again.Unlock()
 }
 
-// `mate mate tui` killed outright lets the lock go, but the harness it
+// `mate mate-agent tui` killed outright lets the lock go, but the harness it
 // started may run on and write the Mate's session: the flag stays up,
 // Orphaned, until that process ends; then the record forgets its pid.
 func TestATUIWhoseHolderWasKilledStaysOpenWhileItsHarnessRuns(t *testing.T) {

@@ -16,7 +16,7 @@ import (
 )
 
 // A headless Mate's session can be opened in the harness's own TUI for a
-// while (CON-227): `mate mate tui <project>`, which the `tui` script in the
+// while (CON-227): `mate mate-agent tui <project>`, which the `tui` script in the
 // Mate's directory runs. The host stays alive and runs no turn meanwhile,
 // so the core's watch over it (CON-226) has nothing to restart, and only
 // one process writes the session at a time: the TUI holds the turn lock,
@@ -27,7 +27,7 @@ import (
 // TUIName is the script in the Mate's directory that opens the TUI.
 const TUIName = "tui"
 
-// TUIScript is the `tui` script's text: a shell over `mate mate tui`.
+// TUIScript is the `tui` script's text: a shell over `mate mate-agent tui`.
 // argv is the command, quoted word by word for /bin/sh.
 func TUIScript(argv []string) string {
 	words := make([]string, len(argv))
@@ -130,7 +130,7 @@ func RunTUI(ctx context.Context, r TUIRun) error {
 	cmd.Env = launchEnv(os.Environ(), r.Launch)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = r.Stdin, r.Stdout, r.Stderr
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("mate mate tui: start %s: %w", r.Launch.Program, err)
+		return fmt.Errorf("mate mate-agent tui: start %s: %w", r.Launch.Program, err)
 	}
 	_ = flag.Started(cmd.Process.Pid)
 	done := make(chan struct{})
@@ -170,7 +170,7 @@ func (r TUIRun) waitTurn(ctx context.Context) (func(), error) {
 	for {
 		release, ok, err := r.TurnLock()
 		if err != nil {
-			return nil, fmt.Errorf("mate mate tui: turn lock: %w", err)
+			return nil, fmt.Errorf("mate mate-agent tui: turn lock: %w", err)
 		}
 		if ok {
 			return release, nil
@@ -183,7 +183,7 @@ func (r TUIRun) waitTurn(ctx context.Context) (func(), error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case sig := <-r.Signals:
-			return nil, fmt.Errorf("mate mate tui: %v while waiting for the turn; the TUI was not opened", sig)
+			return nil, fmt.Errorf("mate mate-agent tui: %v while waiting for the turn; the TUI was not opened", sig)
 		case <-time.After(poll):
 		}
 	}

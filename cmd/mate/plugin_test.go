@@ -86,7 +86,7 @@ func TestPluginAddListDoctor(t *testing.T) {
 	}
 	want := "wrote " + pluginsFile(w) + ": added binding of instance board (Board) to project shop\n" +
 		"next:\n" +
-		"  1. restart the Mate: mate mate stop shop, then mate mate start shop\n" +
+		"  1. restart the Mate: mate mate-agent stop shop, then mate mate-agent start shop\n" +
 		"  2. board has no MCP server: there is nothing to log in to\n" +
 		"  3. ask the Mate to use board's skills, or press its console key, to see it took\n" +
 		"check it offline first: mate plugin doctor board --project shop\n"

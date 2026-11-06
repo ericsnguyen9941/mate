@@ -1,5 +1,5 @@
 // Package matehost runs a headless Mate (CON-78). Instead of a harness's
-// own TUI, the Mate is `mate mate host <project>`: a background process of
+// own TUI, the Mate is `mate mate-agent host <project>`: a background process of
 // its own, outside Herdr (CON-225), that runs each message as one `claude
 // -p` resumed on the same session; the turn lock makes sure only one runs
 // at a time, whoever started it. The REPL (repl*.go) is one of its

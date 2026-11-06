@@ -180,7 +180,7 @@ func consoleAutoPilot(ws *store.Workspace, deps spawn.Deps) *autopilot.Pilot {
 // mateRefresher is the Mate's context refresh (internal/refresh) over ws,
 // handed what only this package holds: the receipt protocol of `mate
 // checkpoint` (checkpoint.go) and the outbox sender over deps' runtime.
-// `mate mate refresh` and the auto daemon build one for each refresh.
+// `mate mate-agent refresh` and the auto daemon build one for each refresh.
 func mateRefresher(ws *store.Workspace, deps spawn.Deps) *refresh.Refresher {
 	return refresh.New(ws, refresh.Deps{
 		Spawn:  deps,

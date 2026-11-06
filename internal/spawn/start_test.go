@@ -295,7 +295,7 @@ func TestStartMateResumesRecordedSessionID(t *testing.T) {
 	}
 }
 
-// TestStartMateFreshMintsANewSessionID covers `mate mate start --fresh`:
+// TestStartMateFreshMintsANewSessionID covers `mate mate-agent start --fresh`:
 // it must overwrite the recorded session_id with a brand new one rather
 // than resuming, even though mate.meta still carries one to resume.
 func TestStartMateFreshMintsANewSessionID(t *testing.T) {

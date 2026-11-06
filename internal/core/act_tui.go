@@ -13,7 +13,7 @@ import (
 )
 
 // While a headless Mate's session is open in the harness's TUI (CON-227),
-// `mate mate tui` holds `.mate/tui.lock`, the workspace's TUI flag. The
+// `mate mate-agent tui` holds `.mate/tui.lock`, the workspace's TUI flag. The
 // engine reads it for every UI: the snapshot carries it, and Act refuses
 // every action but a peek - a read - and the force close itself. The
 // engine's loops run on: the observer, the PR sweep, the auto daemon of
@@ -41,7 +41,7 @@ func tuiOpen(ws *store.Workspace) *query.TUIStatus {
 
 // TUIStatus is the flag's holder as the UIs say it: the pid is the
 // harness's, the TUI the captain sees, once it runs - a kill -9 of it ends
-// the TUI and the flag with it - and `mate mate tui`'s before.
+// the TUI and the flag with it - and `mate mate-agent tui`'s before.
 func TUIStatus(h store.TUIHolder) query.TUIStatus {
 	pid := h.PID
 	if h.HarnessPID > 0 {
@@ -62,7 +62,7 @@ func (e *Engine) refuseForTUI(req coreapi.ActionRequest) error {
 	return nil
 }
 
-// closeTUI is ActionCloseTUI: SIGTERM to the `mate mate tui` holding the
+// closeTUI is ActionCloseTUI: SIGTERM to the `mate mate-agent tui` holding the
 // flag, which passes it to the TUI, then up to tuiCloseWait for the flag
 // to go. A signal goes only to the pid the lock's holder wrote, and only
 // while the lock is held.
@@ -78,7 +78,7 @@ func (e *Engine) closeTUI(ctx context.Context, _ coreapi.ActionRequest) (string,
 		return "no Mate's TUI is open · nothing changed", nil
 	}
 	open := TUIStatus(h)
-	// `mate mate tui` passes SIGTERM on to the harness and cleans up after
+	// `mate mate-agent tui` passes SIGTERM on to the harness and cleans up after
 	// it; with it gone (Orphaned) the harness itself is told.
 	target := h.PID
 	if h.Orphaned {

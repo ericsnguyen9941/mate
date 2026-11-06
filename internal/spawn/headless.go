@@ -14,7 +14,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-// A headless Mate (CON-78) runs `mate mate host <project>` instead of the
+// A headless Mate (CON-78) runs `mate mate-agent host <project>` instead of the
 // harness's TUI, as a background process of its own outside Herdr
 // (CON-225, hostproc.go): no tab, no pane, no Herdr agent. Everything up
 // to the launch is a normal start: the manual, the settings and hooks, the
@@ -31,7 +31,7 @@ const HostStopWait = 2 * time.Minute
 
 // headlessMode decides a start's mode, first match wins:
 //
-//  1. the request's Mode (`mate mate start --mode`);
+//  1. the request's Mode (`mate mate-agent start --mode`);
 //  2. project.yaml's `mate.mode`, or the older `mate.headless: true`;
 //  3. the mode the last run of this Mate recorded in mate.meta (a stop
 //     keeps it);
@@ -132,7 +132,7 @@ func startHost(ctx context.Context, w *store.Workspace, deps Deps, project strin
 
 // HostArgv is the command a headless Mate's host runs as.
 func HostArgv(binary, root, project string) []string {
-	return []string{binary, "mate", "host", project, "--workspace", root, "--no-repl"}
+	return []string{binary, "mate-agent", "host", project, "--workspace", root, "--no-repl"}
 }
 
 func waitAndRecordHost(ctx context.Context, w *store.Workspace, deps Deps, project string, kind harness.Kind, mateDir string, decision resumeDecision, session runtime.SessionHandle, agent string, pid int, exited <-chan struct{}, sessionID string, launchedAt time.Time, launch harness.LaunchSpec) (StartResult, error) {

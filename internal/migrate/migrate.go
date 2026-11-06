@@ -416,12 +416,12 @@ func (pl *planner) plan(cfg store.ProjectConfig, node query.ProjectNode) []Move 
 		pl.refuse("the Mate of %s cannot be read (%s); stop it before migrating", p, mate.Reason)
 	case mate.State == query.Known && mate.Value.Status.OccupiesActiveSlot():
 		if _, hostAsked := pl.live.Host(p); pl.live.Asked || hostAsked {
-			pl.refuse("the Mate of %s is running; stop it with mate mate stop %s before migrating", p, p)
+			pl.refuse("the Mate of %s is running; stop it with mate mate-agent stop %s before migrating", p, p)
 		} else {
-			// mate mate stop asks Herdr too, so the way out is Herdr
+			// mate mate-agent stop asks Herdr too, so the way out is Herdr
 			// first: once it can be asked, a Mate that is gone no
 			// longer counts.
-			pl.refuse("the Mate of %s may be running: mate.meta records a pane and Herdr could not be asked; with herdr on PATH, run mate migrate again, or stop it with mate mate stop %s", p, p)
+			pl.refuse("the Mate of %s may be running: mate.meta records a pane and Herdr could not be asked; with herdr on PATH, run mate migrate again, or stop it with mate mate-agent stop %s", p, p)
 		}
 	}
 	return moves

@@ -66,7 +66,7 @@ func AttachArgv(herdr, session, agent string) []string {
 // ^C never closes it, as it never closed the Mate's pane the stage
 // attached before.
 func REPLArgv(mate, workspace, project string) []string {
-	return []string{ResolveExec(orDefault(mate, "mate")), "mate", "repl", project, "--workspace", workspace, "--in-pane"}
+	return []string{ResolveExec(orDefault(mate, "mate")), "mate-agent", "repl", project, "--workspace", workspace, "--in-pane"}
 }
 
 func orDefault(s, def string) string {

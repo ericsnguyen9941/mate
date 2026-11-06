@@ -24,7 +24,7 @@ var ErrMateRunning = errors.New("mate is already running")
 
 func errUsage(msg string) error { return observability.NewError(observability.CodeUsage, msg) }
 
-// StartRequest is one start of a Mate: `mate mate start`, a press in a UI,
+// StartRequest is one start of a Mate: `mate mate-agent start`, a press in a UI,
 // or a restart mate makes on its own.
 type StartRequest struct {
 	// Project is the registered project whose Mate is started.
@@ -39,9 +39,9 @@ type StartRequest struct {
 	// start is launching.
 	Resume bool
 	// Fresh forces a brand new harness session even when `mate.meta`
-	// carries one to resume: `mate mate start --fresh`.
+	// carries one to resume: `mate mate-agent start --fresh`.
 	Fresh bool
-	// Mode is ModeHeadless or ModePane (`mate mate start --mode`). Empty
+	// Mode is ModeHeadless or ModePane (`mate mate-agent start --mode`). Empty
 	// takes project.yaml's `mate.mode`, else the mode the last run
 	// recorded, else Deps.DefaultMode (headlessMode).
 	Mode string
@@ -558,7 +558,7 @@ func refuseIfHostLive(ctx context.Context, w *store.Workspace, project string, m
 	}
 	if held {
 		return false, observability.NewError(observability.CodeAlreadyExists,
-			fmt.Sprintf("%v: the headless host of %s (pid %s) still runs but does not answer on its socket; stop it with mate mate stop %s, then start again", ErrMateRunning, project, pid, project)).
+			fmt.Sprintf("%v: the headless host of %s (pid %s) still runs but does not answer on its socket; stop it with mate mate-agent stop %s, then start again", ErrMateRunning, project, pid, project)).
 			WithDetails(map[string]any{"agent_name": meta[MetaAgent], "pid": pid})
 	}
 	return true, nil

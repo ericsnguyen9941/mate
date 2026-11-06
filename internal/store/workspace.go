@@ -30,7 +30,7 @@ const (
 
 // ErrLayoutOld is Open's refusal of a workspace still on layout 1: only
 // `mate migrate` and the two stops its refusals name, `mate crew stop` and
-// `mate mate stop`, read one (OpenForMigrate).
+// `mate mate-agent stop`, read one (OpenForMigrate).
 var ErrLayoutOld = errors.New("this workspace has the old layout (repos beside .mate); run mate migrate first")
 
 // Workspace is an opened workspace: a resolved root plus the parsed
@@ -138,7 +138,7 @@ func Open(workspaceDir string) (*Workspace, error) {
 }
 
 // OpenForMigrate is Open for `mate migrate` and the stops it sends the
-// captain to (`mate crew stop`, `mate mate stop`): it opens a workspace on
+// captain to (`mate crew stop`, `mate mate-agent stop`): it opens a workspace on
 // either layout, the old one included.
 func OpenForMigrate(workspaceDir string) (*Workspace, error) {
 	root, err := resolveRoot(workspaceDir)

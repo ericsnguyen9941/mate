@@ -10,7 +10,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/platform"
 )
 
-// tuiLockName is the lock `mate mate tui` holds while a headless Mate's
+// tuiLockName is the lock `mate mate-agent tui` holds while a headless Mate's
 // session is open in the harness's own TUI (CON-227). It is the workspace's
 // one TUI flag: while it is held the host of that Mate runs no turn, and
 // Office, Agent City and the console only look. One TUI per workspace, so
@@ -24,15 +24,15 @@ var ErrTUIOpen = errors.New("store: a Mate's TUI is open on this workspace")
 type TUIHolder struct {
 	// Project is the Mate whose session the TUI runs on.
 	Project string `json:"project"`
-	// PID is `mate mate tui`'s own process, the lock's holder: the one a
+	// PID is `mate mate-agent tui`'s own process, the lock's holder: the one a
 	// force close signals, and which passes the signal on to the TUI.
 	PID int `json:"pid"`
 	// Started is when the lock was taken.
 	Started time.Time `json:"started"`
 	// HarnessPID is the harness's process in the terminal while it runs;
-	// `mate mate tui` sets it back to zero once the harness has ended.
+	// `mate mate-agent tui` sets it back to zero once the harness has ended.
 	HarnessPID int `json:"harness_pid,omitempty"`
-	// Orphaned is set by TUIRunning, never written: `mate mate tui` is
+	// Orphaned is set by TUIRunning, never written: `mate mate-agent tui` is
 	// gone (killed outright) and the lock with it, but the harness it
 	// started still runs, and may still write the Mate's session.
 	Orphaned bool `json:"-"`
@@ -48,7 +48,7 @@ type TUILock struct {
 // written. Like core.lock it is advisory and dies with the process; the
 // file is never deleted.
 //
-// A lock left free by a `mate mate tui` that was killed while its harness
+// A lock left free by a `mate mate-agent tui` that was killed while its harness
 // runs on is still refused (ErrTUIOpen): see TUIRunning.
 func (w *Workspace) LockTUI(holder TUIHolder) (*TUILock, error) {
 	f, err := os.OpenFile(w.tuiLockFile(), os.O_CREATE|os.O_RDWR, 0o644)
@@ -100,7 +100,7 @@ func (l *TUILock) Unlock() {
 
 // TUIRunning reports whether a Mate's TUI is open now, and what its holder
 // wrote: tui.lock is held, or it is not but the harness its last holder
-// started still runs (Orphaned, `mate mate tui` killed outright). The
+// started still runs (Orphaned, `mate mate-agent tui` killed outright). The
 // holder is zero when the lock is held but its record cannot be read.
 func (w *Workspace) TUIRunning() (TUIHolder, bool, error) {
 	held, err := lockHeld(w.tuiLockFile())

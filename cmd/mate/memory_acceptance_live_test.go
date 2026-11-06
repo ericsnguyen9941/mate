@@ -247,7 +247,7 @@ func memoryAcceptance(t *testing.T, kind harness.Kind, fresh bool) {
 		t.Logf("EVIDENCE stow receipt: (no reply recorded)")
 	}
 	if fresh {
-		// `mate mate stop --no-stow`, then `mate mate start --fresh`: the
+		// `mate mate-agent stop --no-stow`, then `mate mate-agent start --fresh`: the
 		// conversation is gone and only the files carry anything over.
 		if _, err := spawn.StopMate(ctx, w, deps, memoryProject); err != nil {
 			t.Fatalf("stop after the restart: %v", err)

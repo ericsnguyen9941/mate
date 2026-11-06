@@ -15,7 +15,7 @@ import (
 type RemoveProjectOptions struct {
 	// Stow asks a running Mate to record what exists only in its
 	// conversation, just before the Mate is stopped. RemoveProjectStow
-	// passes the same stow `mate mate stop` runs; nil stops the Mate at
+	// passes the same stow `mate mate-agent stop` runs; nil stops the Mate at
 	// once. It is called only for a Mate Herdr lists (or whose liveness
 	// could not be asked), and an error from it fails the Mate's stop.
 	Stow func(ctx context.Context, project string) error
@@ -25,7 +25,7 @@ type RemoveProjectOptions struct {
 }
 
 // RemoveProjectStow is how the CLI and the Console stop a project's Mate for
-// a removal: with the stow `mate mate stop` runs (StowBeforeStop), announced
+// a removal: with the stow `mate mate-agent stop` runs (StowBeforeStop), announced
 // on stderr.
 func RemoveProjectStow(w *store.Workspace, deps Deps, caller string, stderr io.Writer, progress func(string)) RemoveProjectOptions {
 	return RemoveProjectOptions{
@@ -64,7 +64,7 @@ type RemoveProjectResult struct {
 
 // RemoveProject takes a project out of the workspace without leaving its
 // agents running unmanaged (docs/mvp.md task 75). It stops every running
-// crew the way `mate crew stop` does, stops the Mate the way `mate mate
+// crew the way `mate crew stop` does, stops the Mate the way `mate mate-agent
 // stop` does, and only then drops the project from workspace.yaml.
 //
 // Every stop is attempted, so one refusal does not hide another, but a

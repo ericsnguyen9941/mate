@@ -16,10 +16,10 @@ type LiveOptions struct {
 	// NewsPoll is how often the news log and the work board are looked at
 	// (WatchNews).
 	NewsPoll time.Duration
-	// Signals end the host: SIGTERM and SIGHUP for `mate mate host`.
+	// Signals end the host: SIGTERM and SIGHUP for `mate mate-agent host`.
 	Signals <-chan os.Signal
 	// REPL runs a REPL client in the foreground, a process of its own in
-	// `mate mate host`, until ctx ends. Live starts it again whenever it
+	// `mate mate-agent host`, until ctx ends. Live starts it again whenever it
 	// ends: the host does not end with it (CON-223). Nil runs none.
 	REPL func(ctx context.Context) error
 	// Restart is the least time between two starts of the REPL; zero

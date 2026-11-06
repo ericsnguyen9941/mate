@@ -11,21 +11,21 @@ import (
 	"time"
 )
 
-// `mate mate repl` is a subcommand of `mate mate`, with a project.
+// `mate mate-agent repl` is a subcommand of `mate mate-agent`, with a project.
 func TestMateREPLWantsAProject(t *testing.T) {
 	t.Parallel()
 	var out, errw bytes.Buffer
-	err := testCLI().run([]string{"mate", "repl"}, &out, &errw)
+	err := testCLI().run([]string{"mate-agent", "repl"}, &out, &errw)
 	var usage *usageError
-	if !errors.As(err, &usage) || !strings.Contains(err.Error(), "mate mate repl: want exactly 1 argument") {
-		t.Fatalf("mate mate repl with no project: %v", err)
+	if !errors.As(err, &usage) || !strings.Contains(err.Error(), "mate mate-agent repl: want exactly 1 argument") {
+		t.Fatalf("mate mate-agent repl with no project: %v", err)
 	}
-	if !strings.Contains(errw.String(), "usage: mate mate repl <project>") {
+	if !strings.Contains(errw.String(), "usage: mate mate-agent repl <project>") {
 		t.Fatalf("usage = %q", errw.String())
 	}
-	err = testCLI().run([]string{"mate"}, &out, &errw)
+	err = testCLI().run([]string{"mate-agent"}, &out, &errw)
 	if err == nil || !strings.Contains(err.Error(), "host|repl") {
-		t.Fatalf("mate mate alone: %v", err)
+		t.Fatalf("mate mate-agent alone: %v", err)
 	}
 }
 
@@ -46,7 +46,7 @@ func TestREPLProcessEndsWithTheHost(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		if data, err := os.ReadFile(args); err == nil && len(data) > 0 {
-			if got := strings.TrimSpace(string(data)); got != "mate repl shop --workspace /ws --in-pane" {
+			if got := strings.TrimSpace(string(data)); got != "mate-agent repl shop --workspace /ws --in-pane" {
 				t.Fatalf("the REPL was run as %q", got)
 			}
 			break

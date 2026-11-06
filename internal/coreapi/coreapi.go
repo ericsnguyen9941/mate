@@ -153,7 +153,7 @@ const (
 	ActionForkClose Action = "fork_close"
 	ActionUndo      Action = "undo"
 	// ActionCloseTUI ends the Mate's TUI that holds the workspace's TUI
-	// flag (CON-227): SIGTERM to `mate mate tui`, then a wait of up to
+	// flag (CON-227): SIGTERM to `mate mate-agent tui`, then a wait of up to
 	// ten seconds for the flag to go. It is the one action the flag lets
 	// through, and a console asks the captain before it sends it.
 	ActionCloseTUI Action = "close_tui"
