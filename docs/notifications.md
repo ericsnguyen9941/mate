@@ -10,6 +10,14 @@ is not a launch-at-login service.
   five seconds). Existing outstanding news alerts once when first monitored.
   An update or another question on that news alerts again. Reading it does not
   count as answering it. Answered, closed and dropped news do not alert.
+- The Mate's work board (`mate work`, the Work tab) alerts when a row is put
+  on the board, done for the captain to OK, or reopened. Progress lines and
+  waits do not alert; a wait's topic is news and alerts on its own. A later
+  move replaces the row's notification, and okaying a row sends nothing. Moves
+  made before this first ran on a workspace do not alert. Open the Mate and
+  press **Ctrl+L** to see the board; a click opens the Mate's Work tab in
+  Office. A work alert delays the next periodic report like news does, but is
+  not news waiting.
 - While any news waits for the captain, there is no periodic report. With no
   outstanding news, Mate sends one workspace report every ten minutes, starting
   ten minutes after monitoring starts or the last poll with outstanding news.
@@ -18,7 +26,8 @@ is not a launch-at-login service.
   means an agent is stuck. No model is called to write a report.
 - Open the Mate and press **Ctrl+T** to check and answer news. Backlog questions
   from pane Mates also alert, but are answered in their conversation.
-- Receipts and the report clock are in `.mate/notifications.json`, serialized by
+- Receipts, the report clock and when work alerts began are in
+  `.mate/notifications.json`, serialized by
   `.mate/notifications.json.lock`. Restarting or opening another console does
   not resend accepted news. A failed submission is retried after a minute and
   shown on the console status line. Failed news reads suppress the "no news"

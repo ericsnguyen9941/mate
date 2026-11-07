@@ -1356,6 +1356,12 @@ const workSec = (app, label) => app.drawer().querySelector(`section[aria-label="
 const workRows = sec => sec.querySelectorAll("li.wli");
 const rowOf = (app, title) => app.drawer().querySelectorAll("li.wli").find(li => li.querySelector(".wtt b").text === title);
 
+test("a work notification's link opens the Mate drawer on its Work tab", async () => {
+  const app = await boot({ hash: "#mate/shop/work", actions: SHOP_ACTIONS });
+  assert.equal(workTab(app).getAttribute("aria-selected"), "true");
+  assert.ok(workSec(app, "For you to OK"), "the board is drawn");
+});
+
 test("the Mate drawer has a Work tab between Talk and Details, its badge the rows waiting for an OK", async () => {
   const app = await boot({ hash: "#mate/shop", actions: SHOP_ACTIONS });
   const tabs = app.drawer().querySelector(".tabs").querySelectorAll("button");

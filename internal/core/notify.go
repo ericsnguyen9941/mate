@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	neturl "net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -157,8 +158,10 @@ func notificationSnapshot(ctx context.Context, ws *store.Workspace, harnesses qu
 	out := notifications.Snapshot{Complete: true}
 	// The dashboard's URL can be the loopback one followed by the LAN one
 	// (dashboardPart); the click opens on this machine, so loopback.
+	office := ""
 	if fields := strings.Fields(dashboardURL); len(fields) > 0 {
-		out.URL = strings.TrimRight(fields[0], "/") + "/office/#captain"
+		office = strings.TrimRight(fields[0], "/") + "/office/"
+		out.URL = office + "#captain"
 	}
 	for _, p := range snap.Projects {
 		np := notifications.Project{Name: p.Name}
@@ -168,10 +171,57 @@ func notificationSnapshot(ctx context.Context, ws *store.Workspace, harnesses qu
 		for _, n := range p.Mate.OwedNews() {
 			np.News = append(np.News, notifications.News{Key: fmt.Sprintf("%s/news/%d", p.ProjectID, n.ID), Revision: n.At.UTC().Format(time.RFC3339Nano), Title: fmt.Sprintf("#%d · %s", n.ID, n.Title)})
 		}
+		np.Work = workMoves(p, office)
 		np.Summary = notificationSummary(ctx, ws, p, now)
 		out.Projects = append(out.Projects, np)
 	}
 	return out, nil
+}
+
+// workMoves is each open work row's latest move the captain hears about
+// (CON-158): put on the board, done for the captain to OK, or reopened. A
+// progress line does not alert, nor does a wait: the topic it waits on is
+// news, which alerts on its own. A click opens the Mate's Work tab.
+func workMoves(p query.ProjectNode, office string) []notifications.Work {
+	if !p.Mate.Work.IsKnown() {
+		return nil
+	}
+	url := ""
+	if office != "" {
+		url = office + "#mate/" + neturl.PathEscape(p.ProjectID) + "/work"
+	}
+	var out []notifications.Work
+	for _, w := range p.Mate.Work.Value {
+		if !w.Open() {
+			continue
+		}
+		var move query.WorkNote
+		for _, n := range w.Notes {
+			if n.Op == "add" || n.Op == "done" || n.Op == "reopen" {
+				move = n
+			}
+		}
+		if move.Op == "" {
+			continue
+		}
+		var title string
+		switch {
+		case move.Op == "done":
+			title = fmt.Sprintf("Xong #%d · %s, chờ anh OK", w.ID, w.Title)
+		case move.Op == "reopen":
+			title = fmt.Sprintf("Mở lại #%d · %s", w.ID, w.Title)
+		case w.Kind == "proposed":
+			title = fmt.Sprintf("Mate đề xuất #%d · %s", w.ID, w.Title)
+		default:
+			title = fmt.Sprintf("Nhận việc #%d · %s", w.ID, w.Title)
+		}
+		body := "Mở Mate, nhấn Ctrl+L để xem bảng Work."
+		if line := strings.TrimSpace(move.Text); line != "" {
+			body = line + "\n" + body
+		}
+		out = append(out, notifications.Work{Key: fmt.Sprintf("%s/work/%d", p.ProjectID, w.ID), At: move.At, Title: title, Body: body, URL: url})
+	}
+	return out
 }
 
 func notificationSummary(ctx context.Context, ws *store.Workspace, p query.ProjectNode, now time.Time) string {

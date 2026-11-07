@@ -431,7 +431,7 @@
   var peekView = null;        // {key, text} | {key, error} | {key, loading}: a crew's screen
   var wsReadOnly = null;      // why this dashboard cannot act ("" when it can, null until known)
   var wsTUI = "";             // a Mate's session open in its TUI (CON-227): the page only looks
-  var mateTab = "details";    // the Mate drawer's tab: "details" or "talk"
+  var mateTab = sel && sel.tab ? sel.tab : "details"; // the Mate drawer's tab: "details", "talk" or "work"
   var talkOpen = {};          // turn time -> true when an older turn is opened up
   var talkDraft = {};         // project -> what the captain is writing to the Mate
   var talkTimer = null;       // reads the open Talk again while the Mate answers
@@ -455,7 +455,9 @@
     var parts = h.split("/").map(function (x) {
       try { return decodeURIComponent(x); } catch (e) { return x; }
     });
-    if (parts[0] === "mate" && parts[1]) return { kind: "mate", project: parts[1] };
+    // "#mate/<project>/work" is the link a work notification opens: the
+    // drawer on its Work tab. Selecting the Mate later drops the tab part.
+    if (parts[0] === "mate" && parts[1]) return parts[2] === "work" ? { kind: "mate", project: parts[1], tab: "work" } : { kind: "mate", project: parts[1] };
     if (parts[0] === "cabinet" && parts[1]) return { kind: "cab", project: parts[1] };
     if (parts[0] === "captain") return { kind: "captain" };
     if (parts[0] === "inbox" && parts[1]) return { kind: "inbox", project: parts[1] };
@@ -491,6 +493,10 @@
     var next = parseHash();
     var changed = selKey(next) !== selKey(sel);
     sel = next;
+    if (next && next.tab && next.tab !== mateTab) {
+      mateTab = next.tab;
+      if (!changed) draw();
+    }
     if (changed) {
       detail = null;
       asking = null;
