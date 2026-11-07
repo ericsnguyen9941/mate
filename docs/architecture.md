@@ -353,7 +353,7 @@ interfaces on the side of each reader, is planned in
 | `projects/<p>/mate/.auto-cursor`, `.wake-cursor` | `store` | outbox (on a digest), `mate wake` (`internal/wake`) | autopilot, `mate wake` |
 | `projects/<p>/mate/memory.md`, `backlog.md` | `memory` format, `store` I/O | the Mate (`mate remember`, `mate backlog`) | `mate recall` |
 | `projects/<p>/mate/news.jsonl` | `matehost` | `mate news`; the friction check of `mate wake`, `land` and `merge`; the host (answers) | query, dashboard, REPL, notifications |
-| `projects/<p>/mate/work.jsonl` | `matehost` | `mate work`, `mate land`, the console (the captain's tick) | query, dashboard, REPL |
+| `projects/<p>/mate/work.jsonl` | `matehost` | `mate work`, `mate land`, the console (the captain's tick) | query, dashboard, REPL, notifications |
 | `projects/<p>/mate/tui` | `matehost` (text), `spawn` | every headless start: `exec <mate> mate-agent tui <p> --workspace <root>` (CON-227) | the captain, in the Mate's shell pane |
 | `projects/<p>/mate/host.sock`, `host.jsonl`, `host.launch.json`, `topics/` | `matehost` | the headless host; spawn (`host.launch.json`); `mate mate-agent tui` (`host.launch.json`, when the TUI left another session) | outbox, spawn, `mate mate-agent …`, Office chat, City, notifications, the snapshot's liveness |
 | `projects/<p>/mate/host.log`, `host.log.1` | `matehost` (path), `spawn` (rotation) | the headless host's stdout and stderr (CON-225); a start moves a log of `spawn.HostLogMax` (1 MiB) or more to `host.log.1` | the captain; a failed start quotes its last lines |

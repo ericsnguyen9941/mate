@@ -73,6 +73,62 @@ func TestNotificationSnapshotNewsReadFailureIsNotNoNews(t *testing.T) {
 	}
 }
 
+// A work row alerts on its latest move the captain hears about: added, done
+// or reopened. A progress line or a wait keeps the move it had, and an
+// okayed row leaves the board.
+func TestNotificationSnapshotWorkMoves(t *testing.T) {
+	ws := shopWorkspace(t)
+	at := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
+	path := matehost.WorkPath(ws.MateDir("shop"))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	moves := func(d time.Duration) []notifications.Work {
+		t.Helper()
+		snap, err := notificationSnapshot(context.Background(), ws, testHarnesses, "http://127.0.0.1:9999/", at.Add(d))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snap.Projects[0].Work
+	}
+	if got := moves(0); len(got) != 0 {
+		t.Fatalf("no board: %+v", got)
+	}
+	id, err := matehost.AddWork(path, matehost.WorkProposed, "dọn log", "", at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := moves(0)
+	if len(got) != 1 || got[0].Key != "shop/work/1" || !got[0].At.Equal(at) || !strings.Contains(got[0].Title, "đề xuất #1 · dọn log") {
+		t.Fatalf("added: %+v", got)
+	}
+	if got[0].URL != "http://127.0.0.1:9999/office/#mate/shop/work" {
+		t.Fatalf("work link: %s", got[0].URL)
+	}
+	if err := matehost.ProgressWork(path, id, "đang chạy", at.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := matehost.WaitWork(path, id, 3, "", at.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got := moves(0); len(got) != 1 || !got[0].At.Equal(at) {
+		t.Fatalf("progress and wait moved the alert: %+v", got)
+	}
+	if err := matehost.DoneWork(path, id, "PR #9 merged", at.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	got = moves(0)
+	if len(got) != 1 || !got[0].At.Equal(at.Add(3*time.Minute)) || !strings.Contains(got[0].Title, "Xong #1") || !strings.HasPrefix(got[0].Body, "PR #9 merged\n") {
+		t.Fatalf("done: %+v", got)
+	}
+	if err := matehost.OkayWork(path, id, at.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got := moves(0); len(got) != 0 {
+		t.Fatalf("okayed row still alerts: %+v", got)
+	}
+}
+
 // senderFunc is a notifications.Sender for tests.
 type senderFunc func(context.Context, notifications.Message) error
 

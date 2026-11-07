@@ -1,4 +1,5 @@
-// Package notifications delivers captain news and periodic recorded-state reports.
+// Package notifications delivers captain news, work board moves and periodic
+// recorded-state reports.
 // It does not call a model or infer that an agent is stuck from silence.
 package notifications
 
@@ -30,9 +31,21 @@ type Sender interface {
 }
 
 type News struct{ Key, Revision, Title string }
+
+// Work is one move of a work board row (CON-158) the captain is told about:
+// At is when the row moved, and a later move of the same Key alerts again.
+type Work struct {
+	Key   string
+	At    time.Time
+	Title string
+	Body  string
+	URL   string
+}
+
 type Project struct {
 	Name    string
 	News    []News // Only news waiting for the captain.
+	Work    []Work // Each open row's latest move.
 	Summary string
 }
 type Snapshot struct {
@@ -46,6 +59,10 @@ type Snapshot struct {
 type state struct {
 	Delivered map[string]string `json:"delivered"`
 	ReportAt  time.Time         `json:"report_at"`
+	// WorkFrom is when work board moves started alerting: the first tick
+	// that saw a receipts file without it. Older moves never alert, so the
+	// first run does not replay a board's history.
+	WorkFrom time.Time `json:"work_from,omitzero"`
 }
 
 // Tick serializes consoles sharing a workspace, and persists receipts only
@@ -76,6 +93,9 @@ func Tick(ctx context.Context, path string, snap Snapshot, sender Sender, now ti
 	}
 	if s.Delivered == nil {
 		s.Delivered = map[string]string{}
+	}
+	if s.WorkFrom.IsZero() {
+		s.WorkFrom = now
 	}
 	save := func() error {
 		b, err := json.Marshal(s)
@@ -109,6 +129,29 @@ func Tick(ctx context.Context, path string, snap Snapshot, sender Sender, now ti
 				return err
 			}
 			s.Delivered[n.Key] = n.Revision
+			s.ReportAt = now
+			if err := save(); err != nil {
+				return err
+			}
+		}
+	}
+	// A work move is a report, not news: it delays the next periodic report
+	// but does not hold it off.
+	for _, p := range snap.Projects {
+		for _, w := range p.Work {
+			rev := w.At.UTC().Format(time.RFC3339Nano)
+			if !w.At.After(s.WorkFrom) || s.Delivered[w.Key] == rev {
+				continue
+			}
+			digest := sha256.Sum256([]byte(path + "\x00" + w.Key))
+			msg := Message{ID: fmt.Sprintf("work-%x", digest[:12]), Title: "Mate · " + p.Name + " · Work", Body: w.Title + "\n" + w.Body, URL: w.URL}
+			if w.Body == "" {
+				msg.Body = w.Title
+			}
+			if err := sender.Send(ctx, msg); err != nil {
+				return err
+			}
+			s.Delivered[w.Key] = rev
 			s.ReportAt = now
 			if err := save(); err != nil {
 				return err

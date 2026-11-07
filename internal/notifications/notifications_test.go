@@ -153,3 +153,48 @@ func TestCorruptReceiptDoesNotFloodOldNews(t *testing.T) {
 		t.Fatal("sent with corrupt receipts")
 	}
 }
+
+// Work moves alert once per move from the first tick on, never replay the
+// board's history, and do not count as news waiting for the captain.
+func TestWorkMovesAlertOncePerMoveAfterTheFirstTick(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notifications.json")
+	at := time.Date(2026, 11, 7, 10, 0, 0, 0, time.UTC)
+	sender := &recordingSender{}
+	old := Work{Key: "shop/work/1", At: at.Add(-time.Hour), Title: "Xong #1 · cũ"}
+	snap := Snapshot{Complete: true, Projects: []Project{{Name: "shop", Summary: "yên", Work: []Work{old}}}}
+	tick := func(d time.Duration) {
+		t.Helper()
+		if err := Tick(context.Background(), path, snap, sender, at.Add(d)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tick(0)
+	if len(sender.messages) != 0 {
+		t.Fatalf("history replayed: %+v", sender.messages)
+	}
+	added := Work{Key: "shop/work/2", At: at.Add(time.Minute), Title: "Nhận việc #2 · thêm", Body: "Mở Mate", URL: "http://x/office/#mate/shop/work"}
+	snap.Projects[0].Work = []Work{old, added}
+	tick(2 * time.Minute)
+	tick(3 * time.Minute)
+	if len(sender.messages) != 1 {
+		t.Fatalf("messages: %+v", sender.messages)
+	}
+	m := sender.messages[0]
+	if m.Title != "Mate · shop · Work" || m.Body != "Nhận việc #2 · thêm\nMở Mate" || m.URL != added.URL {
+		t.Fatalf("message: %+v", m)
+	}
+	snap.Projects[0].Work[1].At = at.Add(4 * time.Minute)
+	tick(5 * time.Minute)
+	if len(sender.messages) != 2 || sender.messages[1].ID != m.ID {
+		t.Fatalf("a new move should replace the row's notification: %+v", sender.messages)
+	}
+	// A work move delays the report like news, but does not hold it off.
+	tick(14 * time.Minute)
+	if len(sender.messages) != 2 {
+		t.Fatal("reported within 10 minutes of a work move")
+	}
+	tick(15 * time.Minute)
+	if len(sender.messages) != 3 || sender.messages[2].Title != "Mate · báo cáo 10 phút" {
+		t.Fatalf("report did not follow: %+v", sender.messages)
+	}
+}
