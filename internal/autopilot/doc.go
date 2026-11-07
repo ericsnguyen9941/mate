@@ -29,7 +29,10 @@
 //     re-offered whole rather than silently dropped. The queued digest
 //     carries the cursor it would record, and the outbox writes it when it
 //     marks the digest sent, under the same lock this package gathers
-//     under.
+//     under. A headless Mate's digest is sent only when the turn it
+//     started ends without an error (CON-246); until then no new digest is
+//     gathered, and one whose turn failed is gathered again a minute later,
+//     at most outbox.MaxTurnFailures times.
 //
 // # The two ways a project stops being digested
 //

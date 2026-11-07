@@ -104,7 +104,7 @@ func TestLiveHeadlessMate(t *testing.T) {
 	host := matehost.Dial(w.MateDir("shop"))
 	for i, word := range []string{"pong", "pang"} {
 		line := matehost.Marker + "ping: run no commands and reply with exactly the word " + word
-		if err := host.Deliver(ctx, line); err != nil {
+		if _, err := host.Deliver(ctx, line); err != nil {
 			t.Fatalf("deliver %d: %v", i, err)
 		}
 		for {

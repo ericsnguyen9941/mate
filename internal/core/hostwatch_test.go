@@ -491,7 +491,7 @@ func TestRestartingTheCoreMidTurnLetsTheTurnFinish(t *testing.T) {
 	}
 	l.serve(matehost.Launch{Dir: l.w.MateDir("shop"), Program: program, Harness: "claude", SessionID: "11111111-2222-3333-4444-555555555555"}, 4242)
 	client := matehost.Dial(l.w.MateDir("shop"))
-	if err := client.Deliver(context.Background(), "a line for the Mate"); err != nil {
+	if _, err := client.Deliver(context.Background(), "a line for the Mate"); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 

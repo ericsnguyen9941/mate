@@ -394,10 +394,18 @@ func (c Client) Ping(ctx context.Context) error {
 	return err
 }
 
-// Deliver hands the host an app line; a *BusyError means try later.
-func (c Client) Deliver(ctx context.Context, text string) error {
-	_, err := c.do(ctx, request{Op: OpDeliver, Text: text}, 0)
-	return err
+// Deliver hands the host an app line; a *BusyError means try later. The
+// state is the host's once the line's turn has started: its TurnStartedAt
+// is the turn's `at` in host.jsonl (Turn).
+func (c Client) Deliver(ctx context.Context, text string) (State, error) {
+	resp, err := c.do(ctx, request{Op: OpDeliver, Text: text}, 0)
+	if err != nil {
+		return State{}, err
+	}
+	if resp.State == nil {
+		return State{}, nil
+	}
+	return *resp.State, nil
 }
 
 // State asks the host what it is doing.

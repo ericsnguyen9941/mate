@@ -200,10 +200,12 @@ func (p *Pilot) Snapshot() map[string]Status {
 		p.mu.Lock()
 		status := p.notices[project]
 		p.mu.Unlock()
+		var last store.OutboxItem
 		for _, item := range items {
 			if item.Source != store.OutboxSourceDigest {
 				continue
 			}
+			last = item
 			switch {
 			case item.State == store.OutboxSent:
 				status.Sends++
@@ -214,6 +216,12 @@ func (p *Pilot) Snapshot() map[string]Status {
 				status.Notice = fmt.Sprintf("auto digest for %s not delivered: %s", project, item.LastRefusal)
 				status.NoticeAt = item.TriedAt
 			}
+		}
+		// Only the latest digest's failed turn is news: a later one sent
+		// has handled its items.
+		if last.State == store.OutboxFailed && p.ws.Auto(project) {
+			status.Notice = fmt.Sprintf("auto digest for %s not handled: %s", project, last.LastRefusal)
+			status.NoticeAt = last.TriedAt
 		}
 		out[project] = status
 	}

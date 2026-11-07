@@ -72,7 +72,7 @@ Hộp thư của một Project: dòng trạng thái của Crew, các dòng đã 
 _Trong code_: `internal/box`; `query.BoxView`
 
 **Outbox**:
-Hàng đợi mọi dòng mate tự gõ vào Mate (assign, digest, stow, tin PR), giao lần lượt từng dòng khi Mate rảnh.
+Hàng đợi mọi dòng mate tự gõ vào Mate (assign, digest, stow, tin PR), giao lần lượt từng dòng khi Mate rảnh. Digest giao cho Mate headless ở trạng thái `delivered` tới khi lượt nó mở kết thúc: xong thì `sent` và cursor auto tiến, hỏng thì `failed` và auto daemon gom lại (CON-246).
 _Trong code_: `internal/outbox`; `store.OutboxItem`
 
 **Wake**:

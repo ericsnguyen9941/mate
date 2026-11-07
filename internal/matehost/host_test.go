@@ -347,11 +347,15 @@ func TestSocketRoundTrip(t *testing.T) {
 	if err := c.ClearDraft(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Deliver(ctx, Marker+"digest: slow"); err != nil {
+	delivered, err := c.Deliver(ctx, Marker+"digest: slow")
+	if err != nil {
 		t.Fatal(err)
 	}
+	if !delivered.Busy || delivered.TurnStartedAt.IsZero() {
+		t.Fatalf("deliver state = %+v, want the turn it started", delivered)
+	}
 	var busy *BusyError
-	if err := c.Deliver(ctx, Marker+"digest: again"); !errors.As(err, &busy) {
+	if _, err := c.Deliver(ctx, Marker+"digest: again"); !errors.As(err, &busy) {
 		t.Fatalf("second deliver = %v, want *BusyError", err)
 	}
 	if s, _ := c.State(ctx); !s.Busy || s.Draft != "" || s.TurnSource != SourceApp {

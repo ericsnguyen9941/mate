@@ -924,3 +924,16 @@ func History(path string, n int) []Item {
 	}
 	return items
 }
+
+// Turn finds the finished turn that started at at in the history file at
+// path. The host appends a turn before it lets the next one start, so a
+// host no longer running that turn has written it, unless it died first.
+func Turn(path string, at time.Time) (Item, bool) {
+	items := History(path, 0)
+	for i := len(items) - 1; i >= 0; i-- {
+		if items[i].Done && items[i].At.Equal(at) {
+			return items[i], true
+		}
+	}
+	return Item{}, false
+}

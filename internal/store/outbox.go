@@ -46,8 +46,8 @@ import (
 //
 // # Compaction
 //
-// Every write keeps every queued item, and of the settled ones (sent or
-// dropped) only those settled within OutboxRetention, and at most
+// Every write keeps every pending item (queued, or delivered with its turn
+// still running), and of the settled ones (sent, failed or dropped) only those settled within OutboxRetention, and at most
 // OutboxKeepSettled of them, newest first. A settled item is kept at all for
 // two readers: the dedup of a second `[assign]` on the same inbox item
 // ("already assigned 14:32"), and the inbox row that says the item was
@@ -59,7 +59,16 @@ const (
 	// OutboxQueued is waiting for an empty composer.
 	OutboxQueued = "queued"
 	// OutboxSent was verified into the composer and recorded in sent.log.
+	// A digest to a headless Mate is sent only once the turn it started
+	// has ended without an error (CON-246).
 	OutboxSent = "sent"
+	// OutboxDelivered is a digest a headless Mate's host took, whose turn
+	// has not ended yet: recorded in sent.log, its cursor not yet moved.
+	OutboxDelivered = "delivered"
+	// OutboxFailed is a digest whose turn ended in an error, was
+	// interrupted, or was lost with its host. Its cursor never moved, so
+	// the auto daemon gathers its items again.
+	OutboxFailed = "failed"
 	// OutboxDropped was withdrawn without being typed: a digest whose
 	// project left auto mode before it could be delivered, or one with
 	// nothing left to say.
@@ -102,8 +111,12 @@ type OutboxItem struct {
 	// records it once delivered.
 	Text  string `json:"text"`
 	State string `json:"state"`
-	// SentAt is when the line was verified into the composer.
+	// SentAt is when the line was verified into the composer, or handed
+	// to a headless Mate's host.
 	SentAt time.Time `json:"sent_at,omitempty"`
+	// TurnAt is when the host started the turn a delivered digest runs in
+	// (matehost.State.TurnStartedAt): the item's `at` in host.jsonl.
+	TurnAt time.Time `json:"turn_at,omitzero"`
 	// Attempts counts every try that reached the point of looking at the
 	// Mate's pane.
 	Attempts int `json:"attempts"`
@@ -125,6 +138,10 @@ type OutboxItem struct {
 
 // Queued reports whether the item is still waiting.
 func (i OutboxItem) Queued() bool { return i.State == OutboxQueued }
+
+// Pending reports whether the item is not settled yet: queued, or
+// delivered with its turn still to end.
+func (i OutboxItem) Pending() bool { return i.Queued() || i.State == OutboxDelivered }
 
 // OutboxFile is `projects/<project>/mate/.outbox`.
 func (p Paths) OutboxFile(project string) string {
@@ -245,7 +262,7 @@ func compactOutbox(items []OutboxItem, now time.Time) []OutboxItem {
 	}
 	var done []settled
 	for i, item := range items {
-		if item.Queued() {
+		if item.Pending() {
 			continue
 		}
 		at := item.SentAt
@@ -264,7 +281,7 @@ func compactOutbox(items []OutboxItem, now time.Time) []OutboxItem {
 	}
 	out := make([]OutboxItem, 0, len(items))
 	for i, item := range items {
-		if item.Queued() || keep[i] {
+		if item.Pending() || keep[i] {
 			out = append(out, item)
 		}
 	}

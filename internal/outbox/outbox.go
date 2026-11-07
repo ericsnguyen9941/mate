@@ -26,6 +26,19 @@
 // window a crash can leave open, between sent.log and the outbox rewrite -
 // looked for in sent.log before it is typed again.
 //
+// # The Mate's turn (CON-246)
+//
+// A line in the composer is not a line handled. For a digest to a headless
+// Mate, whose host reports how each turn ended, delivery is not the end: the
+// item is `delivered` and its cursor waits until host.jsonl records the turn
+// it started. A turn that finished moves the cursor and the item is sent.
+// A turn that failed, was interrupted or died with its host leaves the
+// cursor where it was and the item `failed`, so the auto daemon's next tick
+// gathers the same items again (Offer) - after TurnRetryAfter, and at most
+// MaxTurnFailures times for one set of items, after which a `wedged`
+// incident tells the captain and the items wait for something new. A Mate
+// in a pane has no such report and keeps the old rule.
+//
 // # Wedged
 //
 // A queued item older than WedgedAfter at a failed attempt opens a `wedged`
@@ -72,7 +85,15 @@ const (
 	DefaultInterval = 2 * time.Second
 	// DefaultWedgedAfter is how long an item may wait before `wedged`.
 	DefaultWedgedAfter = 5 * time.Minute
+	// DefaultTurnRetryAfter is how long a digest whose turn failed waits
+	// before Offer queues its items again.
+	DefaultTurnRetryAfter = time.Minute
 )
+
+// MaxTurnFailures is how many failed turns one set of digest items gets.
+// After that the items wait for a digest that reports something new: a
+// turn that fails every time must not become a heartbeat (CON-194).
+const MaxTurnFailures = 3
 
 // DefaultDeliverTimeout bounds one delivery. A delivery holds the outbox's
 // writers' lock from the handle lookup to the verified enter, so a Herdr
@@ -123,6 +144,9 @@ type Deps struct {
 	Observer screen.Observer
 	// DeliverTimeout bounds one delivery; zero means DefaultDeliverTimeout.
 	DeliverTimeout time.Duration
+	// TurnRetryAfter is the wait before a failed digest is queued again;
+	// zero means DefaultTurnRetryAfter.
+	TurnRetryAfter time.Duration
 	// ConsolePresent says whether a console is open on the workspace. The
 	// loop (Drain) types into a Manual project's Mate only while it says
 	// true; an Auto project's Mate gets its lines either way (CON-203,
@@ -175,6 +199,13 @@ func (d Deps) interval() time.Duration {
 		return d.Interval
 	}
 	return DefaultInterval
+}
+
+func (d Deps) turnRetryAfter() time.Duration {
+	if d.TurnRetryAfter > 0 {
+		return d.TurnRetryAfter
+	}
+	return DefaultTurnRetryAfter
 }
 
 func (d Deps) wedgedAfter() time.Duration {
@@ -247,7 +278,8 @@ type Enqueued struct {
 }
 
 // Enqueue appends one item unless an item with the same key is already
-// queued or sent. A dropped item does not count: it was never delivered.
+// queued, delivered or sent. A dropped or failed item does not count: it
+// was never handled.
 func (s *Sender) Enqueue(project string, req Request) (Enqueued, error) {
 	if err := req.validate(); err != nil {
 		return Enqueued{}, err
@@ -256,7 +288,7 @@ func (s *Sender) Enqueue(project string, req Request) (Enqueued, error) {
 	now := s.deps.now()
 	err := s.ws.UpdateOutbox(project, now, func(items []store.OutboxItem) ([]store.OutboxItem, bool, error) {
 		for _, item := range items {
-			if item.Key == req.Key && item.State != store.OutboxDropped {
+			if item.Key == req.Key && item.State != store.OutboxDropped && item.State != store.OutboxFailed {
 				out = Enqueued{Item: item, Duplicate: true}
 				return items, false, nil
 			}
@@ -276,6 +308,12 @@ func (s *Sender) Enqueue(project string, req Request) (Enqueued, error) {
 // reads (the auto cursor) cannot move under it: the cursor moves only when
 // an item is marked sent, and that happens under the same lock.
 //
+// While an item of that source is delivered and its turn still runs, build
+// is not called: how that turn ends decides whether the cursor moves, and
+// so what the next item has to say. A set of items whose turn failed is
+// queued again only TurnRetryAfter after the failure, and not at all after
+// MaxTurnFailures (the package comment's "The Mate's turn").
+//
 // When build reports nothing to say, a queued item of that source is
 // dropped - what it reported has been answered meanwhile. When it does have
 // something, a queued item of that source with the same key is left alone,
@@ -290,6 +328,11 @@ func (s *Sender) Offer(project, source string,
 	)
 	now := s.deps.now()
 	err := s.ws.UpdateOutbox(project, now, func(items []store.OutboxItem) ([]store.OutboxItem, bool, error) {
+		for _, item := range items {
+			if item.Source == source && item.State == store.OutboxDelivered {
+				return items, false, nil
+			}
+		}
 		req, ok, err := build()
 		if err != nil {
 			return items, false, err
@@ -313,6 +356,9 @@ func (s *Sender) Offer(project, source string,
 		if err := req.validate(); err != nil {
 			return items, false, err
 		}
+		if !s.retryDue(items, source, req.Key, now) {
+			return items, false, nil
+		}
 		have = true
 		if queued >= 0 {
 			item := &items[queued]
@@ -332,6 +378,36 @@ func (s *Sender) Offer(project, source string,
 		return append(items, item), true, nil
 	})
 	return out, have, err
+}
+
+// turnFailures counts the failed turns on items of source with key, and
+// says when the last one was found.
+func turnFailures(items []store.OutboxItem, source, key string) (int, time.Time) {
+	var (
+		n    int
+		last time.Time
+	)
+	for _, item := range items {
+		if item.Source == source && item.Key == key && item.State == store.OutboxFailed {
+			n++
+			if item.TriedAt.After(last) {
+				last = item.TriedAt
+			}
+		}
+	}
+	return n, last
+}
+
+// retryDue reports whether items of source with key may be queued now.
+func (s *Sender) retryDue(items []store.OutboxItem, source, key string, now time.Time) bool {
+	n, last := turnFailures(items, source, key)
+	switch {
+	case n == 0:
+		return true
+	case n >= MaxTurnFailures:
+		return false
+	}
+	return !now.Before(last.Add(s.deps.turnRetryAfter()))
 }
 
 func (s *Sender) newItem(project string, items []store.OutboxItem, req Request, now time.Time) (store.OutboxItem, error) {
@@ -357,7 +433,8 @@ type Attempt struct {
 	// value when nothing was queued.
 	Item store.OutboxItem
 	// Delivered is the item verified into the composer on this try (or
-	// found already delivered in sent.log).
+	// found already delivered in sent.log). A digest to a headless Mate is
+	// then in State delivered, not sent: its turn has only begun.
 	Delivered bool
 	// Dropped is a digest withdrawn because its project left auto mode.
 	Dropped bool
@@ -370,19 +447,27 @@ type Attempt struct {
 // Tried reports whether there was anything queued to try.
 func (a Attempt) Tried() bool { return a.Item.ID != 0 }
 
-// Attempt tries the oldest queued item of one project, once.
+// Attempt tries the oldest queued item of one project, once. Before it,
+// each delivered digest whose turn has ended is finished (finishTurns).
 //
 // The error is for what went wrong around a send - the outbox could not be
 // read or written, sent.log could not be appended after a verified send -
 // never for the send's own refusal, which is Attempt.Refusal: a Mate
 // mid-turn is the normal case here, not a failure.
 func (s *Sender) Attempt(ctx context.Context, project string) (Attempt, error) {
+	return s.attempt(ctx, project, true)
+}
+
+// attempt is Attempt; with next false it only finishes delivered digests.
+func (s *Sender) attempt(ctx context.Context, project string, next bool) (Attempt, error) {
 	var (
 		out     Attempt
 		postErr error
 	)
 	now := s.deps.now()
 	err := s.ws.UpdateOutbox(project, now, func(items []store.OutboxItem) ([]store.OutboxItem, bool, error) {
+		finished, finishErr := s.finishTurns(ctx, project, items)
+		postErr = finishErr
 		index := -1
 		for i, item := range items {
 			if item.Queued() {
@@ -390,8 +475,8 @@ func (s *Sender) Attempt(ctx context.Context, project string) (Attempt, error) {
 				break
 			}
 		}
-		if index < 0 {
-			return items, false, nil
+		if index < 0 || !next {
+			return items, finished, nil
 		}
 		item := &items[index]
 		if item.Source != store.OutboxSourceStow {
@@ -400,18 +485,19 @@ func (s *Sender) Attempt(ctx context.Context, project string) (Attempt, error) {
 				return items, false, err
 			}
 			if !acquired {
-				return items, false, nil
+				return items, finished, nil
 			}
 			defer release()
 		}
 
 		// A line sent.log already holds was delivered by a sender that
 		// died before it could say so. Typing it again is the one mistake
-		// this package exists to rule out.
+		// this package exists to rule out. Which turn it started is not
+		// known, so a digest is sent here without waiting on one.
 		if at, ok, err := s.recorded(project, *item); err != nil {
 			return items, false, err
 		} else if ok {
-			postErr = s.settle(project, item, at, "")
+			postErr = errors.Join(postErr, s.settle(project, item, at, ""))
 			out = Attempt{Item: *item, Delivered: true}
 			return items, true, nil
 		}
@@ -423,7 +509,7 @@ func (s *Sender) Attempt(ctx context.Context, project string) (Attempt, error) {
 			return items, true, nil
 		}
 
-		report, err := s.deliver(ctx, project, *item)
+		report, turnAt, err := s.deliver(ctx, project, *item)
 		if errors.Is(err, errWithdrawn) {
 			item.State = store.OutboxDropped
 			item.LastRefusal = "auto mode was turned off before the digest could be typed"
@@ -436,8 +522,8 @@ func (s *Sender) Attempt(ctx context.Context, project string) (Attempt, error) {
 			item.LastRefusal = err.Error()
 			out = Attempt{Item: *item, Refusal: err}
 			if age := now.Sub(item.At); age >= s.deps.wedgedAfter() {
-				postErr = s.openWedged(project, now, fmt.Sprintf(
-					"nothing queued for the Mate has been delivered for %s: %v", age.Round(time.Second), err))
+				postErr = errors.Join(postErr, s.openWedged(project, now, fmt.Sprintf(
+					"nothing queued for the Mate has been delivered for %s: %v", age.Round(time.Second), err)))
 			}
 			return items, true, nil
 		}
@@ -455,7 +541,11 @@ func (s *Sender) Attempt(ctx context.Context, project string) (Attempt, error) {
 			Target: store.TargetMate,
 			Text:   item.Text,
 		})
-		postErr = errors.Join(recordErr, s.settle(project, item, delivered, report.Agent))
+		if item.Source == store.OutboxSourceDigest && !turnAt.IsZero() {
+			postErr = errors.Join(postErr, recordErr, s.handedOver(project, item, delivered, turnAt, report.Agent))
+		} else {
+			postErr = errors.Join(postErr, recordErr, s.settle(project, item, delivered, report.Agent))
+		}
 		out = Attempt{Item: *item, Delivered: true, Agent: report.Agent}
 		return items, true, nil
 	})
@@ -472,12 +562,91 @@ func (s *Sender) settle(project string, item *store.OutboxItem, at time.Time, ag
 	item.State = store.OutboxSent
 	item.SentAt = at
 	item.LastRefusal = ""
-	who := "the Mate"
-	if agent != "" {
-		who = agent
-	}
-	errs = append(errs, s.resolveWedged(project, at, fmt.Sprintf("a queued line was verified into %s's composer", who)))
+	errs = append(errs, s.resolveWedged(project, at, fmt.Sprintf("a queued line was verified into %s's composer", who(agent))))
 	return errors.Join(errs...)
+}
+
+func who(agent string) string {
+	if agent == "" {
+		return "the Mate"
+	}
+	return agent
+}
+
+// handedOver marks a digest a headless Mate's host took: delivered, with
+// the turn it started, its cursor left for finishTurns. The line did get
+// through, so an open `wedged` is resolved.
+func (s *Sender) handedOver(project string, item *store.OutboxItem, at, turnAt time.Time, agent string) error {
+	item.State = store.OutboxDelivered
+	item.SentAt = at
+	item.TurnAt = turnAt
+	item.LastRefusal = ""
+	return s.resolveWedged(project, at, fmt.Sprintf("a queued line was handed to %s's host", who(agent)))
+}
+
+// finishTurns finishes each delivered digest whose turn has ended: sent,
+// its cursor recorded, when the turn finished; failed otherwise, which
+// opens `wedged` once one set of items has failed MaxTurnFailures times.
+// It reports whether it changed an item.
+func (s *Sender) finishTurns(ctx context.Context, project string, items []store.OutboxItem) (bool, error) {
+	changed := false
+	var errs []error
+	for i := range items {
+		item := &items[i]
+		if item.State != store.OutboxDelivered {
+			continue
+		}
+		running, failure := s.turn(ctx, project, *item)
+		if running {
+			continue
+		}
+		changed = true
+		now := s.deps.now()
+		if failure == "" {
+			if item.Cursor != nil {
+				errs = append(errs, s.ws.WriteAutoCursor(project, item.Cursor))
+			}
+			item.State = store.OutboxSent
+			continue
+		}
+		item.State = store.OutboxFailed
+		item.LastRefusal = failure
+		item.TriedAt = now
+		if n, _ := turnFailures(items, item.Source, item.Key); n >= MaxTurnFailures {
+			errs = append(errs, s.openWedged(project, now, fmt.Sprintf(
+				"the Mate's turn on a digest failed %d times, last: %s; its items wait for the next digest", n, failure)))
+		}
+	}
+	return changed, errors.Join(errs...)
+}
+
+// turn reports whether a delivered digest's turn still runs and, once it
+// has ended, why it did not finish: empty when it did. The host appends a
+// turn to host.jsonl before it says it is idle, so a turn neither running
+// nor recorded died with its host.
+func (s *Sender) turn(ctx context.Context, project string, item store.OutboxItem) (running bool, failure string) {
+	mateDir := s.ws.MateDir(project)
+	st, err := matehost.Dial(mateDir).State(ctx)
+	if err == nil && st.Busy && st.TurnStartedAt.Equal(item.TurnAt) {
+		return true, ""
+	}
+	if ctx.Err() != nil {
+		// Shutting down is no evidence about the turn.
+		return true, ""
+	}
+	if done, ok := matehost.Turn(matehost.HistoryPath(mateDir), item.TurnAt); ok {
+		switch {
+		case done.Error != "":
+			return false, "the Mate's turn on it failed: " + done.Error
+		case done.Interrupted:
+			return false, "the Mate's turn on it was interrupted"
+		}
+		return false, ""
+	}
+	if err != nil {
+		return false, fmt.Sprintf("the Mate's host went away during its turn on it: %v", err)
+	}
+	return false, "the Mate's host was restarted during its turn on it"
 }
 
 // errWithdrawn is the one refusal that is not one: the captain took the
@@ -494,24 +663,33 @@ func (s *Sender) withdrawn(project string, item store.OutboxItem) bool {
 // deliver resolves the Mate's pane and types the line into it, verified,
 // within DeliverTimeout. Running out of it is a refusal like any other: the
 // caller keeps the item queued, and the lock it holds is released.
-func (s *Sender) deliver(ctx context.Context, project string, item store.OutboxItem) (send.Report, error) {
+//
+// turnAt is, for a headless Mate, when the turn the line started began; it
+// is zero for a pane.
+func (s *Sender) deliver(ctx context.Context, project string, item store.OutboxItem) (send.Report, time.Time, error) {
 	if s.deps.Runtime == nil || s.deps.Handle == nil {
-		return send.Report{}, errors.New("outbox: no runtime is wired to deliver with")
+		return send.Report{}, time.Time{}, errors.New("outbox: no runtime is wired to deliver with")
 	}
 	bound := s.deps.deliverTimeout()
 	dctx, cancel := context.WithTimeout(ctx, bound)
 	defer cancel()
-	report, err := s.deliverWithin(dctx, project, item)
-	if err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-		return report, fmt.Errorf("the delivery did not finish within %s: %w", bound, err)
+	var (
+		report send.Report
+		turnAt time.Time
+		err    error
+	)
+	if s.ws.MateHeadless(project) {
+		report, turnAt, err = s.deliverHeadless(dctx, project, item)
+	} else {
+		report, err = s.deliverPane(dctx, project, item)
 	}
-	return report, err
+	if err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return report, turnAt, fmt.Errorf("the delivery did not finish within %s: %w", bound, err)
+	}
+	return report, turnAt, err
 }
 
-func (s *Sender) deliverWithin(ctx context.Context, project string, item store.OutboxItem) (send.Report, error) {
-	if s.ws.MateHeadless(project) {
-		return s.deliverHeadless(ctx, project, item)
-	}
+func (s *Sender) deliverPane(ctx context.Context, project string, item store.OutboxItem) (send.Report, error) {
 	handle, kind, err := s.deps.Handle(ctx, project)
 	if err != nil {
 		return send.Report{}, err
@@ -535,19 +713,20 @@ func (s *Sender) deliverWithin(ctx context.Context, project string, item store.O
 // which is the same refusal a busy composer gives: the item stays queued.
 // The marker goes with it, so the Mate's prompt hook records it as the
 // app's line exactly as it does for a typed one.
-func (s *Sender) deliverHeadless(ctx context.Context, project string, item store.OutboxItem) (send.Report, error) {
+func (s *Sender) deliverHeadless(ctx context.Context, project string, item store.OutboxItem) (send.Report, time.Time, error) {
 	if s.withdrawn(project, item) {
-		return send.Report{}, errWithdrawn
+		return send.Report{}, time.Time{}, errWithdrawn
 	}
 	meta, err := s.ws.ReadMateMeta(project)
 	if err != nil {
-		return send.Report{}, err
+		return send.Report{}, time.Time{}, err
 	}
 	text := send.Marker + item.Text
-	if err := matehost.Dial(s.ws.MateDir(project)).Deliver(ctx, text); err != nil {
-		return send.Report{}, err
+	st, err := matehost.Dial(s.ws.MateDir(project)).Deliver(ctx, text)
+	if err != nil {
+		return send.Report{}, time.Time{}, err
 	}
-	return send.Report{Agent: meta["agent"], Text: text, Typed: true}, nil
+	return send.Report{Agent: meta["agent"], Text: text, Typed: true}, st.TurnStartedAt, nil
 }
 
 // recorded looks for the item's own line in sent.log after it was queued.
@@ -631,7 +810,8 @@ func (s *Sender) Drain(ctx context.Context) error {
 			continue
 		}
 		head, ok := oldestQueued(items)
-		if !ok {
+		inFlight := delivered(items)
+		if !ok && !inFlight {
 			continue
 		}
 		// With no console open a Manual project's Mate is left alone: its
@@ -639,14 +819,27 @@ func (s *Sender) Drain(ctx context.Context) error {
 		// console is back or M21 turns auto mode on again. A digest at the
 		// head is still tried, which withdraws it as it would with a
 		// console (withdrawn) rather than keeping every line behind it.
-		if !s.ws.Auto(ref.Name) && !s.deps.consolePresent() && head.Source != store.OutboxSourceDigest {
+		// A delivered digest is finished either way: its turn's end is
+		// bookkeeping, not typing.
+		next := ok && (s.ws.Auto(ref.Name) || s.deps.consolePresent() || head.Source == store.OutboxSourceDigest)
+		if !next && !inFlight {
 			continue
 		}
-		if _, err := s.Attempt(ctx, ref.Name); err != nil {
+		if _, err := s.attempt(ctx, ref.Name, next); err != nil {
 			errs = append(errs, fmt.Errorf("outbox: %s: %w", ref.Name, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// delivered reports whether any item waits on its Mate's turn.
+func delivered(items []store.OutboxItem) bool {
+	for _, item := range items {
+		if item.State == store.OutboxDelivered {
+			return true
+		}
+	}
+	return false
 }
 
 // oldestQueued is the item Attempt would try, when one is queued.

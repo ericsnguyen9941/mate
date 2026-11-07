@@ -66,13 +66,15 @@ func TestOutboxRoundTripsOneJSONLinePerItem(t *testing.T) {
 // Compaction keeps every queued item however old, drops settled items past
 // the retention window, and keeps at most OutboxKeepSettled of the rest,
 // newest first.
-func TestOutboxCompactionKeepsQueuedAndBoundsSettled(t *testing.T) {
+func TestOutboxCompactionKeepsPendingAndBoundsSettled(t *testing.T) {
 	w := autoCursorWorkspace(t)
 	var items []store.OutboxItem
 	old := outboxNow.Add(-store.OutboxRetention - time.Hour)
 	items = append(items,
 		store.OutboxItem{ID: 1, At: old, Source: store.OutboxSourceAssign, Key: "old-queued", Text: "x", State: store.OutboxQueued},
 		store.OutboxItem{ID: 2, At: old, Source: store.OutboxSourceAssign, Key: "old-sent", Text: "x", State: store.OutboxSent, SentAt: old},
+		// A digest whose turn has not ended is not settled, however old.
+		store.OutboxItem{ID: 1000, At: old, Source: store.OutboxSourceDigest, Key: "old-delivered", Text: "x", State: store.OutboxDelivered, SentAt: old},
 	)
 	for i := 0; i < store.OutboxKeepSettled+10; i++ {
 		at := outboxNow.Add(-time.Duration(store.OutboxKeepSettled+10-i) * time.Second)
@@ -85,11 +87,11 @@ func TestOutboxCompactionKeepsQueuedAndBoundsSettled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadOutbox: %v", err)
 	}
-	if len(got) != 1+store.OutboxKeepSettled {
-		t.Fatalf("kept %d items, want the queued one plus %d settled", len(got), store.OutboxKeepSettled)
+	if len(got) != 2+store.OutboxKeepSettled {
+		t.Fatalf("kept %d items, want the queued and the delivered one plus %d settled", len(got), store.OutboxKeepSettled)
 	}
-	if got[0].Key != "old-queued" {
-		t.Fatalf("first item = %+v, want the old queued item kept", got[0])
+	if got[0].Key != "old-queued" || got[1].Key != "old-delivered" {
+		t.Fatalf("first items = %+v, %+v, want the old queued and delivered items kept", got[0], got[1])
 	}
 	for _, item := range got {
 		if item.Key == "old-sent" {
@@ -99,7 +101,7 @@ func TestOutboxCompactionKeepsQueuedAndBoundsSettled(t *testing.T) {
 	if last := got[len(got)-1]; last.ID != int64(3+store.OutboxKeepSettled+9) {
 		t.Fatalf("last item = %+v, want the newest settled one kept", last)
 	}
-	if got[1].ID != 13 {
+	if got[2].ID != 13 {
 		t.Fatalf("oldest settled kept = %d, want the ten oldest dropped", got[1].ID)
 	}
 }
