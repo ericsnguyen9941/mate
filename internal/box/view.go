@@ -87,15 +87,34 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 	closed := make(map[string]bool)
 	var entries []Entry
 
+	// A Load reads through the memo (memo.go); a LoadSince reads from its
+	// own cursor.
+	var memoized *loadReader
+	if cursor.Sent == 0 && cursor.Incidents == 0 && len(cursor.Status) == 0 {
+		memoized = newLoadReader(ws, project)
+	}
+
 	for _, crew := range crews {
-		if meta, err := ws.ReadCrewMeta(project, crew); err == nil && crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed() {
-			closed[crew] = true
+		var (
+			lines []store.StatusEntry
+			next  int64
+			info  os.FileInfo
+		)
+		if memoized != nil {
+			if memoized.crewClosed(crew) {
+				closed[crew] = true
+			}
+			lines, next, info, err = memoized.status(crew)
+		} else {
+			if meta, err := ws.ReadCrewMeta(project, crew); err == nil && crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed() {
+				closed[crew] = true
+			}
+			from := int64(0)
+			if cursor.Status != nil {
+				from = cursor.Status[crew]
+			}
+			lines, next, err = ws.ReadStatus(project, crew, from)
 		}
-		from := int64(0)
-		if cursor.Status != nil {
-			from = cursor.Status[crew]
-		}
-		lines, next, err := ws.ReadStatus(project, crew, from)
 		if err != nil {
 			return View{}, err
 		}
@@ -105,8 +124,11 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 		}
 		statusPath := ws.CrewStatus(project, crew)
 		mtime := time.Now()
-		if fi, err := os.Stat(statusPath); err == nil {
-			mtime = fi.ModTime()
+		if info == nil {
+			info, _ = os.Stat(statusPath)
+		}
+		if info != nil {
+			mtime = info.ModTime()
 		}
 		for _, l := range lines {
 			entries = append(entries, Entry{
@@ -122,7 +144,13 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 	}
 
 	sentPath := ws.SentLog(project)
-	sentLines, sentNext, err := ws.ReadSent(project, cursor.Sent)
+	var sentLines []store.SentEntry
+	var sentNext int64
+	if memoized != nil {
+		sentLines, sentNext, err = memoized.sent()
+	} else {
+		sentLines, sentNext, err = ws.ReadSent(project, cursor.Sent)
+	}
 	if err != nil {
 		return View{}, err
 	}
@@ -145,6 +173,9 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 	}
 	newCursor.Incidents = incidentNext
 	entries = append(entries, incidentEntries...)
+	if memoized != nil {
+		memoized.done()
+	}
 
 	sort.SliceStable(entries, func(i, j int) bool {
 		a, b := entries[i], entries[j]

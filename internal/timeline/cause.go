@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"sort"
 	"strings"
 	"time"
 
@@ -458,10 +459,14 @@ func (p *pass) updateCounters(ctx context.Context) error {
 // crewIDs is every crew of the project, so a digest line can be scanned for
 // the names it mentions without guessing what a crew id looks like.
 func (p *pass) crewIDs() []string {
-	out := make([]string, 0, len(p.crews))
+	out := make([]string, 0, len(p.crews)+len(p.sealed))
 	for _, crew := range p.crews {
 		out = append(out, crew.ID)
 	}
+	for id := range p.sealed {
+		out = append(out, id)
+	}
+	sort.Strings(out)
 	return out
 }
 

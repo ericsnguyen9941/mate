@@ -66,12 +66,24 @@ func (p *pass) ingestTranscripts(ctx context.Context) error {
 			return err
 		}
 	}
+	p.located, p.unlocated = map[string]string{}, map[string]string{}
 	for _, crew := range p.crews {
-		loc, reason := p.locateCrew(ctx, crew)
+		var loc Located
+		reason, remembered := p.rememberedUnlocated(crew)
+		if remembered {
+			loc = Located{ActorID: crew.ActorID, Kind: harness.Kind(strings.TrimSpace(crew.harness()))}
+		} else {
+			loc, reason = p.locateCrew(ctx, crew)
+			if reason != "" {
+				p.rememberUnlocated(crew, reason)
+			}
+		}
 		if reason != "" {
+			p.unlocated[crew.ActorID] = reason
 			p.unresolved(crew.ActorID, string(loc.Kind), reason)
 			continue
 		}
+		p.located[crew.ActorID] = loc.Path
 		settled, err := p.settledCrew(ctx, crew, loc)
 		if err != nil {
 			return err

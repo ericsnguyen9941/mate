@@ -638,10 +638,8 @@ func (p *pass) incidentSubject(crew string) string {
 // in `actor` is a row the schema refuses and a join silently drops.
 func (p *pass) ensureCrewActor(crew string) string {
 	actorID := CrewActorID(p.project, crew)
-	for _, known := range p.crews {
-		if known.ID == crew {
-			return actorID
-		}
+	if p.knownCrew(crew) {
+		return actorID
 	}
 	for _, pending := range p.b.actors {
 		if pending.ID == actorID {
