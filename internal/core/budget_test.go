@@ -46,17 +46,20 @@ import (
 // to 0.68 s and 78 MB). Each allocation budget is about twice that. With
 // internal/timeline, internal/db and internal/harness/codex as they were
 // before Wave 0 (fbef89a), the same steady pass allocated 2972 MB: this
-// test would have failed on it. Both costs grow with the closed crews,
-// which CON-259 (sealing closed crews, in progress) is to end: once it
-// lands it should cut these numbers and tighten the budgets to its own
-// measurements with the same headroom, and so should any change that makes
-// a steady pass or a load cheaper, so the next regression is caught from
-// there.
+// test would have failed on it.
+//
+// With CON-259's seals (the core-idle wave, 2026-11-11) a steady pass is
+// 2.6 MB in 24k objects and 15 ms over the same fixture: a sealed crew
+// costs two stats, so the pass no longer grows with the closed crews and
+// its budget is a fixed one, about twice that, the same with a tenth of the
+// crews under the race detector (0.7 MB in 7k objects there). query.Load
+// (23.9 MB in 144k objects) still grows with them. Any change that makes
+// either cheaper should tighten its budget to the new measurement with the
+// same headroom, so the next regression is caught from there.
 //
 // Under the race detector, which runs this code some ten times slower and
 // for which the catch-up alone took a minute, the fixture has a tenth of
-// the closed crews and the allocation budgets shrink with it
-// (budgetShare).
+// the closed crews and query.Load's budgets shrink with it (budgetShare).
 const (
 	budgetClosedCrews = 1000 / raceShrink
 	budgetLiveCrews   = 4
@@ -65,10 +68,10 @@ const (
 	budgetUnlocatedEvery = 50
 	budgetDiscardedEvery = 10
 
-	// One steady ingest pass over a thousand closed crews.
-	budgetIngestBytes   = 135 << 20
-	budgetIngestObjects = 1_400_000
-	budgetIngestTime    = 15 * time.Second
+	// One steady ingest pass, however many closed crews: they are sealed.
+	budgetIngestBytes   = 6 << 20
+	budgetIngestObjects = 60_000
+	budgetIngestTime    = 5 * time.Second
 	// One query.Load over the same.
 	budgetLoadBytes   = 45 << 20
 	budgetLoadObjects = 260_000
@@ -76,7 +79,7 @@ const (
 )
 
 // budgetShare is the part of a thousand crews' allocation budget that is
-// the fixture's: both costs grow with the closed crews.
+// the fixture's: query.Load's cost grows with the closed crews.
 func budgetShare(n uint64) uint64 { return n * budgetClosedCrews / 1000 }
 
 func TestSteadyPassStaysWithinBudget(t *testing.T) {
@@ -117,7 +120,7 @@ func TestSteadyPassStaysWithinBudget(t *testing.T) {
 		return nil
 	})
 	t.Logf("%d closed crews: a steady ingest pass %s; query.Load %s", budgetClosedCrews, ingest, load)
-	ingest.check(t, "a steady ingest pass", budgetShare(budgetIngestBytes), budgetShare(budgetIngestObjects), budgetIngestTime)
+	ingest.check(t, "a steady ingest pass", budgetIngestBytes, budgetIngestObjects, budgetIngestTime)
 	load.check(t, "query.Load", budgetShare(budgetLoadBytes), budgetShare(budgetLoadObjects), budgetLoadTime)
 }
 
