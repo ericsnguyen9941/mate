@@ -39,7 +39,7 @@ names the layers its imports and importers allow.
 
 | Layer | What belongs | Packages |
 | -- | -- | -- |
-| 1 leaf (lá) | Types, rules, formats and OS shims that import no other layer | `assets`, `brief`, `capability`, `config`, `consolecmd`, `crewstate`, `memory`, `names`, `observability`, `platform`, `process`, `telemetry` |
+| 1 leaf (lá) | Types, rules, formats and OS shims that import no other layer | `assets`, `brief`, `capability`, `config`, `consolecmd`, `crewstate`, `loopstat`, `memory`, `names`, `observability`, `platform`, `process`, `telemetry` |
 | 2 storage (lưu trữ) | The workspace store and the database and config files beside it | `store`, `db`, `plugin`, `learnings` |
 | 3 read (đọc) | Read models over stored state, and the ports they read through | `query`, `coreapi`, `box`, `timeline/scene`, `timeline/read`, `diagnostics`, `dispatch`, `harness`, `runtime` |
 | 4 integration (tích hợp) | Adapters to something outside mate: harness CLIs, Herdr, the terminal host, git, `gh`, Jev, OS notifications | `harness/catalog`, `harness/claude`, `harness/codex`, `harness/grok`, `harness/pi`, `screen`, `screen/fixture`, `screen/jev`, `screen/chain`, `send`, `notice`, `host`, `panerun`, `gitx`, `github`, `facts`, `quota`, `teardown`, `notifications`, `matehost`, `coreclient`, `runtime/herdr` |
@@ -129,7 +129,7 @@ import `usage`.
 | Process | Started by | Code | Runs |
 | -- | -- | -- | -- |
 | Console | `mate console` (plain `mate` and `mate <dir>` run the core since 2026-11-06) | `runConsole`, `cmd/mate/console.go`; reaching the core in `cmd/mate/console_core.go` | One per workspace (flock on `.mate/console.lock`, CON-162). A client of the core (CON-214): runs no engine, reads the snapshot and sends actions over `.mate/core.sock`; starts the core when none answers, never stops it ([core.md](core.md#the-console)) |
-| Core | `mate`, `mate <dir>`, `mate core run` (foreground); `mate core start` (background, CON-213) | `cmdCoreHere`, `cmdCoreRun`, `runCore`, `cmd/mate/core.go`; start/stop/status in `cmd/mate/core_control.go` | The engine, with or without a console: observer, timeline, outbox, auto daemon, recovery, Office/City and notifications, plus `.mate/core.sock` and the clients' routes on it (CON-212). Stops within the engine's bound on SIGINT, SIGTERM or SIGHUP. `start` runs `mate core run` in a session of its own with its output in `.mate/core.log`; `stop` sends SIGTERM, then SIGKILL after 60 s, only to the pid `core.lock`'s holder wrote ([core.md](core.md)). With `MATE_PPROF=127.0.0.1:6060` in its environment it serves Go's profiles on that address, loopback only (CON-257, `cmd/mate/core_pprof.go`) |
+| Core | `mate`, `mate <dir>`, `mate core run` (foreground); `mate core start` (background, CON-213) | `cmdCoreHere`, `cmdCoreRun`, `runCore`, `cmd/mate/core.go`; start/stop/status in `cmd/mate/core_control.go`, stats in `cmd/mate/core_stats.go` | The engine, with or without a console: observer, timeline, outbox, auto daemon, recovery, Office/City and notifications, plus `.mate/core.sock` and the clients' routes on it (CON-212). Stops within the engine's bound on SIGINT, SIGTERM or SIGHUP. `start` runs `mate core run` in a session of its own with its output in `.mate/core.log`; `stop` sends SIGTERM, then SIGKILL after 60 s, only to the pid `core.lock`'s holder wrote ([core.md](core.md)). With `MATE_PPROF=127.0.0.1:6060` in its environment it serves Go's profiles on that address, loopback only (CON-257, `cmd/mate/core_pprof.go`). `mate core stats` asks it, over the socket, what each of its loops and the process have cost since it started (CON-263) |
 | Pane runner | the console's host columns | `mate pane serve`, `internal/panerun` | One per sibling pane: the stage, and command tabs (a file review is a command tab); ends when the console's pid is gone. The stage runs `herdr agent attach --takeover` for a crew or a pane Mate, and the Mate REPL for a headless Mate (CON-224) |
 | Herdr server | `herdr.Herdr` (`internal/runtime/herdr`), when the session it needs is not running | `herdr server --session <s>` (external) | Every agent pane: a pane Mate and every Crew. Outlives the console |
 | Mate, pane mode | `spawn` | harness TUI in a Herdr pane | Claude Code calls `mate hook mate-prompt` / `mate-stop` (`internal/hook`). `mate.mode: pane`; a Mate runs only on a harness with headless turns (CON-236), so Codex and pi run Crews only |
@@ -287,7 +287,12 @@ How processes exchange state:
   clients' routes (CON-212, `internal/dashboard/client.go`; over TCP each
   is a 404): `GET /api/core` (`coreapi.CoreStatus`: `core.lock`'s record,
   whether there is Jev, `Options.Notice` (CON-232), and the notices a console's
-  status line shows), `GET /api/snapshot`
+  status line shows), `GET /api/core/stats` (`coreapi.CoreStats`, CON-263:
+  each loop's runs and wall time, recorded in one `loopstat.Recorder` that
+  `engineOptions` hands to the observer, the ingest, the outbox, the auto
+  daemon and the engine, and the process's memory, GC and CPU from
+  `runtime/metrics` and `platform.ProcessUsage`; `mate core stats` prints
+  it), `GET /api/snapshot`
   (`Engine.Snapshot` in Go's default JSON, without `Commands`) and `POST
   /api/act` (a `coreapi.ActionRequest` run by `Engine.Act` under
   `context.WithoutCancel`, so it finishes when the client goes away; no
@@ -295,7 +300,7 @@ How processes exchange state:
   refusal is `{"error", "code"}` (`coreapi.ErrorBody`: 409 `busy`, 409
   `stopping`, 409 `tui` with the flag in `tui`, 422 `no_mate_repl`, 422 with no code for an action that
   failed, 503 for a snapshot that could not be read). `internal/coreclient`
-  is the client: `Dial`, then `Core`, `Snapshot` (a `coreapi.LoadFunc`) and
+  is the client: `Dial`, then `Core`, `Stats`, `Snapshot` (a `coreapi.LoadFunc`) and
   `Act` (a `coreapi.ActionFunc`), whose errors are coreapi's again
   (`errors.Is` finds `ErrBusy`, `ErrNoMateREPL`, `ErrStopping`). The
   socket is 0600 and `/api/act` takes the client's own text (a resolve's
@@ -387,7 +392,7 @@ interfaces on the side of each reader, is planned in
 | `tui.lock` | `store` | `mate mate-agent tui` (flock; JSON `project`, `pid`, `started`, `harness_pid`), CON-227 | the engine (snapshot, `Act`, `close_tui`), every headless host (`Options.Paused`, its own project only), a second `mate mate-agent tui`, which is refused |
 | `console.lock` | `store` | the console (flock; `core_lock: true` since CON-211) | a second console, which asks to replace it; `mate core run`, which refuses beside a console that has no `core_lock` |
 | `core.lock` | `store` | the engine, in `mate core` or a console (flock; JSON `pid`, `owner`, `started`, `version`, `binary`, `build`, `socket`, `url`, `lan_url`, `tcp_error`) | a second engine, which is refused; `mate reindex`, to name who holds `mate.db` |
-| `core.sock` | `store` path, `core` serves | `mate core run` (unix socket, 0600) | `internal/coreclient` (`/api/core`, `/api/snapshot`, `/api/act`, CON-212; `/api/changed` from every other mate process, CON-260); the Office/City routes over HTTP |
+| `core.sock` | `store` path, `core` serves | `mate core run` (unix socket, 0600) | `internal/coreclient` (`/api/core`, `/api/core/stats`, `/api/snapshot`, `/api/act`, CON-212; `/api/changed` from every other mate process, CON-260); the Office/City routes over HTTP |
 | `core.log`, `core.log.1` | `store` path | every core's output: `mate core start` points the core's output there, a foreground core (`mate`, `mate core run`) appends what it prints; either moves a log over 10 MB to `core.log.1` before opening it | the captain |
 | `mate.db`, `mate.db.lock` | `db` | the timeline ingest in the engine; `mate reindex` | the engine's snapshot (tokens), dashboard, `mate events`, `mate usage`, `mate state`, `mate recall`, refresh; every query outside `db` and `timeline` is in `timeline/read` |
 | `notifications.json` | `notifications` | the engine's notification loop (`internal/core/notify.go`) | the same loop (flock on `notifications.json.lock`) |

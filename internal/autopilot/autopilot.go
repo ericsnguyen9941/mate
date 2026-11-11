@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/box"
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/outbox"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -53,6 +54,9 @@ type Deps struct {
 	Sleeper Sleeper
 	// Interval is the digest window; zero means DefaultInterval.
 	Interval time.Duration
+	// Pass records each tick the loop runs, Sweep included, for `mate core
+	// stats` (CON-263). Nil records nothing.
+	Pass *loopstat.Loop
 }
 
 func (d Deps) now() time.Time {
@@ -171,7 +175,9 @@ func (p *Pilot) run(ctx context.Context, done chan struct{}) {
 		// A failed tick is not fatal: Herdr may be restarting, a project
 		// directory may be half-written. Nothing was sent, no cursor moved,
 		// and the next tick asks again.
+		start := p.deps.Pass.Begin()
 		_ = p.Tick(ctx)
+		p.deps.Pass.End(start)
 		if err := p.deps.sleep(ctx, p.deps.interval()); err != nil {
 			return
 		}

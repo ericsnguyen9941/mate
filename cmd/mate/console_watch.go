@@ -5,9 +5,11 @@ import (
 	"errors"
 	"sort"
 
+	"github.com/nguyenngocanh94/mate/internal/core"
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/db"
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/send"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
@@ -61,11 +63,20 @@ func consoleWatcher(dir string, deps spawn.Deps) (*watch.Watcher, error) {
 // process is the writer, this console still observes, and the timeline is
 // recorded once rather than twice (internal/db.ErrLocked).
 func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *db.DB, *timeline.Ingester, error) {
+	return engineWatcher(dir, deps, nil)
+}
+
+// engineWatcher is consoleWatcherWithTimeline whose rounds and ingest
+// passes stats records (core.LoopObserver, core.LoopIngest; CON-263); nil
+// records nothing.
+func engineWatcher(dir string, deps spawn.Deps, stats *loopstat.Recorder) (*watch.Watcher, *db.DB, *timeline.Ingester, error) {
 	ws, err := store.Open(dir)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	deps = roundDeps(deps)
+	// The round first: `mate core stats` lists the loops as they were named.
+	round := stats.Loop(core.LoopObserver)
 	var watcher *watch.Watcher
 	handle, err := db.Open(ws)
 	if err != nil {
@@ -77,6 +88,7 @@ func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *d
 			Handle:   consoleCrewHandle(ws, deps),
 			Session:  consoleSession(ws, deps),
 			Observer: deps.Observer,
+			Pass:     round,
 		})
 		return watcher, nil, nil, nil
 	}
@@ -98,7 +110,7 @@ func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *d
 		Handle:   consoleCrewHandle(ws, deps),
 		Session:  consoleSession(ws, deps),
 		Observer: deps.Observer,
-		Timeline: ingest,
+		Timeline: timedIngest{ingest, stats.Loop(core.LoopIngest)},
 		// The same *timeline.Ingester also implements watch.BudgetChecker
 		// (mvp.md M5 task 27): it already holds the writable db.DB and the
 		// workspace handle a budget check needs, and it is the same single
@@ -107,6 +119,7 @@ func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *d
 		// And watch.TurnChecker (CON-74): the no-turn check reads the same
 		// ledger.
 		Turns: ingest,
+		Pass:  round,
 	})
 	return watcher, handle, ingest, nil
 }
@@ -125,6 +138,18 @@ func roundDeps(deps spawn.Deps) spawn.Deps {
 		deps.Runtime = runtime.NewRoundCache(deps.Runtime)
 	}
 	return deps
+}
+
+// timedIngest is the observer's ingest, each pass recorded in stat
+// (CON-263): the pass a 2026-11-11 core spent 4.9 s of every 5 s poll in.
+type timedIngest struct {
+	ingest *timeline.Ingester
+	stat   *loopstat.Loop
+}
+
+func (t timedIngest) Ingest(ctx context.Context) error {
+	defer t.stat.End(t.stat.Begin())
+	return t.ingest.Ingest(ctx)
 }
 
 // consoleSessionRef is timeline.SessionRefFunc over the Herdr adapter: the

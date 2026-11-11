@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/recovery"
 	"github.com/nguyenngocanh94/mate/internal/store"
@@ -31,6 +32,8 @@ type recoveryRun struct {
 	run RecoverFunc
 	ws  *store.Workspace
 	now func() time.Time
+	// stat records the run (CON-263); nil records nothing.
+	stat *loopstat.Loop
 
 	// cancel and done are set by Start and read by Stop: the engine calls
 	// each once, Stop on a goroutine it starts after Start has returned.
@@ -48,7 +51,10 @@ func (r *recoveryRun) Start(ctx context.Context) error {
 	r.cancel, r.done = cancel, done
 	go func() {
 		defer close(done)
-		r.finish(r.run(ctx, r.ws, r.progress))
+		start := r.stat.Begin()
+		res := r.run(ctx, r.ws, r.progress)
+		r.stat.End(start)
+		r.finish(res)
 	}()
 	return nil
 }

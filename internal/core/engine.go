@@ -12,6 +12,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/autopilot"
 	"github.com/nguyenngocanh94/mate/internal/coreapi"
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/notifications"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/recovery"
@@ -153,6 +154,11 @@ type Options struct {
 	// line says - Jev's and the observer's configuration errors. The engine
 	// only reports them (Status), after its own.
 	Notices []string
+	// Stats is where every loop records its runs (CON-263): the caller's
+	// loops - the observer, the ingest, the outbox, the auto daemon - under
+	// the Loop* names, and the engine adds its own. Engine.Stats reads it.
+	// Nil makes the engine record its own loops alone.
+	Stats *loopstat.Recorder
 }
 
 // StopWait is how long Stop waits for everything it has cancelled: the
@@ -202,6 +208,8 @@ type Engine struct {
 	tuiSignal func(pid int, sig syscall.Signal) error
 	// tuiWait is tuiCloseWait; a test shortens it.
 	tuiWait time.Duration
+	// stats is Options.Stats, or the engine's own (CON-263).
+	stats *loopstat.Recorder
 
 	// claim is the workspace's core.lock while the engine runs; Start
 	// takes it first (or the one Options.Claim handed in) and Stop
@@ -255,23 +263,28 @@ var (
 // New builds an engine over its parts. It starts nothing until Start, and
 // from here on it owns the parts: Stop, or a failed Start, releases them.
 func New(o Options) *Engine {
-	e := &Engine{o: o, now: time.Now, stopWait: StopWait, changes: &Changes{}}
+	e := &Engine{o: o, now: time.Now, stopWait: StopWait, changes: &Changes{}, stats: o.Stats}
+	if e.stats == nil {
+		e.stats = loopstat.New()
+	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
-	e.snaps = &snapshotCache{compute: e.assemble, ctx: e.ctx, maxAge: snapshotMaxAge, limit: snapshotLimit, now: time.Now}
+	e.snaps = &snapshotCache{compute: timedSnapshot(e.stats.Loop(LoopSnapshot), e.assemble), ctx: e.ctx, maxAge: snapshotMaxAge, limit: snapshotLimit, now: time.Now}
 	if o.Recover != nil {
-		e.recovery = &recoveryRun{run: o.Recover, ws: o.Workspace, now: time.Now}
+		e.recovery = &recoveryRun{run: o.Recover, ws: o.Workspace, now: time.Now, stat: e.stats.Loop(LoopRecovery)}
 	}
 	if o.Workspace != nil {
 		e.reload = configReload(o.Workspace)
+		e.reload.stat = e.stats.Loop(LoopReload)
 		if o.Spawn.Runtime != nil {
 			// spawn.StartMate, which the restart runs, refuses without one.
 			e.hosts = e.newHostWatch()
+			e.hosts.stat = e.stats.Loop(LoopHostWatch)
 		}
 		if o.Dashboard != nil {
 			e.dashboard = &dashboardPart{ws: o.Workspace, o: *o.Dashboard, deps: e.dashboardDeps}
 		}
 		if o.Notifier != nil {
-			e.notify = &notifyLoop{root: o.Workspace.Root(), snapshot: e.Snapshot, sender: o.Notifier, url: e.dashboardURL}
+			e.notify = &notifyLoop{root: o.Workspace.Root(), snapshot: e.Snapshot, sender: o.Notifier, url: e.dashboardURL, stat: e.stats.Loop(LoopNotify)}
 		}
 	}
 	return e

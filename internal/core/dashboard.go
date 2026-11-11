@@ -232,6 +232,7 @@ func (e *Engine) dashboardDeps() dashboard.Deps {
 		deps.TimelineStale = ingest.Stale
 	}
 	deps.Core = e.Status
+	deps.Stats = e.Stats
 	deps.ClientSeen = e.clientSeen
 	// A writer's notice drops the snapshot and wakes the observer, read-only
 	// or not (CON-260).
