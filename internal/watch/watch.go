@@ -67,6 +67,17 @@ type Runtime interface {
 
 var _ Runtime = runtime.Adapter(nil)
 
+// Rounds is a Runtime that keeps Herdr's answers for one round
+// (runtime.RoundCache, CON-264): one `agent list` per session answers every
+// crew's InspectAgent, and the timeline ingest's after it. Poll begins a
+// round on it before it asks anything, so no answer outlives the round that
+// asked. A Runtime that is not one asks Herdr every time, as before.
+type Rounds interface {
+	BeginRound()
+}
+
+var _ Rounds = (*runtime.RoundCache)(nil)
+
 // HandleFunc resolves the Herdr handle recorded for one crew, and the screen
 // profile of the harness it runs. It is a seam rather than a direct call to
 // internal/spawn so the observer imports no code that can start or stop an
@@ -423,6 +434,9 @@ func (w *Watcher) Poll(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if rounds, ok := w.deps.Runtime.(Rounds); ok {
+		rounds.BeginRound()
+	}
 	// Re-read workspace.yaml every round: a project registered by another
 	// process (or by the console beside this one) must come under watch
 	// without a restart.
@@ -631,6 +645,16 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 		return err
 	}
 
+	// Every open crew's pane is read every round, on purpose. Nothing Herdr
+	// lists says the screen is unchanged: on Herdr 0.9.5 the `revision` of
+	// an agent and of a pane was measured not to move with output
+	// (2026-11-11, CON-264 review: 0 before and after an echo and a
+	// three-line loop that `pane read` showed; crews running for hours list
+	// revision 2), and agent_status / state_change_seq do not move while a
+	// working harness redraws or an idle one gets a draft. Gating the read
+	// on any of them would hold a stale snapshot and starve the stale rule
+	// and the classification. Change detection belongs to Herdr's event
+	// subscription (CON-265), not to the list.
 	hctx, cancel = context.WithTimeout(ctx, w.deps.herdrTimeout())
 	screen, err := w.deps.Runtime.ReadAgentStyled(hctx, handle, screens.ReadSource(), send.DefaultLines)
 	cancel()
