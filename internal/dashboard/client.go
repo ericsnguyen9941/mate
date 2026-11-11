@@ -24,6 +24,7 @@ import (
 func (s *Server) clientRoutes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+coreapi.PathCore, s.handleCore)
+	mux.HandleFunc("GET "+coreapi.PathStats, s.handleStats)
 	mux.HandleFunc("GET "+coreapi.PathSnapshot, s.handleSnapshot)
 	mux.HandleFunc("POST "+coreapi.PathAct, s.handleClientAct)
 	mux.Handle("/", s.mux)
@@ -51,6 +52,15 @@ func (s *Server) handleCore(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeClientJSON(w, http.StatusOK, s.deps.Core())
+}
+
+// handleStats is GET coreapi.PathStats: what the core has cost (CON-263).
+func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
+	if s.deps.Stats == nil {
+		writeClientError(w, http.StatusServiceUnavailable, coreapi.ErrorBody{Error: "this server runs no core"})
+		return
+	}
+	writeClientJSON(w, http.StatusOK, s.deps.Stats())
 }
 
 // handleSnapshot is GET coreapi.PathSnapshot: the engine's snapshot

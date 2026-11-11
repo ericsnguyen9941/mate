@@ -1,6 +1,7 @@
 // Package platform is where mate calls the operating system for what only
 // some systems have: advisory file locks, opening a file without following a
-// symlink, signals, process groups and sessions. A port of mate starts here
+// symlink, signals, process groups and sessions, and what the system has
+// counted of this process (ProcessUsage, CON-263). A port of mate starts here
 // rather than in each package that locks a log or stops a process, and
 // keeps the errors' meaning: callers read syscall.ESRCH and syscall.EPERM.
 //

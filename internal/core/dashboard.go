@@ -232,6 +232,7 @@ func (e *Engine) dashboardDeps() dashboard.Deps {
 		deps.TimelineStale = ingest.Stale
 	}
 	deps.Core = e.Status
+	deps.Stats = e.Stats
 	deps.ClientSeen = e.clientSeen
 	if e.o.Dashboard.ReadOnly {
 		deps.Snapshot, deps.FreshSnapshot, deps.Act, deps.Notice = nil, nil, nil, false

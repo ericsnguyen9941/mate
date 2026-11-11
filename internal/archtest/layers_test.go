@@ -78,6 +78,7 @@ var layers = map[string]layer{
 	"internal/config":          leaf,
 	"internal/consolecmd":      leaf,
 	"internal/crewstate":       leaf,
+	"internal/loopstat":        leaf,
 	"internal/memory":          leaf,
 	"internal/names":           leaf,
 	"internal/observability":   leaf,

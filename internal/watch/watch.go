@@ -15,6 +15,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/box"
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/screen"
@@ -170,6 +171,9 @@ type Deps struct {
 	// never holds the poll loop (observe.go). Nil means the fixture
 	// observer (internal/screen/fixture), asked in the round.
 	Observer screen.Observer
+	// Pass records each round the loop runs, the timeline's ingest
+	// included, for `mate core stats` (CON-263). Nil records nothing.
+	Pass *loopstat.Loop
 }
 
 func (d Deps) now() time.Time {
@@ -342,7 +346,9 @@ func (w *Watcher) run(ctx context.Context, done chan struct{}) {
 		// A failed round is not fatal: Herdr may be restarting, a project
 		// directory may be half-written. The next round asks again, and
 		// what the observer could not read it does not conclude from.
+		start := w.deps.Pass.Begin()
 		_ = w.Poll(ctx)
+		w.deps.Pass.End(start)
 		if err := w.deps.sleep(ctx, w.deps.pollInterval()); err != nil {
 			return
 		}

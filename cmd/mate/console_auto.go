@@ -5,6 +5,7 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/autopilot"
 	"github.com/nguyenngocanh94/mate/internal/core"
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/outbox"
 	"github.com/nguyenngocanh94/mate/internal/prwatch"
 	"github.com/nguyenngocanh94/mate/internal/recovery"
@@ -44,7 +45,10 @@ func engineOptions(ws *store.Workspace, deps spawn.Deps, consolePresent func() b
 	// It is also the single writer of `.mate/mate.db` (mvp.md M5): the
 	// timeline is recorded at the end of each of its polls, and the database
 	// handle's advisory lock is released when the engine stops.
-	watcher, timelineDB, ingest, err := consoleWatcherWithTimeline(ws.Root(), deps)
+	// Every loop records its runs in one place, which `mate core stats`
+	// reads (CON-263).
+	stats := loopstat.New()
+	watcher, timelineDB, ingest, err := engineWatcher(ws.Root(), deps, stats)
 	if err != nil {
 		return core.Options{}, err
 	}
@@ -54,7 +58,7 @@ func engineOptions(ws *store.Workspace, deps spawn.Deps, consolePresent func() b
 	// an Auto project still gets its digests, refreshes and queued lines;
 	// a Manual one gets nothing typed by the outbox loop until a console is
 	// back (consolePresent, CON-203 decided 2026-11-05).
-	delivery, err := engineDelivery(ws.Root(), deps, consolePresent)
+	delivery, err := engineDelivery(ws.Root(), deps, consolePresent, stats)
 	if err != nil {
 		if timelineDB != nil {
 			_ = timelineDB.Close()
@@ -79,6 +83,7 @@ func engineOptions(ws *store.Workspace, deps spawn.Deps, consolePresent func() b
 		Spawn:          deps,
 		Harnesses:      consoleHarnesses(),
 		ConsolePresent: consolePresent,
+		Stats:          stats,
 	}
 	// No handle - another process writes the timeline - is no timeline to
 	// close, which a nil *db.DB in the interface would not say.
@@ -129,15 +134,16 @@ func (d *consoleDelivery) Snapshot() map[string]autopilot.Status { return d.pilo
 // themselves are coordinated by the outbox's own lock and by flock on the
 // append-only logs.
 func consolePilot(dir string, deps spawn.Deps) (*consoleDelivery, error) {
-	return engineDelivery(dir, deps, nil)
+	return engineDelivery(dir, deps, nil, nil)
 }
 
 // engineDelivery is consolePilot whose sender loop asks consolePresent
 // before it types into a Manual project's Mate (outbox.Deps.ConsolePresent;
 // nil is a console always open). The daemon's own outbox, which makes the
 // one immediate attempt after it queues a digest, is not gated: a digest
-// is only ever queued for an Auto project.
-func engineDelivery(dir string, deps spawn.Deps, consolePresent func() bool) (*consoleDelivery, error) {
+// is only ever queued for an Auto project. stats records the two loops'
+// passes (CON-263); nil records nothing.
+func engineDelivery(dir string, deps spawn.Deps, consolePresent func() bool, stats *loopstat.Recorder) (*consoleDelivery, error) {
 	senderWS, err := store.Open(dir)
 	if err != nil {
 		return nil, err
@@ -148,15 +154,23 @@ func engineDelivery(dir string, deps spawn.Deps, consolePresent func() bool) (*c
 	}
 	od := spawn.MateOutboxDeps(senderWS, deps)
 	od.ConsolePresent = consolePresent
+	od.Pass = stats.Loop(core.LoopOutbox)
 	return &consoleDelivery{
 		sender: outbox.New(senderWS, od),
-		pilot:  consoleAutoPilot(pilotWS, deps),
+		pilot:  engineAutoPilot(pilotWS, deps, stats),
 	}, nil
 }
 
 // consoleAutoPilot is the auto daemon over ws, queueing into ws's outbox and
 // making its one immediate attempt through a sender over the same handle.
 func consoleAutoPilot(ws *store.Workspace, deps spawn.Deps) *autopilot.Pilot {
+	return engineAutoPilot(ws, deps, nil)
+}
+
+// engineAutoPilot is consoleAutoPilot whose ticks and sweeps stats records
+// (core.LoopAutopilot, core.LoopSweep; CON-263); nil records nothing.
+func engineAutoPilot(ws *store.Workspace, deps spawn.Deps, stats *loopstat.Recorder) *autopilot.Pilot {
+	tick, sweep := stats.Loop(core.LoopAutopilot), stats.Loop(core.LoopSweep)
 	// What closed tasks left behind is collected once at start and every
 	// GCEvery after (CON-114) - by a console with the real teardown only,
 	// so a test's fake deps never reach lsof or signal a process.
@@ -170,10 +184,12 @@ func consoleAutoPilot(ws *store.Workspace, deps spawn.Deps) *autopilot.Pilot {
 			return mateRefresher(ws, deps).Run(ctx, project, true)
 		},
 		Sweep: func(ctx context.Context) {
+			defer sweep.End(sweep.Begin())
 			prwatch.Sweep(ws, prwatch.ExecStarter{})
 			gc.Tick(ctx)
 		},
 		Budget: consoleBudgetActions(ws, deps),
+		Pass:   tick,
 	})
 }
 

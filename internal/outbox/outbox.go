@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
@@ -129,6 +130,9 @@ type Deps struct {
 	// decided 2026-11-05). Attempt, called by itself, is not gated. Nil is
 	// a console always open.
 	ConsolePresent func() bool
+	// Pass records each pass the loop runs (Drain), for `mate core stats`
+	// (CON-263). Nil records nothing.
+	Pass *loopstat.Loop
 }
 
 func (d Deps) consolePresent() bool {
@@ -711,7 +715,9 @@ func (s *Sender) run(ctx context.Context, done chan struct{}) {
 		// A failed pass is not fatal: Herdr may be restarting, a file may
 		// be mid-write. Nothing queued was lost, and the next pass asks
 		// again.
+		start := s.deps.Pass.Begin()
 		_ = s.Drain(ctx)
+		s.deps.Pass.End(start)
 		if err := s.deps.sleep(ctx, s.deps.interval()); err != nil {
 			return
 		}

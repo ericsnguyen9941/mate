@@ -77,6 +77,9 @@ type Deps struct {
 	// Core is the core's own state, GET coreapi.PathCore on its socket
 	// (CON-212): the engine's Status. Nil answers that route 503.
 	Core func() coreapi.CoreStatus
+	// Stats is what the core has cost, GET coreapi.PathStats on its socket
+	// (CON-263): the engine's Stats. Nil answers that route 503.
+	Stats func() coreapi.CoreStats
 	// ClientSeen is told the coreapi.ClientHeader of every request on the
 	// socket that names one, as the request arrives: how the engine knows a
 	// console is open. Nil is told nothing.

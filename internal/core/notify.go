@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/notifications"
 	"github.com/nguyenngocanh94/mate/internal/query"
@@ -43,6 +44,9 @@ type notifyLoop struct {
 	// url is the dashboard's, read as the loop starts: a click opens the
 	// captain's desk there.
 	url func() string
+	// stat records each tick past the shared snapshot it waits for, which
+	// is the snapshot's own cost (CON-263); nil records nothing.
+	stat *loopstat.Loop
 
 	// cancel and done are set by Start and read by Stop: the engine calls
 	// each once, Stop on a goroutine it starts after Start has returned.
@@ -115,7 +119,9 @@ func (n *notifyLoop) start(ctx context.Context) error {
 			}
 			snap, err := n.snapshot(ctx)
 			if err == nil {
+				start := n.stat.Begin()
 				err = notifications.Tick(ctx, path, notificationSnapshot(ctx, ws, snap, dashboardURL, time.Now()), n.sender, time.Now())
+				n.stat.End(start)
 			}
 			n.setStatus(err)
 			delay := 5 * time.Second
