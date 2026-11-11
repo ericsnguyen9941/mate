@@ -267,3 +267,36 @@ func TestClassifyObservationIgnoresFocus(t *testing.T) {
 		t.Fatalf("parser used focused to invent a status: %#v vs %#v", a, b)
 	}
 }
+
+// TestParseAgentListCarriesThePaneRevision: the observer skips a pane read
+// when the revision has not moved (CON-264), so the parse must tell "Herdr
+// said revision 0" from "this Herdr says nothing" - a 0.8.x AgentInfo has no
+// revision, and reading that as 0 would freeze every pane at its first read.
+func TestParseAgentListCarriesThePaneRevision(t *testing.T) {
+	t.Parallel()
+	got, err := parseAgentList(readRuntimeFixture(t, "agent-list-after-start.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !got[0].HasRevision || got[0].Revision != 2 {
+		t.Fatalf("list = %#v, want the live capture's revision 2", got)
+	}
+
+	old, err := parseAgentList([]byte(`{"id":"cli:agent:list","result":{"type":"agent_list","agents":[
+		{"agent":"claude","agent_status":"idle","name":"crew-k3","pane_id":"w1:p2","tab_id":"w1:t2","workspace_id":"w1","terminal_id":"t"}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(old) != 1 || old[0].HasRevision || old[0].Revision != 0 {
+		t.Fatalf("list without revision = %#v, want no revision", old)
+	}
+
+	zero, err := parseAgentList([]byte(`{"id":"cli:agent:list","result":{"type":"agent_list","agents":[
+		{"agent":"claude","agent_status":"idle","name":"crew-k3","pane_id":"w1:p2","revision":0}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(zero) != 1 || !zero[0].HasRevision {
+		t.Fatalf("list with revision 0 = %#v, want a revision reported", zero)
+	}
+}

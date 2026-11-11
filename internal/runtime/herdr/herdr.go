@@ -1690,6 +1690,8 @@ func (h *Herdr) observed(handle runtime.AgentHandle, info agentInfo) runtime.Obs
 		LaunchPending: info.LaunchPending,
 		ObservedAt:    h.now(),
 		LiveHandleOK:  live,
+		Revision:      info.Revision,
+		HasRevision:   info.HasRevision,
 	}
 }
 

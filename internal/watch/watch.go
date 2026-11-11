@@ -58,6 +58,17 @@ type Runtime interface {
 
 var _ Runtime = runtime.Adapter(nil)
 
+// Rounds is a Runtime that keeps Herdr's answers for one round
+// (runtime.RoundCache, CON-264): one `agent list` per session answers every
+// crew's InspectAgent, and the timeline ingest's after it. Poll begins a
+// round on it before it asks anything, so no answer outlives the round that
+// asked. A Runtime that is not one asks Herdr every time, as before.
+type Rounds interface {
+	BeginRound()
+}
+
+var _ Rounds = (*runtime.RoundCache)(nil)
+
 // HandleFunc resolves the Herdr handle recorded for one crew, and the screen
 // profile of the harness it runs. It is a seam rather than a direct call to
 // internal/spawn so the observer imports no code that can start or stop an
@@ -262,6 +273,12 @@ type observation struct {
 	// screen is the hash of the last pane snapshot, empty before the first
 	// readable one.
 	screen string
+	// pane is that snapshot, and readAt the pane revision Herdr reported
+	// when it was read. A round whose revision is readAt's reuses pane
+	// instead of reading it again (CON-264): the observer and the stale rule
+	// then see the same snapshot a read would have returned.
+	pane   string
+	readAt paneRevision
 	// statusAt is the resume offset of the crew's status file.
 	statusAt int64
 	// verb is the last status verb the crew wrote, empty if it has written
@@ -289,6 +306,26 @@ type observation struct {
 	// the stale rule has asked (observe.go's stillWorking).
 	stateOf string
 	state   screen.PaneState
+}
+
+// paneRevision is what makes a pane snapshot still current: the pane the
+// agent is in, Herdr's revision of that pane's output, and the agent's
+// status, because a read of a working Codex falls back to the visible screen
+// (internal/runtime/herdr readAgent) and returns other text from the same
+// output. known is false when Herdr reported no revision, and such a
+// paneRevision matches nothing.
+type paneRevision struct {
+	known    bool
+	pane     string
+	revision uint64
+	status   runtime.AgentStatus
+}
+
+func revisionOf(agent runtime.ObservedAgent) paneRevision {
+	if !agent.HasRevision {
+		return paneRevision{}
+	}
+	return paneRevision{known: true, pane: agent.Handle.Tab.PaneID, revision: agent.Revision, status: agent.Status}
 }
 
 // New builds an observer over a workspace. It does not poll until Start or
@@ -362,6 +399,9 @@ func (w *Watcher) run(ctx context.Context, done chan struct{}) {
 func (w *Watcher) Poll(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if rounds, ok := w.deps.Runtime.(Rounds); ok {
+		rounds.BeginRound()
 	}
 	// Re-read workspace.yaml every round: a project registered by another
 	// process (or by the console beside this one) must come under watch
@@ -542,7 +582,7 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 	}
 
 	hctx, cancel = context.WithTimeout(ctx, w.deps.herdrTimeout())
-	_, err = w.deps.Runtime.InspectAgent(hctx, handle)
+	agent, err := w.deps.Runtime.InspectAgent(hctx, handle)
 	cancel()
 	if err != nil {
 		if !runtime.IsAgentNotFound(err) {
@@ -571,14 +611,26 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 		return err
 	}
 
-	hctx, cancel = context.WithTimeout(ctx, w.deps.herdrTimeout())
-	screen, err := w.deps.Runtime.ReadAgentStyled(hctx, handle, screens.ReadSource(), send.DefaultLines)
-	cancel()
-	if err != nil {
-		// The agent is there and the pane is not readable: an unread screen
-		// is not a quiet one, so the round ends without a verdict.
-		w.timedOut(ctx, ref, err)
-		return err
+	// The pane is read only when Herdr says its output moved since the
+	// snapshot the observer holds (CON-264): an idle crew's pane, read every
+	// round, was one `herdr agent read` per crew per 5 s for a screen that
+	// had not changed. An unchanged revision reuses that snapshot, so the
+	// hash, the quiet clock and the reading below are what the same read
+	// would have produced. A Herdr that reports no revision is read every
+	// round, as before.
+	at := revisionOf(agent)
+	screen := obs.pane
+	if !at.known || at != obs.readAt {
+		hctx, cancel = context.WithTimeout(ctx, w.deps.herdrTimeout())
+		screen, err = w.deps.Runtime.ReadAgentStyled(hctx, handle, screens.ReadSource(), send.DefaultLines)
+		cancel()
+		if err != nil {
+			// The agent is there and the pane is not readable: an unread
+			// screen is not a quiet one, so the round ends without a verdict.
+			w.timedOut(ctx, ref, err)
+			return err
+		}
+		obs.pane, obs.readAt = screen, at
 	}
 	hash := screenHash(screen)
 	paneMoved := obs.screen != "" && obs.screen != hash
@@ -937,8 +989,9 @@ func openCrews(ws Workspace, project string) ([]string, error) {
 }
 
 // screenHash is the pane snapshot reduced to something comparable between
-// rounds. The screen itself is not kept: the observer answers "did this
-// change", never "what did it say".
+// rounds. The observer answers "did this change", never "what did it say":
+// the last snapshot is kept (observation.pane) only to be handed to the
+// observer again while Herdr's revision says the pane has not moved.
 func screenHash(screen string) string {
 	sum := sha256.Sum256([]byte(screen))
 	return hex.EncodeToString(sum[:])

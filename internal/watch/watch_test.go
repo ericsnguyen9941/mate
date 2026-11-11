@@ -464,7 +464,9 @@ func TestWatchConcludesNothingWhenThePaneCannotBeRead(t *testing.T) {
 	f.appendStatus("k3", "working: reading the tests")
 	f.poll()
 
+	// The pane moved, so it is read (CON-264), and the read fails.
 	f.rt.ReadErr = errors.New("herdr: pane read failed")
+	f.setScreen(codexBusyScreen)
 	f.clock.advance(4 * time.Minute)
 	f.pollIgnoringErrors()
 	f.assertIncidents()

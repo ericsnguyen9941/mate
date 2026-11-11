@@ -41,6 +41,7 @@ func consoleWatcher(dir string, deps spawn.Deps) (*watch.Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
+	deps = roundDeps(deps)
 	return watch.New(ws, watch.Deps{
 		Runtime:  deps.Runtime,
 		Handle:   consoleCrewHandle(ws, deps),
@@ -64,6 +65,7 @@ func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *d
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	deps = roundDeps(deps)
 	var watcher *watch.Watcher
 	handle, err := db.Open(ws)
 	if err != nil {
@@ -107,6 +109,22 @@ func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *d
 		Turns: ingest,
 	})
 	return watcher, handle, ingest, nil
+}
+
+// roundDeps is deps with a runtime that answers each watcher round from one
+// Herdr inventory (runtime.RoundCache, CON-264). Everything the watcher's
+// round asks Herdr goes through it: the crew handles (spawn.CrewHandle's
+// session lookup), the session check, each crew's agent, and the timeline
+// ingest's session ref, which runs at the end of the same Poll - so a round
+// is one `session list` and one `agent list` however many crews are open,
+// and the ingest asks nothing the watcher has not. Poll begins the round
+// (watch.Rounds). Only the watcher's own copy of deps holds it; the
+// snapshot, sends and spawns ask Herdr directly, as before.
+func roundDeps(deps spawn.Deps) spawn.Deps {
+	if deps.Runtime != nil {
+		deps.Runtime = runtime.NewRoundCache(deps.Runtime)
+	}
+	return deps
 }
 
 // consoleSessionRef is timeline.SessionRefFunc over the Herdr adapter: the

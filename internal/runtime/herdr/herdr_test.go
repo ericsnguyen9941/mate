@@ -1607,6 +1607,10 @@ func TestHerdrListAgentsUsesAgentListNotFocus(t *testing.T) {
 	if list[0].Handle.Tab.WorkspaceID != "w1" {
 		t.Fatalf("workspace id missing: %#v", list[0].Handle)
 	}
+	// The pane's output revision reaches the observer (CON-264).
+	if !list[0].HasRevision || list[0].Revision != 2 {
+		t.Fatalf("revision = %d (reported %v), want 2", list[0].Revision, list[0].HasRevision)
+	}
 }
 
 func TestHerdrStopDoesNotCallAgentStop(t *testing.T) {

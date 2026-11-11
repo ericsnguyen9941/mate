@@ -369,6 +369,14 @@ type ObservedAgent struct {
 	ObservedAt    time.Time
 	LiveHandleOK  bool // false if the persisted tab/pane id is gone (must re-check)
 	UnprovenNotes []string
+	// Revision is Herdr's revision of the output of the agent's pane
+	// (AgentInfo.revision, the counter `pane read` and the
+	// pane_output_changed event carry; Herdr 0.9.5, protocol 22). Output
+	// that changes moves it, so an unchanged revision of the same pane is a
+	// screen a reader already has (CON-264). HasRevision is false when Herdr
+	// did not report one (0.8.x), and then Revision says nothing.
+	Revision    uint64
+	HasRevision bool
 }
 
 // AttachTarget selects how Console/CLI attach. Agent attach streams the
