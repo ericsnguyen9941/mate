@@ -319,7 +319,7 @@ How processes exchange state:
   each subscriber has a dirty set keyed by Project and Crew with the kinds
   under each, a channel that wakes it, and `Take`), drops the shared
   snapshot and wakes the observer (`watch.Watcher.Wake`: its next round
-  starts at once, no sooner than `watch.WakeGap`, 1 s, after the last one
+  starts at once, no sooner than `watch.WakeGap`, 2.5 s, after the last one
   started). A notice is a hint, never the record, and no poll is longer
   for it: what bypasses the feed is still found by the polls alone.
   Polling less is CON-262; watching what bypasses the feed, CON-261.

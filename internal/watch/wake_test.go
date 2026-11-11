@@ -50,7 +50,7 @@ func TestWakeStartsTheNextRoundEarly(t *testing.T) {
 	for range 10 {
 		w.Wake()
 	}
-	second := awaitRound(t, rounds, 3*time.Second)
+	second := awaitRound(t, rounds, 5*time.Second)
 	if gap := second.Sub(first); gap < wakeGapFloor {
 		t.Fatalf("the woken round came %s after the last, want WakeGap at least", gap)
 	}
@@ -62,5 +62,5 @@ func TestWakeStartsTheNextRoundEarly(t *testing.T) {
 
 	// One more wake, one more round.
 	w.Wake()
-	awaitRound(t, rounds, 3*time.Second)
+	awaitRound(t, rounds, 5*time.Second)
 }

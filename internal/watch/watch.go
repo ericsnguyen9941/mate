@@ -32,8 +32,13 @@ const (
 	DefaultPollInterval = 5 * time.Second
 	// WakeGap is the least time between the starts of two rounds when a
 	// Wake cut the pause short (CON-260): a burst of writes costs one early
-	// round a second at most, not one round each.
-	WakeGap = time.Second
+	// round, not one round each. It is half the poll interval, not less,
+	// while every round still ingests the whole workspace (0.68 s on the
+	// captain's 1308 crews, 2026-11-11): steady writes then cost at most
+	// twice the rounds they did. The UI does not wait on it - a notice drops
+	// the snapshot at once - and CON-268, which makes a round read only what
+	// changed, is what may bring it down.
+	WakeGap = 2500 * time.Millisecond
 	// DefaultStaleAfter is how long the pane and the status file must both
 	// be unchanged before `stale` opens.
 	DefaultStaleAfter = 3 * time.Minute
