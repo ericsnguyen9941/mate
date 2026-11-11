@@ -26,6 +26,20 @@ var migrations = []migration{
 	{version: 6, stmts: schema6},
 }
 
+// indexes are created, if missing, every time the writer opens the
+// database, after the migrations. An index changes no row and no column a
+// reader reads, so it is not a schema version: a reader built before it
+// still opens the file, which a version bump would refuse until every
+// process on the machine was restarted on the new build.
+var indexes = []string{
+	// lastRecordedCommit asks for one crew's newest `git.committed` event on
+	// every poll, for every finished crew whose branch is gone and whose
+	// merge is not recorded. Without it the planner walks event_kind_at over
+	// every commit of the workspace: 8 ms a call, 60% of an ingest pass on a
+	// 514k-event timeline (CON-254); with it, 16 µs.
+	`CREATE INDEX IF NOT EXISTS event_actor_kind_at ON event(actor_id, kind, at)`,
+}
+
 // schema1 is the M5 schema of docs/mvp.md. Times are RFC3339 with nanosecond
 // precision in UTC, stored as TEXT, so they sort lexicographically and a
 // `v_story` dump is byte-identical between two rebuilds of the same files.

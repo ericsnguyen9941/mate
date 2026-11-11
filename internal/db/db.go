@@ -215,9 +215,9 @@ func (d *DB) Version() (int, error) {
 	return int(version.Int64), nil
 }
 
-// migrate applies every migration whose version is above the recorded one.
-// Each step and the row that records it share one transaction, so a database
-// is never half-migrated.
+// migrate applies every migration whose version is above the recorded one,
+// then creates the indexes that are missing. Each step and the row that
+// records it share one transaction, so a database is never half-migrated.
 func (d *DB) migrate() error {
 	current, err := d.Version()
 	if err != nil {
@@ -229,6 +229,11 @@ func (d *DB) migrate() error {
 		}
 		if err := d.applyMigration(m); err != nil {
 			return fmt.Errorf("db: migration %d: %w", m.version, err)
+		}
+	}
+	for _, stmt := range indexes {
+		if _, err := d.sql.Exec(stmt); err != nil {
+			return fmt.Errorf("db: %w (in %s)", err, firstLine(stmt))
 		}
 	}
 	return nil

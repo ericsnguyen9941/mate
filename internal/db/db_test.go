@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nguyenngocanh94/mate/internal/db"
@@ -110,6 +111,52 @@ func TestMigrateIsIdempotentAndRunsFromAPartialVersionRow(t *testing.T) {
 	}
 	if applied != db.SchemaVersion {
 		t.Fatalf("schema_version holds %d rows, want %d", applied, db.SchemaVersion)
+	}
+}
+
+// A crew's newest commit is looked up by actor and kind on every poll
+// (timeline's lastRecordedCommit, CON-254). The writer creates the index for
+// it on open even on a file migrated before the index existed, and a reader
+// built before it still opens the file: the index is not a schema version.
+func TestOpenAddsTheActorKindIndexWithoutAVersionAndThePlanUsesIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), db.FileName)
+	d, err := db.OpenPath(path)
+	if err != nil {
+		t.Fatalf("first open: %v", err)
+	}
+	if _, err := d.SQL().Exec(`DROP INDEX event_actor_kind_at`); err != nil {
+		t.Fatalf("drop index, as a file from before it: %v", err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	again, err := db.OpenPath(path)
+	if err != nil {
+		t.Fatalf("second open: %v", err)
+	}
+	defer again.Close()
+	if version, err := again.Version(); err != nil || version != db.SchemaVersion {
+		t.Fatalf("version %d, %v; want %d: an index is not a schema version", version, err, db.SchemaVersion)
+	}
+	rows, err := again.SQL().Query(`EXPLAIN QUERY PLAN
+		SELECT json_extract(payload, '$.sha'), at FROM event
+		 WHERE actor_id = ? AND kind = ? ORDER BY at DESC, id DESC LIMIT 1`, "crew:p/k", "git.committed")
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	defer rows.Close()
+	var plan string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		plan += detail + "\n"
+	}
+	if !strings.Contains(plan, "event_actor_kind_at") {
+		t.Fatalf("plan does not use event_actor_kind_at:\n%s", plan)
 	}
 }
 
