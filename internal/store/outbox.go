@@ -52,7 +52,8 @@ import (
 // two readers: the dedup of a second `[assign]` on the same inbox item
 // ("already assigned 14:32"), and the inbox row that says the item was
 // handed over. Both degrade honestly when the item has been compacted away:
-// the row loses its suffix, and a later assign is queued again.
+// the row loses its suffix, and a later assign is queued again. A settled
+// item keeps no Cursor: that is only for the send that delivers it.
 
 // The states an outbox item is in.
 const (
@@ -255,9 +256,18 @@ func compactOutbox(items []OutboxItem, now time.Time) []OutboxItem {
 	}
 	out := make([]OutboxItem, 0, len(items))
 	for i, item := range items {
-		if item.Queued() || keep[i] {
-			out = append(out, item)
+		if !item.Queued() && !keep[i] {
+			continue
 		}
+		// A digest's cursor is recorded when it is delivered (outbox's
+		// settle) and read by nothing after: a settled item drops it. It
+		// names every crew's status file in the project, and kept on every
+		// sent digest it made a 128-item outbox 6 MB, read again by every
+		// snapshot (CON-258).
+		if !item.Queued() {
+			item.Cursor = nil
+		}
+		out = append(out, item)
 	}
 	return out
 }

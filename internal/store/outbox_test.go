@@ -104,6 +104,25 @@ func TestOutboxCompactionKeepsQueuedAndBoundsSettled(t *testing.T) {
 	}
 }
 
+// A digest's cursor is kept while it waits and dropped once it is settled:
+// the send records it, and nothing reads it after (CON-258).
+func TestOutboxCompactionDropsTheCursorOfASettledDigest(t *testing.T) {
+	w := autoCursorWorkspace(t)
+	cursor := map[string]int64{w.CrewStatus("shop", "k3"): 7}
+	writeOutbox(t, w, []store.OutboxItem{
+		{ID: 1, At: outboxNow, Source: store.OutboxSourceDigest, Key: "sent", Text: "x", State: store.OutboxSent, SentAt: outboxNow, Cursor: cursor},
+		{ID: 2, At: outboxNow, Source: store.OutboxSourceDigest, Key: "dropped", Text: "x", State: store.OutboxDropped, Cursor: cursor},
+		{ID: 3, At: outboxNow, Source: store.OutboxSourceDigest, Key: "queued", Text: "x", State: store.OutboxQueued, Cursor: cursor},
+	})
+	got, err := w.ReadOutbox("shop")
+	if err != nil {
+		t.Fatalf("ReadOutbox: %v", err)
+	}
+	if len(got) != 3 || got[0].Cursor != nil || got[1].Cursor != nil || got[2].Cursor[w.CrewStatus("shop", "k3")] != 7 {
+		t.Fatalf("ReadOutbox = %+v, want the cursor on the queued digest only", got)
+	}
+}
+
 // A change that reports nothing changed writes nothing, and one that fails
 // writes nothing either.
 func TestOutboxUpdateWritesOnlyAReportedChange(t *testing.T) {
