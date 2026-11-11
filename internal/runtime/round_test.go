@@ -61,7 +61,7 @@ func TestRoundCacheAsksOnceARound(t *testing.T) {
 			if err != nil {
 				t.Fatalf("InspectAgent(%s): %v", h.Name, err)
 			}
-			if got.Handle.Name != h.Name || !got.HasRevision || !got.LiveHandleOK {
+			if got.Handle.Name != h.Name || !got.LiveHandleOK {
 				t.Fatalf("InspectAgent(%s) = %+v", h.Name, got)
 			}
 		}
@@ -130,7 +130,7 @@ func TestRoundCacheAnswersTheRoundWithAFailedList(t *testing.T) {
 
 // TestRoundCacheSeesTheAgentAgainstTheRecordedHandle: an agent listed in
 // another pane than the one recorded is not where the caller looks, as
-// Herdr's `agent get` reports it; and the pane revision comes through.
+// Herdr's `agent get` reports it.
 func TestRoundCacheSeesTheAgentAgainstTheRecordedHandle(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -145,12 +145,5 @@ func TestRoundCacheSeesTheAgentAgainstTheRecordedHandle(t *testing.T) {
 	}
 	if got.LiveHandleOK || got.Handle.Tab.PaneID != "w1:p0" || got.Handle.RawID != "k3" {
 		t.Fatalf("InspectAgent of a moved agent = %+v, want the live pane over the recorded handle, not live", got)
-	}
-	direct, err := fake.InspectAgent(ctx, handles[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got.HasRevision || got.Revision != direct.Revision {
-		t.Fatalf("revision = %d (%v), want %d as `agent get` reports it", got.Revision, got.HasRevision, direct.Revision)
 	}
 }

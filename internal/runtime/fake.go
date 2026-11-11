@@ -129,23 +129,7 @@ type Fake struct {
 	// (harness.ScreenProfile.ReadyScreen), which is what every launch that
 	// does not exercise a startup dialog expects to find.
 	NextStartupScreen string
-	// NoRevision makes InspectAgent and ListAgents report no pane revision,
-	// as a Herdr before 0.9 does: the observer then reads every pane every
-	// round (CON-264).
-	NoRevision bool
-	// revisions is, per session/name, the screen a pane revision was last
-	// reported for and that revision. The fake's screens are scripted
-	// rather than drawn, so the revision moves when an inspect or a list
-	// finds a screen different from the last one it reported: an unchanged
-	// screen keeps its revision, as Herdr's output revision does.
-	revisions map[string]fakeRevision
-	seq       int
-}
-
-// fakeRevision is one agent's pane revision as the fake last reported it.
-type fakeRevision struct {
-	screen string
-	n      uint64
+	seq               int
 }
 
 // SentKeys is one recorded SendKeys call.
@@ -209,28 +193,6 @@ func (f *Fake) RunInPane(_ context.Context, tab TabHandle, argv []string) error 
 
 func (f *Fake) record(op string) {
 	f.Calls = append(f.Calls, op)
-}
-
-// revisionOf is the pane revision of the agent keyed session/name, moved
-// past the last one reported if the screen a read would return has changed
-// since. The caller holds f.mu.
-func (f *Fake) revisionOf(key string) (uint64, bool) {
-	if f.NoRevision {
-		return 0, false
-	}
-	screen, ok := f.StyledOutputs[key]
-	if !ok {
-		screen = f.ReadOutputs[key]
-	}
-	if f.revisions == nil {
-		f.revisions = map[string]fakeRevision{}
-	}
-	r, seen := f.revisions[key]
-	if !seen || r.screen != screen {
-		r = fakeRevision{screen: screen, n: r.n + 1}
-		f.revisions[key] = r
-	}
-	return r.n, true
 }
 
 // EnsureSession implements Adapter.
@@ -488,7 +450,6 @@ func (f *Fake) ListAgents(_ context.Context, session SessionHandle) ([]ObservedA
 		if _, ok := f.Tabs[ag.Handle.Tab.PaneID]; ok {
 			live = true
 		}
-		revision, hasRevision := f.revisionOf(key)
 		out = append(out, ObservedAgent{
 			Handle:        ag.Handle,
 			SessionRef:    ag.SessionRef,
@@ -497,8 +458,6 @@ func (f *Fake) ListAgents(_ context.Context, session SessionHandle) ([]ObservedA
 			Interactive:   ag.Interactive,
 			ObservedAt:    f.Now,
 			LiveHandleOK:  live,
-			Revision:      revision,
-			HasRevision:   hasRevision,
 		})
 	}
 	for _, ag := range f.StaleListEntries {
@@ -522,8 +481,7 @@ func (f *Fake) InspectAgent(ctx context.Context, handle AgentHandle) (ObservedAg
 	if f.InspectErr != nil {
 		return ObservedAgent{}, f.InspectErr
 	}
-	key := handle.Session.Name + "/" + handle.Name
-	ag, ok := f.Agents[key]
+	ag, ok := f.Agents[handle.Session.Name+"/"+handle.Name]
 	if !ok {
 		return ObservedAgent{}, NewHerdrError(HerdrAgentNotFound, "agent target not found")
 	}
@@ -532,7 +490,6 @@ func (f *Fake) InspectAgent(ctx context.Context, handle AgentHandle) (ObservedAg
 	if ok {
 		live = true
 	}
-	revision, hasRevision := f.revisionOf(key)
 	return ObservedAgent{
 		Handle:        ag.Handle,
 		SessionRef:    ag.SessionRef,
@@ -542,8 +499,6 @@ func (f *Fake) InspectAgent(ctx context.Context, handle AgentHandle) (ObservedAg
 		Interactive:   ag.Interactive,
 		ObservedAt:    f.Now,
 		LiveHandleOK:  live,
-		Revision:      revision,
-		HasRevision:   hasRevision,
 	}, nil
 }
 

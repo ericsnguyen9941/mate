@@ -150,11 +150,7 @@ func TestWatchBoundsEachHerdrCallAndStillObservesTheOtherCrews(t *testing.T) {
 			case "inspect":
 				f.rt.hang(f.rt.inspect, "crew-k3", true)
 			case "read":
-				// A pane whose revision has not moved is not read at all
-				// (CON-264), so the read that hangs is of a pane that
-				// changed.
 				f.rt.hang(f.rt.read, "crew-k3", true)
-				f.setScreen(codexBusyScreen)
 			}
 			f.clock.advance(5 * time.Second)
 			asked := f.sessions.Load()
@@ -188,7 +184,6 @@ func TestWatchStandsANoticeWhenAHerdrCallTimesOut(t *testing.T) {
 	}
 
 	f.rt.hang(f.rt.read, "crew-k3", true)
-	f.setScreen(codexBusyScreen) // read only once the pane moved (CON-264)
 	f.clock.advance(5 * time.Second)
 	f.boundedPoll()
 	notice, at := f.w.RuntimeNotice()

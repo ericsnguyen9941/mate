@@ -75,10 +75,6 @@ type agentInfo struct {
 	TerminalID    string
 	WorkspaceID   string
 	Cwd           string
-	// Revision is the pane's output revision; HasRevision is false for a
-	// Herdr that does not report one (CON-264).
-	Revision    uint64
-	HasRevision bool
 	// SessionRef is the harness's own session identity as Herdr reports it
 	// (agent_session.value). Measured 2026-09-20 on Herdr 0.8.2: it is the
 	// rollout session uuid for a Codex agent and absent for a Claude one, so
@@ -255,9 +251,6 @@ type agentJSON struct {
 	TerminalID    string `json:"terminal_id"`
 	WorkspaceID   string `json:"workspace_id"`
 	Cwd           string `json:"cwd"`
-	// Revision is required in Herdr 0.9.5's AgentInfo (protocol 22) and
-	// absent from 0.8.x's; a pointer tells the two apart.
-	Revision *uint64 `json:"revision"`
 	// AgentSession is the harness session Herdr tracks for this agent. Its
 	// value is the transcript identity the timeline's locator needs, and
 	// kind/source say what sort of identity it is ("id", "herdr:codex").
@@ -275,13 +268,7 @@ func (a agentJSON) info() agentInfo {
 	if a.AgentSession != nil {
 		sessionRef = a.AgentSession.Value
 	}
-	var revision uint64
-	if a.Revision != nil {
-		revision = *a.Revision
-	}
 	return agentInfo{
-		Revision:      revision,
-		HasRevision:   a.Revision != nil,
 		SessionRef:    sessionRef,
 		Name:          a.Name,
 		Kind:          a.Kind,

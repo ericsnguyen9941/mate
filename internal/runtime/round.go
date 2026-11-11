@@ -17,7 +17,8 @@ import (
 // TestWatcherRoundAsksHerdrOnce). Through a RoundCache a round asks `session
 // list` once per session spec and `agent list` once per session, and every
 // InspectAgent of the round - the watcher's and the ingest's - is answered
-// from that list: 2 a round for the same crews.
+// from that list: 12 a round for the same crews, 10 of them the pane reads
+// every round still makes (internal/watch pollCrew says why).
 //
 // An answer, an error included, stands until BeginRound: a list that ran out
 // its bound is the answer for every crew of the round, which is what it was

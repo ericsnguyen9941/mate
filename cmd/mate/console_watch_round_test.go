@@ -91,36 +91,27 @@ func tally(calls []string) string {
 	return strings.Join(parts, " ")
 }
 
-// TestWatcherRoundAsksHerdrOnce: ten open crews whose panes do not change.
-// Before CON-264 a round was, per crew, a session lookup, an `agent get`
-// and an `agent read` for the watcher and a session lookup and an `agent
-// get` for the ingest, plus the session check: 51 `herdr` processes (the
-// fake with no revision is that observer). Through roundDeps it is one
+// TestWatcherRoundAsksHerdrOnce: ten open crews. Before CON-264 a round
+// was, per crew, a session lookup, an `agent get` and an `agent read` for
+// the watcher and a session lookup and an `agent get` for the ingest, plus
+// the session check: 51 `herdr` processes. Through roundDeps it is one
 // `session list` and one `agent list`, shared by the watcher and the
-// ingest, and no pane read; a pane that moves costs one read.
+// ingest, and still one `agent read` per crew (watch.go says why every
+// pane is read every round): 12.
 func TestWatcherRoundAsksHerdrOnce(t *testing.T) {
 	t.Parallel()
-	w, rt, deps, crews, handles := idleCrews(t, 10)
+	w, rt, deps, crews, _ := idleCrews(t, 10)
 
-	rt.NoRevision = true
 	before := roundCalls(t, w, rt, deps, crews, nil)
 	if got, want := tally(before), "InspectAgent=20 LookupSession=21 ReadAgent=10"; got != want {
-		t.Fatalf("calls of a round as before CON-264 = %s, want %s", got, want)
+		t.Fatalf("calls of a round asked directly = %s, want %s", got, want)
 	}
-	rt.NoRevision = false
 
 	after := roundCalls(t, w, rt, roundDeps(deps), crews, nil)
-	if got, want := tally(after), "ListAgents=1 LookupSession=1"; got != want {
+	if got, want := tally(after), "ListAgents=1 LookupSession=1 ReadAgent=10"; got != want {
 		t.Fatalf("calls of a round through roundDeps = %s, want %s", got, want)
 	}
-	t.Logf("herdr calls per round, 10 idle crews: %d before, %d through roundDeps", len(before), len(after))
-
-	moved := roundCalls(t, w, rt, roundDeps(deps), crews, func() {
-		rt.SetReadOutput(handles[4], codexBusyScreen)
-	})
-	if got, want := tally(moved), "ListAgents=1 LookupSession=1 ReadAgent=1"; got != want {
-		t.Fatalf("calls of a round in which one pane moved = %s, want %s", got, want)
-	}
+	t.Logf("herdr calls per round, 10 crews: %d asked directly, %d through roundDeps", len(before), len(after))
 }
 
 // TestRoundDepsTreatsAnAgentGoneFromTheListAsGone: a crew whose agent
