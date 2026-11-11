@@ -44,6 +44,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET "+coreapi.PathCore, s.socketOnly)
 	s.mux.HandleFunc("GET "+coreapi.PathSnapshot, s.socketOnly)
 	s.mux.HandleFunc("POST "+coreapi.PathAct, s.socketOnly)
+	s.mux.HandleFunc("POST "+coreapi.PathChanged, s.socketOnly)
 	s.mux.Handle("GET /office/fonts/licenses/", http.StripPrefix("/office/fonts/licenses/", etagFileServer(fontLicensesFS())))
 	s.mux.Handle("GET /", etagFileServer(uiFS()))
 }

@@ -59,6 +59,9 @@ func (w *Workspace) WithCrewSend(project, crew string, fn func(*CrewSendAttempt,
 			if os.IsNotExist(err) {
 				return nil
 			}
+			if err == nil {
+				NoteWrite(path)
+			}
 			return err
 		}
 		data, err := json.Marshal(next)

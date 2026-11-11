@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/platform"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // News is what a headless Mate has to tell the captain outside the
@@ -286,7 +287,18 @@ func findNews(list []News, id int) (News, bool) {
 
 // withNewsLog runs fn with the log read and held open for appending under
 // an exclusive lock, so two writers never pick the same id.
+//
+// Once the lock is released the workspace's core hears the log changed
+// (store.NoteWrite, CON-260), so its UIs show it at once.
 func withNewsLog(path string, fn func([]News, *os.File) error) error {
+	if err := withNewsLogLocked(path, fn); err != nil {
+		return err
+	}
+	store.NoteWrite(path)
+	return nil
+}
+
+func withNewsLogLocked(path string, fn func([]News, *os.File) error) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return err

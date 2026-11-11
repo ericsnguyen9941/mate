@@ -233,6 +233,9 @@ func (e *Engine) dashboardDeps() dashboard.Deps {
 	}
 	deps.Core = e.Status
 	deps.ClientSeen = e.clientSeen
+	// A writer's notice drops the snapshot and wakes the observer, read-only
+	// or not (CON-260).
+	deps.Changed = e.Changed
 	if e.o.Dashboard.ReadOnly {
 		deps.Snapshot, deps.FreshSnapshot, deps.Act, deps.Notice = nil, nil, nil, false
 		return deps

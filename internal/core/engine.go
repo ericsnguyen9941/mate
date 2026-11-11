@@ -187,8 +187,10 @@ type Engine struct {
 	dashboard *dashboardPart
 	notify    *notifyLoop
 	snaps     *snapshotCache
-	locks     actionLocks
-	acts      actionRuns
+	// changes is the change feed the writers' notices land in (CON-260).
+	changes *Changes
+	locks   actionLocks
+	acts    actionRuns
 	// holds is every restart held for the captain's second press, from
 	// whichever UI (restartMate).
 	holds restartHolds
@@ -253,7 +255,7 @@ var (
 // New builds an engine over its parts. It starts nothing until Start, and
 // from here on it owns the parts: Stop, or a failed Start, releases them.
 func New(o Options) *Engine {
-	e := &Engine{o: o, now: time.Now, stopWait: StopWait}
+	e := &Engine{o: o, now: time.Now, stopWait: StopWait, changes: &Changes{}}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	e.snaps = &snapshotCache{compute: e.assemble, ctx: e.ctx, maxAge: snapshotMaxAge, limit: snapshotLimit, now: time.Now}
 	if o.Recover != nil {
