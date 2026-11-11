@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -76,13 +77,9 @@ func CodexRolloutCandidatesSince(sessionsDir string, since time.Time) ([]CodexRo
 		if !strings.HasPrefix(d.Name(), "rollout-") || !strings.HasSuffix(d.Name(), ".jsonl") {
 			return nil
 		}
-		head, err := readFileHead(path, codexRolloutHeadBytes)
-		if err != nil {
-			return nil //nolint:nilerr
-		}
-		meta, err := ParseCodexSessionMeta(head)
-		if err != nil {
-			return nil //nolint:nilerr
+		meta, ok := rolloutMetas.read(path, d)
+		if !ok {
+			return nil
 		}
 		out = append(out, CodexRolloutCandidate{Path: path, Meta: meta})
 		return nil
@@ -124,12 +121,64 @@ func dayDirBefore(root, dir string, floor time.Time) bool {
 	return false
 }
 
+// rolloutMetas is every rollout's session_meta this process has parsed.
+// The ingest adopts a rollout for each Codex crew it has not located yet,
+// on every poll, and each adoption walks every rollout since the crew's
+// launch: reading each one's head again cost 1.2 GB of allocation per
+// five-second pass on a workspace with about twenty such crews (CON-255).
+var rolloutMetas = &rolloutMetaCache{byPath: map[string]rolloutMeta{}}
+
+// rolloutMetaCache keeps a rollout's parsed session_meta by path. A rollout
+// is only ever appended to, so its first record does not change once it is
+// whole; a file smaller than when it was parsed is not the same file and is
+// read again. A head that does not parse yet is not kept: Codex may still
+// be writing it.
+type rolloutMetaCache struct {
+	mu     sync.Mutex
+	byPath map[string]rolloutMeta
+}
+
+type rolloutMeta struct {
+	size int64
+	meta CodexSessionMeta
+}
+
+func (c *rolloutMetaCache) read(path string, d os.DirEntry) (CodexSessionMeta, bool) {
+	info, err := d.Info()
+	if err != nil {
+		return CodexSessionMeta{}, false
+	}
+	c.mu.Lock()
+	held, ok := c.byPath[path]
+	c.mu.Unlock()
+	if ok && info.Size() >= held.size {
+		return held.meta, true
+	}
+	head, err := readFileHead(path, codexRolloutHeadBytes)
+	if err != nil {
+		return CodexSessionMeta{}, false
+	}
+	meta, err := ParseCodexSessionMeta(head)
+	if err != nil {
+		return CodexSessionMeta{}, false
+	}
+	c.mu.Lock()
+	c.byPath[path] = rolloutMeta{size: info.Size(), meta: meta}
+	c.mu.Unlock()
+	return meta, true
+}
+
+// readFileHead reads at most n bytes from the start of path, and no more
+// than the file holds: most rollouts are far smaller than the bound.
 func readFileHead(path string, n int) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	if info, err := f.Stat(); err == nil && info.Size() < int64(n) {
+		n = int(info.Size())
+	}
 	buf := make([]byte, n)
 	read, err := io.ReadFull(f, buf)
 	if read == 0 && err != nil {

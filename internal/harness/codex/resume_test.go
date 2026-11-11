@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -74,5 +75,65 @@ func TestCodexRolloutCandidatesSinceSkipsOlderDays(t *testing.T) {
 	adopted := AdoptCodexRollout(got, "/w/mate", launch, "")
 	if adopted.Status != CodexAdoptionKnown || adopted.Candidate.Path != today {
 		t.Fatalf("adoption = %+v, want today's rollout", adopted)
+	}
+}
+
+// Each rollout's head is read once per process (CON-255): the ingest asks
+// for candidates on every poll, and a rollout's first record does not change
+// once it is whole. A file that shrank is not that file any more and is read
+// again; a head Codex has not finished writing is not kept.
+func TestCodexRolloutCandidatesSinceReadsEachWholeHeadOnce(t *testing.T) {
+	t.Parallel()
+	sessions := t.TempDir()
+	launch := time.Date(2026, 11, 11, 9, 0, 0, 0, time.Local)
+	const id = "01a0bbbb-0000-7000-8000-000000000001"
+	path := writeRollout(t, sessions, launch, id, "/w/mate", launch)
+	whole, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := func() []string {
+		t.Helper()
+		got, err := CodexRolloutCandidatesSince(sessions, launch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, c := range got {
+			out = append(out, c.Meta.SessionID)
+		}
+		return out
+	}
+
+	if got := ids(); len(got) != 1 || got[0] != id {
+		t.Fatalf("first walk = %v, want [%s]", got, id)
+	}
+	// Same size, head no longer parses: the meta read the first time stands.
+	garbage := []byte(strings.Repeat("x", len(whole)-1) + "\n")
+	if err := os.WriteFile(path, garbage, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 1 || got[0] != id {
+		t.Fatalf("second walk = %v, want the kept meta of %s", got, id)
+	}
+	// Smaller than it was: another file, read again, and it does not parse.
+	if err := os.WriteFile(path, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("walk after the file shrank = %v, want none", got)
+	}
+	// A head still being written is not kept: once whole, it is a candidate.
+	if err := os.WriteFile(path, whole[:len(whole)/2], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("walk over a half-written head = %v, want none", got)
+	}
+	if err := os.WriteFile(path, whole, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 1 || got[0] != id {
+		t.Fatalf("walk once the head is whole = %v, want [%s]", got, id)
 	}
 }
