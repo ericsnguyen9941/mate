@@ -98,6 +98,11 @@ recovered all 363 response aliases, 162 commands including 10 failures, 153 poll
 with measured new-output bytes, and 42 file changes. These are local measurements,
 not a universal overhead bound. The turn-event index in schema 3 prevents the
 causality projection from scanning all native evidence once per model call.
+Indexes that change no row or column are not schema versions: the writer
+creates them with `CREATE INDEX IF NOT EXISTS` on every open (`indexes` in
+`internal/db/schema.go`), so a reader built before one still opens the file.
+`event_actor_kind_at` (CON-254) is one: a crew's newest commit, asked on every
+poll, without it cost a walk over every commit of the workspace.
 
 ## 2. Locator rules
 
