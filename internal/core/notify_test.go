@@ -10,9 +10,21 @@ import (
 
 	"github.com/nguyenngocanh94/mate/internal/matehost"
 	"github.com/nguyenngocanh94/mate/internal/notifications"
+	"github.com/nguyenngocanh94/mate/internal/query"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // The notification loop moved here from cmd/mate with its tests (CON-208).
+
+// loadNotifications is what the loop sends from, over a snapshot of the
+// workspace's files.
+func loadNotifications(ws *store.Workspace, dashboardURL string, now time.Time) (notifications.Snapshot, error) {
+	snap, err := query.Load(context.Background(), ws, testHarnesses, nil)
+	if err != nil {
+		return notifications.Snapshot{}, err
+	}
+	return notificationSnapshot(context.Background(), ws, snap, dashboardURL, now), nil
+}
 
 func TestNotificationSnapshotUsesOwedNewsAcrossProjects(t *testing.T) {
 	ws := shopWorkspace(t)
@@ -25,7 +37,7 @@ func TestNotificationSnapshotUsesOwedNewsAcrossProjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snap, err := notificationSnapshot(context.Background(), ws, testHarnesses, "http://127.0.0.1:9999/", at)
+	snap, err := loadNotifications(ws, "http://127.0.0.1:9999/", at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +47,7 @@ func TestNotificationSnapshotUsesOwedNewsAcrossProjects(t *testing.T) {
 	if snap.URL != "http://127.0.0.1:9999/office/#captain" {
 		t.Fatalf("wrong captain link: %s", snap.URL)
 	}
-	snap, err = notificationSnapshot(context.Background(), ws, testHarnesses, "http://127.0.0.1:9999/ http://192.168.1.5:9999/", at)
+	snap, err = loadNotifications(ws, "http://127.0.0.1:9999/ http://192.168.1.5:9999/", at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +60,7 @@ func TestNotificationSnapshotUsesOwedNewsAcrossProjects(t *testing.T) {
 	if err := matehost.CloseNews(path, id, "resolved", false, at.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	snap, err = notificationSnapshot(context.Background(), ws, testHarnesses, "", at.Add(time.Minute))
+	snap, err = loadNotifications(ws, "", at.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +76,7 @@ func TestNotificationSnapshotNewsReadFailureIsNotNoNews(t *testing.T) {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	snap, err := notificationSnapshot(context.Background(), ws, testHarnesses, "", time.Now())
+	snap, err := loadNotifications(ws, "", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +97,7 @@ func TestNotificationSnapshotWorkMoves(t *testing.T) {
 	}
 	moves := func(d time.Duration) []notifications.Work {
 		t.Helper()
-		snap, err := notificationSnapshot(context.Background(), ws, testHarnesses, "http://127.0.0.1:9999/", at.Add(d))
+		snap, err := loadNotifications(ws, "http://127.0.0.1:9999/", at.Add(d))
 		if err != nil {
 			t.Fatal(err)
 		}
