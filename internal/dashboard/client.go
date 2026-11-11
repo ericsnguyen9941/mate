@@ -26,6 +26,7 @@ func (s *Server) clientRoutes() http.Handler {
 	mux.HandleFunc("GET "+coreapi.PathCore, s.handleCore)
 	mux.HandleFunc("GET "+coreapi.PathSnapshot, s.handleSnapshot)
 	mux.HandleFunc("POST "+coreapi.PathAct, s.handleClientAct)
+	mux.HandleFunc("POST "+coreapi.PathChanged, s.handleChanged)
 	mux.Handle("/", s.mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if client := r.Header.Get(coreapi.ClientHeader); client != "" && s.deps.ClientSeen != nil {
@@ -103,6 +104,26 @@ func (s *Server) handleClientAct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeClientJSON(w, http.StatusOK, coreapi.ActResult{Message: line})
+}
+
+// maxChangeBody bounds a notice's body: three short words.
+const maxChangeBody = 4 << 10
+
+// handleChanged is POST coreapi.PathChanged: a writer's notice that it
+// changed a record (CON-260), handed to Deps.Changed. The writer has
+// usually closed its end before the 204 goes out (coreclient.Notify waits
+// for no answer); a body that cannot be read is dropped, as a notice that
+// never came would be.
+func (s *Server) handleChanged(w http.ResponseWriter, r *http.Request) {
+	var c coreapi.Change
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChangeBody)).Decode(&c); err != nil {
+		writeClientError(w, http.StatusBadRequest, coreapi.ErrorBody{Error: "the notice could not be read: " + err.Error()})
+		return
+	}
+	if s.deps.Changed != nil {
+		s.deps.Changed(c)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // clientActError is how POST coreapi.PathAct answers an action's error.

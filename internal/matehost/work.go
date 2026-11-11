@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/platform"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // Work is the board of what the captain asked the Mate for, and what the
@@ -207,7 +208,18 @@ func findWork(list []Work, id int) (Work, bool) {
 
 // withWorkLog runs fn with the log read and held open for appending under
 // an exclusive lock, so two writers never pick the same id.
+//
+// Once the lock is released the workspace's core hears the log changed
+// (store.NoteWrite, CON-260), so its UIs show it at once.
 func withWorkLog(path string, fn func([]Work, *os.File) error) error {
+	if err := withWorkLogLocked(path, fn); err != nil {
+		return err
+	}
+	store.NoteWrite(path)
+	return nil
+}
+
+func withWorkLogLocked(path string, fn func([]Work, *os.File) error) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return err

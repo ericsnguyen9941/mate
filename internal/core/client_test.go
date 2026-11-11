@@ -109,6 +109,7 @@ func TestClientRoutesAreTheSocketsAlone(t *testing.T) {
 		{http.MethodGet, coreapi.PathCore},
 		{http.MethodGet, coreapi.PathSnapshot},
 		{http.MethodPost, coreapi.PathAct},
+		{http.MethodPost, coreapi.PathChanged},
 	} {
 		if got := tcpDo(t, r.method, base+r.path); got != http.StatusNotFound {
 			t.Errorf("%s %s over TCP = %d, want 404", r.method, r.path, got)

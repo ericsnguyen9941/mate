@@ -30,6 +30,10 @@ import (
 const (
 	// DefaultPollInterval is the pause between rounds.
 	DefaultPollInterval = 5 * time.Second
+	// WakeGap is the least time between the starts of two rounds when a
+	// Wake cut the pause short (CON-260): a burst of writes costs one early
+	// round a second at most, not one round each.
+	WakeGap = time.Second
 	// DefaultStaleAfter is how long the pane and the status file must both
 	// be unchanged before `stale` opens.
 	DefaultStaleAfter = 3 * time.Minute
@@ -255,6 +259,10 @@ type Watcher struct {
 
 	// observing counts the observer calls in flight (observe.go).
 	observing sync.WaitGroup
+
+	// wake cuts the pause between two rounds short (Wake); it holds one
+	// wake at most.
+	wake chan struct{}
 }
 
 // observation is what the previous polls established about one crew.
@@ -299,6 +307,20 @@ func New(ws Workspace, deps Deps) *Watcher {
 		deps:   deps,
 		crews:  make(map[CrewRef]*observation),
 		health: make(map[CrewRef]Health),
+		wake:   make(chan struct{}, 1),
+	}
+}
+
+// Wake starts the next round now rather than at the end of the pause,
+// though no sooner than WakeGap after the last one started: a mate process
+// wrote a record (the core's change feed, CON-260). It never blocks, and a
+// wake that comes during a round starts the next one once that round ends.
+// The rounds the pause times still come; a Watcher with Deps.Sleeper (a
+// test's clock) is not woken.
+func (w *Watcher) Wake() {
+	select {
+	case w.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -342,14 +364,47 @@ func (w *Watcher) run(ctx context.Context, done chan struct{}) {
 		// A failed round is not fatal: Herdr may be restarting, a project
 		// directory may be half-written. The next round asks again, and
 		// what the observer could not read it does not conclude from.
+		started := time.Now()
 		_ = w.Poll(ctx)
-		if err := w.deps.sleep(ctx, w.deps.pollInterval()); err != nil {
+		if err := w.pause(ctx, started); err != nil {
 			return
 		}
 		if ctx.Err() != nil {
 			return
 		}
 	}
+}
+
+// pause waits out the poll interval, or, once Wake is called, until
+// WakeGap after the round that started at started. The interval's own
+// rounds come as before: a wake only brings one forward.
+func (w *Watcher) pause(ctx context.Context, started time.Time) error {
+	if w.deps.Sleeper != nil {
+		return w.deps.sleep(ctx, w.deps.pollInterval())
+	}
+	timer := time.NewTimer(w.deps.pollInterval())
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	case <-w.wake:
+	}
+	gap := min(time.Until(started.Add(WakeGap)), w.deps.pollInterval())
+	if gap > 0 {
+		if err := w.deps.sleep(ctx, gap); err != nil {
+			return err
+		}
+	}
+	// What woke it during the gap was written before the round about to
+	// start, which reads it: one more wake would be one more round for
+	// nothing. A wake during that round is kept.
+	select {
+	case <-w.wake:
+	default:
+	}
+	return nil
 }
 
 // Poll runs one round over every open crew of every project: it appends

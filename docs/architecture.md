@@ -152,8 +152,9 @@ engine per workspace, wherever it runs; a second one gets
 a socket left by a dead core is removed, a path too long or a filesystem
 with no unix sockets stops it). It then starts, in order: the re-read
 of `workspace.yaml` every 2 s (`internal/core/reload.go`); the observer
-(`internal/watch`, a poll every 5 s) which records the timeline at the end of
-each poll (`internal/timeline`); the outbox sender (`internal/outbox`, every
+(`internal/watch`, a poll every 5 s, brought forward by a writer's notice,
+CON-260) which records the timeline at the end of each poll
+(`internal/timeline`); the outbox sender (`internal/outbox`, every
 2 s); the auto daemon (`internal/autopilot`, every 90 s); recovery
 (`internal/recovery`); the watch over the headless Mates' hosts
 (`internal/core/hostwatch.go`, every 5 s, CON-226); the Office/City server (`internal/core/dashboard.go`);
@@ -184,7 +185,8 @@ decided 2026-11-05).
 every UI reads: `query.LoadLive` plus what the loops know, kept for up to
 2 s, computed only when someone reads. `Engine.FreshSnapshot` skips the
 cache (the button check of `POST /api/actions`); `Engine.Invalidate` drops
-it after an action. The console TUI (`internal/ui/console`) reads it every
+it after an action, and `Engine.Changed` on a writer's notice (CON-260,
+the change feed in the list below). The console TUI (`internal/ui/console`) reads it every
 2 s through `coreapi.LoadFunc` (`consoleLoad` adds the console's own keys)
 and acts through `coreapi.ActionFunc`: `Engine.Act` (`internal/core/act.go`).
 
@@ -296,7 +298,53 @@ How processes exchange state:
   (`errors.Is` finds `ErrBusy`, `ErrNoMateREPL`, `ErrStopping`). The
   socket is 0600 and `/api/act` takes the client's own text (a resolve's
   `Input`), which `POST /api/actions` never takes from a page; that is why
-  it is not on TCP.
+  it is not on TCP. `POST /api/changed` is the change feed's (below).
+- **The change feed (CON-260).** Every mate process but the core tells the
+  workspace's core which record it just wrote under `.mate/`. Every write
+  of `internal/store` (`writeFile`, `appendLine`, `WriteMeta`, a mode flag
+  or a send attempt removed) ends in `store.NoteWrite(path)`, as do
+  `internal/matehost`'s news and work logs; `store.ChangeOf` reads the
+  Project, the Crew and a kind (`store.ChangeKind`: `workspace`,
+  `project`, `sent`, `incident`, `mate`, `outbox`, `news`, `work`, `meta`,
+  `status`, `crew`) from the path, and skips locks, temp files and the
+  logs only the captain reads. The store imports nothing above it, so the
+  sending is injected: `main` sets `store.SetChangeNotifier(notifyCore)`,
+  which is `coreclient.Notify`: one `POST /api/changed` (a
+  `coreapi.Change`) on `.mate/core.sock`, its answer not read, the dial
+  and the write within `coreclient.NotifyWait` (100 ms). A socket that ran
+  it out gets no notice from that process for 10 s; no core is a failed
+  dial at once. The core's own process sets none (`runCoreForeground`):
+  its writes are its own loops', and `Act` already drops the snapshot. In
+  the core, `Engine.Changed` puts the notice in the feed (`core.Changes`:
+  each subscriber has a dirty set keyed by Project and Crew with the kinds
+  under each, a channel that wakes it, and `Take`), drops the shared
+  snapshot and wakes the observer (`watch.Watcher.Wake`: its next round
+  starts at once, no sooner than `watch.WakeGap`, 1 s, after the last one
+  started). A notice is a hint, never the record, and no poll is longer
+  for it: what bypasses the feed is still found by the polls alone.
+  Polling less is CON-262; watching what bypasses the feed, CON-261.
+
+  Who writes `.mate/`, and whether the feed hears it (2026-11-11):
+
+  | Writer | Files | Feed |
+  | -- | -- | -- |
+  | CLI commands through `store`: `mate send`, `mate crew …`, `mate project …`, `mate merge`, `mate remember`, `mate backlog`, `mate wake`, `mate review`, `mate checkpoint`, `mate crew budget`... | `workspace.yaml`, `project.yaml`, `sent.log`, `incidents.log`, a crew's `.meta`, `.status` and records, `mate.meta`, `.manual`/`.auto`, `.outbox`, the cursors, memory, backlog, review and refresh records | yes |
+  | `mate news`, `mate work`, `mate land` (through `matehost`) | `news.jsonl`, `work.jsonl` | yes |
+  | `mate hook` (the harness's session hooks) | `sent.log`, `mate.meta` (session id) | yes |
+  | The headless host (`mate mate-agent host`) | `news.jsonl` (answers), what it writes through `store` | yes |
+  | `mate pr watch` (the detached watcher) | a crew's `.meta`, `.status`, the outbox | yes; its pid file `<c>.prwatch` and `prwatch.log`, no |
+  | `mate console` | through `store`; its tick on `work.jsonl` through `matehost` | yes; most of its actions run in the core |
+  | `mate crew spawn` | the brief and launch files (`spawn.writeInside`), the empty `.status` | no, but the same spawn writes the crew's `.meta` through `store`, which is heard |
+  | `learnings`, `usage/why`, `mate land`'s learning | `learnings/<c>.md` | no |
+  | `matehost` | `host.jsonl` (the chat, read over `host.sock`), `host.launch.json`, `news.focus`, `work.focus` | no |
+  | `spawn`, `plugin`, `mateassets`, `screen/chain`, `recovery` | `tui`, `host.log`, `plugins.yaml`, the Mate's assets, `screens/`, links | no |
+  | Every process | the locks, `core.log`, `gc.log`, `jev.log`, `migrate.log` | no: no loop reads them for a change |
+  | The core itself: observer, timeline, outbox sender, auto daemon, recovery, host watch, notifications, `Act` | `incidents.log`, `mate.db`, `sent.log`, `.outbox`, the cursors, `notifications.json`... | not told: they are its own, and `Act` calls `Invalidate` |
+  | **Bypass**: a Crew's `echo "…" >> $MATE_STATUS` | a crew's `.status` | no |
+  | **Bypass**: a Crew writing its own files with its harness's tools | `report.md`, `handback.md` in its crew directory | no |
+  | **Bypass**: the Mate editing `PROJECT.md`; the captain's `.env`, `WORKSPACE.md`, `CREW.md`, `console.yaml`, `crew-dispatch.json` | | no |
+  | **Bypass**: the harnesses' transcripts (Claude, Codex, pi), outside `.mate/` | what the timeline ingest reads | no |
+  | **Bypass**: Herdr's panes, the repositories and pull requests, outside `.mate/` | | no: the observer and the PR watcher ask them |
 
 Names (2026-11-05, CON-216): **mate core** is the process that runs the
 engine; **headless** is only how a Mate runs, one `claude -p` per message
@@ -308,7 +356,8 @@ CON-213). UIs on this
 machine reach it over `.mate/core.sock` through `internal/coreclient`
 (built in CON-212); the console is such a client since CON-214, and closing
 it leaves the engine, Office/City and notifications running. CLI commands
-keep writing files directly.
+keep writing files directly, and tell the core what they wrote (the change
+feed, CON-260).
 
 ## 3. State files in `.mate/`
 
@@ -336,7 +385,7 @@ interfaces on the side of each reader, is planned in
 | `tui.lock` | `store` | `mate mate-agent tui` (flock; JSON `project`, `pid`, `started`, `harness_pid`), CON-227 | the engine (snapshot, `Act`, `close_tui`), every headless host (`Options.Paused`, its own project only), a second `mate mate-agent tui`, which is refused |
 | `console.lock` | `store` | the console (flock; `core_lock: true` since CON-211) | a second console, which asks to replace it; `mate core run`, which refuses beside a console that has no `core_lock` |
 | `core.lock` | `store` | the engine, in `mate core` or a console (flock; JSON `pid`, `owner`, `started`, `version`, `binary`, `build`, `socket`, `url`, `lan_url`, `tcp_error`) | a second engine, which is refused; `mate reindex`, to name who holds `mate.db` |
-| `core.sock` | `store` path, `core` serves | `mate core run` (unix socket, 0600) | `internal/coreclient` (`/api/core`, `/api/snapshot`, `/api/act`, CON-212); the Office/City routes over HTTP |
+| `core.sock` | `store` path, `core` serves | `mate core run` (unix socket, 0600) | `internal/coreclient` (`/api/core`, `/api/snapshot`, `/api/act`, CON-212; `/api/changed` from every other mate process, CON-260); the Office/City routes over HTTP |
 | `core.log`, `core.log.1` | `store` path | every core's output: `mate core start` points the core's output there, a foreground core (`mate`, `mate core run`) appends what it prints; either moves a log over 10 MB to `core.log.1` before opening it | the captain |
 | `mate.db`, `mate.db.lock` | `db` | the timeline ingest in the engine; `mate reindex` | the engine's snapshot (tokens), dashboard, `mate events`, `mate usage`, `mate state`, `mate recall`, refresh; every query outside `db` and `timeline` is in `timeline/read` |
 | `notifications.json` | `notifications` | the engine's notification loop (`internal/core/notify.go`) | the same loop (flock on `notifications.json.lock`) |

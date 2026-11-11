@@ -43,7 +43,8 @@
 //     lock.go.
 //   - Migrating layout 1 to 2: migrate.go (the Migration view, which only
 //     `mate migrate` uses).
-//   - The boundary and the file writers: boundary.go, fsio.go.
+//   - The boundary and the file writers: boundary.go, fsio.go; what each
+//     write tells the core (the change feed, CON-260): change.go.
 //
 // workspace.go holds the handle and how it is opened (Init, Open,
 // OpenForMigrate), and no method.

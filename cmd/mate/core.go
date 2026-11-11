@@ -109,6 +109,10 @@ func coreHere(ws *store.Workspace, ctl coreControl, stdout io.Writer, run func()
 // terminal (decided 2026-11-06), so a core's log is in one place however
 // it was started.
 func runCoreForeground(ws *store.Workspace, stdout, stderr io.Writer) error {
+	// The core hears every other process's writes on its socket (CON-260);
+	// its own it already knows, and a notice to itself would only wake its
+	// observer on the incidents the observer wrote.
+	store.SetChangeNotifier(nil)
 	stdout, stderr, closeLog, err := coreLogTee(ws, stdout, stderr, os.Stdout)
 	if err != nil {
 		return err

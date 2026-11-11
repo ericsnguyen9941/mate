@@ -81,6 +81,9 @@ type Deps struct {
 	// socket that names one, as the request arrives: how the engine knows a
 	// console is open. Nil is told nothing.
 	ClientSeen func(client string)
+	// Changed is told every writer's notice, POST coreapi.PathChanged on
+	// the socket (CON-260): the engine's Changed. Nil drops them.
+	Changed func(coreapi.Change)
 }
 
 func (d Deps) now() time.Time {

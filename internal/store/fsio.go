@@ -53,12 +53,22 @@ func (w *Workspace) writeFile(path string, data []byte, perm os.FileMode) error 
 		os.Remove(name)
 		return err
 	}
+	NoteWrite(path)
 	return nil
 }
 
 // appendLine writes line plus a newline to path in one O_APPEND write, holding
-// an exclusive lock for the write.
+// an exclusive lock for the write. The core hears of it once the lock is
+// released (NoteWrite, CON-260).
 func (w *Workspace) appendLine(path, line string) error {
+	if err := w.appendLocked(path, line); err != nil {
+		return err
+	}
+	NoteWrite(path)
+	return nil
+}
+
+func (w *Workspace) appendLocked(path, line string) error {
 	if _, err := w.resolve(path); err != nil {
 		return err
 	}

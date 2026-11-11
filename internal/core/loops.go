@@ -23,6 +23,9 @@ func PilotLoop(p *autopilot.Pilot) Pilot { return pilotLoop{p} }
 
 type watchLoop struct{ *watch.Watcher }
 
+// The change feed wakes the observer (Engine.Changed, CON-260).
+var _ Waker = watchLoop{}
+
 func (l watchLoop) Start(ctx context.Context) error {
 	l.Watcher.Start(ctx)
 	return nil
