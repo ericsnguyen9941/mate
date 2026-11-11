@@ -135,6 +135,12 @@ type Ingester struct {
 	deps        Deps
 	transcripts map[string]transcriptCache
 	settledGit  *gitFacts
+	// sealed is, by project, the crews a committed poll found the ingest
+	// has finished with, keyed by actor id; unlocated is the closed crews
+	// whose transcript no locate found. Both are seal.go's, and only the
+	// poll goroutine touches them.
+	sealed    map[string]map[string]sealKey
+	unlocated map[string]unlocatedCrew
 
 	// mu guards stale, which readers outside the poll goroutine ask for.
 	mu    sync.Mutex
@@ -256,6 +262,9 @@ func (i *Ingester) Reindex(ctx context.Context) error {
 	if !i.d.Writable() {
 		return errors.New("timeline: this database handle is read-only")
 	}
+	// A rebuild reads every crew, and what a poll had sealed was sealed
+	// against tables this empties.
+	i.sealed, i.unlocated = nil, nil
 	tx, err := i.d.SQL().BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -295,7 +304,7 @@ func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sq
 	now := i.deps.now()
 	w := newWriter(tx, now)
 	b := newBatch()
-	p := &pass{ing: i, project: project, now: now, b: b, w: w, tx: tx, external: external}
+	p := &pass{ing: i, project: project, now: now, b: b, w: w, tx: tx, external: external, poll: shared == nil}
 
 	if err = p.ingestMeta(ctx); err != nil {
 		return err
@@ -318,6 +327,9 @@ func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sq
 	if err = p.ingestGit(ctx); err != nil {
 		return err
 	}
+	// The last call outside the process is behind us: past the deadline
+	// now, one of them may have said nothing (decideSeals).
+	p.externalLate = !external.IsZero() && time.Now().After(external)
 	if err = p.ingestHealth(ctx); err != nil {
 		return err
 	}
@@ -342,7 +354,14 @@ func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sq
 		// The caller owns the transaction and commits every project at once.
 		return nil
 	}
-	return tx.Commit()
+	if err = p.decideSeals(ctx); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	i.recordSeals(p)
+	return nil
 }
 
 // pass is the mutable state of one project's ingest.
@@ -357,6 +376,21 @@ type pass struct {
 	// external is the deadline of the pass's calls outside the process (git,
 	// Herdr); zero is none. See DefaultProjectTimeout.
 	external time.Time
+	// poll is a pass of Ingest, which commits on its own and may skip the
+	// sealed crews; a rebuild's pass is not one (seal.go). externalLate is
+	// whether the deadline had passed once the git phase ended.
+	poll         bool
+	externalLate bool
+
+	// sealed is the crews this pass skipped because they are sealed, by
+	// crew id, with the key they were sealed under.
+	sealed map[string]sealKey
+	// located and unlocated are the crews whose transcript this pass found
+	// (its path) or could not find (the reason), by actor id; seals are
+	// the crews decideSeals sealed, kept once the pass commits.
+	located   map[string]string
+	unlocated map[string]string
+	seals     map[string]sealKey
 
 	// crews is every crew of the project, from `crews/<id>.meta`.
 	crews []crewRecord

@@ -45,6 +45,8 @@ type crewRecord struct {
 	ActorID string
 	Meta    map[string]string
 	Path    string
+	// key is the stat of the crew's files as the pass read them (seal.go).
+	key sealKey
 }
 
 // mateRecord is `mate/mate.meta`.
@@ -166,12 +168,10 @@ func (p *pass) ingestMeta(ctx context.Context) error {
 		}
 	}
 
-	crews, err := listCrewMetas(ws, project)
-	if err != nil {
+	if err := p.listCrews(); err != nil {
 		return err
 	}
-	p.crews = crews
-	for _, crew := range crews {
+	for _, crew := range p.crews {
 		spawnedAt := metaTime(crew.Meta, MetaStartedAt)
 		closedAt := metaTime(crew.Meta, MetaStoppedAt)
 		state := crew.state()

@@ -153,7 +153,9 @@ a socket left by a dead core is removed, a path too long or a filesystem
 with no unix sockets stops it). It then starts, in order: the re-read
 of `workspace.yaml` every 2 s (`internal/core/reload.go`); the observer
 (`internal/watch`, a poll every 5 s) which records the timeline at the end of
-each poll (`internal/timeline`); the outbox sender (`internal/outbox`, every
+each poll (`internal/timeline`; a poll skips every crew the ingest has sealed,
+closed over an hour with every conclusion recorded, until its `.meta` or
+`.status` moves: CON-259, `internal/timeline/seal.go`); the outbox sender (`internal/outbox`, every
 2 s); the auto daemon (`internal/autopilot`, every 90 s); recovery
 (`internal/recovery`); the watch over the headless Mates' hosts
 (`internal/core/hostwatch.go`, every 5 s, CON-226); the Office/City server (`internal/core/dashboard.go`);
