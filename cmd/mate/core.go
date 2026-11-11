@@ -114,6 +114,14 @@ func runCoreForeground(ws *store.Workspace, stdout, stderr io.Writer) error {
 		return err
 	}
 	defer closeLog()
+	if addr := os.Getenv(pprofEnv); addr != "" {
+		if bound, stop, err := startPprof(addr); err != nil {
+			fmt.Fprintf(stderr, "mate core: %v; no profiles are served\n", err)
+		} else {
+			defer stop()
+			fmt.Fprintf(stderr, "mate core: profiles on http://%s/debug/pprof/\n", bound)
+		}
+	}
 
 	// The live dependencies the console builds (runConsole): the `herdr`
 	// findTool resolves, and the observer `.mate/.env` asks for.
