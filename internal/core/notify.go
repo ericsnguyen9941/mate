@@ -30,13 +30,16 @@ func NativeNotifier() notifications.Sender {
 // (internal/notifications), for as long as the engine runs, including while
 // the console's terminal is backgrounded.
 //
-// It is independent of the snapshot and of the Mate's turn: it opens its
-// own handle on the workspace, reads files only (query.Load, never Herdr),
-// and never waits on the Mate to deliver a notification.
+// It reads the engine's shared snapshot rather than loading the workspace
+// itself: a second query.Load every five seconds cost as much again as the
+// snapshot, which the console, Office and City already keep fresh
+// (CON-256). The snapshot's Herdr questions are bounded (livenessBound), so
+// a Herdr that hangs delays no notification past them. It never waits on
+// the Mate to deliver a notification.
 type notifyLoop struct {
-	root      string
-	harnesses query.Harnesses
-	sender    notifications.Sender
+	root     string
+	snapshot func(context.Context) (query.Snapshot, error)
+	sender   notifications.Sender
 	// url is the dashboard's, read as the loop starts: a click opens the
 	// captain's desk there.
 	url func() string
@@ -110,9 +113,9 @@ func (n *notifyLoop) start(ctx context.Context) error {
 				return
 			case <-timer.C:
 			}
-			snap, err := notificationSnapshot(ctx, ws, n.harnesses, dashboardURL, time.Now())
+			snap, err := n.snapshot(ctx)
 			if err == nil {
-				err = notifications.Tick(ctx, path, snap, n.sender, time.Now())
+				err = notifications.Tick(ctx, path, notificationSnapshot(ctx, ws, snap, dashboardURL, time.Now()), n.sender, time.Now())
 			}
 			n.setStatus(err)
 			delay := 5 * time.Second
@@ -150,11 +153,7 @@ func (n *notifyLoop) read() (string, error) {
 	return n.status, n.err
 }
 
-func notificationSnapshot(ctx context.Context, ws *store.Workspace, harnesses query.Harnesses, dashboardURL string, now time.Time) (notifications.Snapshot, error) {
-	snap, err := query.Load(ctx, ws, harnesses, nil)
-	if err != nil {
-		return notifications.Snapshot{}, err
-	}
+func notificationSnapshot(ctx context.Context, ws *store.Workspace, snap query.Snapshot, dashboardURL string, now time.Time) notifications.Snapshot {
 	out := notifications.Snapshot{Complete: true}
 	// The dashboard's URL can be the loopback one followed by the LAN one
 	// (dashboardPart); the click opens on this machine, so loopback.
@@ -175,7 +174,7 @@ func notificationSnapshot(ctx context.Context, ws *store.Workspace, harnesses qu
 		np.Summary = notificationSummary(ctx, ws, p, now)
 		out.Projects = append(out.Projects, np)
 	}
-	return out, nil
+	return out
 }
 
 // workMoves is each open work row's latest move the captain hears about

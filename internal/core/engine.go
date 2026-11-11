@@ -269,7 +269,7 @@ func New(o Options) *Engine {
 			e.dashboard = &dashboardPart{ws: o.Workspace, o: *o.Dashboard, deps: e.dashboardDeps}
 		}
 		if o.Notifier != nil {
-			e.notify = &notifyLoop{root: o.Workspace.Root(), harnesses: o.Harnesses, sender: o.Notifier, url: e.dashboardURL}
+			e.notify = &notifyLoop{root: o.Workspace.Root(), snapshot: e.Snapshot, sender: o.Notifier, url: e.dashboardURL}
 		}
 	}
 	return e
