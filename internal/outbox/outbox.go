@@ -651,6 +651,13 @@ func (s *Sender) Drain(ctx context.Context) error {
 		}
 		head, ok := oldestQueued(items)
 		if !ok {
+			if now := s.deps.now(); store.OutboxCompactable(items, now) {
+				if err := s.ws.UpdateOutbox(ref.Name, now, func(items []store.OutboxItem) ([]store.OutboxItem, bool, error) {
+					return items, true, nil
+				}); err != nil {
+					errs = append(errs, fmt.Errorf("outbox: %s: %w", ref.Name, err))
+				}
+			}
 			continue
 		}
 		// With no console open a Manual project's Mate is left alone: its

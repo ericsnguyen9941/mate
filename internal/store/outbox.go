@@ -228,6 +228,22 @@ func (w *Workspace) writeOutbox(project string, items []OutboxItem) error {
 	return w.writeFile(w.outboxFile(project), b.Bytes(), 0o644)
 }
 
+// OutboxCompactable reports whether a write would change items: a settled
+// item past the retention rule, or one still carrying a digest's cursor.
+// The sender compacts such an outbox when it finds nothing to send, so a
+// file written before CON-258 - mihuv2's 6 MB of 128 items, last written two
+// days before - stops being parsed whole every two seconds without waiting
+// for its project's next send. Once compacted it reports false, so a quiet
+// outbox is rewritten once, not on every pass.
+func OutboxCompactable(items []OutboxItem, now time.Time) bool {
+	for _, item := range items {
+		if !item.Queued() && item.Cursor != nil {
+			return true
+		}
+	}
+	return len(compactOutbox(items, now)) != len(items)
+}
+
 // compactOutbox applies the retention rule of the package comment, keeping
 // the survivors in their original order.
 func compactOutbox(items []OutboxItem, now time.Time) []OutboxItem {

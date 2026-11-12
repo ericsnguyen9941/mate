@@ -583,3 +583,41 @@ func TestARepeatedDigestTextIsTypedAgain(t *testing.T) {
 		t.Fatalf("attempt = %+v, typed %#v; want the repeated line typed a second time", got, f.typed())
 	}
 }
+
+// An outbox written before CON-258 - settled digests still carrying their
+// cursor - is compacted by the first pass that finds nothing to send, and
+// left alone by the next: a quiet project's file is rewritten once.
+func TestDrainCompactsAQuietOutboxOnce(t *testing.T) {
+	f := newFixture(t)
+	path := filepath.Join(f.ws.MateDir(project), ".outbox")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	at := start.Format(time.RFC3339Nano)
+	old := `{"id":1,"at":"` + at + `","source":"digest","key":"d1","text":"x","state":"sent","sent_at":"` + at + `","cursor":{"/w/a.status":7}}` + "\n"
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := f.sender()
+	f.drain(s)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "cursor") || !strings.Contains(string(data), `"key":"d1"`) {
+		t.Fatalf("outbox after a pass = %s, want the sent digest kept without its cursor", data)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.clock.Advance(time.Second)
+	f.drain(s)
+	again, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.ModTime().Equal(info.ModTime()) || again.Size() != info.Size() {
+		t.Fatal("a compacted quiet outbox was written again")
+	}
+}
