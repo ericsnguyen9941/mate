@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -205,8 +206,11 @@ type Engine struct {
 	snaps     *snapshotCache
 	// changes is the change feed the writers' notices land in (CON-260).
 	changes *Changes
-	locks   actionLocks
-	acts    actionRuns
+	// acted is set by an action that may have written what no notice
+	// tells: the core's own writes send none (hearObserver).
+	acted atomic.Bool
+	locks actionLocks
+	acts  actionRuns
 	// holds is every restart held for the captain's second press, from
 	// whichever UI (restartMate).
 	holds restartHolds
@@ -278,6 +282,7 @@ func New(o Options) *Engine {
 		e.stats = loopstat.New()
 	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
+	e.hearObserver()
 	e.snaps = &snapshotCache{compute: timedSnapshot(e.stats.Loop(LoopSnapshot), e.assemble), ctx: e.ctx, maxAge: snapshotMaxAge, limit: snapshotLimit, now: time.Now}
 	if o.Recover != nil {
 		e.recovery = &recoveryRun{run: o.Recover, ws: o.Workspace, now: time.Now, stat: e.stats.Loop(LoopRecovery)}

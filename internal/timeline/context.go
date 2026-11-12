@@ -23,14 +23,17 @@ import (
 // crew's next hand-back (`mate wake` says so). A crew that has already
 // handed back is left alone - the Mate's `mate send` opens its fresh
 // session itself - and a closed crew carries no open incident.
-func (i *Ingester) checkProjectContext(ctx context.Context, project string) error {
+//
+// Off a sweep, a project whose crews are all closed is not read (CON-267):
+// an incident still open on a closed crew is resolved by the observer's
+// sweep of closed crews, and by the next sweep here.
+func (i *Ingester) checkProjectContext(ctx context.Context, project string, crews []crewRecord, sweep bool) error {
 	threshold := int64(i.ws.CrewContextHigh())
 	if threshold <= 0 {
 		return nil
 	}
-	crews, err := listCrewMetas(i.ws, project)
-	if err != nil {
-		return err
+	if !sweep && !anyOpen(crews) {
+		return nil
 	}
 	view, err := box.Load(i.ws, project)
 	if err != nil {

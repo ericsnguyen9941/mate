@@ -12,7 +12,7 @@ import (
 // round.
 type roundIngest struct{ rounds chan time.Time }
 
-func (r roundIngest) Ingest(context.Context) error {
+func (r roundIngest) Ingest(context.Context, watch.Round) error {
 	r.rounds <- time.Now()
 	return nil
 }

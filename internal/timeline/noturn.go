@@ -30,6 +30,16 @@ import (
 // caught up with it (a transcript not yet located) is the ingest's
 // problem, not a crew that never started.
 func (i *Ingester) CheckNoTurn(ctx context.Context, after time.Duration) error {
+	return i.CheckNoTurnScope(ctx, SweepScope(), after)
+}
+
+// CheckNoTurnScope is CheckNoTurn over the projects of scope (CON-267).
+// The rule is a deadline - five minutes after launch - and only an open
+// crew can reach it, so it is on time as long as every project with an
+// open crew is in every round's scope, which the observer keeps
+// (watch.Round). Off a sweep it reads the crews the round's pass read, and
+// a project with none open is not read at all (scopeCrews).
+func (i *Ingester) CheckNoTurnScope(ctx context.Context, scope Scope, after time.Duration) error {
 	if !i.d.Writable() {
 		return errors.New("timeline: this database handle is read-only")
 	}
@@ -41,19 +51,22 @@ func (i *Ingester) CheckNoTurn(ctx context.Context, after time.Duration) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := i.checkProjectNoTurn(ctx, ref.Name, after); err != nil {
+		if !scope.has(ref.Name) {
+			continue
+		}
+		if err := i.checkProjectNoTurn(ctx, ref.Name, after, scope.Sweep); err != nil {
 			errs = append(errs, fmt.Errorf("timeline: no-turn check %s: %w", ref.Name, err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (i *Ingester) checkProjectNoTurn(ctx context.Context, project string, after time.Duration) error {
-	crews, err := listCrewMetas(i.ws, project)
+func (i *Ingester) checkProjectNoTurn(ctx context.Context, project string, after time.Duration, sweep bool) error {
+	crews, err := i.scopeCrews(project, sweep)
 	if err != nil {
 		return err
 	}
-	if len(crews) == 0 {
+	if !anyOpen(crews) {
 		return nil
 	}
 	view, err := box.Load(i.ws, project)

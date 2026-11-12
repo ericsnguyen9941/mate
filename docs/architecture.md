@@ -160,7 +160,14 @@ the list below); the observer
 CON-260) which records the timeline at the end of each poll
 (`internal/timeline`; a poll skips every crew the ingest has sealed,
 closed over an hour with every conclusion recorded, until its `.meta` or
-`.status` moves: CON-259, `internal/timeline/seal.go`); the outbox sender (`internal/outbox`, every
+`.status` moves: CON-259, `internal/timeline/seal.go`). A round examines
+only the Projects that can change unheard - an open Crew, a live Mate
+(`store.MateRecorded`) - those a notice named, and every Project once a
+minute (`watch.DefaultSweepInterval`, the sweep); the ingest and the
+budget, context and no-turn checks after it read the same Projects
+(`watch.Round`, `timeline.Scope`), and within them skip a Mate whose
+`mate.meta`, sessions and transcripts have not moved and git for a Crew
+with no hint (`internal/timeline/memo.go`, CON-267/268); then the outbox sender (`internal/outbox`, every
 2 s while a line is queued, otherwise on a wake or every minute, CON-270); the auto daemon (`internal/autopilot`, every 90 s); recovery
 (`internal/recovery`); the watch over the headless Mates' hosts
 (`internal/core/hostwatch.go`, every 5 s, CON-226); the Office/City server (`internal/core/dashboard.go`);
@@ -343,8 +350,16 @@ How processes exchange state:
   nudge wakes it only while a line waits); and wakes the notifications on
   any but a transcript. The core's own enqueues send no notice: an `Enqueue` or `Offer` of
   any `outbox.Sender` wakes every loop of the process over the same
-  workspace. A notice is a hint, never the record: what bypasses the feed
-  is found by the observer's 5 s poll, the outbox loop's and the
+  workspace. The observer also reads the feed itself, once a round
+  (`watch.Watcher.Hear`, wired by `core.New`; CON-267): it examines the
+  Projects the notices named - a `transcript` one's included, though it
+  does not wake it - besides the ones it examines every round, and a
+  notice about the workspace's own files, or an action `Act` ran (whose
+  writes, being the core's, tell no feed), makes its next round a sweep.
+  A notice is a hint, never the record: what bypasses the feed
+  is in a Project the observer examines every round (an open Crew, a
+  live Mate) or is read by its once-a-minute sweep, and is found by
+  the observer's 5 s poll, the outbox loop's and the
   notifications' one-minute safety nets and the 30 s look at
   `workspace.yaml`, and by the file watch below.
 - **The file watch (CON-266).** What writes past the feed, the core

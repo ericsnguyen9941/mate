@@ -1,6 +1,7 @@
 package timeline_test
 
 import (
+	"context"
 	"reflect"
 	"sort"
 	"testing"
@@ -43,5 +44,25 @@ func TestLiveFilesFollowOpenCrews(t *testing.T) {
 	f.ingest(t)
 	if got := f.ing.LiveFiles(); len(got) != 1 || got[0].Crew != "" {
 		t.Fatalf("LiveFiles = %+v, want the Mate's transcript alone once the crew closed", got)
+	}
+}
+
+// A scoped poll keeps every project's live files (CON-268): a project out
+// of its scope keeps the list its last pass left, and a quiet Mate, whose
+// transcript the pass skipped, still has its transcript listed.
+func TestLiveFilesSurviveScopedAndQuietPasses(t *testing.T) {
+	f := newFixture(t)
+	f.ingest(t)
+	want := f.ing.LiveFiles()
+	if len(want) != 3 {
+		t.Fatalf("LiveFiles after a sweep = %+v, want the Mate's and the crew's", want)
+	}
+	for _, scope := range []timeline.Scope{{Projects: []string{fixtureProject}}, {Projects: []string{fixtureProject}}, {}} {
+		if err := f.ing.IngestScope(context.Background(), scope); err != nil {
+			t.Fatal(err)
+		}
+		if got := f.ing.LiveFiles(); !reflect.DeepEqual(got, want) {
+			t.Fatalf("LiveFiles after a pass over %v = %+v\nwant %+v", scope.Projects, got, want)
+		}
 	}
 }

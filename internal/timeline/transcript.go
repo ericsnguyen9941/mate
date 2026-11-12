@@ -28,44 +28,8 @@ func (p *pass) ingestTranscripts(ctx context.Context) error {
 	p.statusClock = map[string][]datedCommand{}
 	p.commitSightings = map[string][]commitSighting{}
 
-	if p.mate.Present {
-		loc, reason := p.locateMate()
-		if reason != "" {
-			p.unresolved(p.mate.ActorID, string(loc.Kind), reason)
-		} else {
-			p.mateTranscript = loc.Path
-			if err := p.ingestOneTranscript(ctx, loc); err != nil {
-				return err
-			}
-		}
-	}
-	archives, err := p.ing.ws.MateSessionArchives(p.project)
-	if err != nil {
-		return err
-	}
-	current := p.mate.Meta
-	for _, meta := range archives {
-		if meta[MetaSessionID] == current[MetaSessionID] && meta["finalized"] != "true" {
-			continue
-		}
-		p.mate.Meta = meta
-		loc, reason := p.locateMate()
-		p.mate.Meta = current
-		loc.Finalized = meta["finalized"] == "true" && loc.Path == meta[MetaTranscript] && loc.Source == LocatorMeta
-		if reason != "" {
-			p.unresolved(p.mate.ActorID, string(loc.Kind), reason)
-			continue
-		}
-		if loc.Finalized {
-			settled, err := p.recordedAtRest(ctx, loc.Path)
-			if err != nil {
-				return err
-			}
-			if settled {
-				continue
-			}
-		}
-		if err := p.ingestOneTranscript(ctx, loc); err != nil {
+	if !p.mateQuiet {
+		if err := p.ingestMateTranscripts(ctx); err != nil {
 			return err
 		}
 	}
@@ -94,6 +58,63 @@ func (p *pass) ingestTranscripts(ctx context.Context) error {
 		if settled {
 			continue
 		}
+		if err := p.ingestOneTranscript(ctx, loc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ingestMateTranscripts reads the Mate's transcript and those of its
+// archived sessions, noting each it reads for the Mate's memo (memo.go).
+func (p *pass) ingestMateTranscripts(ctx context.Context) error {
+	if p.mate.Present {
+		loc, reason := p.locateMate()
+		if reason != "" {
+			p.mateUnlocated()
+			p.unresolved(p.mate.ActorID, string(loc.Kind), reason)
+		} else {
+			p.mateTranscript = loc.Path
+			if p.mateRead != nil {
+				p.mateRead.current = loc.Path
+			}
+			p.noteMateTranscript(loc.Path)
+			if err := p.ingestOneTranscript(ctx, loc); err != nil {
+				return err
+			}
+		}
+	}
+	archives, err := p.ing.ws.MateSessionArchives(p.project)
+	if err != nil {
+		return err
+	}
+	current := p.mate.Meta
+	for _, meta := range archives {
+		if meta[MetaSessionID] == current[MetaSessionID] && meta["finalized"] != "true" {
+			continue
+		}
+		p.mate.Meta = meta
+		loc, reason := p.locateMate()
+		p.mate.Meta = current
+		loc.Finalized = meta["finalized"] == "true" && loc.Path == meta[MetaTranscript] && loc.Source == LocatorMeta
+		if reason != "" {
+			p.mateUnlocated()
+			p.unresolved(p.mate.ActorID, string(loc.Kind), reason)
+			continue
+		}
+		if loc.Finalized {
+			// A finalized snapshot never changes once written, and a new
+			// one moves the sessions directory: one recorded at rest is
+			// not a file the Mate's memo needs to stat.
+			settled, err := p.recordedAtRest(ctx, loc.Path)
+			if err != nil {
+				return err
+			}
+			if settled {
+				continue
+			}
+		}
+		p.noteMateTranscript(loc.Path)
 		if err := p.ingestOneTranscript(ctx, loc); err != nil {
 			return err
 		}

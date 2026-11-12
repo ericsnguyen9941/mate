@@ -147,6 +147,15 @@ files       9 watched · 1 missing · 312 events → 40 changes
   and `getrusage(2)`, never `runtime.ReadMemStats`, which stops the world.
   `RSS` (now) is shown on Linux only; `peak RSS` everywhere.
 
+An `observer round` costs in proportion to what can change (CON-267/268):
+between its sweeps, one a minute, a round examines only the Projects with
+an open Crew or a live Mate and those a writer's notice named, and its
+`timeline ingest` reads only those. Measured on a copy of a workspace of
+12 Projects and 1307 Crews (2026-11-12), a round with nothing to examine
+allocates ~0 and a steady one 3.9 MB, against 44 MB for a sweep. A
+change nothing tells the core of - a branch moved by hand, a
+`project.yaml` edited in an editor - shows within a minute.
+
 `TestSteadyPassStaysWithinBudget` (`internal/core/budget_test.go`) keeps
 the two costs that grow with a workspace's history, one steady ingest pass
 and one `query.Load`, under an allocation budget over a generated workspace
@@ -168,8 +177,10 @@ section 2).
 
 A change brings the notifications no sooner than 5 s after their last
 tick, so a burst of notices costs one tick and never more than the old
-poll. The observer is unchanged: a poll every 5 s, brought forward by a
-notice (CON-260).
+poll. The observer still polls every 5 s, brought forward by a notice
+but a transcript's (CON-260, CON-266); what it examines in a round is the
+Projects with an open Crew or a live Mate and those a notice named, with
+a sweep of every Project once a minute (CON-267, "What the core costs").
 
 The observer, the outbox loop and the auto daemon share the engine's own
 `*store.Workspace` and read `workspace.yaml` no more (`Deps.SharedConfig`

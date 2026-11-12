@@ -62,6 +62,9 @@ func (e *Engine) Act(ctx context.Context, req coreapi.ActionRequest) (string, er
 	}
 	defer e.locks.release(key)
 	defer e.Invalidate()
+	if !ownLock[req.Action] {
+		defer e.acted.Store(true)
+	}
 	if chat[req.Action] {
 		return e.talk(ctx, req)
 	}
