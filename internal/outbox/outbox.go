@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/harness"
@@ -73,6 +74,12 @@ const (
 	DefaultInterval = 2 * time.Second
 	// DefaultWedgedAfter is how long an item may wait before `wedged`.
 	DefaultWedgedAfter = 5 * time.Minute
+	// DefaultIdleInterval is the loop's pause while no project has an item
+	// queued (CON-270): it then runs on a wake (Wake, an Enqueue or Offer
+	// in this process), and this is only the safety net for a wake lost -
+	// a write by a mate process with no core to tell, a notice dropped on
+	// the way.
+	DefaultIdleInterval = time.Minute
 )
 
 // DefaultDeliverTimeout bounds one delivery. A delivery holds the outbox's
@@ -133,6 +140,14 @@ type Deps struct {
 	// Pass records each pass the loop runs (Drain), for `mate core stats`
 	// (CON-263). Nil records nothing.
 	Pass *loopstat.Loop
+	// IdleInterval is the loop's pause while nothing is queued; zero means
+	// DefaultIdleInterval. Interval is its pause while something is.
+	IdleInterval time.Duration
+	// SharedConfig says the caller keeps the workspace handle's
+	// workspace.yaml current itself - internal/core's engine, which reloads
+	// it on a `workspace` notice and when the file changes (CON-270) - so a
+	// pass does not read the file again. False re-reads it every pass.
+	SharedConfig bool
 }
 
 func (d Deps) consolePresent() bool {
@@ -181,6 +196,13 @@ func (d Deps) interval() time.Duration {
 	return DefaultInterval
 }
 
+func (d Deps) idleInterval() time.Duration {
+	if d.IdleInterval > 0 {
+		return d.IdleInterval
+	}
+	return DefaultIdleInterval
+}
+
 func (d Deps) wedgedAfter() time.Duration {
 	if d.WedgedAfter > 0 {
 		return d.WedgedAfter
@@ -193,12 +215,17 @@ func (d Deps) wedgedAfter() time.Duration {
 // immediate attempt an `[assign]` makes, and the auto daemon's own attempt
 // right after it enqueues.
 //
-// A Sender that runs its loop (Start) must own its workspace handle, for the
-// reason the observer and the daemon own theirs: Drain re-reads
-// workspace.yaml, which rewrites the handle's cache.
+// Drain re-reads workspace.yaml into the handle, unless Deps.SharedConfig
+// says its owner keeps it current. Since CON-204 a handle's configuration
+// is swapped whole, so a loop may share the handle.
 type Sender struct {
 	ws   Workspace
 	deps Deps
+	// wake cuts the loop's pause short (Wake); it holds one pending wake.
+	wake chan struct{}
+	// pending is whether the loop's last pass found an item queued: a
+	// Nudge wakes it only then.
+	pending atomic.Bool
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
@@ -207,7 +234,27 @@ type Sender struct {
 
 // New builds a sender. It sends nothing until Attempt, Drain or Start.
 func New(ws Workspace, deps Deps) *Sender {
-	return &Sender{ws: ws, deps: deps}
+	return &Sender{ws: ws, deps: deps, wake: make(chan struct{}, 1)}
+}
+
+// Wake runs the loop's next pass now rather than at the end of its pause:
+// something was queued (an `outbox` notice from another mate process).
+// It never blocks; a loop not running yet finds the wake when it starts.
+func (s *Sender) Wake() {
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
+// Nudge is Wake while the loop's last pass left something queued, and
+// nothing otherwise: the Mate's composer may have emptied (a `sent` or
+// `mate` notice - a turn ended, the captain's line was recorded), which
+// matters only to a line waiting for it.
+func (s *Sender) Nudge() {
+	if s.pending.Load() {
+		s.Wake()
+	}
 }
 
 // Request is one line to queue.
@@ -272,6 +319,9 @@ func (s *Sender) Enqueue(project string, req Request) (Enqueued, error) {
 		out.Item = item
 		return append(items, item), true, nil
 	})
+	if err == nil && !out.Duplicate {
+		s.queued()
+	}
 	return out, err
 }
 
@@ -335,6 +385,9 @@ func (s *Sender) Offer(project, source string,
 		out = item
 		return append(items, item), true, nil
 	})
+	if err == nil && have {
+		s.queued()
+	}
 	return out, have, err
 }
 
@@ -628,18 +681,30 @@ func (s *Sender) resolveWedged(project string, now time.Time, text string) error
 // that has one. The error joins the per-project failures; the pass always
 // finishes.
 func (s *Sender) Drain(ctx context.Context) error {
+	_, err := s.drain(ctx)
+	return err
+}
+
+// drain is Drain, and whether it found an item queued in any project: the
+// loop then tries again after Interval, and otherwise waits for a wake.
+// A pass that failed before it could look counts as one that found some,
+// so the loop asks again on the old cadence.
+func (s *Sender) drain(ctx context.Context) (pending bool, _ error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return true, err
 	}
 	// workspace.yaml is re-read every pass, so a project registered beside
-	// this console is delivered to without a restart.
-	if err := s.ws.LoadConfig(); err != nil {
-		return err
+	// this console is delivered to without a restart - unless the owner of
+	// the handle keeps it current (SharedConfig).
+	if !s.deps.SharedConfig {
+		if err := s.ws.LoadConfig(); err != nil {
+			return true, err
+		}
 	}
 	var errs []error
 	for _, ref := range s.ws.Projects() {
 		if err := ctx.Err(); err != nil {
-			return err
+			return true, err
 		}
 		// A lock-free look first: most passes over most projects find
 		// nothing queued, and taking the writers' lock to learn that would
@@ -647,6 +712,7 @@ func (s *Sender) Drain(ctx context.Context) error {
 		items, err := s.ws.ReadOutbox(ref.Name)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("outbox: %s: %w", ref.Name, err))
+			pending = true
 			continue
 		}
 		head, ok := oldestQueued(items)
@@ -660,6 +726,10 @@ func (s *Sender) Drain(ctx context.Context) error {
 			}
 			continue
 		}
+		// Queued: tried again after Interval whatever this try does. A
+		// delivery that empties the queue costs one pass more, which finds
+		// nothing and lets the loop rest.
+		pending = true
 		// With no console open a Manual project's Mate is left alone: its
 		// captain took the composer, and nothing is typed into it until a
 		// console is back or M21 turns auto mode on again. A digest at the
@@ -672,7 +742,7 @@ func (s *Sender) Drain(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("outbox: %s: %w", ref.Name, err))
 		}
 	}
-	return errors.Join(errs...)
+	return pending, errors.Join(errs...)
 }
 
 // oldestQueued is the item Attempt would try, when one is queued.
@@ -685,8 +755,13 @@ func oldestQueued(items []store.OutboxItem) (store.OutboxItem, bool) {
 	return store.OutboxItem{}, false
 }
 
-// Start runs Drain every Interval on its own goroutine until Stop or a
-// cancelled context. Calling it twice is a no-op.
+// Start runs the loop on its own goroutine until Stop or a cancelled
+// context: a pass (Drain) at once - which also compacts a quiet outbox
+// (store.OutboxCompactable) -, then one each Interval while some project
+// has an item queued, and otherwise one on a wake - Wake, Nudge, an
+// Enqueue or Offer by any Sender of this process over the same workspace -
+// or after IdleInterval at the latest (CON-270). Calling it twice is a
+// no-op.
 func (s *Sender) Start(ctx context.Context) {
 	s.mu.Lock()
 	if s.cancel != nil {
@@ -698,7 +773,11 @@ func (s *Sender) Start(ctx context.Context) {
 	done := make(chan struct{})
 	s.done = done
 	s.mu.Unlock()
-	go s.run(runCtx, done)
+	unregister := s.register()
+	go func() {
+		defer unregister()
+		s.run(runCtx, done)
+	}()
 }
 
 // Stop ends the loop and waits for the pass in flight.
@@ -723,13 +802,93 @@ func (s *Sender) run(ctx context.Context, done chan struct{}) {
 		// be mid-write. Nothing queued was lost, and the next pass asks
 		// again.
 		start := s.deps.Pass.Begin()
-		_ = s.Drain(ctx)
+		pending, _ := s.drain(ctx)
+		s.pending.Store(pending)
 		s.deps.Pass.End(start)
-		if err := s.deps.sleep(ctx, s.deps.interval()); err != nil {
+		pause := s.deps.idleInterval()
+		if pending {
+			pause = s.deps.interval()
+		}
+		if err := s.pause(ctx, pause); err != nil {
 			return
 		}
-		if ctx.Err() != nil {
-			return
+	}
+}
+
+// pause sleeps d through Deps' Sleeper, cut short by a wake. A wake is
+// taken before pause returns, so the pass after it reads what the waker
+// wrote before it woke the loop.
+func (s *Sender) pause(ctx context.Context, d time.Duration) error {
+	wctx, cancel := context.WithCancel(ctx)
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		select {
+		case <-s.wake:
+			cancel()
+		case <-wctx.Done():
 		}
+	}()
+	_ = s.deps.sleep(wctx, d)
+	cancel()
+	<-watched
+	return ctx.Err()
+}
+
+// The loops running in this process, by the workspace they deliver for:
+// an Enqueue or Offer by any Sender over the same workspace wakes them
+// (CON-270). The core's own enqueuers - the auto daemon's digest, a UI's
+// `[assign]`, the PR sweep, a stow - each hold a Sender of their own, and
+// the core sends itself no notice (internal/store's notifier is unset in
+// it).
+var (
+	loopsMu sync.Mutex
+	loops   = map[string]map[*Sender]bool{}
+)
+
+// root is the workspace a Sender's handle is over; "" for a handle that
+// does not say, whose loop every enqueue of the process wakes.
+func (s *Sender) root() string {
+	if r, ok := s.ws.(interface{ Root() string }); ok {
+		return r.Root()
+	}
+	return ""
+}
+
+func (s *Sender) register() (unregister func()) {
+	root := s.root()
+	loopsMu.Lock()
+	if loops[root] == nil {
+		loops[root] = map[*Sender]bool{}
+	}
+	loops[root][s] = true
+	loopsMu.Unlock()
+	return func() {
+		loopsMu.Lock()
+		delete(loops[root], s)
+		if len(loops[root]) == 0 {
+			delete(loops, root)
+		}
+		loopsMu.Unlock()
+	}
+}
+
+// queued wakes every loop of this process over s's workspace: an item was
+// just queued, or a queued digest rewritten.
+func (s *Sender) queued() {
+	root := s.root()
+	loopsMu.Lock()
+	var wake []*Sender
+	for l := range loops[root] {
+		wake = append(wake, l)
+	}
+	if root != "" {
+		for l := range loops[""] {
+			wake = append(wake, l)
+		}
+	}
+	loopsMu.Unlock()
+	for _, l := range wake {
+		l.Wake()
 	}
 }

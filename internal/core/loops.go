@@ -44,3 +44,6 @@ func (l pilotLoop) Start(ctx context.Context) error {
 	l.Pilot.Start(ctx)
 	return nil
 }
+
+// The change feed wakes the outbox loop (Engine.Changed, CON-270).
+var _ OutboxWaker = senderLoop{}

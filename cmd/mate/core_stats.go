@@ -130,7 +130,28 @@ func printCoreStats(w io.Writer, where string, st coreapi.CoreStats) {
 		fmt.Fprintf(tw, "cpu\t%s\n", cpu)
 	}
 	fmt.Fprintf(tw, "goroutines\t%d\n", p.Goroutines)
+	if f := st.Files; f != nil {
+		fmt.Fprintf(tw, "files\t%s\n", statsFiles(*f))
+	}
 	_ = tw.Flush()
+}
+
+// statsFiles is the core's watch on the files written past the change feed
+// (CON-266): "7 watched · 1 missing · 312 events → 40 changes", or "off: …"
+// when the system gave none.
+func statsFiles(f coreapi.FileWatchStats) string {
+	if f.Off != "" {
+		return "off: " + f.Off + " (the polls find every change)"
+	}
+	line := fmt.Sprintf("%d watched", f.Watched)
+	if f.Missing > 0 {
+		line += fmt.Sprintf(" · %d missing", f.Missing)
+	}
+	line += fmt.Sprintf(" · %s events → %s changes", statsCount(f.Events), statsCount(f.Changes))
+	if f.Errors > 0 {
+		line += fmt.Sprintf(" · %d errors, last: %s", f.Errors, f.LastError)
+	}
+	return line
 }
 
 // statsDuration is d in the unit that keeps it short: 0.4ms, 712ms, 4.12s,

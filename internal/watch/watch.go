@@ -246,6 +246,11 @@ type Deps struct {
 	// SweepInterval is how often a round that hears the feed examines
 	// every project anyway; zero means DefaultSweepInterval.
 	SweepInterval time.Duration
+	// SharedConfig says the caller keeps the workspace handle's
+	// workspace.yaml current itself - internal/core's engine (CON-270) -
+	// so a round does not read the file again. False re-reads it every
+	// round.
+	SharedConfig bool
 }
 
 func (d Deps) now() time.Time {
@@ -522,9 +527,12 @@ func (w *Watcher) Poll(ctx context.Context) error {
 	}
 	// Re-read workspace.yaml every round: a project registered by another
 	// process (or by the console beside this one) must come under watch
-	// without a restart.
-	if err := w.ws.LoadConfig(); err != nil {
-		return err
+	// without a restart. Under the engine the handle is the engine's, which
+	// reloads it on a `workspace` notice and when the file changes.
+	if !w.deps.SharedConfig {
+		if err := w.ws.LoadConfig(); err != nil {
+			return err
+		}
 	}
 
 	now := w.deps.now()

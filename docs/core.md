@@ -119,6 +119,7 @@ allocated   6.7 MB in 68.3k objects since start · 192 KB/s
 gc          3 cycles · 0.0% of the CPU
 cpu         127ms · 0% of one core since start
 goroutines  35
+files       9 watched · 1 missing · 312 events → 40 changes
 ```
 
 - Each loop's figures are wall time since the core started: a run that
@@ -128,10 +129,20 @@ goroutines  35
   that is wired and has not run (notifications off, a timer not yet due).
 - `observer round` is the whole round, `timeline ingest` included; `autopilot
   tick` includes `PR sweep + gc`; `notifications` leaves out the snapshot
-  it reads, which `snapshot` counts.
+  it reads, which `snapshot` counts. `workspace.yaml reload` counts the
+  reads of the file, not the looks at its size and time.
 - Allocation is the process's, not split by loop: the loops share one heap
   and no counter says which allocated what. For that, profile the core
   (`MATE_PPROF`, CON-257).
+- `files` is the core's watch on the files written past its change feed
+  (CON-266, [architecture.md](architecture.md) section 2): the open Crews'
+  `.status` files and transcripts, the running Mates' transcripts,
+  `workspace.yaml`, each `PROJECT.md`. `missing` are files of the set that
+  are not there yet (a `PROJECT.md` never written) or that the system
+  refused to watch; `events` what the system reported, `changes` the
+  notices the core took from them once the bursts were folded. `off: …`
+  says why there is no watch (the system gave none, or the core runs with
+  `MATE_FSWATCH=off`); the polls find every change either way.
 - Recording costs two clock reads a run. Reading reads `runtime/metrics`
   and `getrusage(2)`, never `runtime.ReadMemStats`, which stops the world.
   `RSS` (now) is shown on Linux only; `peak RSS` everywhere.
@@ -150,6 +161,42 @@ the two costs that grow with a workspace's history, one steady ingest pass
 and one `query.Load`, under an allocation budget over a generated workspace
 of a thousand closed crews, in `make check`.
 
+## What wakes the loops
+
+A core with nothing happening should cost next to nothing (CON-270, epic
+CON-253). Three loops run on events, each with a slow tick under it for an
+event that never came: a write by a process with no core to tell, a notice
+lost, a write that bypasses the change feed (`docs/architecture.md`
+section 2).
+
+| Loop | Runs on | Safety net | Before |
+| -- | -- | -- | -- |
+| `workspace.yaml reload` | once at start; a `workspace` notice (`mate project …`, a UI of another process; CON-266 adds an edit by hand), read before the notice wakes anything else | a look every 30 s at the file's size and modification time, which reads it only when either changed | a read every 2 s, and one more in each pass of the observer, the outbox loop and the auto daemon |
+| `outbox pass` | once at start (it compacts a quiet outbox, CON-258); an `outbox` notice; an `Enqueue` or `Offer` in the core itself (the auto daemon's digest, a UI's `[assign]`, the PR sweep, a stow); a `sent` or `mate` notice while a line waits (the Mate's composer may have emptied) | every 2 s while any project has a line queued, as before (the wedged clock, the refusals and M21's rules are unchanged); otherwise every minute | every 2 s |
+| `notifications` | once at start; any notice; a snapshot computed for another reader; the 10-minute report falling due (`notifications.NextReport`) | every minute; a failed tick waits a minute | every 5 s |
+
+A change brings the notifications no sooner than 5 s after their last
+tick, so a burst of notices costs one tick and never more than the old
+poll. The observer still polls every 5 s, brought forward by a notice
+but a transcript's (CON-260, CON-266); what it examines in a round is the
+Projects with an open Crew or a live Mate and those a notice named, with
+a sweep of every Project once a minute (CON-267, "What the core costs").
+
+The observer, the outbox loop and the auto daemon share the engine's own
+`*store.Workspace` and read `workspace.yaml` no more (`Deps.SharedConfig`
+in `internal/watch`, `internal/outbox`, `internal/autopilot`). CON-204 made
+a handle's configuration an atomic snapshot swapped whole, so sharing it is
+safe, and a change any of them makes through it is seen by all at once.
+Two readers of the file remain on the same handle: the timeline ingest's
+pass (`internal/timeline`) and each snapshot's `query.Load`.
+Built outside the engine (the live tests' `consolePilot`,
+`consoleWatcherWithTimeline`), each still opens its own handle and reads
+the file each pass.
+
+In ten minutes of a fake clock (`TestPassesPerMinute`,
+`internal/outbox/wake_test.go`) a quiet workspace's outbox loop runs 10
+passes where it ran 300; one with a line waiting still runs 300.
+
 ## How a command knows the core runs
 
 Not by pid: the pid of a process that died may belong to another process by
@@ -167,7 +214,7 @@ new core, which writes its own record over the old one.
 | File | What it is |
 | -- | -- |
 | `core.lock` | Held by the running engine. JSON: `pid`, `owner` (`core` or `console`), `started`, `version`, `binary`, `build` (sha256 of the binary when it started), `socket`, `url`, `lan_url`, `tcp_error`. The file stays after the engine ends. |
-| `core.sock` | The core's unix socket (0600): Office/City's routes and the clients' API (`/api/core`, `/api/core/stats`, `/api/snapshot`, `/api/act`, CON-212), and `/api/changed`, where every other mate process says which record it just wrote (CON-260): the UIs' next read sees it and the observer's next round comes early, no sooner than `watch.WakeGap` after the last. Removed when the core stops. |
+| `core.sock` | The core's unix socket (0600): Office/City's routes and the clients' API (`/api/core`, `/api/core/stats`, `/api/snapshot`, `/api/act`, CON-212), and `/api/changed`, where every other mate process says which record it just wrote (CON-260): the UIs' next read sees it and the observer's next round comes early, no sooner than `watch.WakeGap` after the last; a `transcript` notice (the core's own file watch, CON-266) wakes no round. Removed when the core stops. |
 | `tui.lock` | Held by `mate mate-agent tui` while a Mate's session is open in the TUI (CON-227). JSON: `project`, `pid` (`mate mate-agent tui`), `started`, `harness_pid` (Claude, while it runs). The file stays after it ends. |
 | `core.log` | The output of every core: `mate core start` sends the core's output there, and a core in the foreground (`mate`, `mate core run`) appends what it prints to the terminal. Before it opens the log, either moves a log larger than 10 MB to `core.log.1`, keeping that one old log. The log of a core that is running is never rotated. |
 
@@ -270,7 +317,9 @@ engine holds the timeline, `mate reindex` refuses and names that process.
 
 - Keep the workspace on the Linux filesystem (under `~`), not under `/mnt/c`:
   the core serves a unix socket, and a Windows drive mounted in WSL2 may not
-  hold one. A core that cannot bind its socket does not start.
+  hold one. A core that cannot bind its socket does not start. A file
+  under `/mnt/c` also gives the core's file watch no event (CON-266): the
+  polls alone find its changes there.
 - Office and City listen on `127.0.0.1` inside WSL2; Windows browsers reach
   them at the same URL while WSL's localhost forwarding is on (the default).
 - WSL2 can shut the distribution down some time after its last terminal

@@ -137,6 +137,47 @@ func TestChangedDropsSnapshotAndWakesWatcher(t *testing.T) {
 	}
 }
 
+// A transcript notice (CON-266's file watch) marks the Crew dirty and
+// drops the snapshot, but starts no early observer round: an agent writes
+// its transcript without a pause. A status line after it still does.
+func TestTranscriptNoticeDoesNotWakeWatcher(t *testing.T) {
+	w := &wakingWatcher{}
+	e := New(Options{Watcher: w})
+	defer e.Stop()
+	var computed atomic.Int32
+	e.snaps.compute = func(context.Context) (query.Snapshot, error) {
+		computed.Add(1)
+		return query.Snapshot{}, nil
+	}
+	sub := e.Changes().Subscribe()
+	ctx := context.Background()
+	if _, err := e.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	e.Changed(coreapi.Change{Project: "shop", Crew: "fix-cart", Kind: "transcript"})
+	e.Changed(coreapi.Change{Project: "shop", Kind: "transcript"})
+	if _, err := e.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := computed.Load(); got != 2 {
+		t.Fatalf("a read after a transcript notice computed %d snapshots in all, want 2", got)
+	}
+	if got := w.wakes.Load(); got != 0 {
+		t.Fatalf("the watcher was woken %d times by transcripts, want 0", got)
+	}
+	want := Dirty{
+		{Project: "shop", Crew: "fix-cart"}: {"transcript": true},
+		{Project: "shop"}:                   {"transcript": true},
+	}
+	if got := sub.Take(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("dirty = %v, want %v", got, want)
+	}
+	e.Changed(coreapi.Change{Project: "shop", Crew: "fix-cart", Kind: "status"})
+	if got := w.wakes.Load(); got != 1 {
+		t.Fatalf("a status notice woke the watcher %d times, want 1", got)
+	}
+}
+
 // awaitDirty waits for key to be in what s takes, within two seconds.
 func awaitDirty(t *testing.T, s *ChangeSub, key DirtyKey, kind string) {
 	t.Helper()
@@ -225,6 +266,29 @@ type hearingWatcher struct {
 }
 
 func (w *hearingWatcher) Hear(f watch.NoticeFunc) { w.hear = f }
+
+// A transcript notice wakes no round (CON-266), but the round that comes
+// examines its Project (CON-267): it marks the Project dirty in the feed
+// the observer hears.
+func TestATranscriptNoticeMarksItsProjectWithoutAWake(t *testing.T) {
+	w := &hearingWakingWatcher{}
+	e := New(Options{Watcher: w})
+	defer e.Stop()
+	e.Changed(coreapi.Change{Project: "shop", Crew: "fix-cart", Kind: string(store.ChangeTranscript)})
+	if got := w.wakes.Load(); got != 0 {
+		t.Fatalf("a transcript notice woke the observer %d time(s)", got)
+	}
+	if got := w.hear(); !got.Projects["shop"] || got.All {
+		t.Fatalf("heard %+v after a transcript notice, want shop and no sweep", got)
+	}
+}
+
+type hearingWakingWatcher struct {
+	hearingWatcher
+	wakes atomic.Int32
+}
+
+func (w *hearingWakingWatcher) Wake() { w.wakes.Add(1) }
 
 // The observer hears the feed once a round (CON-267): the Projects the
 // notices named since its last round; a notice about the workspace's own

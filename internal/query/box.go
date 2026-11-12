@@ -3,8 +3,10 @@ package query
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/box"
@@ -197,28 +199,122 @@ func loadBox(ws BoxWorkspace, project string) (box.View, bool, Field[BoxView]) {
 	return v, true, KnownField(boxView(ws, project, v))
 }
 
+// boxViewKey is what a BoxView is derived from: the box View (by its
+// generation), the outbox and the auto cursor (by their stamps; a missing
+// file has the zero one).
+type boxViewKey struct {
+	gen            uint64
+	outbox, cursor stamp
+}
+
+// boxViews keeps each project's last BoxView, by the project directory.
+var boxViews memoCell[boxViewKey, BoxView]
+
+// boxView is the flattened box. When the View, the outbox and the auto
+// cursor are the ones the last call flattened, it is that call's BoxView
+// (memo.go): a quiet project's box of thousands of entries is not
+// flattened again every two seconds. A View from LoadSince has no
+// generation and is always flattened.
 func boxView(ws BoxWorkspace, project string, v box.View) BoxView {
+	key := boxViewKey{
+		gen:    v.Generation(),
+		outbox: statStamp(ws.OutboxFile(project)),
+		cursor: statStamp(ws.AutoCursorFile(project)),
+	}
+	dir := ws.ProjectDir(project)
+	if key.gen != 0 {
+		if held, ok := boxViews.get(dir, key); ok {
+			return held
+		}
+	}
+	digested, err := ws.ReadAutoCursor(project)
+	out := flattenBox(ws, project, v, assignedByKey(ws, project), digested)
+	if key.gen != 0 && err == nil {
+		boxViews.put(dir, key, out)
+	}
+	return out
+}
+
+// boxEntryKey is every field of a box.Entry that boxEntry reads but its
+// Seq and At, which it only copies: a line's flattened row - its verb, its
+// [resolve] line, its assign key - is the same however many lines came
+// before it.
+type boxEntryKey struct {
+	kind   box.Kind
+	source box.Source
+	target string
+	crew   string
+	text   string
+	ref    box.Ref
+}
+
+// boxEntryCache is one project's flattened rows by line, so a box that
+// moved - a crew wrote one more status line - flattens only the new lines
+// rather than every line again (CON-271).
+type boxEntryCache struct {
+	mu sync.Mutex
+	m  map[boxEntryKey]BoxEntry
+}
+
+var boxEntryCaches = struct {
+	mu sync.Mutex
+	m  map[string]*boxEntryCache
+}{m: map[string]*boxEntryCache{}}
+
+// boxEntriesOf is the project's cache, by its directory.
+func boxEntriesOf(dir string) *boxEntryCache {
+	boxEntryCaches.mu.Lock()
+	defer boxEntryCaches.mu.Unlock()
+	c := boxEntryCaches.m[dir]
+	if c == nil {
+		c = &boxEntryCache{}
+		boxEntryCaches.m[dir] = c
+	}
+	return c
+}
+
+func flattenBox(ws BoxWorkspace, project string, v box.View, assigned map[string]BoxAssign, digested map[string]int64) BoxView {
 	sum := box.Summarize(v)
-	assigned := assignedByKey(ws, project)
-	digested, _ := ws.ReadAutoCursor(project)
 	out := BoxView{
 		Entries:  make([]BoxEntry, 0, len(v.Entries)),
 		Crews:    sum.Crews,
 		Awaiting: sum.Awaiting,
 		LastAt:   sum.LastAt,
 	}
+	entries := boxEntriesOf(ws.ProjectDir(project))
+	entries.mu.Lock()
+	defer entries.mu.Unlock()
+	if len(entries.m) > 2*len(v.Entries)+64 {
+		// Forget the entries the box no longer holds.
+		entries.m = nil
+	}
+	if entries.m == nil {
+		entries.m = make(map[boxEntryKey]BoxEntry, len(v.Entries))
+	}
+	flat := func(e box.Entry) BoxEntry {
+		key := boxEntryKey{kind: e.Kind, source: e.Source, target: e.Target, crew: e.Crew, text: e.Text, ref: e.Ref}
+		out, ok := entries.m[key]
+		if !ok {
+			out = boxEntry(ws, project, e)
+			out.Seq, out.At = 0, time.Time{}
+			entries.m[key] = out
+		}
+		out.Seq, out.At = e.Seq, e.At
+		return out
+	}
 	for _, e := range v.Entries {
-		out.Entries = append(out.Entries, withAssign(boxEntry(ws, project, e), assigned))
+		out.Entries = append(out.Entries, withAssign(flat(e), assigned))
 	}
 	// The inbox is built from the same Entry values, through the same
 	// flattener, so an item and its line in the full log are the same row
 	// with the same Seq - a reader who toggles [all] sees the entry they
 	// were looking at, not a second copy of it built by other code.
 	for _, item := range box.Inbox(v) {
-		e := withAssign(boxEntry(ws, project, item.Entry), assigned)
+		e := withAssign(flat(item.Entry), assigned)
 		e.Handed = e.Assigned.State == BoxAssignSent || digestedEntry(item, digested)
 		out.Inbox = append(out.Inbox, e)
 	}
+	out.Inbox = slices.Clip(out.Inbox)
 	return out
 }
 
@@ -293,11 +389,25 @@ func BoxAssignKey(projectDir, file string, offset int64) string {
 // and the session rail's own refresh - then shows the same suffix. An
 // unreadable outbox shows no suffix, which says less than it could but
 // nothing false.
+//
+// The outbox is replaced whole on every change, and between changes its
+// assigns are kept by its stamp (memo.go): each digest line carries the
+// cursor it records, so a busy project's outbox is megabytes of JSON that
+// say little about an assign.
 func assignedByKey(ws BoxWorkspace, project string) map[string]BoxAssign {
-	items, err := ws.ReadOutbox(project)
-	if err != nil {
-		return nil
-	}
+	return byStamp(&assignedMemo, ws.OutboxFile(project), func() (map[string]BoxAssign, bool) {
+		items, err := ws.ReadOutbox(project)
+		if err != nil {
+			return nil, false
+		}
+		return assignsOf(items), true
+	})
+}
+
+// assignedMemo keeps each outbox's assigns, by the outbox's path.
+var assignedMemo memoCell[stamp, map[string]BoxAssign]
+
+func assignsOf(items []store.OutboxItem) map[string]BoxAssign {
 	out := make(map[string]BoxAssign)
 	for _, item := range items {
 		if item.Source != store.OutboxSourceAssign {

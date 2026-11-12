@@ -72,6 +72,10 @@ type mateMemo struct {
 	meta, sessions statPair
 	transcripts    map[string]statPair
 	unlocated      bool
+	// current is the Mate's current transcript as the pass located it: a
+	// quiet pass keeps it among the live files the core watches
+	// (recordLive, CON-266).
+	current string
 }
 
 // beginMate stats the Mate's files for this pass, before mate.meta is
@@ -102,11 +106,13 @@ func (p *pass) beginMate() {
 	}
 	p.mateQuiet = true
 	p.mateRead.transcripts = last.transcripts
+	p.mateRead.current = last.current
+	p.mateTranscript = last.current
 }
 
-// mateTranscript notes a transcript of the Mate this pass reads, stat'ed
+// noteMateTranscript notes a transcript of the Mate this pass reads, stat'ed
 // before it is read.
-func (p *pass) mateTranscript(path string) {
+func (p *pass) noteMateTranscript(path string) {
 	if p.mateRead != nil && path != "" {
 		p.mateRead.transcripts[path] = statOf(path)
 	}

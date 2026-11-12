@@ -74,7 +74,11 @@ func (p *pass) ingestMateTranscripts(ctx context.Context) error {
 			p.mateUnlocated()
 			p.unresolved(p.mate.ActorID, string(loc.Kind), reason)
 		} else {
-			p.mateTranscript(loc.Path)
+			p.mateTranscript = loc.Path
+			if p.mateRead != nil {
+				p.mateRead.current = loc.Path
+			}
+			p.noteMateTranscript(loc.Path)
 			if err := p.ingestOneTranscript(ctx, loc); err != nil {
 				return err
 			}
@@ -110,7 +114,7 @@ func (p *pass) ingestMateTranscripts(ctx context.Context) error {
 				continue
 			}
 		}
-		p.mateTranscript(loc.Path)
+		p.noteMateTranscript(loc.Path)
 		if err := p.ingestOneTranscript(ctx, loc); err != nil {
 			return err
 		}
