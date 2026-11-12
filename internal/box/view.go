@@ -336,6 +336,19 @@ func LatestStatus(v View, crew string) (Status, bool) {
 	return Status{}, false
 }
 
+// AtWork reports whether crew is open and still at work: its latest status
+// line is not a hand-back. A crew with no status line yet is at work, since it
+// was just spawned. The digest uses it to decide whether a hand-back has
+// anybody to wait for (CON-272), and the pull request watcher whether a
+// landing leaves the Mate with nothing running (CON-194).
+func AtWork(v View, crew string) bool {
+	if v.Closed[crew] {
+		return false
+	}
+	st, ok := LatestStatus(v, crew)
+	return !ok || st.State != StateWaitMate
+}
+
 // LastCrewVerb is LastVerb over the status lines v holds for crew. A crew's
 // status lines share one time (their file's mtime) and one file, so the
 // merge keeps them in file order and the answer is the one LastVerb gives

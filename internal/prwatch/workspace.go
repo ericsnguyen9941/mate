@@ -6,12 +6,14 @@ import "github.com/nguyenngocanh94/mate/internal/store"
 // and its sweep use: the projects and each project.yaml, each crew's
 // metadata, status file and `.prwatch` paths, the repo directory and the
 // Mate's outbox. Its writes through the store are AppendStatus and
-// UpdateCrewMeta. This package writes and removes the `.prwatch` pid file
+// UpdateCrewMeta, and AppendAppNote for a landing it made (CON-194). This package writes and removes the `.prwatch` pid file
 // itself, at the path CrewPRWatch gives, and its Starter opens the
 // watcher's log at CrewPRWatchLog (CON-241, plan
 // docs/plans/store-split-2026-11-06.md section 3).
 type Workspace interface {
+	AppendAppNote(project string, note store.AppNote) error
 	AppendStatus(project, crew, line string) error
+	Auto(project string) bool
 	CrewIDs(project string) ([]string, error)
 	CrewPRWatch(project, crew string) string
 	CrewPRWatchLog(project, crew string) string

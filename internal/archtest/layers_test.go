@@ -129,6 +129,7 @@ var layers = map[string]layer{
 	"internal/recovery":        service,
 	"internal/refresh":         service,
 	"internal/prwatch":         service,
+	"internal/route":           service,
 	"internal/migrate":         service,
 	"internal/mateassets":      service,
 	"internal/hook":            service,

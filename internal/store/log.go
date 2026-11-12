@@ -334,3 +334,64 @@ func parseIncident(line string) (IncidentEntry, bool) {
 		Text:  fields[4],
 	}, true
 }
+
+// AppNote is one line of `mate/app-notes.log`: something the app did on the
+// Mate's behalf, such as landing a pull request merged on GitHub, so the
+// Mate hears it at its next digest rather than in a turn of its own.
+type AppNote struct {
+	// Offset is the byte offset of this line, for a caller keeping a cursor.
+	Offset int64
+	Time   time.Time
+	// Wake says the note leaves the Mate something to do, such as moving
+	// the work on after a landing: the digest wakes the Mate for it the way
+	// it does for a hand-back. A note without it only rides along.
+	Wake bool
+	Text string
+}
+
+// The kinds an app-notes.log line records, by AppNote.Wake.
+const (
+	appNoteWake = "wake"
+	appNoteRide = "ride"
+)
+
+// AppendAppNote appends one line to `mate/app-notes.log`. Time defaults to
+// now.
+func (w *Workspace) AppendAppNote(project string, note AppNote) error {
+	if err := ValidateProjectName(project); err != nil {
+		return err
+	}
+	if note.Time.IsZero() {
+		note.Time = time.Now()
+	}
+	kind := appNoteRide
+	if note.Wake {
+		kind = appNoteWake
+	}
+	return w.appendLine(w.AppNotesLog(project), strings.Join([]string{note.Time.Format(time.RFC3339), kind, oneLine(note.Text)}, sentSep))
+}
+
+// ReadAppNotes returns the lines of `mate/app-notes.log` from a byte offset,
+// and the offset to resume from. A line that does not parse is skipped.
+func (w *Workspace) ReadAppNotes(project string, from int64) ([]AppNote, int64, error) {
+	if err := ValidateProjectName(project); err != nil {
+		return nil, from, err
+	}
+	lines, next, err := readLines(w.AppNotesLog(project), from)
+	if err != nil {
+		return nil, from, err
+	}
+	notes := make([]AppNote, 0, len(lines))
+	for _, l := range lines {
+		fields := strings.SplitN(l.text, sentSep, 3)
+		if len(fields) != 3 {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, fields[0])
+		if err != nil {
+			continue
+		}
+		notes = append(notes, AppNote{Offset: l.offset, Time: t, Wake: fields[1] == appNoteWake, Text: fields[2]})
+	}
+	return notes, next, nil
+}

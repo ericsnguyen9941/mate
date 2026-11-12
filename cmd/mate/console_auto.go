@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/autopilot"
+	"github.com/nguyenngocanh94/mate/internal/config"
 	"github.com/nguyenngocanh94/mate/internal/core"
 	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/outbox"
 	"github.com/nguyenngocanh94/mate/internal/prwatch"
 	"github.com/nguyenngocanh94/mate/internal/recovery"
 	"github.com/nguyenngocanh94/mate/internal/refresh"
+	"github.com/nguyenngocanh94/mate/internal/route"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
@@ -205,6 +210,7 @@ func engineAutoPilot(ws *store.Workspace, deps spawn.Deps, stats *loopstat.Recor
 			gc.Tick(ctx)
 		},
 		Budget: consoleBudgetActions(ws, deps),
+		Route:  engineRouter(ws),
 		Pass:   tick,
 
 		SharedConfig: shared,
@@ -226,4 +232,42 @@ func mateRefresher(ws *store.Workspace, deps spawn.Deps) *refresh.Refresher {
 			return verifyCheckpoint(ws, project, nonce, session)
 		},
 	})
+}
+
+// engineRouter is the hand-back router (internal/route, CON-273, CON-274)
+// over ws: Jev when `.mate/.env` configures it, and `mate land` and `mate
+// send` run in this process, as the Mate would run them. A project acts on
+// it only with `autoroute: shadow|on` in project.yaml.
+func engineRouter(ws *store.Workspace) *route.Router {
+	var judge route.Judge
+	if env, mode, err := jevSettings(ws); err == nil && mode != jevOff {
+		if client, err := jevClient(ws, env); err == nil {
+			judge = client
+		}
+	}
+	asMate := newCLI()
+	asMate.getenv = func(key string) string {
+		if key == config.EnvCaller {
+			return spawn.CallerMate
+		}
+		return os.Getenv(key)
+	}
+	return route.New(ws, judge, route.Exec{
+		Land: func(_ context.Context, project, crew, reviewer string) (string, error) {
+			args := []string{project, crew, "--workspace", ws.Root()}
+			if reviewer != "" {
+				args = append(args, "--review", reviewer)
+			}
+			var out bytes.Buffer
+			err := asMate.cmdLand(args, &out, &out)
+			return out.String(), err
+		},
+		Send: func(_ context.Context, project, crew, text string) error {
+			var out bytes.Buffer
+			if err := cmdSend([]string{project, crew, text, "--workspace", ws.Root(), "--marker", "--from", "mate"}, &out, &out); err != nil {
+				return fmt.Errorf("%w: %s", err, strings.TrimSpace(out.String()))
+			}
+			return nil
+		},
+	}, nil)
 }

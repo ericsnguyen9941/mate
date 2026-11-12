@@ -185,3 +185,26 @@ func TestStoreIncidentLogRejectsBadNamesAndStates(t *testing.T) {
 		t.Fatal("ReadIncidents with an invalid project name succeeded")
 	}
 }
+
+// `mate/app-notes.log` is read back from a cursor, one note per line, with
+// a tab in the text never splitting it (CON-194).
+func TestStoreAppNotesResumeFromCursor(t *testing.T) {
+	w := newProjectWorkspace(t)
+	when := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	for i, text := range []string{"landed k3", "landed k4\tleft for you: x"} {
+		if err := w.AppendAppNote("shop", store.AppNote{Time: when, Wake: i == 1, Text: text}); err != nil {
+			t.Fatalf("AppendAppNote: %v", err)
+		}
+	}
+	notes, next, err := w.ReadAppNotes("shop", 0)
+	if err != nil || len(notes) != 2 || !notes[0].Time.Equal(when) || notes[0].Wake || !notes[1].Wake || notes[1].Text != "landed k4 left for you: x" {
+		t.Fatalf("ReadAppNotes = %+v, %v", notes, err)
+	}
+	rest, _, err := w.ReadAppNotes("shop", notes[1].Offset)
+	if err != nil || len(rest) != 1 || rest[0].Text != notes[1].Text {
+		t.Fatalf("ReadAppNotes from the second note = %+v, %v", rest, err)
+	}
+	if none, _, err := w.ReadAppNotes("shop", next); err != nil || len(none) != 0 {
+		t.Fatalf("ReadAppNotes past the end = %+v, %v", none, err)
+	}
+}

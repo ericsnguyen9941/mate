@@ -26,6 +26,8 @@ const (
 	autoFlagName      = ".auto"
 	manualHoldName    = ".manual"
 	autoCursorName    = ".auto-cursor"
+	appNotesName      = "app-notes.log"
+	routeLogName      = "route.jsonl"
 	wakeCursorName    = ".wake-cursor"
 	outboxName        = ".outbox"
 	outboxLockName    = ".outbox.lock"

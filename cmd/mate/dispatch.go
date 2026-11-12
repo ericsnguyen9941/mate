@@ -196,10 +196,10 @@ func isDir(path string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// cmdProject dispatches `mate project <add|list|remove|repo|facts|review|next-work>`.
+// cmdProject dispatches `mate project <add|list|remove|repo|facts|review|next-work|autoroute>`.
 func (c cli) cmdProject(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return newUsageError("usage: mate project <add|list|remove|repo|facts|review|next-work> ...")
+		return newUsageError("usage: mate project <add|list|remove|repo|facts|review|next-work|autoroute> ...")
 	}
 	switch args[0] {
 	case "facts":
@@ -216,6 +216,8 @@ func (c cli) cmdProject(args []string, stdout, stderr io.Writer) error {
 		return cmdProjectReview(args[1:], stdout, stderr)
 	case "next-work":
 		return cmdProjectNextWork(args[1:], stdout, stderr)
+	case "autoroute":
+		return cmdProjectAutoroute(args[1:], stdout, stderr)
 	case "yolo", "mode":
 		// Removed by docs/mvp.md M19; a Mate still quoting an old manual is
 		// told what replaced them rather than "unknown subcommand".

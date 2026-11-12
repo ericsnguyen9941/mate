@@ -36,6 +36,14 @@ type ProjectConfig struct {
 	// empty, takes the tracker's next ready task without asking;
 	// NextWorkAsk asks the captain which work comes next.
 	NextWork string `yaml:"next_work,omitempty"`
+	// Autoroute is whether the app takes a crew's hand-back off the Mate
+	// when its own checks and Jev find nothing to decide (CON-273,
+	// CON-274): AutorouteOff, the default when empty, leaves every
+	// hand-back to the Mate; AutorouteShadow decides and records what it
+	// would have done in `mate/route.jsonl` but acts on nothing;
+	// AutorouteOn lands such a hand-back, or sends a review's findings back
+	// to the crew, and tells the Mate in its next digest.
+	Autoroute string `yaml:"autoroute,omitempty"`
 	// Workflow is the project's own process as the admin task page checks
 	// it (docs/design/task-page.md, CON-148): the steps the harness asks a
 	// crew to take, each with the evidence that proves it was taken. Empty
@@ -95,6 +103,29 @@ const (
 
 // ValidReview reports whether s is a value project.yaml's review may hold.
 func ValidReview(s string) bool { return s == ReviewOn || s == ReviewOff }
+
+// The values of ProjectConfig.Autoroute.
+const (
+	AutorouteOff    = "off"
+	AutorouteShadow = "shadow"
+	AutorouteOn     = "on"
+)
+
+// ValidAutoroute reports whether s is a value project.yaml's autoroute may
+// hold.
+func ValidAutoroute(s string) bool {
+	return s == AutorouteOff || s == AutorouteShadow || s == AutorouteOn
+}
+
+// AutorouteMode is Autoroute with its default filled in: anything but
+// shadow or on is off, so a hand-back goes to the Mate unless the captain
+// chose otherwise.
+func (c ProjectConfig) AutorouteMode() string {
+	if c.Autoroute == AutorouteShadow || c.Autoroute == AutorouteOn {
+		return c.Autoroute
+	}
+	return AutorouteOff
+}
 
 // The values of ProjectConfig.NextWork.
 const (

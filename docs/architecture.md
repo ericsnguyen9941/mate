@@ -43,7 +43,7 @@ names the layers its imports and importers allow.
 | 2 storage (lưu trữ) | The workspace store and the database and config files beside it | `store`, `db`, `plugin`, `learnings` |
 | 3 read (đọc) | Read models over stored state, and the ports they read through | `query`, `coreapi`, `box`, `timeline/scene`, `timeline/read`, `diagnostics`, `dispatch`, `harness`, `runtime` |
 | 4 integration (tích hợp) | Adapters to something outside mate: harness CLIs, Herdr, the terminal host, git, `gh`, Jev, OS notifications | `harness/catalog`, `harness/claude`, `harness/codex`, `harness/grok`, `harness/pi`, `screen`, `screen/fixture`, `screen/jev`, `screen/chain`, `send`, `notice`, `host`, `panerun`, `gitx`, `github`, `facts`, `quota`, `teardown`, `notifications`, `matehost`, `coreclient`, `runtime/herdr` |
-| 5 service (dịch vụ) | Application logic that combines the layers below, and the core that runs it | `spawn`, `outbox`, `autopilot`, `watch`, `timeline`, `recovery`, `refresh`, `prwatch`, `migrate`, `mateassets`, `hook`, `wake`, `recall`, `dashboard`, `usage`, `usage/why`, `core` |
+| 5 service (dịch vụ) | Application logic that combines the layers below, and the core that runs it | `spawn`, `outbox`, `autopilot`, `watch`, `timeline`, `recovery`, `refresh`, `prwatch`, `route`, `migrate`, `mateassets`, `hook`, `wake`, `recall`, `dashboard`, `usage`, `usage/why`, `core` |
 | 6 UI (giao diện) | What the captain looks at; Office and City are web pages in `internal/dashboard/ui/`, served by `dashboard` (service) | `ui/console` |
 | 7 binary | Wiring and CLI | `cmd/mate` |
 
@@ -397,7 +397,7 @@ How processes exchange state:
   | `mate news`, `mate work`, `mate land` (through `matehost`) | `news.jsonl`, `work.jsonl` | yes |
   | `mate hook` (the harness's session hooks) | `sent.log`, `mate.meta` (session id) | yes |
   | The headless host (`mate mate-agent host`) | `news.jsonl` (answers), what it writes through `store` | yes |
-  | `mate pr watch` (the detached watcher) | a crew's `.meta`, `.status`, the outbox | yes; its pid file `<c>.prwatch` and `prwatch.log`, no |
+  | `mate pr watch` (the detached watcher) | a crew's `.meta`, `.status`, the outbox; in auto mode everything `mate land` writes, and `app-notes.log` (CON-194) | yes; its pid file `<c>.prwatch` and `prwatch.log`, no |
   | `mate console` | through `store`; its tick on `work.jsonl` through `matehost` | yes; most of its actions run in the core |
   | `mate crew spawn` | the brief and launch files (`spawn.writeInside`), the empty `.status` | no, but the same spawn writes the crew's `.meta` through `store`, which is heard |
   | `learnings`, `usage/why`, `mate land`'s learning | `learnings/<c>.md` | no |
@@ -465,6 +465,8 @@ interfaces on the side of each reader, is planned in
 | `projects/<p>/mate/.manual`, `.auto` | `store` | the console's `m` key (`store.Workspace.SetMode`); autopilot releases `.manual` | autopilot, timeline; Auto means no `.manual` |
 | `projects/<p>/mate/.outbox`, `.outbox.lock` | `store` | `assign` from the console, autopilot (digests), stow, prwatch | outbox sender, query |
 | `projects/<p>/mate/.auto-cursor`, `.wake-cursor` | `store` | outbox (on a digest), `mate wake` (`internal/wake`) | autopilot, `mate wake` |
+| `projects/<p>/mate/app-notes.log` | `store` | prwatch (a pull request merged on GitHub that it landed in auto mode, CON-194), route (a hand-back it landed or sent back) | autopilot (an `app did:` item of the next digest) |
+| `projects/<p>/mate/route.jsonl` | `route` | route (`autoroute` shadow or on: each hand-back's decision, claim and outcome, CON-273, CON-274) | route |
 | `projects/<p>/mate/memory.md`, `backlog.md` | `memory` format, `store` I/O | the Mate (`mate remember`, `mate backlog`) | `mate recall` |
 | `projects/<p>/mate/news.jsonl` | `matehost` | `mate news`; the friction check of `mate wake`, `land` and `merge`; the host (answers) | query, dashboard, REPL, notifications |
 | `projects/<p>/mate/work.jsonl` | `matehost` | `mate work`, `mate land`, the console (the captain's tick) | query, dashboard, REPL, notifications |
