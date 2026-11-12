@@ -26,9 +26,9 @@ func (p Paths) ManualHold(project string) string {
 	return filepath.Join(p.MateDir(project), manualHoldName)
 }
 
-// autoCursorFile is `projects/<project>/mate/.auto-cursor`; it records how
+// AutoCursorFile is `projects/<project>/mate/.auto-cursor`; it records how
 // far the auto daemon has digested (mvp.md section 5).
-func (p Paths) autoCursorFile(project string) string {
+func (p Paths) AutoCursorFile(project string) string {
 	return filepath.Join(p.MateDir(project), autoCursorName)
 }
 
@@ -39,7 +39,7 @@ func (p Paths) wakeCursorFile(project string) string {
 }
 
 // outboxFile is `projects/<project>/mate/.outbox`.
-func (p Paths) outboxFile(project string) string {
+func (p Paths) OutboxFile(project string) string {
 	return filepath.Join(p.MateDir(project), outboxName)
 }
 
