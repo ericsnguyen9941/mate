@@ -136,6 +136,15 @@ goroutines  35
   and `getrusage(2)`, never `runtime.ReadMemStats`, which stops the world.
   `RSS` (now) is shown on Linux only; `peak RSS` everywhere.
 
+An `observer round` costs in proportion to what can change (CON-267/268):
+between its sweeps, one a minute, a round examines only the Projects with
+an open Crew or a live Mate and those a writer's notice named, and its
+`timeline ingest` reads only those. Measured on a copy of a workspace of
+12 Projects and 1307 Crews (2026-11-12), a round with nothing to examine
+allocates ~0 and a steady one 3.9 MB, against 44 MB for a sweep. A
+change nothing tells the core of - a branch moved by hand, a
+`project.yaml` edited in an editor - shows within a minute.
+
 `TestSteadyPassStaysWithinBudget` (`internal/core/budget_test.go`) keeps
 the two costs that grow with a workspace's history, one steady ingest pass
 and one `query.Load`, under an allocation budget over a generated workspace

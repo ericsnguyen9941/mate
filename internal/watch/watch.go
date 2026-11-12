@@ -52,6 +52,16 @@ const (
 	// Longer than a sign-in or a trust dialog takes to clear, shorter than
 	// a Mate should wait on a reviewer that never started.
 	DefaultNoTurnAfter = 5 * time.Minute
+	// DefaultSweepInterval is how often a round examines every project,
+	// whatever the change feed said (CON-267). Between sweeps a round
+	// examines only the projects that can change unheard - an open crew,
+	// a live Mate - and those a notice named (Notices). The sweep is the
+	// safety net under what neither covers: a git ref moved by hand, a
+	// pricing.yaml or project.yaml edited in an editor, a notice lost to
+	// a core restarting. A minute is the longest such a change waits to be
+	// read; a sweep costs what every round cost before (~130 ms on the
+	// captain's workspace, 2026-11-12), so once a minute is ~0.2% of a CPU.
+	DefaultSweepInterval = time.Minute
 )
 
 // Runtime is the slice of runtime.Adapter the observer needs. It is narrow
@@ -101,22 +111,38 @@ type Sleeper interface {
 	Sleep(ctx context.Context, d time.Duration) error
 }
 
-// Ingest is the derived timeline's writer (internal/timeline.Ingester). The
-// observer calls it at the end of every poll, because the observer is the
-// process that already holds the workspace and is already awake every five
-// seconds - and because M5 makes it the single writer of the database.
+// Round is what one round examined (CON-267): every project on a sweep,
+// else the projects it read. The timeline ingest, the budget and the
+// no-turn checks after it read the same projects and no others: what the
+// round did not examine has not changed since it last was, or will be
+// read by the next sweep.
+type Round struct {
+	// Sweep is a round that examined every project and trusts nothing it
+	// remembered of the files (DefaultSweepInterval).
+	Sweep bool
+	// Projects are the projects the round examined, in workspace.yaml's
+	// order; every project on a sweep.
+	Projects []string
+}
+
+// Ingest is the derived timeline's writer (internal/timeline.Ingester,
+// IngestScope). The observer calls it at the end of every poll, because
+// the observer is the process that already holds the workspace and is
+// already awake every five seconds - and because M5 makes it the single
+// writer of the database.
 //
 // It is an interface rather than the concrete type so this package keeps
 // importing nothing that can start an agent, and so a Watcher with no
 // timeline (every test that predates M5) still runs.
 type Ingest interface {
-	Ingest(ctx context.Context) error
+	Ingest(ctx context.Context, round Round) error
 }
 
 // BudgetChecker is mvp.md M5 task 27's budget check
-// (internal/timeline.Ingester.CheckBudgets): at the end of a poll, for every
-// project with a `budget:` block in project.yaml, it opens a `budget`
-// incident on whichever crew (or the project) has crossed a limit.
+// (internal/timeline.Ingester.CheckBudgetsScope): at the end of a poll, for
+// every project of the round with a `budget:` block in project.yaml, it
+// opens a `budget` incident on whichever crew (or the project) has crossed
+// a limit.
 //
 // It is a seam for the same reason Ingest is: this package must not import
 // internal/db or parse project.yaml's price arithmetic itself, and a
@@ -124,17 +150,35 @@ type Ingest interface {
 // checks no budgets, which is the honest behaviour for a workspace with no
 // timeline database.
 type BudgetChecker interface {
-	CheckBudgets(ctx context.Context) error
+	CheckBudgets(ctx context.Context, round Round) error
 }
 
 // TurnChecker is the observer's no-turn check
-// (internal/timeline.Ingester.CheckNoTurn, CON-74): at the end of a poll,
-// it opens a `no_turn` incident on every working crew launched more than
-// after ago whose actor has no turn in the ledger, and resolves it once a
-// turn is recorded. A seam for the same reason BudgetChecker is.
+// (internal/timeline.Ingester.CheckNoTurnScope, CON-74): at the end of a
+// poll, it opens a `no_turn` incident on every working crew of the round's
+// projects launched more than after ago whose actor has no turn in the
+// ledger, and resolves it once a turn is recorded. A seam for the same
+// reason BudgetChecker is.
 type TurnChecker interface {
-	CheckNoTurn(ctx context.Context, after time.Duration) error
+	CheckNoTurn(ctx context.Context, round Round, after time.Duration) error
 }
+
+// Notices is what the core's change feed heard since the observer last
+// asked (CON-260): the projects a writer's notice named, and whether one
+// named the workspace's own files or the core acted itself.
+type Notices struct {
+	// Projects are the projects a notice named.
+	Projects map[string]bool
+	// All is a notice about the workspace's own files (workspace.yaml,
+	// pricing), or an action the core ran, whose writes tell no feed: the
+	// next round is a sweep.
+	All bool
+}
+
+// NoticeFunc hands over what the feed heard since its last call, and
+// starts a new set. internal/core wires its change feed in (Hear); this
+// package imports nothing of it.
+type NoticeFunc func() Notices
 
 // SessionFunc asks whether the workspace's terminal runtime is up, without
 // starting one. It is a seam for the same reason HandleFunc is: the
@@ -194,6 +238,14 @@ type Deps struct {
 	// Pass records each round the loop runs, the timeline's ingest
 	// included, for `mate core stats` (CON-263). Nil records nothing.
 	Pass *loopstat.Loop
+	// Notices is the change feed (CON-267). Nil means none: every round
+	// examines every project and is a sweep, as before the feed; a
+	// Watcher that hears one examines between sweeps only the projects
+	// that can change unheard and those a notice named.
+	Notices NoticeFunc
+	// SweepInterval is how often a round that hears the feed examines
+	// every project anyway; zero means DefaultSweepInterval.
+	SweepInterval time.Duration
 }
 
 func (d Deps) now() time.Time {
@@ -238,6 +290,13 @@ func (d Deps) noTurnAfter() time.Duration {
 	return DefaultNoTurnAfter
 }
 
+func (d Deps) sweepInterval() time.Duration {
+	if d.SweepInterval > 0 {
+		return d.SweepInterval
+	}
+	return DefaultSweepInterval
+}
+
 func (d Deps) herdrTimeout() time.Duration {
 	if d.HerdrTimeout > 0 {
 		return d.HerdrTimeout
@@ -265,6 +324,16 @@ type Watcher struct {
 	// unanswered are the crews of this round whose Herdr call ran out its
 	// bound. Only the polling goroutine touches it.
 	unanswered []CrewRef
+	// looks is, by project, what the last round that examined it found
+	// (CON-267), and swept when the last sweep began. Only the polling
+	// goroutine touches them.
+	looks map[string]look
+	swept time.Time
+	// logs is, by project, what the rounds have read of incidents.log, and
+	// closed the crews whose meta a round found closed, by the stat it had
+	// (openIncidents, openCrews). Only the polling goroutine touches them.
+	logs   map[string]*incidentLog
+	closed map[string]map[string]metaStat
 
 	mu     sync.Mutex
 	health map[CrewRef]Health
@@ -326,6 +395,9 @@ func New(ws Workspace, deps Deps) *Watcher {
 		ws:     ws,
 		deps:   deps,
 		crews:  make(map[CrewRef]*observation),
+		looks:  make(map[string]look),
+		logs:   make(map[string]*incidentLog),
+		closed: make(map[string]map[string]metaStat),
 		health: make(map[CrewRef]Health),
 		wake:   make(chan struct{}, 1),
 	}
@@ -343,6 +415,11 @@ func (w *Watcher) Wake() {
 	default:
 	}
 }
+
+// Hear makes f the Watcher's change feed (Deps.Notices). It is how the
+// engine, which owns the feed, hands it to an observer cmd/mate built; call
+// it before Start.
+func (w *Watcher) Hear(f NoticeFunc) { w.deps.Notices = f }
 
 // Start begins polling in its own goroutine until Stop or a cancelled
 // context. Calling it twice is a no-op.
@@ -457,12 +534,30 @@ func (w *Watcher) Poll(ctx context.Context) error {
 	w.unanswered = nil
 	var errs []error
 
+	round := w.beginRound(now)
+	examined := make(map[string]bool)
 	for _, ref := range w.ws.Projects() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := w.pollProject(ctx, ref.Name, now, results, seen, listed); err != nil {
+		examined[ref.Name] = true
+		if !round.Sweep && !w.due(ref.Name, round) {
+			continue
+		}
+		round.Projects = append(round.Projects, ref.Name)
+		busy, err := w.pollProject(ctx, ref.Name, round.Sweep, now, results, seen, listed)
+		if err != nil {
 			errs = append(errs, err)
+		}
+		w.looks[ref.Name] = look{busy: busy}
+	}
+	for project := range w.looks {
+		if !examined[project] {
+			// No longer in workspace.yaml: registered again, it is
+			// examined as a project never seen.
+			delete(w.looks, project)
+			delete(w.logs, project)
+			delete(w.closed, project)
 		}
 	}
 	w.noteRuntime(ctx, now)
@@ -474,7 +569,7 @@ func (w *Watcher) Poll(ctx context.Context) error {
 	// observing - the database is derived, and a round that could not write
 	// it still watched the crews.
 	if w.deps.Timeline != nil {
-		if err := w.deps.Timeline.Ingest(ctx); err != nil {
+		if err := w.deps.Timeline.Ingest(ctx, round.Round); err != nil {
 			errs = append(errs, fmt.Errorf("watch: record the timeline: %w", err))
 		}
 	}
@@ -482,36 +577,85 @@ func (w *Watcher) Poll(ctx context.Context) error {
 	// has to run after it: a crossing this poll's turns caused must already
 	// be in the database before anything can check it against a limit.
 	if w.deps.Budget != nil {
-		if err := w.deps.Budget.CheckBudgets(ctx); err != nil {
+		if err := w.deps.Budget.CheckBudgets(ctx, round.Round); err != nil {
 			errs = append(errs, fmt.Errorf("watch: check budgets: %w", err))
 		}
 	}
 	// The no-turn check reads the same ledger, for the same reason.
 	if w.deps.Turns != nil {
-		if err := w.deps.Turns.CheckNoTurn(ctx, w.deps.noTurnAfter()); err != nil {
+		if err := w.deps.Turns.CheckNoTurn(ctx, round.Round, w.deps.noTurnAfter()); err != nil {
 			errs = append(errs, fmt.Errorf("watch: check turns: %w", err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (w *Watcher) pollProject(ctx context.Context, project string, now time.Time,
-	results map[CrewRef]Health, seen map[CrewRef]bool, listed map[string]bool) error {
+// look is what the last round that examined a project found (CON-267).
+type look struct {
+	// busy is a project that can change without a notice: it has an open
+	// crew - whose pane, `echo >> $MATE_STATUS` and transcript tell nobody
+	// - or a live Mate, whose transcript grows unheard; or the round could
+	// not tell, its listing having failed. Every round examines it, as
+	// every round examined every project before CON-267.
+	busy bool
+}
 
-	open, err := w.openIncidents(project)
-	if err != nil {
-		return fmt.Errorf("watch: read incidents of %s: %w", project, err)
+// pendingRound is a round being run, with the notices it took.
+type pendingRound struct {
+	Round
+	notices Notices
+}
+
+// beginRound decides whether this round is a sweep and takes what the
+// change feed heard since the last one.
+//
+// Measured on the captain's workspace (2026-11-12, after CON-259, CON-260
+// and CON-264): an observer round cost ~330-500 ms every ~5 s, ~9% of a
+// core, though of its 12 projects at most a third had an open crew or a
+// live Mate; the others were read whole - incidents.log, every crew's
+// meta, the timeline's pass - to learn again that nothing had moved.
+// Between sweeps a round now examines a project only when it is busy
+// (look), when a notice named it, or when it has never been examined.
+//
+// A notice taken is read by this round: what a writer wrote before its
+// notice is on disk before the round reads, and a notice that comes during
+// the round is in the next set.
+func (w *Watcher) beginRound(now time.Time) pendingRound {
+	if w.deps.Notices == nil {
+		return pendingRound{Round: Round{Sweep: true}}
 	}
-	crews, err := openCrews(w.ws, project)
+	notices := w.deps.Notices()
+	sweep := notices.All || w.swept.IsZero() || now.Sub(w.swept) >= w.deps.sweepInterval()
+	if sweep {
+		w.swept = now
+	}
+	return pendingRound{Round: Round{Sweep: sweep}, notices: notices}
+}
+
+// due reports whether a round that is not a sweep examines project.
+func (w *Watcher) due(project string, round pendingRound) bool {
+	last, seen := w.looks[project]
+	return !seen || last.busy || round.notices.Projects[project]
+}
+
+func (w *Watcher) pollProject(ctx context.Context, project string, sweep bool, now time.Time,
+	results map[CrewRef]Health, seen map[CrewRef]bool, listed map[string]bool) (bool, error) {
+
+	open, err := w.openIncidents(project, sweep)
 	if err != nil {
-		return fmt.Errorf("watch: list crews of %s: %w", project, err)
+		return true, fmt.Errorf("watch: read incidents of %s: %w", project, err)
+	}
+	crews, err := w.openCrews(project, sweep)
+	if err != nil {
+		return true, fmt.Errorf("watch: list crews of %s: %w", project, err)
 	}
 	listed[project] = true
+	busy := len(crews) > 0 || w.mateLive(project)
 
 	var errs []error
 	for _, crew := range crews {
 		if err := ctx.Err(); err != nil {
-			return err
+			return true, err
 		}
 		ref := CrewRef{Project: project, Crew: crew}
 		seen[ref] = true
@@ -520,9 +664,25 @@ func (w *Watcher) pollProject(ctx context.Context, project string, now time.Time
 		}
 	}
 	if err := w.resolveClosed(project, crews, now, open); err != nil {
+		// An incident left open on a closed crew is tried again next
+		// round, not at the next sweep.
+		busy = true
 		errs = append(errs, fmt.Errorf("watch: resolve incidents of closed crews of %s: %w", project, err))
 	}
-	return errors.Join(errs...)
+	return busy, errors.Join(errs...)
+}
+
+// mateLive reports whether the project's mate.meta records a Mate that was
+// started and not stopped (store.MateRecorded). Its transcript grows with
+// every turn and tells no feed, so the timeline must read it every round;
+// a stop rewrites mate.meta through the store, which is heard. A meta that
+// cannot be read counts as live: the round could not tell.
+func (w *Watcher) mateLive(project string) bool {
+	meta, err := w.ws.ReadMateMeta(project)
+	if err != nil {
+		return true
+	}
+	return store.MateRecorded(meta)
 }
 
 // stopped reports whether an agent Herdr no longer has went away because
@@ -934,17 +1094,38 @@ type incidentKey struct {
 // openIncidents reads which incidents of a project are currently open: the
 // file is the state, so a console that restarted sees exactly what the
 // previous one left behind.
-func (w *Watcher) openIncidents(project string) (map[incidentKey]bool, error) {
-	entries, _, err := w.ws.ReadIncidents(project, 0)
+//
+// The log is append-only, so a round reads only what was appended since
+// the last round that read it (CON-267), onto what that round knew; a
+// sweep reads it from the start. Measured 2026-11-12 on a copy of the
+// captain's workspace: once a round skipped the idle projects, reading the
+// busy ones' whole incidents.log and every crew's meta was most of what
+// was left of its 10.5 MB.
+func (w *Watcher) openIncidents(project string, sweep bool) (map[incidentKey]bool, error) {
+	log := w.logs[project]
+	if log == nil || sweep {
+		log = &incidentLog{open: make(map[incidentKey]bool)}
+	}
+	entries, next, err := w.ws.ReadIncidents(project, log.at)
 	if err != nil {
 		return nil, err
 	}
-	open := make(map[incidentKey]bool)
 	for _, e := range entries {
 		key := incidentKey{CrewRef{Project: project, Crew: e.Crew}, box.IncidentKind(e.Kind)}
-		open[key] = e.Open()
+		log.open[key] = e.Open()
 	}
-	return open, nil
+	log.at = next
+	w.logs[project] = log
+	return log.open, nil
+}
+
+// incidentLog is what the rounds have read of a project's incidents.log:
+// up to where, and which incidents it says are open. Its map is the one a
+// round hands its rules, so what they append is in it at once, and is read
+// back, to the same effect, by the next round.
+type incidentLog struct {
+	at   int64
+	open map[incidentKey]bool
 }
 
 func (w *Watcher) openIncident(ref CrewRef, kind box.IncidentKind, now time.Time,
@@ -996,14 +1177,25 @@ func (w *Watcher) appendIncident(ref CrewRef, kind box.IncidentKind, state strin
 //
 // A meta that cannot be read is skipped rather than watched: an unreadable
 // record is not evidence of a running crew.
-func openCrews(ws Workspace, project string) ([]string, error) {
-	entries, err := os.ReadDir(ws.CrewsDir(project))
+//
+// A meta a round found closed is not read again while its size and mtime
+// hold (CON-267), stat'ed before the read as seal.go's keys are: what
+// reopens a crew - `mate crew relaunch`, a person's edit - rewrites the
+// file whole. A sweep reads every meta. On the captain's workspace a busy
+// project holds hundreds of closed crews and a handful of open ones.
+func (w *Watcher) openCrews(project string, sweep bool) ([]string, error) {
+	entries, err := os.ReadDir(w.ws.CrewsDir(project))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	closed := w.closed[project]
+	if closed == nil || sweep {
+		closed = make(map[string]metaStat)
+	}
+	next := make(map[string]metaStat, len(closed))
 	var out []string
 	for _, e := range entries {
 		if e.IsDir() {
@@ -1013,17 +1205,39 @@ func openCrews(ws Workspace, project string) ([]string, error) {
 		if !ok || store.ValidateCrewID(id) != nil {
 			continue
 		}
-		meta, err := ws.ReadCrewMeta(project, id)
+		st, statted := statOf(e)
+		if statted {
+			if was, ok := closed[id]; ok && was == st {
+				next[id] = st
+				continue
+			}
+		}
+		meta, err := w.ws.ReadCrewMeta(project, id)
 		if err != nil {
 			continue
 		}
 		if crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed() {
+			if statted {
+				next[id] = st
+			}
 			continue
 		}
 		out = append(out, id)
 	}
+	w.closed[project] = next
 	sort.Strings(out)
 	return out, nil
+}
+
+// metaStat is a crew meta's size and modification time.
+type metaStat struct{ size, mtime int64 }
+
+func statOf(e os.DirEntry) (metaStat, bool) {
+	fi, err := e.Info()
+	if err != nil {
+		return metaStat{}, false
+	}
+	return metaStat{fi.Size(), fi.ModTime().UnixNano()}, true
 }
 
 // screenHash is the pane snapshot reduced to something comparable between

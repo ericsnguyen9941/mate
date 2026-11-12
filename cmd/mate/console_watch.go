@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/core"
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
@@ -111,14 +112,13 @@ func engineWatcher(dir string, deps spawn.Deps, stats *loopstat.Recorder) (*watc
 		Session:  consoleSession(ws, deps),
 		Observer: deps.Observer,
 		Timeline: timedIngest{ingest, stats.Loop(core.LoopIngest)},
-		// The same *timeline.Ingester also implements watch.BudgetChecker
-		// (mvp.md M5 task 27): it already holds the writable db.DB and the
-		// workspace handle a budget check needs, and it is the same single
-		// writer the rest of M5 keeps to one.
-		Budget: ingest,
-		// And watch.TurnChecker (CON-74): the no-turn check reads the same
-		// ledger.
-		Turns: ingest,
+		// The same *timeline.Ingester is also the budget check (mvp.md M5
+		// task 27): it already holds the writable db.DB and the workspace
+		// handle a budget check needs, and it is the same single writer
+		// the rest of M5 keeps to one.
+		Budget: roundChecks{ingest},
+		// And the no-turn check (CON-74), which reads the same ledger.
+		Turns: roundChecks{ingest},
 		Pass:  round,
 	})
 	return watcher, handle, ingest, nil
@@ -147,9 +147,28 @@ type timedIngest struct {
 	stat   *loopstat.Loop
 }
 
-func (t timedIngest) Ingest(ctx context.Context) error {
+func (t timedIngest) Ingest(ctx context.Context, round watch.Round) error {
 	defer t.stat.End(t.stat.Begin())
-	return t.ingest.Ingest(ctx)
+	return t.ingest.IngestScope(ctx, roundScope(round))
+}
+
+// roundChecks is the ingest's budget and no-turn checks over the projects
+// of the observer's round (CON-267).
+type roundChecks struct{ ingest *timeline.Ingester }
+
+func (c roundChecks) CheckBudgets(ctx context.Context, round watch.Round) error {
+	return c.ingest.CheckBudgetsScope(ctx, roundScope(round))
+}
+
+func (c roundChecks) CheckNoTurn(ctx context.Context, round watch.Round, after time.Duration) error {
+	return c.ingest.CheckNoTurnScope(ctx, roundScope(round), after)
+}
+
+// roundScope is the timeline's scope of an observer round: the projects
+// it examined, or everything on a sweep. The two packages spell it each
+// their own way so internal/watch imports nothing of the timeline's.
+func roundScope(round watch.Round) timeline.Scope {
+	return timeline.Scope{Sweep: round.Sweep, Projects: round.Projects}
 }
 
 // consoleSessionRef is timeline.SessionRefFunc over the Herdr adapter: the

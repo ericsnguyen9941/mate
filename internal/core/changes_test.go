@@ -13,6 +13,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/coreclient"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/store"
+	"github.com/nguyenngocanh94/mate/internal/watch"
 )
 
 // The change feed (CON-260): a writer's notice lands in every subscriber's
@@ -216,3 +217,52 @@ type blockingWakeWatcher struct {
 }
 
 func (w *blockingWakeWatcher) Wake() { <-w.release }
+
+// hearingWatcher is an observer that reads the feed itself (Hearer).
+type hearingWatcher struct {
+	fakeWatcher
+	hear watch.NoticeFunc
+}
+
+func (w *hearingWatcher) Hear(f watch.NoticeFunc) { w.hear = f }
+
+// The observer hears the feed once a round (CON-267): the Projects the
+// notices named since its last round; a notice about the workspace's own
+// files, or an action the engine ran itself - whose writes send no notice -
+// makes the round a sweep. The talk with a Mate and a peek do not.
+func TestObserverHearsTheFeedAndTheEnginesOwnActions(t *testing.T) {
+	w := &hearingWatcher{}
+	e := New(Options{Watcher: w, Act: func(context.Context, coreapi.ActionRequest) (string, error) { return "", nil }})
+	defer e.Stop()
+	if w.hear == nil {
+		t.Fatal("the engine did not hand the observer its feed")
+	}
+	e.Changed(coreapi.Change{Project: "shop", Crew: "fix-cart", Kind: "status"})
+	e.Changed(coreapi.Change{Project: "docs", Kind: "sent"})
+	if got, want := w.hear(), (watch.Notices{Projects: map[string]bool{"shop": true, "docs": true}}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("heard %+v, want %+v", got, want)
+	}
+	if got := w.hear(); got.All || len(got.Projects) != 0 {
+		t.Fatalf("heard %+v again, want nothing", got)
+	}
+	e.Changed(coreapi.Change{Kind: "workspace"})
+	if got := w.hear(); !got.All {
+		t.Fatalf("a notice about workspace.yaml heard as %+v, want a sweep", got)
+	}
+	ctx := context.Background()
+	if _, err := e.Act(ctx, coreapi.ActionRequest{Action: coreapi.ActionPeek, Target: "shop", TargetKind: "crew", Crew: "buy"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.hear(); got.All {
+		t.Fatal("a peek made the next round a sweep")
+	}
+	if _, err := e.Act(ctx, coreapi.ActionRequest{Action: coreapi.ActionStop, Target: "shop", TargetKind: "crew", Crew: "buy"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.hear(); !got.All {
+		t.Fatal("an action the engine ran did not make the next round a sweep")
+	}
+	if got := w.hear(); got.All {
+		t.Fatal("one action made two sweeps")
+	}
+}

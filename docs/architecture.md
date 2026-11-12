@@ -156,7 +156,14 @@ of `workspace.yaml` every 2 s (`internal/core/reload.go`); the observer
 CON-260) which records the timeline at the end of each poll
 (`internal/timeline`; a poll skips every crew the ingest has sealed,
 closed over an hour with every conclusion recorded, until its `.meta` or
-`.status` moves: CON-259, `internal/timeline/seal.go`); the outbox sender (`internal/outbox`, every
+`.status` moves: CON-259, `internal/timeline/seal.go`). A round examines
+only the Projects that can change unheard - an open Crew, a live Mate
+(`store.MateRecorded`) - those a notice named, and every Project once a
+minute (`watch.DefaultSweepInterval`, the sweep); the ingest and the
+budget, context and no-turn checks after it read the same Projects
+(`watch.Round`, `timeline.Scope`), and within them skip a Mate whose
+`mate.meta`, sessions and transcripts have not moved and git for a Crew
+with no hint (`internal/timeline/memo.go`, CON-267/268); then the outbox sender (`internal/outbox`, every
 2 s); the auto daemon (`internal/autopilot`, every 90 s); recovery
 (`internal/recovery`); the watch over the headless Mates' hosts
 (`internal/core/hostwatch.go`, every 5 s, CON-226); the Office/City server (`internal/core/dashboard.go`);
@@ -327,9 +334,18 @@ How processes exchange state:
   under each, a channel that wakes it, and `Take`), drops the shared
   snapshot and wakes the observer (`watch.Watcher.Wake`: its next round
   starts at once, no sooner than `watch.WakeGap`, 2.5 s, after the last one
-  started). A notice is a hint, never the record, and no poll is longer
-  for it: what bypasses the feed is still found by the polls alone.
-  Polling less is CON-262; watching what bypasses the feed, CON-261.
+  started). The observer also reads the feed itself, once a round
+  (`watch.Watcher.Hear`, wired by `core.New`; CON-267): it examines the
+  Projects the notices named besides the ones it examines every round,
+  and a notice about the workspace's own files, or an action `Act` ran
+  (whose writes, being the core's, tell no feed), makes its next round a
+  sweep. A notice is a hint, never the record, and no poll is longer for
+  it: what bypasses the feed (the table below) is in a Project the
+  observer examines every round, one with an open Crew or a live Mate, or
+  is read by its sweep within a minute - git refs moved by hand, a
+  `project.yaml` or `pricing.yaml` edited in an editor, a notice lost to a
+  core restarting. Polling less is CON-262; watching what bypasses the
+  feed, CON-261.
 
   Who writes `.mate/`, and whether the feed hears it (2026-11-11):
 
