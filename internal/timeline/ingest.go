@@ -142,9 +142,12 @@ type Ingester struct {
 	sealed    map[string]map[string]sealKey
 	unlocated map[string]unlocatedCrew
 
-	// mu guards stale, which readers outside the poll goroutine ask for.
-	mu    sync.Mutex
-	stale map[string]Stale
+	// mu guards stale, live and polled, which readers outside the poll
+	// goroutine ask for (live.go).
+	mu     sync.Mutex
+	stale  map[string]Stale
+	live   map[string][]LiveFile
+	polled chan struct{}
 }
 
 // Stale is a project whose ingest has failed every pass since Since: its
@@ -224,7 +227,12 @@ func (i *Ingester) ingestAll(ctx context.Context, shared *sql.Tx) error {
 		return fmt.Errorf("timeline: pricing: %w", err)
 	}
 	var errs []error
+	projects := map[string]bool{}
+	if shared == nil {
+		defer i.notePolled(projects)
+	}
 	for _, ref := range i.ws.Projects() {
+		projects[ref.Name] = true
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -361,6 +369,7 @@ func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sq
 		return err
 	}
 	i.recordSeals(p)
+	i.recordLive(p)
 	return nil
 }
 
@@ -391,6 +400,9 @@ type pass struct {
 	located   map[string]string
 	unlocated map[string]string
 	seals     map[string]sealKey
+	// mateTranscript is the Mate's current transcript as this pass located
+	// it; empty when it found none (live.go).
+	mateTranscript string
 
 	// crews is every crew of the project, from `crews/<id>.meta`.
 	crews []crewRecord

@@ -16,8 +16,9 @@ import (
 // waiting out its 5 s. No poll is longer for it - a notice is a hint, and
 // what a writer that bypasses the store did (a Crew's own `echo >>
 // $MATE_STATUS`, a harness's transcript; docs/architecture.md section 2)
-// is still found by the polls alone. Polling less is CON-262's, which
-// waits on a ChangeSub.
+// is found by the polls, and since CON-266 by the engine's own watch on
+// those files (filewatch.go), whose changes come in through Changed too.
+// Polling less is CON-262's, which waits on a ChangeSub.
 
 // Changes is the engine's change feed: each notice is put in the dirty set
 // of every subscriber and wakes it. Safe for concurrent use.

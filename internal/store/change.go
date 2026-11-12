@@ -54,6 +54,10 @@ const (
 	// ChangeCrew is any other file of a Crew: its brief, report, hand-back,
 	// review record, session inputs.
 	ChangeCrew ChangeKind = "crew"
+	// ChangeTranscript is a Crew's or the Mate's harness transcript,
+	// outside `.mate/`: no writer notes it, only the core's watch on the
+	// files written past the feed (CON-266) does. ChangeOf never reads it.
+	ChangeTranscript ChangeKind = "transcript"
 )
 
 // Change is one write as the core's change feed hears it.

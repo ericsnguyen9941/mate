@@ -154,6 +154,12 @@ type Options struct {
 	// line says - Jev's and the observer's configuration errors. The engine
 	// only reports them (Status), after its own.
 	Notices []string
+	// NoFileWatch turns off the watch on the files written past the change
+	// feed (CON-266, filewatch.go); `mate core` sets it from MATE_FSWATCH=off.
+	// The polls find every change either way. A test in a synctest bubble
+	// sets it: the watch waits in a system call, which the bubble never
+	// counts as idle.
+	NoFileWatch bool
 	// Stats is where every loop records its runs (CON-263): the caller's
 	// loops - the observer, the ingest, the outbox, the auto daemon - under
 	// the Loop* names, and the engine adds its own. Engine.Stats reads it.
@@ -175,7 +181,8 @@ const StopWait = 45 * time.Second
 // computes the snapshot every UI reads (Snapshot), and runs every action a
 // UI asks for (Act).
 //
-// Start starts the reading of workspace.yaml, the watcher, then the sender,
+// Start starts the reading of workspace.yaml, the watch on the files
+// written past the change feed (CON-266), the watcher, then the sender,
 // then the pilot - so the daemon never queues a digest no sender would type
 // - then recovery and the watch over the headless hosts (CON-226), and last
 // what serves the captain: the dashboard, then the notifications, which
@@ -188,8 +195,11 @@ type Engine struct {
 	recovery *recoveryRun
 	// hosts watches each headless Mate's host of its own (CON-226); nil
 	// without a workspace or a Herdr runtime to start a Mate through.
-	hosts     *hostWatch
-	reload    *tickLoop
+	hosts  *hostWatch
+	reload *tickLoop
+	// files watches what writes past the change feed (CON-266); nil
+	// without a workspace or with Options.NoFileWatch.
+	files     *fileWatch
 	dashboard *dashboardPart
 	notify    *notifyLoop
 	snaps     *snapshotCache
@@ -275,6 +285,12 @@ func New(o Options) *Engine {
 	if o.Workspace != nil {
 		e.reload = configReload(o.Workspace)
 		e.reload.stat = e.stats.Loop(LoopReload)
+		if !o.NoFileWatch {
+			e.files = &fileWatch{ws: o.Workspace, feed: e.changes, changed: e.Changed, open: openFileWatcher}
+			if o.Ingest != nil {
+				e.files.live = o.Ingest
+			}
+		}
 		if o.Spawn.Runtime != nil {
 			// spawn.StartMate, which the restart runs, refuses without one.
 			e.hosts = e.newHostWatch()
@@ -348,6 +364,9 @@ func (e *Engine) parts() []part {
 	var out []part
 	if e.reload != nil {
 		out = append(out, part{"workspace.yaml reload", e.reload})
+	}
+	if e.files != nil {
+		out = append(out, part{"file watch", e.files})
 	}
 	if e.o.Watcher != nil {
 		out = append(out, part{"observer", e.o.Watcher})

@@ -31,6 +31,7 @@ func fakeCoreStats(pid int, started time.Time) coreapi.CoreStats {
 			GCCycles: 9411, GCCPUFraction: 0.031, Goroutines: 84,
 			CPU: 84 * time.Minute, PeakRSS: 1500 << 20,
 		},
+		Files: &coreapi.FileWatchStats{Watched: 7, Missing: 1, Events: 312, Changes: 40},
 	}
 }
 
@@ -50,9 +51,22 @@ allocated   7.0 TB in 81.0G objects since start · 1019 MB/s
 gc          9411 cycles · 3.1% of the CPU
 cpu         1h24m · 70% of one core since start
 goroutines  84
+files       7 watched · 1 missing · 312 events → 40 changes
 `
 	if got := b.String(); got != want {
 		t.Fatalf("printCoreStats =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// A core whose system gave no watch says so, and that the polls run on.
+func TestStatsFilesOff(t *testing.T) {
+	got := statsFiles(coreapi.FileWatchStats{Off: "too many open files"})
+	if want := "off: too many open files (the polls find every change)"; got != want {
+		t.Fatalf("statsFiles = %q, want %q", got, want)
+	}
+	got = statsFiles(coreapi.FileWatchStats{Watched: 3, Events: 1200, Changes: 9, Errors: 2, LastError: "no space left on device"})
+	if want := "3 watched · 1.2k events → 9 changes · 2 errors, last: no space left on device"; got != want {
+		t.Fatalf("statsFiles = %q, want %q", got, want)
 	}
 }
 

@@ -32,8 +32,11 @@ func (p *pass) ingestTranscripts(ctx context.Context) error {
 		loc, reason := p.locateMate()
 		if reason != "" {
 			p.unresolved(p.mate.ActorID, string(loc.Kind), reason)
-		} else if err := p.ingestOneTranscript(ctx, loc); err != nil {
-			return err
+		} else {
+			p.mateTranscript = loc.Path
+			if err := p.ingestOneTranscript(ctx, loc); err != nil {
+				return err
+			}
 		}
 	}
 	archives, err := p.ing.ws.MateSessionArchives(p.project)
