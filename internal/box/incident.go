@@ -3,6 +3,8 @@ package box
 import (
 	"strings"
 	"time"
+
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // IncidentKind is the kind of trouble the observer (task 18) detected.
@@ -115,7 +117,11 @@ func loadIncidents(ws Workspace, project string, from int64) ([]Entry, int64, er
 	if err != nil {
 		return nil, from, err
 	}
+	return incidentEntries(ws.IncidentsLog(project), lines, from), next, nil
+}
 
+// incidentEntries is loadIncidents over lines already read from path.
+func incidentEntries(path string, lines []store.IncidentEntry, from int64) []Entry {
 	type pair struct{ crew, kind string }
 	resolved := make([]bool, len(lines))
 	pending := make(map[pair]int)
@@ -131,7 +137,6 @@ func loadIncidents(ws Workspace, project string, from int64) ([]Entry, int64, er
 		}
 	}
 
-	path := ws.IncidentsLog(project)
 	out := make([]Entry, 0, len(lines))
 	for i, l := range lines {
 		if !l.Open() || l.Offset < from {
@@ -154,7 +159,7 @@ func loadIncidents(ws Workspace, project string, from int64) ([]Entry, int64, er
 			Incident: &inc,
 		})
 	}
-	return out, next, nil
+	return out
 }
 
 // OpenIncidents is the observer's unresolved findings for one crew, oldest
