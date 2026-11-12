@@ -51,6 +51,7 @@ func pathCases(p Paths) map[string]struct{ got, want string } {
 		"AutoFlag":       {p.AutoFlag(project), "/ws/.mate/projects/shop/mate/.auto"},
 		"ManualHold":     {p.ManualHold(project), "/ws/.mate/projects/shop/mate/.manual"},
 		"AutoCursorFile": {p.AutoCursorFile(project), "/ws/.mate/projects/shop/mate/.auto-cursor"},
+		"AppNotesLog":    {p.AppNotesLog(project), "/ws/.mate/projects/shop/mate/app-notes.log"},
 		"wakeCursorFile": {p.wakeCursorFile(project), "/ws/.mate/projects/shop/mate/.wake-cursor"},
 		"MemoryFile":     {p.MemoryFile(project), "/ws/.mate/projects/shop/mate/memory.md"},
 		"BacklogFile":    {p.BacklogFile(project), "/ws/.mate/projects/shop/mate/backlog.md"},

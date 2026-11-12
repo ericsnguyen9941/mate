@@ -334,3 +334,47 @@ func parseIncident(line string) (IncidentEntry, bool) {
 		Text:  fields[4],
 	}, true
 }
+
+// AppNote is one line of `mate/app-notes.log`: something the app did on the
+// Mate's behalf, such as landing a pull request merged on GitHub, so the
+// Mate hears it at its next digest rather than in a turn of its own.
+type AppNote struct {
+	// Offset is the byte offset of this line, for a caller keeping a cursor.
+	Offset int64
+	Time   time.Time
+	Text   string
+}
+
+// AppendAppNote appends one line to `mate/app-notes.log`. Time defaults to
+// now.
+func (w *Workspace) AppendAppNote(project string, note AppNote) error {
+	if err := ValidateProjectName(project); err != nil {
+		return err
+	}
+	if note.Time.IsZero() {
+		note.Time = time.Now()
+	}
+	return w.appendLine(w.AppNotesLog(project), note.Time.Format(time.RFC3339)+sentSep+oneLine(note.Text))
+}
+
+// ReadAppNotes returns the lines of `mate/app-notes.log` from a byte offset,
+// and the offset to resume from. A line that does not parse is skipped.
+func (w *Workspace) ReadAppNotes(project string, from int64) ([]AppNote, int64, error) {
+	if err := ValidateProjectName(project); err != nil {
+		return nil, from, err
+	}
+	lines, next, err := readLines(w.AppNotesLog(project), from)
+	if err != nil {
+		return nil, from, err
+	}
+	notes := make([]AppNote, 0, len(lines))
+	for _, l := range lines {
+		at, text, ok := strings.Cut(l.text, sentSep)
+		t, err := time.Parse(time.RFC3339, at)
+		if !ok || err != nil {
+			continue
+		}
+		notes = append(notes, AppNote{Offset: l.offset, Time: t, Text: text})
+	}
+	return notes, next, nil
+}

@@ -66,6 +66,10 @@ type Deps struct {
 	DeliverFor time.Duration
 	// Log receives one line per event; nil discards.
 	Log io.Writer
+	// Land, when set, lands a crew whose pull request was merged, the way
+	// `mate land` does, and returns what it printed (CON-194). cmd/mate
+	// wires the command itself. Nil leaves the landing to the Mate.
+	Land func(ctx context.Context, project, crew string) (string, error)
 }
 
 func (d Deps) interval() time.Duration {
@@ -178,6 +182,15 @@ func (d Deps) ended(ctx context.Context, project, crew, url, repo string, repoCf
 	}
 	if err := d.appendStatusOnce(project, crew, verb+": "+url); err != nil {
 		return err
+	}
+	if state == crewstate.PRStateMerged {
+		landed, quiet := d.landForMate(ctx, project, crew, url, short(pr.MergeCommit))
+		if quiet {
+			return nil
+		}
+		if landed != "" {
+			line = landed
+		}
 	}
 	return d.wake(ctx, project, crew, state, url, line)
 }

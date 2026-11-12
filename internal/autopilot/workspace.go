@@ -15,6 +15,8 @@ import (
 type Workspace interface {
 	box.Workspace
 	AppendSent(project string, entry store.SentEntry) error
+	AppNotesLog(project string) string
+	ReadAppNotes(project string, from int64) ([]store.AppNote, int64, error)
 	LoadConfig() error
 	ManualHold(project string) string
 	Projects() []store.ProjectRef

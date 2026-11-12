@@ -172,6 +172,36 @@ func TestAHandBackWithNobodyElseWorkingWakesTheMateAtOnce(t *testing.T) {
 	}
 }
 
+// What the app did on the Mate's behalf opens no turn of its own; it rides
+// with the next digest that does, once (CON-194).
+func TestAnAppNoteRidesWithTheNextDigest(t *testing.T) {
+	f := newFixture(t)
+	f.auto(true)
+	if err := f.ws.AppendAppNote(project, store.AppNote{Time: f.clock.Now(), Text: "landed k2 (PR #7 merged on GitHub); tracker not updated"}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.mustTick()
+	if typed := f.typed(); len(typed) != 0 {
+		t.Fatalf("typed %#v for an app note alone", typed)
+	}
+
+	f.status("k3", "needs-decision: pick A or B")
+	f.clock.Advance(autopilot.DefaultInterval)
+	f.mustTick()
+	line := f.requireOneDigest()
+	if !strings.Contains(line, "digest: 2 item(s)") || !strings.Contains(line, "app did: landed k2 (PR #7 merged on GitHub); tracker not updated") {
+		t.Fatalf("digest = %q, want the question and the note", line)
+	}
+
+	f.status("k3", "needs-decision: and C?")
+	f.clock.Advance(autopilot.DefaultInterval)
+	f.mustTick()
+	if typed := f.typed(); len(typed) != 2 || strings.Contains(typed[1], "app did") {
+		t.Fatalf("typed %#v, want the note in the first digest only", typed)
+	}
+}
+
 // The happy path, end to end: one line, marked, verified into the composer,
 // recorded in sent.log, cursor advanced.
 func TestOneVerifiedDigestPerTick(t *testing.T) {

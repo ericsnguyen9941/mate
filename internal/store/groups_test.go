@@ -91,6 +91,7 @@ var methodGroups = []methodGroup{
 			"AutoFlag",
 			"ManualHold",
 			"AutoCursorFile",
+			"AppNotesLog",
 			"wakeCursorFile",
 			"OutboxFile",
 			"outboxLockFile",
@@ -232,6 +233,8 @@ var methodGroups = []methodGroup{
 			"AppendJevLog",
 			"AppendIncident",
 			"ReadIncidents",
+			"AppendAppNote",
+			"ReadAppNotes",
 		},
 	},
 	{

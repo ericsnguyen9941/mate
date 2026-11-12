@@ -32,6 +32,13 @@ func (p Paths) AutoCursorFile(project string) string {
 	return filepath.Join(p.MateDir(project), autoCursorName)
 }
 
+// AppNotesLog is `projects/<project>/mate/app-notes.log`: what the app did
+// on the Mate's behalf without a turn of its own (CON-194), which the next
+// digest carries to the Mate.
+func (p Paths) AppNotesLog(project string) string {
+	return filepath.Join(p.MateDir(project), appNotesName)
+}
+
 // wakeCursorFile is `projects/<project>/mate/.wake-cursor`; it records how
 // far `mate wake` has shown the project's status lines to the Mate.
 func (p Paths) wakeCursorFile(project string) string {

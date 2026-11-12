@@ -54,6 +54,10 @@ const (
 	// `crew.context_high`. Its own kind for the same reason as ItemBudget:
 	// it never changed the crew's state.
 	ItemContextHigh ItemKind = "context high"
+	// ItemAppDid is a line of `mate/app-notes.log`: something the app did on
+	// the Mate's behalf, such as landing a pull request merged on GitHub
+	// (CON-194). It never wakes the Mate.
+	ItemAppDid ItemKind = "app did"
 )
 
 // Item is one thing a digest reports, with the entry it came from kept so a
@@ -91,6 +95,9 @@ type Item struct {
 const (
 	// MaxItemRunes bounds each quoted crew line.
 	MaxItemRunes = 120
+	// MaxNoteRunes bounds each ItemAppDid line, which carries what the
+	// landing left for the Mate to do and so runs longer than a crew's.
+	MaxNoteRunes = 300
 	// MaxItemsListed bounds how many items are spelled out. The count before
 	// the dash is always the true one, and the remainder is named as
 	// "+N more" - a digest that listed forty items would be a line no
@@ -226,6 +233,7 @@ const GatherWindow = 5 * time.Minute
 // that is not is held: the cursor stays put, so it rides with the next digest
 // that does wake the Mate, and it is gathered again on every tick until then.
 //
+//   - ItemAppDid never wakes: it is news of something already done.
 //   - ItemContextHigh never wakes: its handling is "do not cut it mid-turn; at
 //     its next hand-back open a fresh session" (internal/wake). On mihuv2
 //     every one of the six such digests up to 2026-11-04 was answered "—"
@@ -243,7 +251,7 @@ const GatherWindow = 5 * time.Minute
 func Wakes(items []Item, now time.Time, working bool) bool {
 	for _, item := range items {
 		switch item.Kind {
-		case ItemContextHigh:
+		case ItemContextHigh, ItemAppDid:
 		case ItemBudget:
 			if percent, _ := box.BudgetThreshold(item.Text); percent >= 200 {
 				return true
@@ -264,34 +272,40 @@ func Wakes(items []Item, now time.Time, working bool) bool {
 }
 
 // Working reports whether an open crew other than the ones items are about
-// is still at work: its latest status line is not a hand-back. A crew that
-// has written nothing yet counts, since it was just spawned. Wakes uses it
-// to decide whether a hand-back has anyone to wait for.
+// is still at work (box.AtWork). Wakes uses it to decide whether a hand-back
+// has anybody to wait for.
 func Working(v box.View, items []Item) bool {
 	reported := make(map[string]bool, len(items))
 	for _, item := range items {
 		reported[item.Crew] = true
 	}
 	for crew := range v.ByCrew {
-		if crew == "" || crew == MateCrew || v.Closed[crew] || reported[crew] {
-			continue
-		}
-		if !restingOrSilent(v, crew) {
+		if crew != "" && crew != MateCrew && !reported[crew] && box.AtWork(v, crew) {
 			return true
 		}
 	}
 	return false
 }
 
-// restingOrSilent is resting, except that a crew with no status line at all
-// is not silent: it is starting, which is working.
-func restingOrSilent(v box.View, crew string) bool {
-	for _, e := range v.ByCrew[crew] {
-		if e.Kind == box.KindStatus {
-			return resting(v, crew)
-		}
+// Notes are the lines of `mate/app-notes.log` past the cursor, as ItemAppDid
+// items: what the app did on the Mate's behalf without a turn of its own
+// (CON-194). They never wake the Mate; they ride with the next digest that
+// does, so the Mate hears of every landing the app made.
+func Notes(ws Workspace, project string, cursor map[string]int64) ([]Item, error) {
+	path := ws.AppNotesLog(project)
+	last, seen := cursor[path]
+	notes, _, err := ws.ReadAppNotes(project, last)
+	if err != nil {
+		return nil, err
 	}
-	return false
+	var out []Item
+	for _, n := range notes {
+		if seen && n.Offset <= last {
+			continue
+		}
+		out = append(out, Item{Kind: ItemAppDid, Text: n.Text, At: n.Time, File: path, Offset: n.Offset})
+	}
+	return out, nil
 }
 
 // Advance returns the cursor a caller should record once the items have been
@@ -395,6 +409,8 @@ func itemText(item Item) string {
 		return fmt.Sprintf("%s over budget: %s", crew, item.Text)
 	case ItemNoTurn:
 		return fmt.Sprintf("%s no turn: %s", crew, item.Text)
+	case ItemAppDid:
+		return fmt.Sprintf("app did: %s", oneLine(item.Text, MaxNoteRunes))
 	case ItemContextHigh:
 		// "<crew> context high: <latest> tokens of context, over
 		// <threshold>" (CON-73), the observer's text verbatim.

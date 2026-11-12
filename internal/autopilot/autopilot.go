@@ -333,7 +333,11 @@ func (p *Pilot) digest(ctx context.Context, project string, now time.Time) error
 		if err != nil {
 			return outbox.Request{}, false, err
 		}
-		items := Gather(view, cursor, now)
+		notes, err := Notes(p.ws, project, cursor)
+		if err != nil {
+			return outbox.Request{}, false, err
+		}
+		items := append(Gather(view, cursor, now), notes...)
 		if len(items) == 0 {
 			// Nothing new. The daemon is not a heartbeat.
 			return outbox.Request{}, false, nil

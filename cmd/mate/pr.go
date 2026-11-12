@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -127,6 +128,13 @@ func (c cli) runPRWatch(w *store.Workspace, project, crew, url string, stdout, s
 		Git:    gitx.New(),
 		Outbox: spawn.MateOutbox(w, liveDeps(w, stderr)),
 		Log:    stdout,
+		// A pull request merged on GitHub is landed here, so the Mate
+		// need not take a turn for it (CON-194).
+		Land: func(_ context.Context, project, crew string) (string, error) {
+			var out bytes.Buffer
+			err := c.cmdLand([]string{project, crew, "--workspace", w.Root()}, &out, &out)
+			return out.String(), err
+		},
 	}
 	if err := prwatch.Watch(ctx, deps, project, crew, url); err != nil {
 		fmt.Fprintf(stdout, "%s watch of %s ended: %v\n", project, url, err)

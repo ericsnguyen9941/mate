@@ -397,7 +397,7 @@ How processes exchange state:
   | `mate news`, `mate work`, `mate land` (through `matehost`) | `news.jsonl`, `work.jsonl` | yes |
   | `mate hook` (the harness's session hooks) | `sent.log`, `mate.meta` (session id) | yes |
   | The headless host (`mate mate-agent host`) | `news.jsonl` (answers), what it writes through `store` | yes |
-  | `mate pr watch` (the detached watcher) | a crew's `.meta`, `.status`, the outbox | yes; its pid file `<c>.prwatch` and `prwatch.log`, no |
+  | `mate pr watch` (the detached watcher) | a crew's `.meta`, `.status`, the outbox; in auto mode everything `mate land` writes, and `app-notes.log` (CON-194) | yes; its pid file `<c>.prwatch` and `prwatch.log`, no |
   | `mate console` | through `store`; its tick on `work.jsonl` through `matehost` | yes; most of its actions run in the core |
   | `mate crew spawn` | the brief and launch files (`spawn.writeInside`), the empty `.status` | no, but the same spawn writes the crew's `.meta` through `store`, which is heard |
   | `learnings`, `usage/why`, `mate land`'s learning | `learnings/<c>.md` | no |
@@ -465,6 +465,7 @@ interfaces on the side of each reader, is planned in
 | `projects/<p>/mate/.manual`, `.auto` | `store` | the console's `m` key (`store.Workspace.SetMode`); autopilot releases `.manual` | autopilot, timeline; Auto means no `.manual` |
 | `projects/<p>/mate/.outbox`, `.outbox.lock` | `store` | `assign` from the console, autopilot (digests), stow, prwatch | outbox sender, query |
 | `projects/<p>/mate/.auto-cursor`, `.wake-cursor` | `store` | outbox (on a digest), `mate wake` (`internal/wake`) | autopilot, `mate wake` |
+| `projects/<p>/mate/app-notes.log` | `store` | prwatch (a pull request merged on GitHub that it landed while another crew worked, CON-194) | autopilot (an `app did:` item in the next digest that wakes the Mate) |
 | `projects/<p>/mate/memory.md`, `backlog.md` | `memory` format, `store` I/O | the Mate (`mate remember`, `mate backlog`) | `mate recall` |
 | `projects/<p>/mate/news.jsonl` | `matehost` | `mate news`; the friction check of `mate wake`, `land` and `merge`; the host (answers) | query, dashboard, REPL, notifications |
 | `projects/<p>/mate/work.jsonl` | `matehost` | `mate work`, `mate land`, the console (the captain's tick) | query, dashboard, REPL, notifications |

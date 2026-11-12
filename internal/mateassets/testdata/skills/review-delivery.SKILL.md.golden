@@ -60,6 +60,7 @@ A pull request ship (`--deliver pr`) hands back with `pr-open:`; review its bran
 A watcher follows every open pull request and wakes you with `pr-merged:` or `pr-closed:`. When a Crew opened one without it and no console is open, start it: `/usr/local/bin/mate pr watch shop <id> <url>`.
 
 - **`pr-merged:`** - `wake` lists the Crew as a `landed` item with its `learning:` line until it is closed. Run `/usr/local/bin/mate land shop <id>`: it takes the merged pull request as landed, even after a squash or rebase merge, closes the Crew and makes the same records. If the line says the checkout was `skipped:`, tell the captain their copy of the default branch is behind. Then keep the work moving.
+- **`pr-merged: the app landed <id>`** - in auto mode the watcher ran `mate land` for you. Do only what it says is `left for you` (a tracker it could not update, an open prediction), then keep the work moving. While other Crews are working it does not wake you: the same news comes as an `app did: landed <id>` item in your next digest.
 - **`pr-closed:`** - it was closed unmerged. Find out why (its comments, through a scout if they are long), then either send the Crew the rework, telling it to reopen the pull request (`gh pr reopen`) and run `pr watch` again, or tell the captain it was turned down.
 
 ## A scout
