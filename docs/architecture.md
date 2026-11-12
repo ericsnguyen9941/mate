@@ -340,7 +340,13 @@ How processes exchange state:
   again after every poll (`Ingester.Polled`) and on every notice about the
   workspace's own files, and puts each change in the feed through
   `Engine.Changed`, as a writer's notice, with the Project, the Crew and
-  the kind (`status`, `transcript`, `workspace`, `project`). The watching
+  the kind (`status`, `transcript`, `workspace`, `project`). A
+  `transcript` notice, from the watch or any writer, marks the Crew or the
+  Mate dirty and drops the snapshot but does not wake the observer
+  (`wakesObserver`, `internal/core/changes.go`): an agent writes its
+  transcript without a pause, and a round every `watch.WakeGap` while it
+  works would double the observer's rounds when the core is busiest; the
+  feed's subscribers read it on their next round. The watching
   is `internal/fswatch` over fsnotify (kqueue on macOS, inotify on Linux):
   exact files, never a directory (kqueue would open a descriptor for each
   file of one and report no append inside it); a burst on one file is one

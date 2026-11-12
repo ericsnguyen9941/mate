@@ -17,7 +17,9 @@ import (
 // workspace.yaml or a PROJECT.md it does not (docs/architecture.md section
 // 2). The engine watches those files (internal/fswatch) and puts each
 // change in the same path as a writer's notice, Engine.Changed: the feed's
-// subscribers, the shared snapshot and the observer react to it as to one.
+// subscribers, the shared snapshot and the observer react to it as to one,
+// and as to one a transcript's change wakes no observer round
+// (wakesObserver in changes.go).
 //
 // What is watched follows the workspace: workspace.yaml, each Project's
 // PROJECT.md, and what the timeline ingest's latest poll found live (each

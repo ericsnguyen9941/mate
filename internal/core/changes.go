@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/nguyenngocanh94/mate/internal/coreapi"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // The change feed (CON-260, epic CON-253): every mate process that writes a
@@ -106,15 +107,33 @@ type Waker interface {
 // Changes is the engine's change feed, for a loop to Subscribe to.
 func (e *Engine) Changes() *Changes { return e.changes }
 
-// Changed is a writer's notice (POST coreapi.PathChanged): it is put in
-// the feed, the shared snapshot is dropped so the next read of any UI sees
-// the change, and the observer is woken. A notice about a Project or one
-// of its Crews wakes it; one about the workspace's own files (a Project
-// added) too, as it re-reads workspace.yaml each round.
+// Changed is a writer's notice (POST coreapi.PathChanged) or a change the
+// engine's file watch saw (filewatch.go): it is put in the feed, the
+// shared snapshot is dropped so the next read of any UI sees the change,
+// and the observer is woken - but for a transcript (wakesObserver). A
+// notice about a Project or one of its Crews wakes it; one about the
+// workspace's own files (a Project added) too, as it re-reads
+// workspace.yaml each round.
 func (e *Engine) Changed(c coreapi.Change) {
 	e.changes.Note(c)
 	e.snaps.invalidate()
+	if !wakesObserver(c) {
+		return
+	}
 	if w, ok := e.o.Watcher.(Waker); ok {
 		w.Wake()
 	}
+}
+
+// wakesObserver is whether a notice brings the observer's next round
+// forward. A transcript does not (CON-266 review): an agent writes it
+// without a pause while it works, so its notices would run a round every
+// watch.WakeGap instead of every poll exactly when the core is busiest,
+// and nothing the observer acts on is in it. Its notice still marks the
+// Crew or the Mate dirty for the feed's subscribers, whose next round
+// reads it, and drops the snapshot. What the observer acts on - a status
+// line, workspace.yaml, a PROJECT.md, a meta - wakes it. The rule is by
+// kind, so a writer's notice of that kind would not wake it either.
+func wakesObserver(c coreapi.Change) bool {
+	return c.Kind != string(store.ChangeTranscript)
 }
