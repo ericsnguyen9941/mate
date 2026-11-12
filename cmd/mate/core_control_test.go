@@ -88,6 +88,10 @@ func fakeCoreMain() int {
 		_ = lock.Write(holder)
 		go func() {
 			_ = http.Serve(ln, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == coreapi.PathStats {
+					_ = json.NewEncoder(w).Encode(fakeCoreStats(holder.PID, holder.Started))
+					return
+				}
 				if r.URL.Path != coreapi.PathCore {
 					http.NotFound(w, r)
 					return

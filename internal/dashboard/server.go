@@ -77,10 +77,16 @@ type Deps struct {
 	// Core is the core's own state, GET coreapi.PathCore on its socket
 	// (CON-212): the engine's Status. Nil answers that route 503.
 	Core func() coreapi.CoreStatus
+	// Stats is what the core has cost, GET coreapi.PathStats on its socket
+	// (CON-263): the engine's Stats. Nil answers that route 503.
+	Stats func() coreapi.CoreStats
 	// ClientSeen is told the coreapi.ClientHeader of every request on the
 	// socket that names one, as the request arrives: how the engine knows a
 	// console is open. Nil is told nothing.
 	ClientSeen func(client string)
+	// Changed is told every writer's notice, POST coreapi.PathChanged on
+	// the socket (CON-260): the engine's Changed. Nil drops them.
+	Changed func(coreapi.Change)
 }
 
 func (d Deps) now() time.Time {

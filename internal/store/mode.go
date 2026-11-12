@@ -55,6 +55,7 @@ func (w *Workspace) removeFlag(path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	NoteWrite(path)
 	return nil
 }
 

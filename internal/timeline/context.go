@@ -44,11 +44,17 @@ func (i *Ingester) checkProjectContext(ctx context.Context, project string) erro
 				open = true
 			}
 		}
+		closed := view.Closed[crew.ID]
+		if closed && !open {
+			// Nothing to open on a closed crew and nothing to resolve: its
+			// context is not asked for. Most crews of a workspace are closed,
+			// and this was one query each per poll (CON-259).
+			continue
+		}
 		latest, err := i.latestContext(ctx, crew.ActorID)
 		if err != nil {
 			return err
 		}
-		closed := view.Closed[crew.ID]
 		resting := false
 		if st, ok := box.LatestStatus(view, crew.ID); ok && st.State == box.StateWaitMate {
 			resting = true

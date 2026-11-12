@@ -57,7 +57,9 @@ type coreControl struct {
 	signal func(pid int, sig syscall.Signal) error
 	// ask is GET /api/core on socket, within ctx.
 	ask func(ctx context.Context, socket string) (coreapi.CoreStatus, error)
-	now func() time.Time
+	// askStats is GET /api/core/stats on socket, within ctx (CON-263).
+	askStats func(ctx context.Context, socket string) (coreapi.CoreStats, error)
+	now      func() time.Time
 
 	startWait, stopWait, killWait, poll time.Duration
 }
@@ -68,6 +70,7 @@ func liveCoreControl() coreControl {
 		startDetached: platform.StartNewSession,
 		signal:        platform.Signal,
 		ask:           askCore,
+		askStats:      askCoreStats,
 		now:           time.Now,
 		startWait:     coreStartWait,
 		stopWait:      coreStopWait,

@@ -17,12 +17,13 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
-const coreUsage = `usage: mate core <run|start|stop|restart|status> [<workspace>] [--workspace <dir>]
+const coreUsage = `usage: mate core <run|start|stop|restart|status|stats> [<workspace>] [--workspace <dir>]
   run      the engine in the foreground until Ctrl+C, as plain "mate" does
   start    the engine in the background, its output in .mate/core.log
   stop     SIGTERM to the engine, SIGKILL after 60s
   restart  stop, then start: the binary installed now runs
-  status   pid, owner, build, socket and Office/City; exit 1 when none runs`
+  status   pid, owner, build, socket and Office/City; exit 1 when none runs
+  stats    what each loop of the running engine costs, and its memory and CPU`
 
 // cmdCore is `mate core <subcommand>`: the workspace's engine as a process
 // of its own (CON-203). `run` keeps it in the foreground (CON-211); start,
@@ -34,7 +35,7 @@ func cmdCore(args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "run":
 		return cmdCoreRun(args[1:], stdout, stderr)
-	case "start", "stop", "restart", "status":
+	case "start", "stop", "restart", "status", "stats":
 		ws, err := coreWorkspaceArgs(args[0], args[1:], stderr)
 		if err != nil {
 			return err
@@ -47,6 +48,8 @@ func cmdCore(args []string, stdout, stderr io.Writer) error {
 			return ctl.stop(ws, stdout)
 		case "restart":
 			return ctl.restart(ws, stdout)
+		case "stats":
+			return ctl.stats(ws, stdout)
 		}
 		return ctl.status(ws, stdout)
 	case "-h", "--help", "help":
@@ -109,6 +112,10 @@ func coreHere(ws *store.Workspace, ctl coreControl, stdout io.Writer, run func()
 // terminal (decided 2026-11-06), so a core's log is in one place however
 // it was started.
 func runCoreForeground(ws *store.Workspace, stdout, stderr io.Writer) error {
+	// The core hears every other process's writes on its socket (CON-260);
+	// its own it already knows, and a notice to itself would only wake its
+	// observer on the incidents the observer wrote.
+	store.SetChangeNotifier(nil)
 	stdout, stderr, closeLog, err := coreLogTee(ws, stdout, stderr, os.Stdout)
 	if err != nil {
 		return err

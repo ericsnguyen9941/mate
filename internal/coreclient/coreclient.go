@@ -94,6 +94,14 @@ func (c *Client) Core(ctx context.Context) (coreapi.CoreStatus, error) {
 	return status, err
 }
 
+// Stats is GET coreapi.PathStats: what each of the core's loops has cost
+// since it started, and the process's memory and CPU (CON-263).
+func (c *Client) Stats(ctx context.Context) (coreapi.CoreStats, error) {
+	var stats coreapi.CoreStats
+	err := c.do(ctx, http.MethodGet, coreapi.PathStats, nil, &stats)
+	return stats, err
+}
+
 // Snapshot is GET coreapi.PathSnapshot: the engine's snapshot, with no
 // Commands. It is a coreapi.LoadFunc. A snapshot the core could not read
 // (a broken workspace.yaml) is that read's error, in its words.

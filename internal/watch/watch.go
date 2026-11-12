@@ -15,6 +15,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/box"
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
 	"github.com/nguyenngocanh94/mate/internal/harness"
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/observability"
 	"github.com/nguyenngocanh94/mate/internal/runtime"
 	"github.com/nguyenngocanh94/mate/internal/screen"
@@ -30,6 +31,15 @@ import (
 const (
 	// DefaultPollInterval is the pause between rounds.
 	DefaultPollInterval = 5 * time.Second
+	// WakeGap is the least time between the starts of two rounds when a
+	// Wake cut the pause short (CON-260): a burst of writes costs one early
+	// round, not one round each. It is half the poll interval, not less,
+	// while every round still ingests the whole workspace (0.68 s on the
+	// captain's 1308 crews, 2026-11-11): steady writes then cost at most
+	// twice the rounds they did. The UI does not wait on it - a notice drops
+	// the snapshot at once - and CON-268, which makes a round read only what
+	// changed, is what may bring it down.
+	WakeGap = 2500 * time.Millisecond
 	// DefaultStaleAfter is how long the pane and the status file must both
 	// be unchanged before `stale` opens.
 	DefaultStaleAfter = 3 * time.Minute
@@ -57,6 +67,17 @@ type Runtime interface {
 }
 
 var _ Runtime = runtime.Adapter(nil)
+
+// Rounds is a Runtime that keeps Herdr's answers for one round
+// (runtime.RoundCache, CON-264): one `agent list` per session answers every
+// crew's InspectAgent, and the timeline ingest's after it. Poll begins a
+// round on it before it asks anything, so no answer outlives the round that
+// asked. A Runtime that is not one asks Herdr every time, as before.
+type Rounds interface {
+	BeginRound()
+}
+
+var _ Rounds = (*runtime.RoundCache)(nil)
 
 // HandleFunc resolves the Herdr handle recorded for one crew, and the screen
 // profile of the harness it runs. It is a seam rather than a direct call to
@@ -170,6 +191,9 @@ type Deps struct {
 	// never holds the poll loop (observe.go). Nil means the fixture
 	// observer (internal/screen/fixture), asked in the round.
 	Observer screen.Observer
+	// Pass records each round the loop runs, the timeline's ingest
+	// included, for `mate core stats` (CON-263). Nil records nothing.
+	Pass *loopstat.Loop
 }
 
 func (d Deps) now() time.Time {
@@ -255,6 +279,10 @@ type Watcher struct {
 
 	// observing counts the observer calls in flight (observe.go).
 	observing sync.WaitGroup
+
+	// wake cuts the pause between two rounds short (Wake); it holds one
+	// wake at most.
+	wake chan struct{}
 }
 
 // observation is what the previous polls established about one crew.
@@ -299,6 +327,20 @@ func New(ws Workspace, deps Deps) *Watcher {
 		deps:   deps,
 		crews:  make(map[CrewRef]*observation),
 		health: make(map[CrewRef]Health),
+		wake:   make(chan struct{}, 1),
+	}
+}
+
+// Wake starts the next round now rather than at the end of the pause,
+// though no sooner than WakeGap after the last one started: a mate process
+// wrote a record (the core's change feed, CON-260). It never blocks, and a
+// wake that comes during a round starts the next one once that round ends.
+// The rounds the pause times still come; a Watcher with Deps.Sleeper (a
+// test's clock) is not woken.
+func (w *Watcher) Wake() {
+	select {
+	case w.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -342,14 +384,49 @@ func (w *Watcher) run(ctx context.Context, done chan struct{}) {
 		// A failed round is not fatal: Herdr may be restarting, a project
 		// directory may be half-written. The next round asks again, and
 		// what the observer could not read it does not conclude from.
+		started := time.Now()
+		start := w.deps.Pass.Begin()
 		_ = w.Poll(ctx)
-		if err := w.deps.sleep(ctx, w.deps.pollInterval()); err != nil {
+		w.deps.Pass.End(start)
+		if err := w.pause(ctx, started); err != nil {
 			return
 		}
 		if ctx.Err() != nil {
 			return
 		}
 	}
+}
+
+// pause waits out the poll interval, or, once Wake is called, until
+// WakeGap after the round that started at started. The interval's own
+// rounds come as before: a wake only brings one forward.
+func (w *Watcher) pause(ctx context.Context, started time.Time) error {
+	if w.deps.Sleeper != nil {
+		return w.deps.sleep(ctx, w.deps.pollInterval())
+	}
+	timer := time.NewTimer(w.deps.pollInterval())
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	case <-w.wake:
+	}
+	gap := min(time.Until(started.Add(WakeGap)), w.deps.pollInterval())
+	if gap > 0 {
+		if err := w.deps.sleep(ctx, gap); err != nil {
+			return err
+		}
+	}
+	// What woke it during the gap was written before the round about to
+	// start, which reads it: one more wake would be one more round for
+	// nothing. A wake during that round is kept.
+	select {
+	case <-w.wake:
+	default:
+	}
+	return nil
 }
 
 // Poll runs one round over every open crew of every project: it appends
@@ -362,6 +439,9 @@ func (w *Watcher) run(ctx context.Context, done chan struct{}) {
 func (w *Watcher) Poll(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if rounds, ok := w.deps.Runtime.(Rounds); ok {
+		rounds.BeginRound()
 	}
 	// Re-read workspace.yaml every round: a project registered by another
 	// process (or by the console beside this one) must come under watch
@@ -571,6 +651,16 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 		return err
 	}
 
+	// Every open crew's pane is read every round, on purpose. Nothing Herdr
+	// lists says the screen is unchanged: on Herdr 0.9.5 the `revision` of
+	// an agent and of a pane was measured not to move with output
+	// (2026-11-11, CON-264 review: 0 before and after an echo and a
+	// three-line loop that `pane read` showed; crews running for hours list
+	// revision 2), and agent_status / state_change_seq do not move while a
+	// working harness redraws or an idle one gets a draft. Gating the read
+	// on any of them would hold a stale snapshot and starve the stale rule
+	// and the classification. Change detection belongs to Herdr's event
+	// subscription (CON-265), not to the list.
 	hctx, cancel = context.WithTimeout(ctx, w.deps.herdrTimeout())
 	screen, err := w.deps.Runtime.ReadAgentStyled(hctx, handle, screens.ReadSource(), send.DefaultLines)
 	cancel()

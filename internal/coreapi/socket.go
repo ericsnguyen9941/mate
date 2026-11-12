@@ -22,6 +22,10 @@ const (
 	// PathAct is POST: an ActionRequest, run to its end even when the
 	// client goes away; answered with an ActResult.
 	PathAct = "/api/act"
+	// PathChanged is POST: a Change, a writer's word that it changed a
+	// record under `.mate/` (CON-260). Answered 204 with no body, which
+	// the writer does not wait for.
+	PathChanged = "/api/changed"
 )
 
 // ClientHeader names the program a request on the core's socket comes
@@ -57,6 +61,21 @@ type CoreStatus struct {
 	// core, in its order: the dashboard's error, the notifications', then
 	// Jev's and the observer's configuration errors. Empty when all is well.
 	Notices []string `json:"notices"`
+}
+
+// Change is the body of a POST PathChanged: which record a mate process
+// just wrote (internal/store's ChangeOf reads it from the path). It is a
+// hint and never the record: the core reads the file, and a Change it
+// never hears of is found by its polls as before.
+type Change struct {
+	// Project is the Project written under; empty for the workspace's own
+	// files.
+	Project string `json:"project,omitempty"`
+	// Crew is the Crew whose record it is; empty for the rest.
+	Crew string `json:"crew,omitempty"`
+	// Kind is the kind of record, one of internal/store's ChangeKind words
+	// ("status", "meta", "sent", "news"...).
+	Kind string `json:"kind"`
 }
 
 // ActResult is the answer to a POST PathAct that ran: the one line a UI

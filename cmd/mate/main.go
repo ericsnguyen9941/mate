@@ -15,15 +15,28 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/config"
+	"github.com/nguyenngocanh94/mate/internal/coreapi"
+	"github.com/nguyenngocanh94/mate/internal/coreclient"
 	"github.com/nguyenngocanh94/mate/internal/github"
 	"github.com/nguyenngocanh94/mate/internal/process"
 	"github.com/nguyenngocanh94/mate/internal/prwatch"
 	"github.com/nguyenngocanh94/mate/internal/quota"
 	"github.com/nguyenngocanh94/mate/internal/spawn"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 func main() {
+	// Every write this process makes under `.mate/` tells the workspace's
+	// core (CON-260); the core's own process unsets it (runCoreForeground).
+	store.SetChangeNotifier(notifyCore)
 	os.Exit(newCLI().mainRun(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// notifyCore is the store's change notifier in every mate process but the
+// core: the notice goes to the workspace's `.mate/core.sock`, if a core
+// listens there, without waiting for its answer (coreclient.Notify).
+func notifyCore(c store.Change) {
+	coreclient.Notify(c.Socket, coreapi.Change{Project: c.Project, Crew: c.Crew, Kind: string(c.Kind)})
 }
 
 // cli is what the command handlers reach outside their arguments: the

@@ -291,7 +291,7 @@ var methodGroups = []methodGroup{
 	{
 		name:  "G11 boundary and file writes",
 		kind:  recordKind,
-		files: []string{"boundary.go", "fsio.go"},
+		files: []string{"boundary.go", "fsio.go", "change.go"},
 		methods: []string{
 			"resolve",
 			"Resolve",

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/coreapi"
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/notifications"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/recovery"
@@ -58,6 +59,8 @@ type hostWatch struct {
 	tell func(ctx context.Context, project, line string)
 	// log is core.log: one line for every restart and every give-up.
 	log io.Writer
+	// stat records each check (CON-263); nil records nothing.
+	stat *loopstat.Loop
 
 	// cancel and done are set by Start and read by Stop: the engine calls
 	// each once, Stop on a goroutine it starts after Start has returned.
@@ -111,7 +114,9 @@ func (h *hostWatch) Start(ctx context.Context) error {
 				return
 			case <-timer.C:
 			}
+			start := h.stat.Begin()
 			h.check(ctx)
+			h.stat.End(start)
 			timer.Reset(h.every)
 		}
 	}()

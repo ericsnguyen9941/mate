@@ -117,6 +117,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		os.Remove(name)
 		return err
 	}
+	NoteWrite(path)
 	return nil
 }
 

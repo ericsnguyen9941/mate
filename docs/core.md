@@ -20,6 +20,7 @@ directory above the current one that holds `.mate/`.
 | `mate core stop [<dir>]` | Sends the core SIGTERM and waits up to 60 s; a core still running then gets SIGKILL, and its socket is removed. |
 | `mate core restart [<dir>]` | `stop`, then `start`. |
 | `mate core status [<dir>]` | The pid, owner, version and build, start time, socket and the Office/City URLs. Exit 0 when an engine runs, 1 when none does. |
+| `mate core stats [<dir>]` | What each loop of the running core has cost since it started, and its memory, GC and CPU: see "What the core costs" below. Exit 1 when none runs. |
 | `mate console [<dir>]` | Opens the console, a client of the core (CON-214): see "The console" below. |
 
 `mate` opens no browser; it prints the URLs:
@@ -92,6 +93,54 @@ core stop` that meant it. `.mate/console.yaml`'s `dashboard` and
 `.mate/.env` (Jev) are read by the core when it starts: change them, then
 `mate core restart`.
 
+## What the core costs
+
+On 2026-11-11 a core was found at 1.4 GB RSS and ~70% of a CPU after days
+of it: its timeline ingest took 4.9 s of every 5 s poll, and nothing said
+so (epic CON-253). `mate core stats` asks the running core on its socket
+(`GET /api/core/stats`, CON-263):
+
+```
+mate core · pid 8624 · ~/work/ws · up 35.72s
+loop                   runs  last   mean   max    busy  last run
+observer round         8     20ms   21ms   32ms   0%    552ms ago
+timeline ingest        8     0.8ms  0.9ms  1.4ms  0%    532ms ago
+outbox pass            18    0.1ms  0.2ms  0.4ms  0%    1.68s ago
+autopilot tick         1     0.2ms  0.2ms  0.2ms  0%    35.71s ago
+PR sweep + gc          1     0.0ms  0.0ms  0.0ms  0%    35.71s ago
+snapshot               15    10ms   20ms   75ms   1%    2.05s ago
+recovery               1     18ms   18ms   18ms   0%    35.71s ago
+workspace.yaml reload  17    0.1ms  0.2ms  0.6ms  0%    1.71s ago
+host watch             8     0.0ms  0.0ms  0.0ms  0%    702ms ago
+notifications          0     -      -      -      -     never
+
+heap        3.3 MB live · 18.5 MB mapped by Go · peak RSS 29.9 MB
+allocated   6.7 MB in 68.3k objects since start · 192 KB/s
+gc          3 cycles · 0.0% of the CPU
+cpu         127ms · 0% of one core since start
+goroutines  35
+```
+
+- Each loop's figures are wall time since the core started: a run that
+  waited on git, Herdr or a lock counts the wait. `busy` is the share of the
+  core's life the loop spent running; a loop near 100% never rests. `last
+  run` says `running for …` while a run is in flight, and `never` for a loop
+  that is wired and has not run (notifications off, a timer not yet due).
+- `observer round` is the whole round, `timeline ingest` included; `autopilot
+  tick` includes `PR sweep + gc`; `notifications` leaves out the snapshot
+  it reads, which `snapshot` counts.
+- Allocation is the process's, not split by loop: the loops share one heap
+  and no counter says which allocated what. For that, profile the core
+  (`MATE_PPROF`, CON-257).
+- Recording costs two clock reads a run. Reading reads `runtime/metrics`
+  and `getrusage(2)`, never `runtime.ReadMemStats`, which stops the world.
+  `RSS` (now) is shown on Linux only; `peak RSS` everywhere.
+
+`TestSteadyPassStaysWithinBudget` (`internal/core/budget_test.go`) keeps
+the two costs that grow with a workspace's history, one steady ingest pass
+and one `query.Load`, under an allocation budget over a generated workspace
+of a thousand closed crews, in `make check`.
+
 ## How a command knows the core runs
 
 Not by pid: the pid of a process that died may belong to another process by
@@ -109,7 +158,7 @@ new core, which writes its own record over the old one.
 | File | What it is |
 | -- | -- |
 | `core.lock` | Held by the running engine. JSON: `pid`, `owner` (`core` or `console`), `started`, `version`, `binary`, `build` (sha256 of the binary when it started), `socket`, `url`, `lan_url`, `tcp_error`. The file stays after the engine ends. |
-| `core.sock` | The core's unix socket (0600): Office/City's routes and the clients' API (`/api/core`, `/api/snapshot`, `/api/act`, CON-212). Removed when the core stops. |
+| `core.sock` | The core's unix socket (0600): Office/City's routes and the clients' API (`/api/core`, `/api/core/stats`, `/api/snapshot`, `/api/act`, CON-212), and `/api/changed`, where every other mate process says which record it just wrote (CON-260): the UIs' next read sees it and the observer's next round comes early, no sooner than `watch.WakeGap` after the last. Removed when the core stops. |
 | `tui.lock` | Held by `mate mate-agent tui` while a Mate's session is open in the TUI (CON-227). JSON: `project`, `pid` (`mate mate-agent tui`), `started`, `harness_pid` (Claude, while it runs). The file stays after it ends. |
 | `core.log` | The output of every core: `mate core start` sends the core's output there, and a core in the foreground (`mate`, `mate core run`) appends what it prints to the terminal. Before it opens the log, either moves a log larger than 10 MB to `core.log.1`, keeping that one old log. The log of a core that is running is never rotated. |
 

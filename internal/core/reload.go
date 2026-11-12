@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/nguyenngocanh94/mate/internal/loopstat"
 	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
@@ -29,6 +30,8 @@ func configReload(ws *store.Workspace) *tickLoop {
 type tickLoop struct {
 	every time.Duration
 	tick  func(context.Context)
+	// stat records each tick (CON-263); nil records nothing.
+	stat *loopstat.Loop
 
 	// cancel and done are set by Start and read by Stop: the engine calls
 	// each once, Stop on a goroutine it starts after Start has returned.
@@ -52,7 +55,9 @@ func (l *tickLoop) Start(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				start := l.stat.Begin()
 				l.tick(ctx)
+				l.stat.End(start)
 			}
 		}
 	}()
