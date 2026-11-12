@@ -202,6 +202,16 @@ func (f *fixture) status(crew, line string) {
 	}
 }
 
+// statusAt is status with the file's modification time set to at, which is
+// the time the box reads for a status line.
+func (f *fixture) statusAt(crew, line string, at time.Time) {
+	f.t.Helper()
+	f.status(crew, line)
+	if err := os.Chtimes(f.ws.CrewStatus(project, crew), at, at); err != nil {
+		f.t.Fatalf("Chtimes: %v", err)
+	}
+}
+
 func (f *fixture) incident(crew string, kind box.IncidentKind, state, text string) {
 	f.t.Helper()
 	if err := f.ws.AppendIncident(project, store.IncidentEntry{

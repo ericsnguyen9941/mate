@@ -76,6 +76,102 @@ func TestContextHighWaitsForTheNextDigest(t *testing.T) {
 	}
 }
 
+// Budget items open no turn of their own below the hard ceiling (CON-194):
+// at 50% nothing is asked of anyone, and at 100% the app has typed the
+// budget line, so the crew's hand-back carries the item. At 200% the app
+// stopped the crew, and that wakes the Mate.
+func TestBudgetItemsWakeTheMateOnlyAtTheHardCeiling(t *testing.T) {
+	f := newFixture(t)
+	f.auto(true)
+	f.incident("k3", box.IncidentBudget, store.IncidentOpen, box.BudgetHalfPrefix+"4M tokens of 8M tokens, no hand-back yet")
+	f.incident("k4", box.IncidentBudget, store.IncidentOpen, "8.6M tokens of 8M tokens")
+
+	f.mustTick()
+	if typed := f.typed(); len(typed) != 0 {
+		t.Fatalf("typed %#v for budget items below the hard ceiling", typed)
+	}
+
+	f.incident("k5", box.IncidentBudget, store.IncidentOpen, box.BudgetHardPrefix+"16.2M tokens of 8M tokens, over twice the budget; the app stops the crew")
+	f.clock.Advance(autopilot.DefaultInterval)
+	f.mustTick()
+
+	line := f.requireOneDigest()
+	for _, want := range []string{"digest: 3 item(s)", "k3 budget 50%", "k4 over budget", "k5 budget hard ceiling"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("digest %q does not carry %q", line, want)
+		}
+	}
+}
+
+// A `stale`, `runtime_lost` or `no_turn` incident wakes the Mate only once
+// it has been open for SettleIncident (CON-194); one that closes before
+// that never reaches it.
+func TestAQuietCrewWakesTheMateOnlyOnceItStaysQuiet(t *testing.T) {
+	f := newFixture(t)
+	f.auto(true)
+	f.incident("k3", box.IncidentStale, store.IncidentOpen, "quiet for 3m0s")
+	f.incident("k4", box.IncidentNoTurn, store.IncidentOpen, "no turn in the ledger 30m0s after launch")
+
+	f.mustTick()
+	f.incident("k4", box.IncidentNoTurn, store.IncidentResolved, "first turn")
+	f.clock.Advance(autopilot.SettleIncident - time.Second)
+	f.mustTick()
+	if typed := f.typed(); len(typed) != 0 {
+		t.Fatalf("typed %#v before the incidents settled", typed)
+	}
+
+	f.clock.Advance(time.Second)
+	f.mustTick()
+	line := f.requireOneDigest()
+	if !strings.Contains(line, "digest: 1 item(s)") || !strings.Contains(line, "k3 blocked: stale") {
+		t.Fatalf("digest = %q, want only the stale crew", line)
+	}
+}
+
+// A hand-back waits up to GatherWindow while another crew is still working,
+// so two hand-backs a few minutes apart are one turn of the Mate (CON-272).
+func TestAHandBackWaitsForTheOthersWhileOneIsStillWorking(t *testing.T) {
+	f := newFixture(t)
+	f.auto(true)
+	f.status("k5", "working: building")
+	f.statusAt("k3", "wait-mate: PR is open", f.clock.Now())
+
+	f.mustTick()
+	if typed := f.typed(); len(typed) != 0 {
+		t.Fatalf("typed %#v while another crew was still working", typed)
+	}
+
+	f.clock.Advance(2 * time.Minute)
+	f.statusAt("k4", "wait-mate: report.md is ready", f.clock.Now())
+	f.mustTick()
+	if typed := f.typed(); len(typed) != 0 {
+		t.Fatalf("typed %#v before the first hand-back had waited GatherWindow", typed)
+	}
+
+	f.clock.Advance(autopilot.GatherWindow - 2*time.Minute)
+	f.mustTick()
+	line := f.requireOneDigest()
+	if !strings.Contains(line, "digest: 2 item(s)") {
+		t.Fatalf("digest = %q, want both hand-backs in one", line)
+	}
+}
+
+// With nobody else working there is nothing to wait for: the hand-back
+// wakes the Mate at once.
+func TestAHandBackWithNobodyElseWorkingWakesTheMateAtOnce(t *testing.T) {
+	f := newFixture(t)
+	f.auto(true)
+	f.status("k5", "wait-mate: done earlier")
+	f.crewMeta("k5", map[string]string{"state": "finished"})
+	f.statusAt("k3", "wait-mate: PR is open", f.clock.Now())
+
+	f.mustTick()
+	line := f.requireOneDigest()
+	if !strings.Contains(line, `k3 wait-mate: "PR is open"`) {
+		t.Fatalf("digest = %q", line)
+	}
+}
+
 // The happy path, end to end: one line, marked, verified into the composer,
 // recorded in sent.log, cursor advanced.
 func TestOneVerifiedDigestPerTick(t *testing.T) {

@@ -73,6 +73,10 @@ type Item struct {
 	// bound on how long the crew has actually been quiet: the observer only
 	// opens `stale` after its own threshold has already passed.
 	QuietFor time.Duration
+	// At is when the line was written: the incident's own time, or the
+	// status file's modification time for a status line (status lines
+	// carry no time of their own, and the latest line is the last write).
+	At time.Time
 	// File and Offset are where the line lives, which is what the cursor
 	// records.
 	File   string
@@ -175,6 +179,7 @@ func Gather(v box.View, cursor map[string]int64, now time.Time) []Item {
 				Text:         item.Text,
 				IncidentKind: item.Kind,
 				QuietFor:     now.Sub(e.At),
+				At:           e.At,
 				File:         e.Ref.File,
 				Offset:       e.Ref.Offset,
 			})
@@ -183,6 +188,7 @@ func Gather(v box.View, cursor map[string]int64, now time.Time) []Item {
 				Kind:   ItemNeedsDecision,
 				Crew:   e.Crew,
 				Text:   item.Text,
+				At:     e.At,
 				File:   e.Ref.File,
 				Offset: e.Ref.Offset,
 			})
@@ -191,6 +197,7 @@ func Gather(v box.View, cursor map[string]int64, now time.Time) []Item {
 				Kind:   ItemWaitMate,
 				Crew:   e.Crew,
 				Text:   box.ParseStatus(e.Text).Text,
+				At:     e.At,
 				File:   e.Ref.File,
 				Offset: e.Ref.Offset,
 			})
@@ -199,17 +206,89 @@ func Gather(v box.View, cursor map[string]int64, now time.Time) []Item {
 	return out
 }
 
-// Wakes reports whether items are worth a turn of the Mate's own. An
-// ItemContextHigh is not: its handling is "do not cut it mid-turn; at its
-// next hand-back open a fresh session" (internal/wake), so a digest of
-// nothing else woke the Mate to answer "—". On mihuv2 every one of the six
-// such digests up to 2026-11-04 was answered that way, one of them at
-// 198.6k tokens (CON-202). Held back, the item rides with the next digest
-// that does wake the Mate, normally that crew's own hand-back.
-func Wakes(items []Item) bool {
+// SettleIncident is how long a `stale`, `runtime_lost` or `no_turn`
+// incident stays open before it is worth a turn of the Mate's own (CON-194).
+// On mihuv2 (2026-11-04..10) 30 digests of such incidents opened a turn and
+// 22 of them ended with the Mate doing nothing: most closed on their own
+// within minutes (a crew quiet for a few seconds, a launch slower than the
+// threshold). One that settles before this never reaches the Mate; one still
+// open after it wakes the Mate like before.
+const SettleIncident = 10 * time.Minute
+
+// GatherWindow is how long a hand-back waits for others before it wakes the
+// Mate, while some other crew is still working (CON-272). On mihuv2
+// (2026-11-04..10) 103 of 267 hand-back turns began less than five minutes
+// after the one before, and a turn of two hand-backs cost no more model
+// calls than a turn of one: most of a turn is reading the context again.
+const GatherWindow = 5 * time.Minute
+
+// Wakes reports whether items are worth a turn of the Mate's own now. An item
+// that is not is held: the cursor stays put, so it rides with the next digest
+// that does wake the Mate, and it is gathered again on every tick until then.
+//
+//   - ItemContextHigh never wakes: its handling is "do not cut it mid-turn; at
+//     its next hand-back open a fresh session" (internal/wake). On mihuv2
+//     every one of the six such digests up to 2026-11-04 was answered "—"
+//     (CON-202).
+//   - ItemBudget wakes only at the hard ceiling, where the app stopped the
+//     crew (CON-194). At 50% nothing is asked of anyone (43 turns on mihuv2,
+//     2026-11-04..10, 35 of them doing nothing), and at 100% the app has
+//     already typed BudgetReachedLine, so the crew hands back and its
+//     hand-back carries the budget item.
+//   - ItemBlocked and ItemNoTurn wake once open for SettleIncident.
+//   - ItemWaitMate waits up to GatherWindow while working is true (some other
+//     crew is still at work and may hand back too); once one hand-back has
+//     waited that long, or nobody else is working, it wakes the Mate.
+//   - ItemNeedsDecision always wakes: a crew is waiting on an answer.
+func Wakes(items []Item, now time.Time, working bool) bool {
 	for _, item := range items {
-		if item.Kind != ItemContextHigh {
+		switch item.Kind {
+		case ItemContextHigh:
+		case ItemBudget:
+			if percent, _ := box.BudgetThreshold(item.Text); percent >= 200 {
+				return true
+			}
+		case ItemBlocked, ItemNoTurn:
+			if item.QuietFor >= SettleIncident {
+				return true
+			}
+		case ItemWaitMate:
+			if !working || now.Sub(item.At) >= GatherWindow {
+				return true
+			}
+		default:
 			return true
+		}
+	}
+	return false
+}
+
+// Working reports whether an open crew other than the ones items are about
+// is still at work: its latest status line is not a hand-back. A crew that
+// has written nothing yet counts, since it was just spawned. Wakes uses it
+// to decide whether a hand-back has anyone to wait for.
+func Working(v box.View, items []Item) bool {
+	reported := make(map[string]bool, len(items))
+	for _, item := range items {
+		reported[item.Crew] = true
+	}
+	for crew := range v.ByCrew {
+		if crew == "" || crew == MateCrew || v.Closed[crew] || reported[crew] {
+			continue
+		}
+		if !restingOrSilent(v, crew) {
+			return true
+		}
+	}
+	return false
+}
+
+// restingOrSilent is resting, except that a crew with no status line at all
+// is not silent: it is starting, which is working.
+func restingOrSilent(v box.View, crew string) bool {
+	for _, e := range v.ByCrew[crew] {
+		if e.Kind == box.KindStatus {
+			return resting(v, crew)
 		}
 	}
 	return false
