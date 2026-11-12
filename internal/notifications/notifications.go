@@ -65,6 +65,25 @@ type state struct {
 	WorkFrom time.Time `json:"work_from,omitzero"`
 }
 
+// NextReport is when the periodic report falls due by the receipts at
+// path: ReportInterval after the last report, news or work move a Tick
+// recorded. ok is false while there is no receipt yet - the first Tick
+// starts the interval - or the receipts do not read. A Tick at that time
+// sends the report unless news is owed or unreadable then, which start the
+// interval again (CON-270: the core ticks on a change and on this
+// deadline, not every five seconds).
+func NextReport(path string) (at time.Time, ok bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return time.Time{}, false
+	}
+	var s state
+	if err := json.Unmarshal(b, &s); err != nil || s.ReportAt.IsZero() {
+		return time.Time{}, false
+	}
+	return s.ReportAt.Add(ReportInterval), true
+}
+
 // Tick serializes consoles sharing a workspace, and persists receipts only
 // after the native notification API accepts a message. The caller retries
 // failures; neither an unavailable notifier nor a restart loses a news.

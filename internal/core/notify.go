@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/loopstat"
@@ -37,10 +38,29 @@ func NativeNotifier() notifications.Sender {
 // (CON-256). The snapshot's Herdr questions are bounded (livenessBound), so
 // a Herdr that hangs delays no notification past them. It never waits on
 // the Mate to deliver a notification.
+//
+// It ticks on a change rather than every five seconds (CON-270): once as it
+// starts, then after any notice of the change feed (Wake) or a snapshot
+// computed for another reader (computed), no sooner than notifyGap after
+// its last tick; when the 10-minute report falls due
+// (notifications.NextReport); and every notifySafety at the latest, for a
+// change no notice told of. A tick that failed waits a minute, whatever
+// wakes it.
 type notifyLoop struct {
 	root     string
-	snapshot func(context.Context) (query.Snapshot, error)
+	snapshot func(context.Context) (query.Snapshot, uint64, error)
 	sender   notifications.Sender
+	// gap, safety and retry are notifyGap, notifySafety and notifyRetry;
+	// a test shortens them.
+	gap, safety, retry time.Duration
+	// wake holds one pending change (Wake, computed).
+	wake chan struct{}
+	// seen is the count of the last snapshot a tick read (snapshotCache's
+	// seq): a snapshot computed is a change only when it is another.
+	seen atomic.Uint64
+	// reading is set while a tick reads the snapshot: one computed then is
+	// the one it reads, or older.
+	reading atomic.Bool
 	// url is the dashboard's, read as the loop starts: a click opens the
 	// captain's desk there.
 	url func() string
@@ -109,29 +129,112 @@ func (n *notifyLoop) start(ctx context.Context) error {
 	n.cancel, n.done = cancel, done
 	go func() {
 		defer close(done)
-		timer := time.NewTimer(0)
-		defer timer.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-timer.C:
-			}
-			snap, err := n.snapshot(ctx)
-			if err == nil {
-				start := n.stat.Begin()
-				err = notifications.Tick(ctx, path, notificationSnapshot(ctx, ws, snap, dashboardURL, time.Now()), n.sender, time.Now())
-				n.stat.End(start)
-			}
-			n.setStatus(err)
-			delay := 5 * time.Second
-			if err != nil {
-				delay = time.Minute
-			}
-			timer.Reset(delay)
-		}
+		n.run(ctx, ws, path, dashboardURL)
 	}()
 	return nil
+}
+
+const (
+	// notifyGap is the least time between two ticks a change brought: a
+	// burst of notices costs one tick, and never more than the five-second
+	// poll it replaced.
+	notifyGap = 5 * time.Second
+	// notifySafety is the longest the loop goes without a tick.
+	notifySafety = time.Minute
+	// notifyRetry is the wait after a tick that failed.
+	notifyRetry = time.Minute
+)
+
+// Wake is a change: the loop ticks once notifyGap has passed since its
+// last tick. It never blocks.
+func (n *notifyLoop) Wake() {
+	if n.wake == nil {
+		return
+	}
+	select {
+	case n.wake <- struct{}{}:
+	default:
+	}
+}
+
+// computed is the engine's snapshot cache keeping snapshot seq: a change
+// unless the loop's own last tick read it.
+func (n *notifyLoop) computed(seq uint64) {
+	if !n.reading.Load() && n.seen.Load() != seq {
+		n.Wake()
+	}
+}
+
+func (n *notifyLoop) durations() (gap, safety, retry time.Duration) {
+	gap, safety, retry = notifyGap, notifySafety, notifyRetry
+	if n.gap > 0 {
+		gap = n.gap
+	}
+	if n.safety > 0 {
+		safety = n.safety
+	}
+	if n.retry > 0 {
+		retry = n.retry
+	}
+	return gap, safety, retry
+}
+
+// run ticks at once, then on a change or a deadline until ctx ends.
+func (n *notifyLoop) run(ctx context.Context, ws *store.Workspace, path, dashboardURL string) {
+	gap, safety, retry := n.durations()
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	// next is when the next tick runs; earliest is the soonest a change
+	// may bring it.
+	next, earliest := time.Now(), time.Time{}
+	for {
+		timer.Reset(time.Until(next))
+		select {
+		case <-ctx.Done():
+			return
+		case <-n.wake:
+			if at := later(earliest, time.Now()); at.Before(next) {
+				next = at
+			}
+			continue
+		case <-timer.C:
+		}
+		n.reading.Store(true)
+		snap, seq, err := n.snapshot(ctx)
+		n.seen.Store(seq)
+		n.reading.Store(false)
+		if ctx.Err() != nil {
+			return
+		}
+		now := time.Now()
+		if err == nil {
+			start := n.stat.Begin()
+			err = notifications.Tick(ctx, path, notificationSnapshot(ctx, ws, snap, dashboardURL, now), n.sender, now)
+			n.stat.End(start)
+		}
+		n.setStatus(err)
+		now = time.Now()
+		if err != nil {
+			earliest = now.Add(retry)
+			next = earliest
+			continue
+		}
+		earliest = now.Add(gap)
+		next = now.Add(safety)
+		// The report's deadline; one already past is a report that could
+		// not go (no project to report on), which the safety tick retries.
+		if due, ok := notifications.NextReport(path); ok && due.After(now) && due.Before(next) {
+			next = due
+		}
+		next = later(next, earliest)
+	}
+}
+
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // Stop ends the loop and waits for a tick in flight.

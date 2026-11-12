@@ -128,7 +128,8 @@ goroutines  35
   that is wired and has not run (notifications off, a timer not yet due).
 - `observer round` is the whole round, `timeline ingest` included; `autopilot
   tick` includes `PR sweep + gc`; `notifications` leaves out the snapshot
-  it reads, which `snapshot` counts.
+  it reads, which `snapshot` counts. `workspace.yaml reload` counts the
+  reads of the file, not the looks at its size and time.
 - Allocation is the process's, not split by loop: the loops share one heap
   and no counter says which allocated what. For that, profile the core
   (`MATE_PPROF`, CON-257).
@@ -140,6 +141,40 @@ goroutines  35
 the two costs that grow with a workspace's history, one steady ingest pass
 and one `query.Load`, under an allocation budget over a generated workspace
 of a thousand closed crews, in `make check`.
+
+## What wakes the loops
+
+A core with nothing happening should cost next to nothing (CON-270, epic
+CON-253). Three loops run on events, each with a slow tick under it for an
+event that never came: a write by a process with no core to tell, a notice
+lost, a write that bypasses the change feed (`docs/architecture.md`
+section 2).
+
+| Loop | Runs on | Safety net | Before |
+| -- | -- | -- | -- |
+| `workspace.yaml reload` | once at start; a `workspace` notice (`mate project …`, a UI of another process; CON-266 adds an edit by hand), read before the notice wakes anything else | a look every 30 s at the file's size and modification time, which reads it only when either changed | a read every 2 s, and one more in each pass of the observer, the outbox loop and the auto daemon |
+| `outbox pass` | once at start (it compacts a quiet outbox, CON-258); an `outbox` notice; an `Enqueue` or `Offer` in the core itself (the auto daemon's digest, a UI's `[assign]`, the PR sweep, a stow); a `sent` or `mate` notice while a line waits (the Mate's composer may have emptied) | every 2 s while any project has a line queued, as before (the wedged clock, the refusals and M21's rules are unchanged); otherwise every minute | every 2 s |
+| `notifications` | once at start; any notice; a snapshot computed for another reader; the 10-minute report falling due (`notifications.NextReport`) | every minute; a failed tick waits a minute | every 5 s |
+
+A change brings the notifications no sooner than 5 s after their last
+tick, so a burst of notices costs one tick and never more than the old
+poll. The observer is unchanged: a poll every 5 s, brought forward by a
+notice (CON-260).
+
+The observer, the outbox loop and the auto daemon share the engine's own
+`*store.Workspace` and read `workspace.yaml` no more (`Deps.SharedConfig`
+in `internal/watch`, `internal/outbox`, `internal/autopilot`). CON-204 made
+a handle's configuration an atomic snapshot swapped whole, so sharing it is
+safe, and a change any of them makes through it is seen by all at once.
+Two readers of the file remain on the same handle: the timeline ingest's
+pass (`internal/timeline`) and each snapshot's `query.Load`.
+Built outside the engine (the live tests' `consolePilot`,
+`consoleWatcherWithTimeline`), each still opens its own handle and reads
+the file each pass.
+
+In ten minutes of a fake clock (`TestPassesPerMinute`,
+`internal/outbox/wake_test.go`) a quiet workspace's outbox loop runs 10
+passes where it ran 300; one with a line waiting still runs 300.
 
 ## How a command knows the core runs
 

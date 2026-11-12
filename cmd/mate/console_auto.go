@@ -33,9 +33,13 @@ import (
 // the commands that build the same parts for one shot of their own
 // (spawn.MateOutbox, consoleSessionRef, mateRefresher).
 //
-// Each loop opens its own *store.Workspace over ws's directory, for the
-// reason consoleWatcher gives; recovery repairs ws itself, and the snapshot
-// and the dashboard read it.
+// Every loop shares ws, the engine's own handle (CON-270): the engine reads
+// workspace.yaml back into it on a `workspace` notice and when the file
+// changes, so the observer, the outbox loop and the auto daemon no longer
+// read the file each pass (their Deps.SharedConfig). Since CON-204 a
+// handle's configuration is swapped whole, so sharing it is safe, and a
+// change the engine or a loop makes is seen by all of them at once.
+// Recovery repairs ws, and the snapshot and the dashboard read it.
 func engineOptions(ws *store.Workspace, deps spawn.Deps, consolePresent func() bool) (core.Options, error) {
 	// The observer of mvp.md section 4b runs for as long as the engine does,
 	// and only then: it lives in this process, so when it ends nobody is
@@ -48,7 +52,7 @@ func engineOptions(ws *store.Workspace, deps spawn.Deps, consolePresent func() b
 	// Every loop records its runs in one place, which `mate core stats`
 	// reads (CON-263).
 	stats := loopstat.New()
-	watcher, timelineDB, ingest, err := engineWatcher(ws.Root(), deps, stats)
+	watcher, timelineDB, ingest, err := engineWatcher(ws, deps, stats, true)
 	if err != nil {
 		return core.Options{}, err
 	}
@@ -58,13 +62,7 @@ func engineOptions(ws *store.Workspace, deps spawn.Deps, consolePresent func() b
 	// an Auto project still gets its digests, refreshes and queued lines;
 	// a Manual one gets nothing typed by the outbox loop until a console is
 	// back (consolePresent, CON-203 decided 2026-11-05).
-	delivery, err := engineDelivery(ws.Root(), deps, consolePresent, stats)
-	if err != nil {
-		if timelineDB != nil {
-			_ = timelineDB.Close()
-		}
-		return core.Options{}, err
-	}
+	delivery := sharedDelivery(ws, deps, consolePresent, stats)
 	opts := core.Options{
 		Workspace: ws,
 		Watcher:   core.WatchLoop(watcher),
@@ -157,19 +155,33 @@ func engineDelivery(dir string, deps spawn.Deps, consolePresent func() bool, sta
 	od.Pass = stats.Loop(core.LoopOutbox)
 	return &consoleDelivery{
 		sender: outbox.New(senderWS, od),
-		pilot:  engineAutoPilot(pilotWS, deps, stats),
+		pilot:  engineAutoPilot(pilotWS, deps, stats, false),
 	}, nil
+}
+
+// sharedDelivery is engineDelivery over the engine's own handle ws, which
+// the sender loop and the daemon share with it (CON-270): neither reads
+// workspace.yaml each pass, the engine keeps it current.
+func sharedDelivery(ws *store.Workspace, deps spawn.Deps, consolePresent func() bool, stats *loopstat.Recorder) *consoleDelivery {
+	od := spawn.MateOutboxDeps(ws, deps)
+	od.ConsolePresent = consolePresent
+	od.Pass = stats.Loop(core.LoopOutbox)
+	od.SharedConfig = true
+	return &consoleDelivery{sender: outbox.New(ws, od), pilot: engineAutoPilot(ws, deps, stats, true)}
 }
 
 // consoleAutoPilot is the auto daemon over ws, queueing into ws's outbox and
 // making its one immediate attempt through a sender over the same handle.
 func consoleAutoPilot(ws *store.Workspace, deps spawn.Deps) *autopilot.Pilot {
-	return engineAutoPilot(ws, deps, nil)
+	return engineAutoPilot(ws, deps, nil, false)
 }
 
 // engineAutoPilot is consoleAutoPilot whose ticks and sweeps stats records
 // (core.LoopAutopilot, core.LoopSweep; CON-263); nil records nothing.
-func engineAutoPilot(ws *store.Workspace, deps spawn.Deps, stats *loopstat.Recorder) *autopilot.Pilot {
+// shared says ws is the engine's own handle, which the engine keeps
+// current: a tick does not read workspace.yaml again
+// (autopilot.Deps.SharedConfig, CON-270).
+func engineAutoPilot(ws *store.Workspace, deps spawn.Deps, stats *loopstat.Recorder, shared bool) *autopilot.Pilot {
 	tick, sweep := stats.Loop(core.LoopAutopilot), stats.Loop(core.LoopSweep)
 	// What closed tasks left behind is collected once at start and every
 	// GCEvery after (CON-114) - by a console with the real teardown only,
@@ -190,6 +202,8 @@ func engineAutoPilot(ws *store.Workspace, deps spawn.Deps, stats *loopstat.Recor
 		},
 		Budget: consoleBudgetActions(ws, deps),
 		Pass:   tick,
+
+		SharedConfig: shared,
 	})
 }
 

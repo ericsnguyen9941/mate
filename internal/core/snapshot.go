@@ -71,11 +71,16 @@ type snapshotCache struct {
 	maxAge time.Duration
 	limit  time.Duration
 	now    func() time.Time
+	// kept is told each snapshot kept, by its seq, once it is handed out:
+	// the notifications run after a recompute (CON-270). Nil tells nobody.
+	kept func(seq uint64)
 
 	mu sync.Mutex
 	// gen counts the Invalidates: a computation that started in an older
 	// generation answers its readers and is not kept.
-	gen    uint64
+	gen uint64
+	// seq counts the snapshots kept; each kept one carries its count.
+	seq    uint64
 	held   *heldSnapshot
 	flight *flight
 	// closed is set when the engine stops: no computation starts after it,
@@ -88,6 +93,7 @@ type snapshotCache struct {
 type heldSnapshot struct {
 	snap query.Snapshot
 	at   time.Time
+	seq  uint64
 }
 
 // flight is one shared computation; done closes once snap and err are set.
@@ -96,18 +102,27 @@ type flight struct {
 	done chan struct{}
 	snap query.Snapshot
 	err  error
+	// seq is the snapshot's count once kept; 0 when it was not.
+	seq uint64
 }
 
 func (c *snapshotCache) get(ctx context.Context) (query.Snapshot, error) {
+	snap, _, err := c.getSeq(ctx)
+	return snap, err
+}
+
+// getSeq is get, and the snapshot's count among those kept: 0 for one not
+// kept (an Invalidate came while it was computed).
+func (c *snapshotCache) getSeq(ctx context.Context) (query.Snapshot, uint64, error) {
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
-		return query.Snapshot{}, errStopped
+		return query.Snapshot{}, 0, errStopped
 	}
 	if c.held != nil && c.now().Sub(c.held.at) < c.maxAge {
-		snap := c.held.snap
+		snap, seq := c.held.snap, c.held.seq
 		c.mu.Unlock()
-		return snap, nil
+		return snap, seq, nil
 	}
 	f := c.flight
 	if f == nil || f.gen != c.gen {
@@ -119,9 +134,9 @@ func (c *snapshotCache) get(ctx context.Context) (query.Snapshot, error) {
 	c.mu.Unlock()
 	select {
 	case <-f.done:
-		return f.snap, f.err
+		return f.snap, f.seq, f.err
 	case <-ctx.Done():
-		return query.Snapshot{}, ctx.Err()
+		return query.Snapshot{}, 0, ctx.Err()
 	}
 }
 
@@ -137,11 +152,16 @@ func (c *snapshotCache) run(f *flight, started time.Time) {
 		c.flight = nil
 	}
 	if err == nil && f.gen == c.gen {
-		c.held = &heldSnapshot{snap: snap, at: started}
+		c.seq++
+		f.seq = c.seq
+		c.held = &heldSnapshot{snap: snap, at: started, seq: c.seq}
 	}
 	f.snap, f.err = snap, err
 	c.mu.Unlock()
 	close(f.done)
+	if f.seq != 0 && c.kept != nil {
+		c.kept(f.seq)
+	}
 }
 
 // safeCompute is one computation, with a panic in it turned into its error:

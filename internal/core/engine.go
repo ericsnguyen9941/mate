@@ -189,7 +189,7 @@ type Engine struct {
 	// hosts watches each headless Mate's host of its own (CON-226); nil
 	// without a workspace or a Herdr runtime to start a Mate through.
 	hosts     *hostWatch
-	reload    *tickLoop
+	reload    *configReloader
 	dashboard *dashboardPart
 	notify    *notifyLoop
 	snaps     *snapshotCache
@@ -284,7 +284,10 @@ func New(o Options) *Engine {
 			e.dashboard = &dashboardPart{ws: o.Workspace, o: *o.Dashboard, deps: e.dashboardDeps}
 		}
 		if o.Notifier != nil {
-			e.notify = &notifyLoop{root: o.Workspace.Root(), snapshot: e.Snapshot, sender: o.Notifier, url: e.dashboardURL, stat: e.stats.Loop(LoopNotify)}
+			e.notify = &notifyLoop{root: o.Workspace.Root(), snapshot: e.snaps.getSeq, sender: o.Notifier, url: e.dashboardURL, stat: e.stats.Loop(LoopNotify), wake: make(chan struct{}, 1)}
+			// A snapshot computed for any reader is a change the
+			// notifications look at (CON-270).
+			e.snaps.kept = e.notify.computed
 		}
 	}
 	return e

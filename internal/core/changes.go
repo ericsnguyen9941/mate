@@ -4,20 +4,22 @@ import (
 	"sync"
 
 	"github.com/nguyenngocanh94/mate/internal/coreapi"
+	"github.com/nguyenngocanh94/mate/internal/store"
 )
 
 // The change feed (CON-260, epic CON-253): every mate process that writes a
 // record under `.mate/` tells the core which one (internal/store's
 // NoteWrite, sent by coreclient.Notify to POST coreapi.PathChanged on
 // `.mate/core.sock`), so the core can react to a change instead of only
-// finding it on its next poll. Today two consumers react, and only faster:
-// the shared snapshot is dropped, so the next read of any UI sees the
-// change, and the observer starts its next round at once instead of
-// waiting out its 5 s. No poll is longer for it - a notice is a hint, and
-// what a writer that bypasses the store did (a Crew's own `echo >>
-// $MATE_STATUS`, a harness's transcript; docs/architecture.md section 2)
-// is still found by the polls alone. Polling less is CON-262's, which
-// waits on a ChangeSub.
+// finding it on its next poll. The shared snapshot is dropped, so the next
+// read of any UI sees the change, and the observer starts its next round
+// at once instead of waiting out its 5 s. Three loops run on it instead of
+// a short clock (CON-270, Engine.Changed): workspace.yaml is read back on a
+// `workspace` notice, the outbox loop wakes on an `outbox` one, and the
+// notifications on any. Each keeps a slow tick under it - a notice is a
+// hint, and what a writer that bypasses the store did (a Crew's own `echo
+// >> $MATE_STATUS`, a harness's transcript; docs/architecture.md section
+// 2) is found by the polls alone.
 
 // Changes is the engine's change feed: each notice is put in the dirty set
 // of every subscriber and wakes it. Safe for concurrent use.
@@ -102,18 +104,43 @@ type Waker interface {
 	Wake()
 }
 
+// OutboxWaker is the outbox loop as the change feed wakes it (CON-270):
+// outbox.Sender's Wake, for something queued, and Nudge, for a Mate whose
+// composer may have emptied, which wakes it only while a line waits.
+type OutboxWaker interface {
+	Wake()
+	Nudge()
+}
+
 // Changes is the engine's change feed, for a loop to Subscribe to.
 func (e *Engine) Changes() *Changes { return e.changes }
 
-// Changed is a writer's notice (POST coreapi.PathChanged): it is put in
-// the feed, the shared snapshot is dropped so the next read of any UI sees
-// the change, and the observer is woken. A notice about a Project or one
-// of its Crews wakes it; one about the workspace's own files (a Project
-// added) too, as it re-reads workspace.yaml each round.
+// Changed is a writer's notice (POST coreapi.PathChanged). A notice about
+// the workspace's own files reads workspace.yaml back first, before
+// anything is woken (configReloader). Then it is put in the feed, the
+// shared snapshot is dropped so the next read of any UI sees the change,
+// and the loops it concerns are woken (CON-270): the observer by any; the
+// outbox loop by an `outbox` notice (something queued), and by a `sent` or
+// `mate` one while a line waits (the Mate's composer may have emptied);
+// the notifications by any.
 func (e *Engine) Changed(c coreapi.Change) {
+	if c.Kind == string(store.ChangeWorkspace) && e.reload != nil {
+		e.reload.reload()
+	}
 	e.changes.Note(c)
 	e.snaps.invalidate()
 	if w, ok := e.o.Watcher.(Waker); ok {
 		w.Wake()
+	}
+	if s, ok := e.o.Sender.(OutboxWaker); ok {
+		switch store.ChangeKind(c.Kind) {
+		case store.ChangeOutbox:
+			s.Wake()
+		case store.ChangeSent, store.ChangeMate:
+			s.Nudge()
+		}
+	}
+	if e.notify != nil {
+		e.notify.Wake()
 	}
 }
