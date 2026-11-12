@@ -33,7 +33,7 @@ const (
 	// LoopSweep is the sweep at the start of each tick: the pull requests
 	// (prwatch) and what closed tasks left behind (gc).
 	LoopSweep = "PR sweep + gc"
-	// LoopReload is the read of workspace.yaml every 2 s (configReload).
+	// LoopReload is each read of workspace.yaml (configReloader, CON-270).
 	LoopReload = "workspace.yaml reload"
 	// LoopSnapshot is one computation of the snapshot every UI reads,
 	// shared or fresh (Engine.Snapshot, Engine.FreshSnapshot).

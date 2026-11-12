@@ -57,6 +57,10 @@ type Deps struct {
 	// Pass records each tick the loop runs, Sweep included, for `mate core
 	// stats` (CON-263). Nil records nothing.
 	Pass *loopstat.Loop
+	// SharedConfig says the caller keeps the workspace handle's
+	// workspace.yaml current itself - internal/core's engine (CON-270) -
+	// so a tick does not read the file again. False re-reads it every tick.
+	SharedConfig bool
 }
 
 func (d Deps) now() time.Time {
@@ -240,9 +244,12 @@ func (p *Pilot) Tick(ctx context.Context) error {
 	}
 	// Re-read workspace.yaml every tick, for the reason the observer does: a
 	// project registered beside this console must come under the daemon
-	// without a restart.
-	if err := p.ws.LoadConfig(); err != nil {
-		return err
+	// without a restart. Under the engine the handle is the engine's, which
+	// keeps it current (SharedConfig).
+	if !p.deps.SharedConfig {
+		if err := p.ws.LoadConfig(); err != nil {
+			return err
+		}
 	}
 	if p.deps.Sweep != nil {
 		p.deps.Sweep(ctx)

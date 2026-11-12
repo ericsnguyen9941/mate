@@ -150,17 +150,25 @@ engine per workspace, wherever it runs; a second one gets
 (`core.Lock`) before `engineOptions` builds the parts, whose observer opens
 `mate.db`, and hand it in as `Options.Claim`. A core then binds `.mate/core.sock` (0600;
 a socket left by a dead core is removed, a path too long or a filesystem
-with no unix sockets stops it). It then starts, in order: the re-read
-of `workspace.yaml` every 2 s (`internal/core/reload.go`); the observer
+with no unix sockets stops it). It then starts, in order: the reading of
+`workspace.yaml` (`internal/core/reload.go`: once at start, on a
+`workspace` notice, and when a look every 30 s finds its size or
+modification time changed, CON-270); the observer
 (`internal/watch`, a poll every 5 s, brought forward by a writer's notice,
 CON-260) which records the timeline at the end of each poll
 (`internal/timeline`; a poll skips every crew the ingest has sealed,
 closed over an hour with every conclusion recorded, until its `.meta` or
 `.status` moves: CON-259, `internal/timeline/seal.go`); the outbox sender (`internal/outbox`, every
-2 s); the auto daemon (`internal/autopilot`, every 90 s); recovery
+2 s while a line is queued, otherwise on a wake or every minute, CON-270); the auto daemon (`internal/autopilot`, every 90 s); recovery
 (`internal/recovery`); the watch over the headless Mates' hosts
 (`internal/core/hostwatch.go`, every 5 s, CON-226); the Office/City server (`internal/core/dashboard.go`);
-the notification loop (`internal/core/notify.go`). `Stop` returns within
+the notification loop (`internal/core/notify.go`, on a change, the report's
+deadline or every minute, CON-270). The observer, the outbox loop and the
+auto daemon share the engine's own `*store.Workspace` (`engineOptions`)
+and do not read `workspace.yaml` themselves (their `Deps.SharedConfig`):
+the engine reads it for them (the timeline ingest and `query.Load` still
+read it on the same handle). What wakes each loop is in
+[core.md](core.md), "What wakes the loops". `Stop` returns within
 `core.StopWait` (45 s) plus the closing of `mate.db` (CON-210): it refuses
 every new action (`coreapi.ErrStopping`, "mate core is stopping · nothing
 started"; a page gets it as a 409), cancels every part, the snapshot being
@@ -327,9 +335,16 @@ How processes exchange state:
   under each, a channel that wakes it, and `Take`), drops the shared
   snapshot and wakes the observer (`watch.Watcher.Wake`: its next round
   starts at once, no sooner than `watch.WakeGap`, 2.5 s, after the last one
-  started). A notice is a hint, never the record, and no poll is longer
-  for it: what bypasses the feed is still found by the polls alone.
-  Polling less is CON-262; watching what bypasses the feed, CON-261.
+  started). It also, CON-270: reads `workspace.yaml` back on a `workspace`
+  notice, before it wakes anything; wakes the outbox loop on an `outbox`
+  notice and nudges it on a `sent` or `mate` one (`core.OutboxWaker`; a
+  nudge wakes it only while a line waits); and wakes the notifications on
+  any. The core's own enqueues send no notice: an `Enqueue` or `Offer` of
+  any `outbox.Sender` wakes every loop of the process over the same
+  workspace. A notice is a hint, never the record: what bypasses the feed
+  is found by the observer's 5 s poll, the outbox loop's and the
+  notifications' one-minute safety nets and the 30 s look at
+  `workspace.yaml`. Watching what bypasses the feed is CON-261.
 
   Who writes `.mate/`, and whether the feed hears it (2026-11-11):
 
@@ -384,7 +399,7 @@ interfaces on the side of each reader, is planned in
 
 | File | Owner | Written by | Read by |
 | -- | -- | -- | -- |
-| `workspace.yaml` | `store` | `mate init`, `mate project …` | every process (`store.Open`); the engine re-reads it every 2 s |
+| `workspace.yaml` | `store` | `mate init`, `mate project …` | every process (`store.Open`); the engine reads it back on a `workspace` notice and when its size or mtime changed (a look every 30 s), for itself and the loops sharing its handle (CON-270) |
 | `.env`, `WORKSPACE.md`, `CREW.md` | `store` | the captain | `store.LoadEnv`; brief and manual rendering |
 | `console.yaml` | `consolecmd` | the captain | the console (`loadConsoleCommands`) |
 | `plugins.yaml` | `plugin` | `mate plugin` | `spawn` at Mate start, console, dashboard |
