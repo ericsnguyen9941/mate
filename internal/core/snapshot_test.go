@@ -518,7 +518,9 @@ func TestSnapshotWithTheConsolesKeysIsWhatTheConsoleLoadedBefore(t *testing.T) {
 func TestTheSharedWorkspaceFollowsWorkspaceYAMLWithNoReader(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := shopWorkspace(t)
-		e := New(Options{Workspace: w})
+		// A real file watch waits in a system call, which a synctest
+		// bubble never counts as idle: its clock would never move.
+		e := New(Options{Workspace: w, NoFileWatch: true})
 		e.snaps.compute = func(context.Context) (query.Snapshot, error) {
 			t.Error("a snapshot was computed with nobody reading")
 			return query.Snapshot{}, nil

@@ -22,6 +22,31 @@ type CoreStats struct {
 	// side in one heap, and no counter says which one allocated what.
 	Loops   []LoopStats  `json:"loops"`
 	Process ProcessStats `json:"process"`
+	// Files is the core's watch on the files written past its change feed
+	// (CON-266); nil from an engine with no workspace or the watch turned
+	// off.
+	Files *FileWatchStats `json:"files,omitempty"`
+}
+
+// FileWatchStats is the core's watch on the files mate does not write
+// itself - the open Crews' status files, the transcripts, workspace.yaml,
+// each PROJECT.md - since it started (CON-266).
+type FileWatchStats struct {
+	// Off is why there is no watch (the system gave none); empty while it
+	// runs. The polls find every change either way.
+	Off string `json:"off,omitempty"`
+	// Watched is the files watched now; Missing the files of the set that
+	// are not (absent, or the system refused the watch).
+	Watched int `json:"watched"`
+	Missing int `json:"missing"`
+	// Events is what the system reported for them; Changes the notices
+	// put in the change feed once the bursts were folded.
+	Events  uint64 `json:"events"`
+	Changes uint64 `json:"changes"`
+	// Errors is every watch refused or event queue overflowed; LastError
+	// the latest.
+	Errors    uint64 `json:"errors"`
+	LastError string `json:"last_error,omitempty"`
 }
 
 // LoopStats is one loop's runs since the core started, in wall time: a run

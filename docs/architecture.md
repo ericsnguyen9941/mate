@@ -39,7 +39,7 @@ names the layers its imports and importers allow.
 
 | Layer | What belongs | Packages |
 | -- | -- | -- |
-| 1 leaf (lá) | Types, rules, formats and OS shims that import no other layer | `assets`, `brief`, `capability`, `config`, `consolecmd`, `crewstate`, `loopstat`, `memory`, `names`, `observability`, `platform`, `process`, `telemetry` |
+| 1 leaf (lá) | Types, rules, formats and OS shims that import no other layer | `assets`, `brief`, `capability`, `config`, `consolecmd`, `crewstate`, `fswatch`, `loopstat`, `memory`, `names`, `observability`, `platform`, `process`, `telemetry` |
 | 2 storage (lưu trữ) | The workspace store and the database and config files beside it | `store`, `db`, `plugin`, `learnings` |
 | 3 read (đọc) | Read models over stored state, and the ports they read through | `query`, `coreapi`, `box`, `timeline/scene`, `timeline/read`, `diagnostics`, `dispatch`, `harness`, `runtime` |
 | 4 integration (tích hợp) | Adapters to something outside mate: harness CLIs, Herdr, the terminal host, git, `gh`, Jev, OS notifications | `harness/catalog`, `harness/claude`, `harness/codex`, `harness/grok`, `harness/pi`, `screen`, `screen/fixture`, `screen/jev`, `screen/chain`, `send`, `notice`, `host`, `panerun`, `gitx`, `github`, `facts`, `quota`, `teardown`, `notifications`, `matehost`, `coreclient`, `runtime/herdr` |
@@ -153,7 +153,9 @@ a socket left by a dead core is removed, a path too long or a filesystem
 with no unix sockets stops it). It then starts, in order: the reading of
 `workspace.yaml` (`internal/core/reload.go`: once at start, on a
 `workspace` notice, and when a look every 30 s finds its size or
-modification time changed, CON-270); the observer
+modification time changed, CON-270); the watch on the files written past
+the change feed (`internal/core/filewatch.go`, CON-266, the file watch in
+the list below); the observer
 (`internal/watch`, a poll every 5 s, brought forward by a writer's notice,
 CON-260) which records the timeline at the end of each poll
 (`internal/timeline`; a poll skips every crew the ingest has sealed,
@@ -339,12 +341,38 @@ How processes exchange state:
   notice, before it wakes anything; wakes the outbox loop on an `outbox`
   notice and nudges it on a `sent` or `mate` one (`core.OutboxWaker`; a
   nudge wakes it only while a line waits); and wakes the notifications on
-  any. The core's own enqueues send no notice: an `Enqueue` or `Offer` of
+  any but a transcript. The core's own enqueues send no notice: an `Enqueue` or `Offer` of
   any `outbox.Sender` wakes every loop of the process over the same
   workspace. A notice is a hint, never the record: what bypasses the feed
   is found by the observer's 5 s poll, the outbox loop's and the
   notifications' one-minute safety nets and the 30 s look at
-  `workspace.yaml`. Watching what bypasses the feed is CON-261.
+  `workspace.yaml`, and by the file watch below.
+- **The file watch (CON-266).** What writes past the feed, the core
+  watches: `workspace.yaml`, each Project's `PROJECT.md`, and what the
+  timeline ingest's latest poll found live (`timeline.Ingester.LiveFiles`:
+  each open Crew's `.status` and located transcript, the running Mate's
+  transcript). `internal/core/filewatch.go` keeps that set, applies it
+  again after every poll (`Ingester.Polled`) and on every notice about the
+  workspace's own files, and puts each change in the feed through
+  `Engine.Changed`, as a writer's notice, with the Project, the Crew and
+  the kind (`status`, `transcript`, `workspace`, `project`). A
+  `transcript` notice, from the watch or any writer, marks the Crew or the
+  Mate dirty and drops the snapshot but wakes neither the observer nor the
+  notifications
+  (`wakesObserver`, `internal/core/changes.go`): an agent writes its
+  transcript without a pause, and a round every `watch.WakeGap` while it
+  works would double the observer's rounds when the core is busiest; the
+  feed's subscribers read it on their next round. The watching
+  is `internal/fswatch` over fsnotify (kqueue on macOS, inotify on Linux):
+  exact files, never a directory (kqueue would open a descriptor for each
+  file of one and report no append inside it); a burst on one file is one
+  change per 300 ms window; a file replaced by a rename is watched again,
+  and one missing is tried again at the next apply. Under 50 files on the
+  largest workspace (15 Crews, 12 Mates). A system that gives no watch (or
+  `MATE_FSWATCH=off`) leaves the engine running without it, and `mate core
+  stats` says so; no poll is longer for it either. Without an ingest only
+  `workspace.yaml` and the `PROJECT.md` files are watched; WSL2's `/mnt/c`
+  gives no events at all.
 
   Who writes `.mate/`, and whether the feed hears it (2026-11-11):
 
@@ -362,10 +390,10 @@ How processes exchange state:
   | `spawn`, `plugin`, `mateassets`, `screen/chain`, `recovery` | `tui`, `host.log`, `plugins.yaml`, the Mate's assets, `screens/`, links | no |
   | Every process | the locks, `core.log`, `gc.log`, `jev.log`, `migrate.log` | no: no loop reads them for a change |
   | The core itself: observer, timeline, outbox sender, auto daemon, recovery, host watch, notifications, `Act` | `incidents.log`, `mate.db`, `sent.log`, `.outbox`, the cursors, `notifications.json`... | not told: they are its own, and `Act` calls `Invalidate` |
-  | **Bypass**: a Crew's `echo "…" >> $MATE_STATUS` | a crew's `.status` | no |
+  | **Bypass**: a Crew's `echo "…" >> $MATE_STATUS` | a crew's `.status` | no; the core's file watch, while the crew is open (CON-266) |
   | **Bypass**: a Crew writing its own files with its harness's tools | `report.md`, `handback.md` in its crew directory | no |
-  | **Bypass**: the Mate editing `PROJECT.md`; the captain's `.env`, `WORKSPACE.md`, `CREW.md`, `console.yaml`, `crew-dispatch.json` | | no |
-  | **Bypass**: the harnesses' transcripts (Claude, Codex, pi), outside `.mate/` | what the timeline ingest reads | no |
+  | **Bypass**: the Mate editing `PROJECT.md`; the captain's `.env`, `WORKSPACE.md`, `CREW.md`, `console.yaml`, `crew-dispatch.json`, or `workspace.yaml` by hand | | no; the core's file watch for `PROJECT.md` and `workspace.yaml` (CON-266) |
+  | **Bypass**: the harnesses' transcripts (Claude, Codex, pi), outside `.mate/` | what the timeline ingest reads | no; the core's file watch, once the ingest located it, for an open Crew and a running Mate (CON-266) |
   | **Bypass**: Herdr's panes, the repositories and pull requests, outside `.mate/` | | no: the observer and the PR watcher ask them |
 
 Names (2026-11-05, CON-216): **mate core** is the process that runs the

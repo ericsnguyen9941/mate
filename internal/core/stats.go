@@ -66,6 +66,9 @@ func (e *Engine) Stats() coreapi.CoreStats {
 		// An engine with no core.lock (a test's) is still this process.
 		s.PID = os.Getpid()
 	}
+	if e.files != nil {
+		s.Files = e.files.stats()
+	}
 	for _, l := range e.stats.Read() {
 		s.Loops = append(s.Loops, coreapi.LoopStats{
 			Name: l.Name, Runs: l.Runs, Last: l.Last, Mean: l.Mean, Max: l.Max,

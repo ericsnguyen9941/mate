@@ -119,6 +119,7 @@ allocated   6.7 MB in 68.3k objects since start · 192 KB/s
 gc          3 cycles · 0.0% of the CPU
 cpu         127ms · 0% of one core since start
 goroutines  35
+files       9 watched · 1 missing · 312 events → 40 changes
 ```
 
 - Each loop's figures are wall time since the core started: a run that
@@ -133,6 +134,15 @@ goroutines  35
 - Allocation is the process's, not split by loop: the loops share one heap
   and no counter says which allocated what. For that, profile the core
   (`MATE_PPROF`, CON-257).
+- `files` is the core's watch on the files written past its change feed
+  (CON-266, [architecture.md](architecture.md) section 2): the open Crews'
+  `.status` files and transcripts, the running Mates' transcripts,
+  `workspace.yaml`, each `PROJECT.md`. `missing` are files of the set that
+  are not there yet (a `PROJECT.md` never written) or that the system
+  refused to watch; `events` what the system reported, `changes` the
+  notices the core took from them once the bursts were folded. `off: …`
+  says why there is no watch (the system gave none, or the core runs with
+  `MATE_FSWATCH=off`); the polls find every change either way.
 - Recording costs two clock reads a run. Reading reads `runtime/metrics`
   and `getrusage(2)`, never `runtime.ReadMemStats`, which stops the world.
   `RSS` (now) is shown on Linux only; `peak RSS` everywhere.
@@ -193,7 +203,7 @@ new core, which writes its own record over the old one.
 | File | What it is |
 | -- | -- |
 | `core.lock` | Held by the running engine. JSON: `pid`, `owner` (`core` or `console`), `started`, `version`, `binary`, `build` (sha256 of the binary when it started), `socket`, `url`, `lan_url`, `tcp_error`. The file stays after the engine ends. |
-| `core.sock` | The core's unix socket (0600): Office/City's routes and the clients' API (`/api/core`, `/api/core/stats`, `/api/snapshot`, `/api/act`, CON-212), and `/api/changed`, where every other mate process says which record it just wrote (CON-260): the UIs' next read sees it and the observer's next round comes early, no sooner than `watch.WakeGap` after the last. Removed when the core stops. |
+| `core.sock` | The core's unix socket (0600): Office/City's routes and the clients' API (`/api/core`, `/api/core/stats`, `/api/snapshot`, `/api/act`, CON-212), and `/api/changed`, where every other mate process says which record it just wrote (CON-260): the UIs' next read sees it and the observer's next round comes early, no sooner than `watch.WakeGap` after the last; a `transcript` notice (the core's own file watch, CON-266) wakes no round. Removed when the core stops. |
 | `tui.lock` | Held by `mate mate-agent tui` while a Mate's session is open in the TUI (CON-227). JSON: `project`, `pid` (`mate mate-agent tui`), `started`, `harness_pid` (Claude, while it runs). The file stays after it ends. |
 | `core.log` | The output of every core: `mate core start` sends the core's output there, and a core in the foreground (`mate`, `mate core run`) appends what it prints to the terminal. Before it opens the log, either moves a log larger than 10 MB to `core.log.1`, keeping that one old log. The log of a core that is running is never rotated. |
 
@@ -296,7 +306,9 @@ engine holds the timeline, `mate reindex` refuses and names that process.
 
 - Keep the workspace on the Linux filesystem (under `~`), not under `/mnt/c`:
   the core serves a unix socket, and a Windows drive mounted in WSL2 may not
-  hold one. A core that cannot bind its socket does not start.
+  hold one. A core that cannot bind its socket does not start. A file
+  under `/mnt/c` also gives the core's file watch no event (CON-266): the
+  polls alone find its changes there.
 - Office and City listen on `127.0.0.1` inside WSL2; Windows browsers reach
   them at the same URL while WSL's localhost forwarding is on (the default).
 - WSL2 can shut the distribution down some time after its last terminal

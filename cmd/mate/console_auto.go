@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 
 	"github.com/nguyenngocanh94/mate/internal/autopilot"
 	"github.com/nguyenngocanh94/mate/internal/core"
@@ -82,6 +83,9 @@ func engineOptions(ws *store.Workspace, deps spawn.Deps, consolePresent func() b
 		Harnesses:      consoleHarnesses(),
 		ConsolePresent: consolePresent,
 		Stats:          stats,
+		// The watch on the files written past the change feed (CON-266)
+		// is on unless MATE_FSWATCH=off; the polls run either way.
+		NoFileWatch: os.Getenv("MATE_FSWATCH") == "off",
 	}
 	// No handle - another process writes the timeline - is no timeline to
 	// close, which a nil *db.DB in the interface would not say.
