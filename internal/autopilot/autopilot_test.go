@@ -202,6 +202,56 @@ func TestAnAppNoteRidesWithTheNextDigest(t *testing.T) {
 	}
 }
 
+// takeCrew is a Router that takes every item of one crew.
+type takeCrew struct {
+	crew     string
+	planned  int
+	executed []string
+}
+
+func (r *takeCrew) Plan(context.Context, string, []autopilot.Item) { r.planned++ }
+
+func (r *takeCrew) Claim(_ string, items []autopilot.Item) (kept, claimed []autopilot.Item) {
+	for _, item := range items {
+		if item.Crew == r.crew {
+			claimed = append(claimed, item)
+		} else {
+			kept = append(kept, item)
+		}
+	}
+	return kept, claimed
+}
+
+func (r *takeCrew) Execute(_ context.Context, _ string, claimed []autopilot.Item) {
+	for _, item := range claimed {
+		r.executed = append(r.executed, item.Crew)
+	}
+}
+
+// What the router claims never reaches the Mate, and is acted on after the
+// digest is built (CON-274).
+func TestTheRouterTakesItsItemsOutOfTheDigest(t *testing.T) {
+	f := newFixture(t)
+	f.auto(true)
+	router := &takeCrew{crew: "k3"}
+	deps := f.deps(nil)
+	deps.Route = router
+	pilot := autopilot.New(f.ws, deps)
+	f.status("k3", "wait-mate: PR is open")
+	f.status("k4", "needs-decision: A or B?")
+
+	if err := pilot.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	line := f.requireOneDigest()
+	if !strings.Contains(line, "digest: 1 item(s)") || strings.Contains(line, "k3") {
+		t.Fatalf("digest = %q, want only k4", line)
+	}
+	if router.planned != 1 || len(router.executed) != 1 || router.executed[0] != "k3" {
+		t.Fatalf("router planned %d, executed %v", router.planned, router.executed)
+	}
+}
+
 // The happy path, end to end: one line, marked, verified into the composer,
 // recorded in sent.log, cursor advanced.
 func TestOneVerifiedDigestPerTick(t *testing.T) {

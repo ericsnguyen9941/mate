@@ -90,6 +90,11 @@ type Item struct {
 	Offset int64
 }
 
+// Ref names the line an item came from, "<file>@<offset>": the same line is
+// the same item on every tick, which is how a router remembers what it
+// decided about it.
+func (item Item) Ref() string { return fmt.Sprintf("%s@%d", item.File, item.Offset) }
+
 // Limits on the one line. A status line is one line by protocol (mvp.md
 // section 4) but nothing bounds its length, and a composer handed a very long
 // line wraps and re-flows - which is exactly what send.Send's verification

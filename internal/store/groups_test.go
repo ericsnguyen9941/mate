@@ -92,6 +92,7 @@ var methodGroups = []methodGroup{
 			"ManualHold",
 			"AutoCursorFile",
 			"AppNotesLog",
+			"RouteLog",
 			"wakeCursorFile",
 			"OutboxFile",
 			"outboxLockFile",

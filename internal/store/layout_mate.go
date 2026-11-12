@@ -39,6 +39,13 @@ func (p Paths) AppNotesLog(project string) string {
 	return filepath.Join(p.MateDir(project), appNotesName)
 }
 
+// RouteLog is `projects/<project>/mate/route.jsonl`: every hand-back the app
+// decided whether to take off the Mate, what it decided and what came of it
+// (internal/route, CON-273, CON-274).
+func (p Paths) RouteLog(project string) string {
+	return filepath.Join(p.MateDir(project), routeLogName)
+}
+
 // wakeCursorFile is `projects/<project>/mate/.wake-cursor`; it records how
 // far `mate wake` has shown the project's status lines to the Mate.
 func (p Paths) wakeCursorFile(project string) string {

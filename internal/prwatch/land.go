@@ -40,7 +40,7 @@ func (d Deps) landForMate(ctx context.Context, project, crew, url, pr string) (q
 		d.logf("mate land %s %s: %v", project, crew, err)
 		return false
 	}
-	left, next := landReport(out)
+	left, next := LandReport(out)
 	what := fmt.Sprintf("landed %s (%s merged on GitHub as %s)", crew, url, pr)
 	if len(left) > 0 {
 		what += "; left for you: " + strings.Join(left, "; ")
@@ -56,9 +56,9 @@ func (d Deps) landForMate(ctx context.Context, project, crew, url, pr string) (q
 	return true
 }
 
-// landReport splits what `mate land` printed into the lines that left
+// LandReport splits what `mate land` printed into the lines that left
 // something for the Mate and its closing `next:` line.
-func landReport(out string) (left []string, next string) {
+func LandReport(out string) (left []string, next string) {
 	for _, l := range strings.Split(out, "\n") {
 		l = strings.TrimSpace(l)
 		if strings.HasPrefix(l, "next:") {

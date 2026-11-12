@@ -35,6 +35,21 @@ type Sleeper interface {
 }
 
 // Deps are the daemon's collaborators. Outbox is required.
+// Router takes hand-backs off the Mate that need no decision of its own
+// (internal/route, CON-273, CON-274). It is a seam for the reason Outbox is:
+// this package acts on nothing itself.
+type Router interface {
+	// Plan decides about the items, outside the outbox's lock: it may ask
+	// Jev, which takes seconds. It remembers what it decided.
+	Plan(ctx context.Context, project string, items []Item)
+	// Claim runs under the outbox's lock, as the digest is built. It takes
+	// out of items the ones the app will act on, and the ones it already
+	// acted on, and returns those it claimed for Execute.
+	Claim(project string, items []Item) (kept, claimed []Item)
+	// Execute acts on what Claim claimed, after the lock is released.
+	Execute(ctx context.Context, project string, claimed []Item)
+}
+
 type Deps struct {
 	// Maintain runs before digest delivery at a quiet session boundary.
 	Maintain func(context.Context, string) (bool, error)
@@ -54,6 +69,9 @@ type Deps struct {
 	Sleeper Sleeper
 	// Interval is the digest window; zero means DefaultInterval.
 	Interval time.Duration
+	// Route, when set, takes routine hand-backs off the Mate before the
+	// digest is built.
+	Route Router
 	// Pass records each tick the loop runs, Sweep included, for `mate core
 	// stats` (CON-263). Nil records nothing.
 	Pass *loopstat.Loop
@@ -324,6 +342,25 @@ func (p *Pilot) digest(ctx context.Context, project string, now time.Time) error
 	// that same lock. Reading it outside could see a digest's items as new
 	// a moment after the sender delivered them.
 	crewsDir := p.ws.CrewsDir(project)
+	if p.deps.Route != nil {
+		view, err := box.Load(p.ws, project)
+		if err != nil {
+			return err
+		}
+		cursor, err := p.ws.ReadAutoCursor(project)
+		if err != nil {
+			return err
+		}
+		p.deps.Route.Plan(ctx, project, Gather(view, cursor, now))
+	}
+	var claimed []Item
+	defer func() {
+		// Whatever was claimed is acted on even when the digest was not
+		// queued: a claim takes the item away from the Mate.
+		if len(claimed) > 0 {
+			p.deps.Route.Execute(ctx, project, claimed)
+		}
+	}()
 	_, queued, err := p.deps.Outbox.Offer(project, store.OutboxSourceDigest, func() (outbox.Request, bool, error) {
 		view, err := box.Load(p.ws, project)
 		if err != nil {
@@ -338,6 +375,9 @@ func (p *Pilot) digest(ctx context.Context, project string, now time.Time) error
 			return outbox.Request{}, false, err
 		}
 		items := append(Gather(view, cursor, now), notes...)
+		if p.deps.Route != nil {
+			items, claimed = p.deps.Route.Claim(project, items)
+		}
 		if len(items) == 0 {
 			// Nothing new. The daemon is not a heartbeat.
 			return outbox.Request{}, false, nil
