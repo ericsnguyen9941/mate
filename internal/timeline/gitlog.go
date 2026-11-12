@@ -65,6 +65,16 @@ func (p *pass) ingestGit(ctx context.Context) error {
 		if p.gitSettled(ctx, crew) {
 			continue
 		}
+		// Git is asked about a crew only on a hint (CON-268): its meta or
+		// status file moved, its transcript grew, its branch's or the
+		// default branch's ref moved - or on a sweep. Every open crew used
+		// to cost a `branch exists`, a `git log` and, finished and
+		// unmerged, two more, every five seconds, mostly to hear again
+		// what the table already held.
+		key := p.gitKey(crew, repo, branch, base)
+		if p.memo && key != "" && p.ing.memos.git[crew.ActorID] == key {
+			continue
+		}
 		// A closed crew stays closed (crewstate.Declare), so what git
 		// answered about its branch and its commits after it closed is not
 		// asked again; see gitFacts.
@@ -80,12 +90,15 @@ func (p *pass) ingestGit(ctx context.Context) error {
 				facts.gone[branchKey] = true
 			}
 		}
+		answered := true
 		if exists {
 			commits, err := commitsBetween(ctx, git, repo, base, branch)
 			if err == nil {
 				for _, commit := range commits {
 					p.commitEvent(crew, commit, branch, repo)
 				}
+			} else {
+				answered = false
 			}
 		}
 		// The commits the crew's own transcript shows it making, whether or
@@ -96,6 +109,15 @@ func (p *pass) ingestGit(ctx context.Context) error {
 		}
 		if err := p.mergeEvent(ctx, git, crew, repo, base, branch, exists); err != nil {
 			return err
+		}
+		// A sighting or a merge git could not resolve is not asked again
+		// until the key moves or the sweep comes: neither is a call that
+		// failed for want of time, which externalLate keeps from the memo.
+		if answered && key != "" {
+			if p.gitAsked == nil {
+				p.gitAsked = map[string]string{}
+			}
+			p.gitAsked[crew.ActorID] = key
 		}
 	}
 	return nil

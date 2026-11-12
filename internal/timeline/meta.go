@@ -115,6 +115,7 @@ func (p *pass) ingestMeta(ctx context.Context) error {
 	p.b.actor(pendingActor{ID: AppActorID(project), Project: project, Kind: ActorApp, Name: "app"})
 	p.b.actor(pendingActor{ID: ObserverActorID(project), Project: project, Kind: ActorObserver, Name: "observer"})
 
+	p.beginMate()
 	mateMeta, err := ws.ReadMateMeta(project)
 	if err != nil {
 		return err
@@ -132,7 +133,9 @@ func (p *pass) ingestMeta(ctx context.Context) error {
 		Harness: mateMeta[MetaHarness], FirstSeen: startedAt, LastSeen: startedAt, GoneAt: stoppedAt,
 		FromMeta: p.mate.Present,
 	})
-	if p.mate.Present {
+	// A quiet Mate's session and its two events are on the table as this
+	// meta says them (memo.go).
+	if p.mate.Present && !p.mateQuiet {
 		sessionID := strings.TrimSpace(mateMeta[MetaSessionID])
 		if sessionID != "" {
 			p.b.session(pendingSession{
@@ -171,6 +174,7 @@ func (p *pass) ingestMeta(ctx context.Context) error {
 	if err := p.listCrews(); err != nil {
 		return err
 	}
+	p.noteCrews()
 	for _, crew := range p.crews {
 		spawnedAt := metaTime(crew.Meta, MetaStartedAt)
 		closedAt := metaTime(crew.Meta, MetaStoppedAt)
