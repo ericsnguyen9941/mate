@@ -135,6 +135,10 @@ type Ingester struct {
 	deps        Deps
 	transcripts map[string]transcriptCache
 	settledGit  *gitFacts
+	// memos are memo.go's: what committed polls read, under the stat keys
+	// that say whether the next poll needs to read it again. Only the
+	// poll goroutine touches them.
+	memos memos
 	// sealed is, by project, the crews a committed poll found the ingest
 	// has finished with, keyed by actor id; unlocated is the closed crews
 	// whose transcript no locate found. Both are seal.go's, and only the
@@ -142,9 +146,12 @@ type Ingester struct {
 	sealed    map[string]map[string]sealKey
 	unlocated map[string]unlocatedCrew
 
-	// mu guards stale, which readers outside the poll goroutine ask for.
-	mu    sync.Mutex
-	stale map[string]Stale
+	// mu guards stale, live and polled, which readers outside the poll
+	// goroutine ask for (live.go).
+	mu     sync.Mutex
+	stale  map[string]Stale
+	live   map[string][]LiveFile
+	polled chan struct{}
 }
 
 // Stale is a project whose ingest has failed every pass since Since: its
@@ -196,21 +203,67 @@ func New(ws Workspace, d *db.DB, deps Deps) *Ingester {
 	return &Ingester{ws: ws, d: d, deps: deps}
 }
 
-// Ingest reads everything new since the last pass and records it. It is what
-// the observer calls at the end of every poll.
+// Scope is which projects one pass reads (CON-268): the observer's round
+// hands over the projects it examined (watch.Round) - those with an open
+// crew or a live Mate, whose transcripts, panes and status files change
+// without telling anyone, and those a writer's notice named - and once a
+// minute a sweep of everything.
+//
+// Measured 2026-11-12 on a copy of the captain's workspace (12 projects,
+// 1307 crews, three live Mates, a few live crews) after CON-259 sealed the
+// closed crews: a steady pass over every project still cost ~150 ms and
+// 10.5 MB every 5 s, most of it the Mates - their sessions re-ranked and
+// their unchanged transcripts walked again for tool commands - a COUNT(*)
+// over `transition` per project, and git per unsealed crew. A pass now
+// reads only the projects in its scope, and within one skips what a stat
+// says has not moved since a committed pass read it (memo.go).
+type Scope struct {
+	// Sweep reads every project of workspace.yaml and trusts none of
+	// memo.go's stat keys: git is asked about every unsealed crew, every
+	// Mate is read again, pricing is upserted. Seals (seal.go) still hold.
+	// It is the safety net under whatever a notice or a key can miss.
+	Sweep bool
+	// Projects are the projects a pass that is not a sweep reads. A name
+	// workspace.yaml does not register is ignored.
+	Projects []string
+}
+
+// SweepScope is the scope of a pass that reads everything.
+func SweepScope() Scope { return Scope{Sweep: true} }
+
+func (s Scope) has(project string) bool {
+	if s.Sweep {
+		return true
+	}
+	for _, p := range s.Projects {
+		if p == project {
+			return true
+		}
+	}
+	return false
+}
+
+// Ingest reads everything new since the last pass and records it: a sweep,
+// IngestScope over SweepScope.
 //
 // A project that fails is reported and the others still run: a half-written
 // `.meta` or a transcript that vanished under the parser must not stop the
 // rest of the workspace being recorded. The error is the join of what failed.
 func (i *Ingester) Ingest(ctx context.Context) error {
-	return i.ingestAll(ctx, nil)
+	return i.IngestScope(ctx, SweepScope())
 }
 
-// ingestAll runs one pass over every project. With a transaction it runs
-// inside that one, which is how a rebuild is atomic; without one each project
-// commits on its own, which is what a poll wants - a project whose `.meta` is
-// half-written must not hold back the rest of the workspace.
-func (i *Ingester) ingestAll(ctx context.Context, shared *sql.Tx) error {
+// IngestScope is one pass over the projects of scope: what the observer
+// calls at the end of every round, with the projects that round examined.
+func (i *Ingester) IngestScope(ctx context.Context, scope Scope) error {
+	return i.ingestAll(ctx, nil, scope)
+}
+
+// ingestAll runs one pass over the projects of scope. With a transaction it
+// runs inside that one, which is how a rebuild is atomic; without one each
+// project commits on its own, which is what a poll wants - a project whose
+// `.meta` is half-written must not hold back the rest of the workspace.
+func (i *Ingester) ingestAll(ctx context.Context, shared *sql.Tx, scope Scope) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -220,21 +273,40 @@ func (i *Ingester) ingestAll(ctx context.Context, shared *sql.Tx) error {
 	if err := i.ws.LoadConfig(); err != nil {
 		return err
 	}
-	if err := i.ingestPricing(ctx, shared); err != nil {
-		return fmt.Errorf("timeline: pricing: %w", err)
+	// Pricing is a transaction of upserts that change nothing unless
+	// pricing.yaml did. A write of it through mate is a notice about the
+	// workspace's own files, which makes the observer's next round a sweep;
+	// a hand edit is read by the next sweep.
+	if scope.Sweep {
+		if err := i.ingestPricing(ctx, shared); err != nil {
+			return fmt.Errorf("timeline: pricing: %w", err)
+		}
 	}
 	var errs []error
+	// Every registered project, read this pass or not, keeps its live
+	// files: a project out of scope keeps the list its last pass left
+	// (CON-268), and only one gone from workspace.yaml loses it.
+	projects := map[string]bool{}
+	for _, ref := range i.ws.Projects() {
+		projects[ref.Name] = true
+	}
+	if shared == nil {
+		defer i.notePolled(projects)
+	}
 	for _, ref := range i.ws.Projects() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if !scope.has(ref.Name) {
+			continue
+		}
 		if shared != nil {
-			if err := i.ingestProject(ctx, ref.Name, shared, time.Time{}); err != nil {
+			if err := i.ingestProject(ctx, ref.Name, shared, time.Time{}, true); err != nil {
 				return fmt.Errorf("timeline: %s: %w", ref.Name, err)
 			}
 			continue
 		}
-		err := i.ingestBounded(ctx, ref.Name)
+		err := i.ingestBounded(ctx, ref.Name, scope.Sweep)
 		if ctx.Err() == nil {
 			// A pass cut short by the caller going away says nothing
 			// about the project.
@@ -249,9 +321,9 @@ func (i *Ingester) ingestAll(ctx context.Context, shared *sql.Tx) error {
 
 // ingestBounded is one project's pass of a poll, its git and Herdr calls
 // within ProjectTimeout (DefaultProjectTimeout says why only those).
-func (i *Ingester) ingestBounded(ctx context.Context, project string) error {
+func (i *Ingester) ingestBounded(ctx context.Context, project string, sweep bool) error {
 	// The wall clock, not deps.Now: that one dates the records.
-	return i.ingestProject(ctx, project, nil, time.Now().Add(i.deps.projectTimeout()))
+	return i.ingestProject(ctx, project, nil, time.Now().Add(i.deps.projectTimeout()), sweep)
 }
 
 // Reindex drops every derived table and rebuilds the whole timeline from the
@@ -263,8 +335,9 @@ func (i *Ingester) Reindex(ctx context.Context) error {
 		return errors.New("timeline: this database handle is read-only")
 	}
 	// A rebuild reads every crew, and what a poll had sealed was sealed
-	// against tables this empties.
+	// against tables this empties; so were memo.go's keys.
 	i.sealed, i.unlocated = nil, nil
+	i.memos = memos{}
 	tx, err := i.d.SQL().BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -273,7 +346,7 @@ func (i *Ingester) Reindex(ctx context.Context) error {
 	if err := db.ResetDerivedTx(ctx, tx); err != nil {
 		return err
 	}
-	if err := i.ingestAll(ctx, tx); err != nil {
+	if err := i.ingestAll(ctx, tx, SweepScope()); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -287,7 +360,8 @@ func (i *Ingester) Reindex(ctx context.Context) error {
 // every event of the pass to already have an id.
 //
 // external is the deadline of the pass's git and Herdr calls; zero is none.
-func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sql.Tx, external time.Time) (err error) {
+// sweep is a pass that trusts none of memo.go's keys.
+func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sql.Tx, external time.Time, sweep bool) (err error) {
 	tx := shared
 	if tx == nil {
 		tx, err = i.d.SQL().BeginTx(ctx, nil)
@@ -305,6 +379,7 @@ func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sq
 	w := newWriter(tx, now)
 	b := newBatch()
 	p := &pass{ing: i, project: project, now: now, b: b, w: w, tx: tx, external: external, poll: shared == nil}
+	p.memo = p.poll && !sweep
 
 	if err = p.ingestMeta(ctx); err != nil {
 		return err
@@ -361,6 +436,8 @@ func (i *Ingester) ingestProject(ctx context.Context, project string, shared *sq
 		return err
 	}
 	i.recordSeals(p)
+	i.recordMemos(p)
+	i.recordLive(p)
 	return nil
 }
 
@@ -381,6 +458,20 @@ type pass struct {
 	// whether the deadline had passed once the git phase ended.
 	poll         bool
 	externalLate bool
+	// memo is a poll that is not a sweep: it may skip what memo.go's stat
+	// keys say has not moved since a committed pass read it.
+	memo bool
+	// mateQuiet is a pass that skipped its Mate's sessions and transcripts
+	// (memo.go); mateRead is what this pass read of them, kept once the
+	// pass commits.
+	mateQuiet bool
+	mateRead  *mateMemo
+	// gitAsked is the crews this pass asked git about with every answer
+	// in, by actor id, with the key they were asked under (memo.go).
+	gitAsked map[string]string
+	// projected is a pass after which the project's scene projection is
+	// known to have run (projectScene).
+	projected bool
 
 	// sealed is the crews this pass skipped because they are sealed, by
 	// crew id, with the key they were sealed under.
@@ -391,6 +482,9 @@ type pass struct {
 	located   map[string]string
 	unlocated map[string]string
 	seals     map[string]sealKey
+	// mateTranscript is the Mate's current transcript as this pass located
+	// it; empty when it found none (live.go).
+	mateTranscript string
 
 	// crews is every crew of the project, from `crews/<id>.meta`.
 	crews []crewRecord

@@ -57,6 +57,14 @@ const projectBudgetCrew = "mate"
 // resolves them is `mate crew budget --extend` (CON-94): the Mate answered
 // the item with a new ceiling, and every threshold re-arms against it.
 func (i *Ingester) CheckBudgets(ctx context.Context) error {
+	return i.CheckBudgetsScope(ctx, SweepScope())
+}
+
+// CheckBudgetsScope is CheckBudgets over the projects of scope, the ones
+// the round's ingest just read (CON-267): a spend grows only with turns an
+// ingest records, so a project no pass read has crossed nothing new. Off a
+// sweep it checks the crews that pass read, not every meta (scopeCrews).
+func (i *Ingester) CheckBudgetsScope(ctx context.Context, scope Scope) error {
 	if !i.d.Writable() {
 		return errors.New("timeline: this database handle is read-only")
 	}
@@ -68,22 +76,26 @@ func (i *Ingester) CheckBudgets(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := i.checkProjectBudget(ctx, ref.Name); err != nil {
+		if !scope.has(ref.Name) {
+			continue
+		}
+		crews, err := i.scopeCrews(ref.Name, scope.Sweep)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("timeline: budget check %s: %w", ref.Name, err))
+			continue
+		}
+		if err := i.checkProjectBudget(ctx, ref.Name, crews); err != nil {
 			errs = append(errs, fmt.Errorf("timeline: budget check %s: %w", ref.Name, err))
 		}
-		if err := i.checkProjectContext(ctx, ref.Name); err != nil {
+		if err := i.checkProjectContext(ctx, ref.Name, crews, scope.Sweep); err != nil {
 			errs = append(errs, fmt.Errorf("timeline: context check %s: %w", ref.Name, err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (i *Ingester) checkProjectBudget(ctx context.Context, project string) error {
+func (i *Ingester) checkProjectBudget(ctx context.Context, project string, crews []crewRecord) error {
 	cfg, err := i.ws.LoadProject(project)
-	if err != nil {
-		return err
-	}
-	crews, err := listCrewMetas(i.ws, project)
 	if err != nil {
 		return err
 	}

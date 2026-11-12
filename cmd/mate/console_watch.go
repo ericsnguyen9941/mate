@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/core"
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
@@ -63,17 +64,19 @@ func consoleWatcher(dir string, deps spawn.Deps) (*watch.Watcher, error) {
 // process is the writer, this console still observes, and the timeline is
 // recorded once rather than twice (internal/db.ErrLocked).
 func consoleWatcherWithTimeline(dir string, deps spawn.Deps) (*watch.Watcher, *db.DB, *timeline.Ingester, error) {
-	return engineWatcher(dir, deps, nil)
-}
-
-// engineWatcher is consoleWatcherWithTimeline whose rounds and ingest
-// passes stats records (core.LoopObserver, core.LoopIngest; CON-263); nil
-// records nothing.
-func engineWatcher(dir string, deps spawn.Deps, stats *loopstat.Recorder) (*watch.Watcher, *db.DB, *timeline.Ingester, error) {
 	ws, err := store.Open(dir)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	return engineWatcher(ws, deps, nil, false)
+}
+
+// engineWatcher is consoleWatcherWithTimeline over ws, whose rounds and
+// ingest passes stats records (core.LoopObserver, core.LoopIngest;
+// CON-263); nil records nothing. shared says ws is the engine's own
+// handle, whose workspace.yaml the engine keeps current: a round then does
+// not read the file again (watch.Deps.SharedConfig, CON-270).
+func engineWatcher(ws *store.Workspace, deps spawn.Deps, stats *loopstat.Recorder, shared bool) (*watch.Watcher, *db.DB, *timeline.Ingester, error) {
 	deps = roundDeps(deps)
 	// The round first: `mate core stats` lists the loops as they were named.
 	round := stats.Loop(core.LoopObserver)
@@ -89,6 +92,8 @@ func engineWatcher(dir string, deps spawn.Deps, stats *loopstat.Recorder) (*watc
 			Session:  consoleSession(ws, deps),
 			Observer: deps.Observer,
 			Pass:     round,
+
+			SharedConfig: shared,
 		})
 		return watcher, nil, nil, nil
 	}
@@ -111,15 +116,16 @@ func engineWatcher(dir string, deps spawn.Deps, stats *loopstat.Recorder) (*watc
 		Session:  consoleSession(ws, deps),
 		Observer: deps.Observer,
 		Timeline: timedIngest{ingest, stats.Loop(core.LoopIngest)},
-		// The same *timeline.Ingester also implements watch.BudgetChecker
-		// (mvp.md M5 task 27): it already holds the writable db.DB and the
-		// workspace handle a budget check needs, and it is the same single
-		// writer the rest of M5 keeps to one.
-		Budget: ingest,
-		// And watch.TurnChecker (CON-74): the no-turn check reads the same
-		// ledger.
-		Turns: ingest,
+		// The same *timeline.Ingester is also the budget check (mvp.md M5
+		// task 27): it already holds the writable db.DB and the workspace
+		// handle a budget check needs, and it is the same single writer
+		// the rest of M5 keeps to one.
+		Budget: roundChecks{ingest},
+		// And the no-turn check (CON-74), which reads the same ledger.
+		Turns: roundChecks{ingest},
 		Pass:  round,
+
+		SharedConfig: shared,
 	})
 	return watcher, handle, ingest, nil
 }
@@ -147,9 +153,28 @@ type timedIngest struct {
 	stat   *loopstat.Loop
 }
 
-func (t timedIngest) Ingest(ctx context.Context) error {
+func (t timedIngest) Ingest(ctx context.Context, round watch.Round) error {
 	defer t.stat.End(t.stat.Begin())
-	return t.ingest.Ingest(ctx)
+	return t.ingest.IngestScope(ctx, roundScope(round))
+}
+
+// roundChecks is the ingest's budget and no-turn checks over the projects
+// of the observer's round (CON-267).
+type roundChecks struct{ ingest *timeline.Ingester }
+
+func (c roundChecks) CheckBudgets(ctx context.Context, round watch.Round) error {
+	return c.ingest.CheckBudgetsScope(ctx, roundScope(round))
+}
+
+func (c roundChecks) CheckNoTurn(ctx context.Context, round watch.Round, after time.Duration) error {
+	return c.ingest.CheckNoTurnScope(ctx, roundScope(round), after)
+}
+
+// roundScope is the timeline's scope of an observer round: the projects
+// it examined, or everything on a sweep. The two packages spell it each
+// their own way so internal/watch imports nothing of the timeline's.
+func roundScope(round watch.Round) timeline.Scope {
+	return timeline.Scope{Sweep: round.Sweep, Projects: round.Projects}
 }
 
 // consoleSessionRef is timeline.SessionRefFunc over the Herdr adapter: the

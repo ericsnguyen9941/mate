@@ -7,10 +7,13 @@ import (
 
 // BoxWorkspace is the part of *store.Workspace that LoadBox reads: what
 // box.Load reads, plus the project directory an assign key is relative to,
-// the Mate's outbox and the autopilot's digest cursor. Every method only
-// reads (CON-238, plan docs/plans/store-split-2026-11-06.md section 3).
+// the Mate's outbox and the autopilot's digest cursor, and their paths,
+// which the memo stats (memo.go). Every method only reads (CON-238, plan
+// docs/plans/store-split-2026-11-06.md section 3).
 type BoxWorkspace interface {
 	box.Workspace
+	AutoCursorFile(project string) string
+	OutboxFile(project string) string
 	ProjectDir(project string) string
 	ReadAutoCursor(project string) (map[string]int64, error)
 	ReadOutbox(project string) ([]store.OutboxItem, error)

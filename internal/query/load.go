@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -140,16 +141,12 @@ func loadProject(ws Workspace, ref store.ProjectRef, live Liveness, w *warnings)
 	view, viewOK, boxField := loadBox(ws, ref.Name)
 	p.Box = boxField
 	if viewOK {
-		var mateLines []box.Entry
-		for _, e := range view.Entries {
-			// The Mate's own activity is every line typed into its pane
-			// (target `mate`, by the captain or the app) and every line it
-			// sent to a crew.
-			if e.Kind == box.KindMessage && (e.Crew == "" || e.Source == box.SourceMate) {
-				mateLines = append(mateLines, e)
-			}
-		}
-		p.Mate.LastEvent = lastActivity(mateLines, "nothing has been typed into the Mate's pane yet")
+		// The Mate's own activity is every line typed into its pane
+		// (target `mate`, by the captain or the app) and every line it
+		// sent to a crew.
+		p.Mate.LastEvent = lastActivityOf(view.Entries, func(e box.Entry) bool {
+			return e.Kind == box.KindMessage && (e.Crew == "" || e.Source == box.SourceMate)
+		}, "nothing has been typed into the Mate's pane yet")
 	}
 	p.Crews, p.ClosedCrews = loadCrews(ws, ref.Name, p.Repos, view, viewOK, live, w)
 	for i := range p.Crews {
@@ -263,8 +260,19 @@ func detachedBinding(project string, meta map[string]string, agent string, live 
 
 // loadNews reads the news a headless Mate has open from `mate/news.jsonl`,
 // newest first.
+//
+// What it derived is kept by the file's stamp (memo.go).
 func loadNews(ws Workspace, project string) Field[[]NewsItem] {
 	path := matehost.NewsPath(ws.MateDir(project))
+	return byStamp(&newsMemo, path, func() (Field[[]NewsItem], bool) {
+		f := readNews(path)
+		return f, f.State == Known
+	})
+}
+
+var newsMemo memoCell[stamp, Field[[]NewsItem]]
+
+func readNews(path string) Field[[]NewsItem] {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return AbsentField[[]NewsItem]("this Mate has opened no news")
@@ -283,13 +291,24 @@ func loadNews(ws Workspace, project string) Field[[]NewsItem] {
 		items = append(items, NewsItem{ID: n.ID, Crew: n.Crew, Kind: n.Kind, Title: n.Title, Question: n.Question, Owed: n.Owed(), At: n.At})
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].At.After(items[j].At) })
-	return KnownField(items)
+	return KnownField(slices.Clip(items))
 }
 
 // loadWork reads a Mate's work board from `mate/work.jsonl`, every row
 // including the okayed ones, latest move first.
+//
+// What it derived is kept by the file's stamp (memo.go).
 func loadWork(ws Workspace, project string) Field[[]WorkItem] {
 	path := matehost.WorkPath(ws.MateDir(project))
+	return byStamp(&workMemo, path, func() (Field[[]WorkItem], bool) {
+		f := readWork(path)
+		return f, f.State == Known
+	})
+}
+
+var workMemo memoCell[stamp, Field[[]WorkItem]]
+
+func readWork(path string) Field[[]WorkItem] {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return AbsentField[[]WorkItem]("this Mate has no work board")
@@ -309,7 +328,7 @@ func loadWork(ws Workspace, project string) Field[[]WorkItem] {
 		items = append(items, it)
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].At.After(items[j].At) })
-	return KnownField(items)
+	return KnownField(slices.Clip(items))
 }
 
 // absentMate and unknownMate carry the designation's own state forward onto
@@ -377,7 +396,9 @@ func loadCrews(ws Workspace, project string, repos Field[[]RepoValue], view box.
 			RowRef{Kind: RowProject, ID: project, Label: project})
 		return nil, 0
 	}
-	out := make([]CrewNode, 0, len(ids))
+	// Most of the ids are closed crews, so the list is not sized to them.
+	// It is never nil: a project with no open crew has an empty list.
+	out := []CrewNode{}
 	closed := 0
 	for _, id := range ids {
 		if viewOK && view.Closed[id] {
@@ -394,7 +415,22 @@ func loadCrews(ws Workspace, project string, repos Field[[]RepoValue], view box.
 	return out, closed
 }
 
+// crewIDs is the ids of the crews dir's `.meta` files, kept by the
+// directory's stamp (memo.go): adding, removing or renaming a file in a
+// directory moves its mtime, and every writer of a meta does one of those.
 func crewIDs(dir string) ([]string, error) {
+	var err error
+	ids := byStamp(&crewIDsMemo, dir, func() ([]string, bool) {
+		var ids []string
+		ids, err = readCrewIDs(dir)
+		return slices.Clip(ids), err == nil
+	})
+	return ids, err
+}
+
+var crewIDsMemo memoCell[stamp, []string]
+
+func readCrewIDs(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -585,14 +621,23 @@ func repoFor(repos Field[[]RepoValue], repoID string) Field[RepoValue] {
 // No entries is a legitimate Absent with the caller's reason, never a
 // zero time rendered as midnight.
 func lastActivity(entries []box.Entry, whyAbsent string) Field[EventValue] {
-	if len(entries) == 0 {
-		return AbsentField[EventValue](whyAbsent)
-	}
-	last := entries[0]
-	for _, e := range entries[1:] {
-		if !e.At.Before(last.At) {
-			last = e
+	return lastActivityOf(entries, nil, whyAbsent)
+}
+
+// lastActivityOf is lastActivity over the entries keep accepts (all of
+// them when keep is nil), without copying them out first.
+func lastActivityOf(entries []box.Entry, keep func(box.Entry) bool, whyAbsent string) Field[EventValue] {
+	last := -1
+	for i := range entries {
+		if keep != nil && !keep(entries[i]) {
+			continue
+		}
+		if last < 0 || !entries[i].At.Before(entries[last].At) {
+			last = i
 		}
 	}
-	return KnownField(EventValue{EventType: string(last.Kind), OccurredAt: last.At})
+	if last < 0 {
+		return AbsentField[EventValue](whyAbsent)
+	}
+	return KnownField(EventValue{EventType: string(entries[last].Kind), OccurredAt: entries[last].At})
 }

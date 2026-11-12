@@ -2,6 +2,7 @@ package box
 
 import (
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -50,6 +51,8 @@ type View struct {
 	Manual bool
 	// Cursor resumes a later LoadSince from exactly where this View ended.
 	Cursor Cursor
+
+	gen uint64
 }
 
 // Summary is a header digest of a View.
@@ -78,15 +81,6 @@ func LoadSince(ws Workspace, project string, since Cursor) (View, error) {
 }
 
 func load(ws Workspace, project string, cursor Cursor) (View, error) {
-	crews, err := listCrews(ws, project)
-	if err != nil {
-		return View{}, err
-	}
-
-	newCursor := Cursor{Status: make(map[string]int64, len(crews))}
-	closed := make(map[string]bool)
-	var entries []Entry
-
 	// A Load reads through the memo (memo.go); a LoadSince reads from its
 	// own cursor.
 	var memoized *loadReader
@@ -94,17 +88,42 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 		memoized = newLoadReader(ws, project)
 	}
 
-	for _, crew := range crews {
+	var (
+		crews []string
+		err   error
+	)
+	if memoized != nil {
+		crews, err = memoized.listCrews()
+	} else {
+		crews, err = listCrews(ws, project)
+	}
+	if err != nil {
+		return View{}, err
+	}
+
+	newCursor := Cursor{Status: make(map[string]int64, len(crews))}
+	closed := make(map[string]bool)
+	type statusFile struct {
+		crew, path string
+		mtime      time.Time
+		lines      []store.StatusEntry
+	}
+	var statuses []statusFile
+	n := 0
+
+	for i, crew := range crews {
 		var (
-			lines []store.StatusEntry
-			next  int64
-			info  os.FileInfo
+			lines      []store.StatusEntry
+			next       int64
+			info       os.FileInfo
+			statusPath string
 		)
 		if memoized != nil {
-			if memoized.crewClosed(crew) {
+			if memoized.crewClosed(i) {
 				closed[crew] = true
 			}
-			lines, next, info, err = memoized.status(crew)
+			lines, next, info, err = memoized.status(i)
+			statusPath = memoized.next.crews.status[i]
 		} else {
 			if meta, err := ws.ReadCrewMeta(project, crew); err == nil && crewstate.Declare(crewstate.Declaration{Meta: meta}).Closed() {
 				closed[crew] = true
@@ -122,7 +141,9 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 		if len(lines) == 0 {
 			continue
 		}
-		statusPath := ws.CrewStatus(project, crew)
+		if statusPath == "" {
+			statusPath = ws.CrewStatus(project, crew)
+		}
 		mtime := time.Now()
 		if info == nil {
 			info, _ = os.Stat(statusPath)
@@ -130,22 +151,14 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 		if info != nil {
 			mtime = info.ModTime()
 		}
-		for _, l := range lines {
-			entries = append(entries, Entry{
-				At:     mtime,
-				Source: SourceCrew,
-				Target: store.CrewTarget(crew),
-				Kind:   KindStatus,
-				Crew:   crew,
-				Text:   l.Line,
-				Ref:    Ref{File: statusPath, Offset: l.Offset},
-			})
-		}
+		statuses = append(statuses, statusFile{crew: crew, path: statusPath, mtime: mtime, lines: lines})
+		n += len(lines)
 	}
 
-	sentPath := ws.SentLog(project)
-	var sentLines []store.SentEntry
-	var sentNext int64
+	var (
+		sentLines []store.SentEntry
+		sentNext  int64
+	)
 	if memoized != nil {
 		sentLines, sentNext, err = memoized.sent()
 	} else {
@@ -155,6 +168,45 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 		return View{}, err
 	}
 	newCursor.Sent = sentNext
+
+	var (
+		incidentLines     []store.IncidentEntry
+		incidentEntryList []Entry
+	)
+	if memoized != nil {
+		incidentLines, newCursor.Incidents, err = memoized.incidents()
+	} else {
+		incidentEntryList, newCursor.Incidents, err = loadIncidents(ws, project, cursor.Incidents)
+	}
+	if err != nil {
+		return View{}, err
+	}
+
+	manual := !ws.Auto(project)
+	if memoized != nil {
+		if v, ok := memoized.heldView(manual); ok {
+			memoized.done(v)
+			return v, nil
+		}
+		incidentEntryList = incidentEntries(ws.IncidentsLog(project), incidentLines, 0)
+	}
+
+	entries := make([]Entry, 0, n+len(sentLines)+len(incidentEntryList))
+	for _, f := range statuses {
+		target := store.CrewTarget(f.crew)
+		for _, l := range f.lines {
+			entries = append(entries, Entry{
+				At:     f.mtime,
+				Source: SourceCrew,
+				Target: target,
+				Kind:   KindStatus,
+				Crew:   f.crew,
+				Text:   l.Line,
+				Ref:    Ref{File: f.path, Offset: l.Offset},
+			})
+		}
+	}
+	sentPath := ws.SentLog(project)
 	for _, s := range sentLines {
 		entries = append(entries, Entry{
 			At:     s.Time,
@@ -166,16 +218,7 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 			Ref:    Ref{File: sentPath, Offset: s.Offset},
 		})
 	}
-
-	incidentEntries, incidentNext, err := loadIncidents(ws, project, cursor.Incidents)
-	if err != nil {
-		return View{}, err
-	}
-	newCursor.Incidents = incidentNext
-	entries = append(entries, incidentEntries...)
-	if memoized != nil {
-		memoized.done()
-	}
+	entries = append(entries, incidentEntryList...)
 
 	sort.SliceStable(entries, func(i, j int) bool {
 		a, b := entries[i], entries[j]
@@ -209,8 +252,26 @@ func load(ws Workspace, project string, cursor Cursor) (View, error) {
 		attention[i], attention[j] = attention[j], attention[i]
 	}
 
-	return View{Entries: entries, ByCrew: byCrew, Attention: attention, Closed: closed, Manual: !ws.Auto(project), Cursor: newCursor}, nil
+	v := View{Entries: entries, ByCrew: byCrew, Attention: attention, Closed: closed, Manual: manual, Cursor: newCursor}
+	if memoized != nil {
+		// The View is shared from here on (memo.go): no slice may have
+		// room an append would write into.
+		v.Entries = slices.Clip(v.Entries)
+		v.Attention = slices.Clip(v.Attention)
+		for crew, list := range byCrew {
+			byCrew[crew] = slices.Clip(list)
+		}
+		v.gen = generation.Add(1)
+		memoized.done(v)
+	}
+	return v, nil
 }
+
+// Generation names the View a Load built: two Views with the same non-zero
+// Generation are the same one, built from the same files at the same size
+// and mtime, so a reader that derived something from the first may keep it
+// for the second (CON-271). A View from LoadSince has none (0).
+func (v View) Generation() uint64 { return v.gen }
 
 // listCrews returns the crew ids of a project, from the `<id>.status`
 // filenames under `crews/`. A project with no crews dir yet has none.

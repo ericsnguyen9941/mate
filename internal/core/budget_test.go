@@ -57,6 +57,27 @@ import (
 // either cheaper should tighten its budget to the new measurement with the
 // same headroom, so the next regression is caught from there.
 //
+// With CON-267/268 (2026-11-12) the observer's rounds between its
+// once-a-minute sweeps ingest only the projects they examined, and within
+// them skip a quiet Mate, git with no hint and the projection's COUNT(*).
+// This fixture has no Mate, no git and crews at work in both projects, so
+// a round's pass is the sweep's less its pricing: 2.5 MB in 23k objects,
+// under the same budget, which stays where it is (2.6 MB is already near
+// half of it). What it does measure is the round with nothing to examine:
+// 14 KB in 164 objects, reading workspace.yaml; its budget is about twice
+// that. On a copy of the captain's workspace the same change took a
+// steady round's pass from 127 ms and 10.5 MB to 17 ms and 2.7 MB.
+//
+// With CON-271's memos (2026-11-12) a query.Load whose files have not moved
+// since the last one - every UI read of a quiet workspace - is 1.6 MB in
+// 4.9k objects and 6 ms over the same fixture (0.2 MB in 1.2k objects with
+// a tenth of the crews under the race detector): a stat per closed crew's
+// meta and status, nothing parsed or rebuilt. It still grows with the
+// closed crews, about 1.5 kB in 4 objects each, over a fixed part of some
+// 50 kB in 800 objects; its budget is about twice each. The first load,
+// which reads every file, is 21.9 MB in 137k objects and keeps the budget
+// it had.
+//
 // Under the race detector, which runs this code some ten times slower and
 // for which the catch-up alone took a minute, the fixture has a tenth of
 // the closed crews and query.Load's budgets shrink with it (budgetShare).
@@ -72,10 +93,19 @@ const (
 	budgetIngestBytes   = 6 << 20
 	budgetIngestObjects = 60_000
 	budgetIngestTime    = 5 * time.Second
-	// One query.Load over the same.
-	budgetLoadBytes   = 45 << 20
-	budgetLoadObjects = 260_000
-	budgetLoadTime    = 3 * time.Second
+	// One pass of a round that examined no project (CON-268).
+	budgetIdleBytes   = 32 << 10
+	budgetIdleObjects = 400
+	// The first query.Load over the same, which reads every file.
+	budgetFirstLoadBytes   = 45 << 20
+	budgetFirstLoadObjects = 260_000
+	// Every query.Load after it, which finds the files where they were: a
+	// thousand crews' share, plus a part that does not grow with them.
+	budgetLoadBytes        = 3 << 20
+	budgetLoadObjects      = 8_000
+	budgetLoadFixedBytes   = 256 << 10
+	budgetLoadFixedObjects = 2_000
+	budgetLoadTime         = 3 * time.Second
 )
 
 // budgetShare is the part of a thousand crews' allocation budget that is
@@ -104,6 +134,21 @@ func TestSteadyPassStaysWithinBudget(t *testing.T) {
 	}
 
 	ingest := measure(t, func() error { return f.ingest.Ingest(ctx) })
+	// Between the observer's sweeps a round's pass reads the projects it
+	// examined (CON-268): here both, each with crews at work.
+	busy := timeline.Scope{Projects: []string{"shop", "web"}}
+	if err := f.ingest.IngestScope(ctx, busy); err != nil {
+		t.Fatal(err)
+	}
+	round := measure(t, func() error { return f.ingest.IngestScope(ctx, busy) })
+	// And a round with nothing to examine reads no project at all.
+	idle := measure(t, func() error { return f.ingest.IngestScope(ctx, timeline.Scope{}) })
+	// The first load reads every file; the one every UI read runs from then
+	// on finds them where they were (CON-271).
+	first := measure(t, func() error {
+		_, err := query.Load(ctx, f.ws, testHarnesses, nil)
+		return err
+	})
 	load := measure(t, func() error {
 		snap, err := query.Load(ctx, f.ws, testHarnesses, nil)
 		if err != nil {
@@ -119,9 +164,12 @@ func TestSteadyPassStaysWithinBudget(t *testing.T) {
 		}
 		return nil
 	})
-	t.Logf("%d closed crews: a steady ingest pass %s; query.Load %s", budgetClosedCrews, ingest, load)
+	t.Logf("%d closed crews: a steady ingest pass %s, a round's %s, an idle round's %s; a first query.Load %s, a steady one %s", budgetClosedCrews, ingest, round, idle, first, load)
 	ingest.check(t, "a steady ingest pass", budgetIngestBytes, budgetIngestObjects, budgetIngestTime)
-	load.check(t, "query.Load", budgetShare(budgetLoadBytes), budgetShare(budgetLoadObjects), budgetLoadTime)
+	round.check(t, "a steady round's ingest pass", budgetIngestBytes, budgetIngestObjects, budgetIngestTime)
+	idle.check(t, "an idle round's ingest pass", budgetIdleBytes, budgetIdleObjects, budgetIngestTime)
+	first.check(t, "a first query.Load", budgetShare(budgetFirstLoadBytes), budgetShare(budgetFirstLoadObjects), budgetLoadTime)
+	load.check(t, "a steady query.Load", budgetLoadFixedBytes+budgetShare(budgetLoadBytes), budgetLoadFixedObjects+budgetShare(budgetLoadObjects), budgetLoadTime)
 }
 
 // cost is what one call allocated and how long it took.

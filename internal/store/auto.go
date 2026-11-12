@@ -58,7 +58,7 @@ func (w *Workspace) ReadAutoCursor(project string) (map[string]int64, error) {
 	if err := ValidateProjectName(project); err != nil {
 		return nil, err
 	}
-	return w.readCursor(project, w.autoCursorFile(project))
+	return w.readCursor(project, w.AutoCursorFile(project))
 }
 
 // ReadWakeCursor reads `mate/.wake-cursor`, `mate wake`'s own cursor, in
@@ -121,7 +121,7 @@ func (w *Workspace) WriteAutoCursor(project string, cursor map[string]int64) err
 	if err := ValidateProjectName(project); err != nil {
 		return err
 	}
-	return w.writeCursor(project, w.autoCursorFile(project), cursor)
+	return w.writeCursor(project, w.AutoCursorFile(project), cursor)
 }
 
 func (w *Workspace) writeCursor(project, file string, cursor map[string]int64) error {

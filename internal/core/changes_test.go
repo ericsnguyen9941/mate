@@ -13,6 +13,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/coreclient"
 	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/store"
+	"github.com/nguyenngocanh94/mate/internal/watch"
 )
 
 // The change feed (CON-260): a writer's notice lands in every subscriber's
@@ -136,6 +137,47 @@ func TestChangedDropsSnapshotAndWakesWatcher(t *testing.T) {
 	}
 }
 
+// A transcript notice (CON-266's file watch) marks the Crew dirty and
+// drops the snapshot, but starts no early observer round: an agent writes
+// its transcript without a pause. A status line after it still does.
+func TestTranscriptNoticeDoesNotWakeWatcher(t *testing.T) {
+	w := &wakingWatcher{}
+	e := New(Options{Watcher: w})
+	defer e.Stop()
+	var computed atomic.Int32
+	e.snaps.compute = func(context.Context) (query.Snapshot, error) {
+		computed.Add(1)
+		return query.Snapshot{}, nil
+	}
+	sub := e.Changes().Subscribe()
+	ctx := context.Background()
+	if _, err := e.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	e.Changed(coreapi.Change{Project: "shop", Crew: "fix-cart", Kind: "transcript"})
+	e.Changed(coreapi.Change{Project: "shop", Kind: "transcript"})
+	if _, err := e.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := computed.Load(); got != 2 {
+		t.Fatalf("a read after a transcript notice computed %d snapshots in all, want 2", got)
+	}
+	if got := w.wakes.Load(); got != 0 {
+		t.Fatalf("the watcher was woken %d times by transcripts, want 0", got)
+	}
+	want := Dirty{
+		{Project: "shop", Crew: "fix-cart"}: {"transcript": true},
+		{Project: "shop"}:                   {"transcript": true},
+	}
+	if got := sub.Take(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("dirty = %v, want %v", got, want)
+	}
+	e.Changed(coreapi.Change{Project: "shop", Crew: "fix-cart", Kind: "status"})
+	if got := w.wakes.Load(); got != 1 {
+		t.Fatalf("a status notice woke the watcher %d times, want 1", got)
+	}
+}
+
 // awaitDirty waits for key to be in what s takes, within two seconds.
 func awaitDirty(t *testing.T, s *ChangeSub, key DirtyKey, kind string) {
 	t.Helper()
@@ -216,3 +258,75 @@ type blockingWakeWatcher struct {
 }
 
 func (w *blockingWakeWatcher) Wake() { <-w.release }
+
+// hearingWatcher is an observer that reads the feed itself (Hearer).
+type hearingWatcher struct {
+	fakeWatcher
+	hear watch.NoticeFunc
+}
+
+func (w *hearingWatcher) Hear(f watch.NoticeFunc) { w.hear = f }
+
+// A transcript notice wakes no round (CON-266), but the round that comes
+// examines its Project (CON-267): it marks the Project dirty in the feed
+// the observer hears.
+func TestATranscriptNoticeMarksItsProjectWithoutAWake(t *testing.T) {
+	w := &hearingWakingWatcher{}
+	e := New(Options{Watcher: w})
+	defer e.Stop()
+	e.Changed(coreapi.Change{Project: "shop", Crew: "fix-cart", Kind: string(store.ChangeTranscript)})
+	if got := w.wakes.Load(); got != 0 {
+		t.Fatalf("a transcript notice woke the observer %d time(s)", got)
+	}
+	if got := w.hear(); !got.Projects["shop"] || got.All {
+		t.Fatalf("heard %+v after a transcript notice, want shop and no sweep", got)
+	}
+}
+
+type hearingWakingWatcher struct {
+	hearingWatcher
+	wakes atomic.Int32
+}
+
+func (w *hearingWakingWatcher) Wake() { w.wakes.Add(1) }
+
+// The observer hears the feed once a round (CON-267): the Projects the
+// notices named since its last round; a notice about the workspace's own
+// files, or an action the engine ran itself - whose writes send no notice -
+// makes the round a sweep. The talk with a Mate and a peek do not.
+func TestObserverHearsTheFeedAndTheEnginesOwnActions(t *testing.T) {
+	w := &hearingWatcher{}
+	e := New(Options{Watcher: w, Act: func(context.Context, coreapi.ActionRequest) (string, error) { return "", nil }})
+	defer e.Stop()
+	if w.hear == nil {
+		t.Fatal("the engine did not hand the observer its feed")
+	}
+	e.Changed(coreapi.Change{Project: "shop", Crew: "fix-cart", Kind: "status"})
+	e.Changed(coreapi.Change{Project: "docs", Kind: "sent"})
+	if got, want := w.hear(), (watch.Notices{Projects: map[string]bool{"shop": true, "docs": true}}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("heard %+v, want %+v", got, want)
+	}
+	if got := w.hear(); got.All || len(got.Projects) != 0 {
+		t.Fatalf("heard %+v again, want nothing", got)
+	}
+	e.Changed(coreapi.Change{Kind: "workspace"})
+	if got := w.hear(); !got.All {
+		t.Fatalf("a notice about workspace.yaml heard as %+v, want a sweep", got)
+	}
+	ctx := context.Background()
+	if _, err := e.Act(ctx, coreapi.ActionRequest{Action: coreapi.ActionPeek, Target: "shop", TargetKind: "crew", Crew: "buy"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.hear(); got.All {
+		t.Fatal("a peek made the next round a sweep")
+	}
+	if _, err := e.Act(ctx, coreapi.ActionRequest{Action: coreapi.ActionStop, Target: "shop", TargetKind: "crew", Crew: "buy"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.hear(); !got.All {
+		t.Fatal("an action the engine ran did not make the next round a sweep")
+	}
+	if got := w.hear(); got.All {
+		t.Fatal("one action made two sweeps")
+	}
+}

@@ -20,7 +20,11 @@
 // row it already produced: `event.dedup` is unique, and every other table is
 // keyed by what produced it.
 //
-// The observer inside the console calls Ingest at the end of each poll, and
-// is the only writer: `internal/db` takes an advisory lock, so a second one
-// is refused rather than interleaved.
+// The observer in the core calls IngestScope at the end of each poll, over
+// the projects that round examined (Scope, CON-268), and is the only
+// writer: `internal/db` takes an advisory lock, so a second one is refused
+// rather than interleaved. Within a project a poll skips what has not
+// moved since a committed pass read it - sealed crews (seal.go), a quiet
+// Mate and git with no hint (memo.go) - except on the observer's sweep,
+// once a minute, which trusts only the seals.
 package timeline

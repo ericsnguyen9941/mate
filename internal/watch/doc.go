@@ -40,6 +40,16 @@
 // An incident still open on a crew that has since closed is resolved: the
 // crew is not watched any more, so nothing else would clear it.
 //
+// Not every project is examined every round (CON-267). With the core's
+// change feed (Deps.Notices) a round examines a project that has an open
+// crew or a live Mate - whose panes, status lines and transcripts change
+// without telling anyone - one a notice named, and one never examined;
+// once a minute (DefaultSweepInterval) it examines every project. Without
+// a feed every round is such a sweep. Since an open crew's project is
+// examined every round, the stale and no-turn deadlines are met as before.
+// The timeline ingest and the ledger checks after a round read the same
+// projects (Round).
+//
 // Both resolve when the condition clears - the pane changed, the composer
 // went busy again, the crew wrote a status line, the agent came back - and a
 // resolve is a new `resolved` line, never an edit.
