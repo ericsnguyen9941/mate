@@ -77,13 +77,13 @@ func fakeCoreMain() int {
 	} else {
 		signal.Notify(term, syscall.SIGTERM)
 	}
+	var ln net.Listener
 	if mode != "mute" {
-		ln, err := net.Listen("unix", ws.CoreSocket())
+		ln, err = net.Listen("unix", ws.CoreSocket())
 		if err != nil {
 			fmt.Println("fake core:", err)
 			return 1
 		}
-		defer ln.Close()
 		holder.Socket, holder.URL = ws.CoreSocket(), fakeCoreURL
 		_ = lock.Write(holder)
 		go func() {
@@ -106,6 +106,12 @@ func fakeCoreMain() int {
 	fmt.Println("fake core up")
 	<-term
 	fmt.Println("fake core stopping")
+	// The socket goes before the lock, as the engine's: `mate core stop`
+	// is done once the lock is free, and a socket closed after it raced
+	// the test's look for it under load.
+	if ln != nil {
+		_ = ln.Close()
+	}
 	lock.Unlock()
 	return 0
 }
