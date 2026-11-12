@@ -107,7 +107,7 @@ func (r *Router) Plan(ctx context.Context, project string, items []autopilot.Ite
 		if done {
 			continue
 		}
-		d := Decide(ctx, r.inspect(project, item.Crew, cfg), r.judge)
+		d := Decide(ctx, r.Inspect(project, item.Crew, cfg), r.judge)
 		if ctx.Err() != nil {
 			return
 		}
@@ -120,8 +120,8 @@ func (r *Router) Plan(ctx context.Context, project string, items []autopilot.Ite
 	}
 }
 
-// inspect reads what Decide needs about one crew.
-func (r *Router) inspect(project, crew string, cfg store.ProjectConfig) Input {
+// Inspect reads what Decide needs about one crew.
+func (r *Router) Inspect(project, crew string, cfg store.ProjectConfig) Input {
 	in := Input{Crew: crew, Kind: KindShip, Review: cfg.Review}
 	meta, _ := r.ws.ReadCrewMeta(project, crew)
 	in.PRMerged = meta[crewstate.MetaPRState] == crewstate.PRStateMerged
