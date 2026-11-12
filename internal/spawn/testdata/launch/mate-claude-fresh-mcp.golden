@@ -177,8 +177,8 @@ CODEX_HOME={{CODEX_HOME}}
 (rendered asset) sha256=20cf965d46c6c79d6ae2abc176bab049526e0c63bd592319fefbee16b178b57d
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/plugin-tracker-work-workflow/SKILL.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md mode=-rw-r--r-- bytes=10992 ---
-(rendered asset) sha256=06972faac9883fdb9d72f360e4cd80498536b0d14dc783debe079b93c5cfe9e4
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md mode=-rw-r--r-- bytes=10937 ---
+(rendered asset) sha256=f4fcd93400d11f40f901633776ec7eb099e466c1a857190a09c99386fb9d2f5a
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/review-delivery/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/stow/SKILL.md mode=-rw-r--r-- bytes=9687 ---

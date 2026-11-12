@@ -183,14 +183,8 @@ func (d Deps) ended(ctx context.Context, project, crew, url, repo string, repoCf
 	if err := d.appendStatusOnce(project, crew, verb+": "+url); err != nil {
 		return err
 	}
-	if state == crewstate.PRStateMerged {
-		landed, quiet := d.landForMate(ctx, project, crew, url, short(pr.MergeCommit))
-		if quiet {
-			return nil
-		}
-		if landed != "" {
-			line = landed
-		}
+	if state == crewstate.PRStateMerged && d.landForMate(ctx, project, crew, url, short(pr.MergeCommit)) {
+		return nil
 	}
 	return d.wake(ctx, project, crew, state, url, line)
 }

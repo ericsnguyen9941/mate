@@ -56,7 +56,7 @@ const (
 	ItemContextHigh ItemKind = "context high"
 	// ItemAppDid is a line of `mate/app-notes.log`: something the app did on
 	// the Mate's behalf, such as landing a pull request merged on GitHub
-	// (CON-194). It never wakes the Mate.
+	// (CON-194).
 	ItemAppDid ItemKind = "app did"
 )
 
@@ -81,6 +81,9 @@ type Item struct {
 	// status file's modification time for a status line (status lines
 	// carry no time of their own, and the latest line is the last write).
 	At time.Time
+	// Wake is an ItemAppDid's AppNote.Wake: the note leaves the Mate
+	// something to do, so it wakes it the way a hand-back does.
+	Wake bool
 	// File and Offset are where the line lives, which is what the cursor
 	// records.
 	File   string
@@ -233,7 +236,9 @@ const GatherWindow = 5 * time.Minute
 // that is not is held: the cursor stays put, so it rides with the next digest
 // that does wake the Mate, and it is gathered again on every tick until then.
 //
-//   - ItemAppDid never wakes: it is news of something already done.
+//   - ItemAppDid is news of something already done. It rides along, unless
+//     it leaves the Mate something to do (Wake, such as moving the work on
+//     after a landing): then it wakes the Mate the way a hand-back does.
 //   - ItemContextHigh never wakes: its handling is "do not cut it mid-turn; at
 //     its next hand-back open a fresh session" (internal/wake). On mihuv2
 //     every one of the six such digests up to 2026-11-04 was answered "—"
@@ -251,7 +256,11 @@ const GatherWindow = 5 * time.Minute
 func Wakes(items []Item, now time.Time, working bool) bool {
 	for _, item := range items {
 		switch item.Kind {
-		case ItemContextHigh, ItemAppDid:
+		case ItemContextHigh:
+		case ItemAppDid:
+			if item.Wake && (!working || now.Sub(item.At) >= GatherWindow) {
+				return true
+			}
 		case ItemBudget:
 			if percent, _ := box.BudgetThreshold(item.Text); percent >= 200 {
 				return true
@@ -289,8 +298,7 @@ func Working(v box.View, items []Item) bool {
 
 // Notes are the lines of `mate/app-notes.log` past the cursor, as ItemAppDid
 // items: what the app did on the Mate's behalf without a turn of its own
-// (CON-194). They never wake the Mate; they ride with the next digest that
-// does, so the Mate hears of every landing the app made.
+// (CON-194), so the Mate hears of every landing the app made.
 func Notes(ws Workspace, project string, cursor map[string]int64) ([]Item, error) {
 	path := ws.AppNotesLog(project)
 	last, seen := cursor[path]
@@ -303,7 +311,7 @@ func Notes(ws Workspace, project string, cursor map[string]int64) ([]Item, error
 		if seen && n.Offset <= last {
 			continue
 		}
-		out = append(out, Item{Kind: ItemAppDid, Text: n.Text, At: n.Time, File: path, Offset: n.Offset})
+		out = append(out, Item{Kind: ItemAppDid, Text: n.Text, At: n.Time, Wake: n.Wake, File: path, Offset: n.Offset})
 	}
 	return out, nil
 }

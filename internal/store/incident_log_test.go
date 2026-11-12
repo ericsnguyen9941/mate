@@ -191,13 +191,13 @@ func TestStoreIncidentLogRejectsBadNamesAndStates(t *testing.T) {
 func TestStoreAppNotesResumeFromCursor(t *testing.T) {
 	w := newProjectWorkspace(t)
 	when := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
-	for _, text := range []string{"landed k3", "landed k4\tleft for you: x"} {
-		if err := w.AppendAppNote("shop", store.AppNote{Time: when, Text: text}); err != nil {
+	for i, text := range []string{"landed k3", "landed k4\tleft for you: x"} {
+		if err := w.AppendAppNote("shop", store.AppNote{Time: when, Wake: i == 1, Text: text}); err != nil {
 			t.Fatalf("AppendAppNote: %v", err)
 		}
 	}
 	notes, next, err := w.ReadAppNotes("shop", 0)
-	if err != nil || len(notes) != 2 || !notes[0].Time.Equal(when) || notes[1].Text != "landed k4 left for you: x" {
+	if err != nil || len(notes) != 2 || !notes[0].Time.Equal(when) || notes[0].Wake || !notes[1].Wake || notes[1].Text != "landed k4 left for you: x" {
 		t.Fatalf("ReadAppNotes = %+v, %v", notes, err)
 	}
 	rest, _, err := w.ReadAppNotes("shop", notes[1].Offset)

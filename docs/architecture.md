@@ -465,7 +465,7 @@ interfaces on the side of each reader, is planned in
 | `projects/<p>/mate/.manual`, `.auto` | `store` | the console's `m` key (`store.Workspace.SetMode`); autopilot releases `.manual` | autopilot, timeline; Auto means no `.manual` |
 | `projects/<p>/mate/.outbox`, `.outbox.lock` | `store` | `assign` from the console, autopilot (digests), stow, prwatch | outbox sender, query |
 | `projects/<p>/mate/.auto-cursor`, `.wake-cursor` | `store` | outbox (on a digest), `mate wake` (`internal/wake`) | autopilot, `mate wake` |
-| `projects/<p>/mate/app-notes.log` | `store` | prwatch (a pull request merged on GitHub that it landed while another crew worked, CON-194) | autopilot (an `app did:` item in the next digest that wakes the Mate) |
+| `projects/<p>/mate/app-notes.log` | `store` | prwatch (a pull request merged on GitHub that it landed in auto mode, CON-194) | autopilot (an `app did:` item of the next digest) |
 | `projects/<p>/mate/memory.md`, `backlog.md` | `memory` format, `store` I/O | the Mate (`mate remember`, `mate backlog`) | `mate recall` |
 | `projects/<p>/mate/news.jsonl` | `matehost` | `mate news`; the friction check of `mate wake`, `land` and `merge`; the host (answers) | query, dashboard, REPL, notifications |
 | `projects/<p>/mate/work.jsonl` | `matehost` | `mate work`, `mate land`, the console (the captain's tick) | query, dashboard, REPL, notifications |

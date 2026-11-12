@@ -41,27 +41,11 @@ func (e *env) landed(out string, err error) (calls *int) {
 	return &n
 }
 
-func (e *env) notes() []string {
-	e.t.Helper()
-	notes, _, err := e.ws.ReadAppNotes(project, 0)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	var out []string
-	for _, n := range notes {
-		out = append(out, n.Text)
-	}
-	return out
-}
-
-// With another crew still at work, a pull request merged on GitHub is
-// landed by the app and the Mate hears of it in its next digest, not in a
-// turn of its own (CON-194).
-func TestAMergedPullRequestIsLandedQuietlyWhileAnotherCrewWorks(t *testing.T) {
+// A pull request merged on GitHub is landed by the app, and the Mate hears
+// of it, with what the landing left for it, in a note the digest carries
+// rather than a line of the watcher's own (CON-194).
+func TestAMergedPullRequestIsLandedAndNoted(t *testing.T) {
 	e := newEnv(t)
-	if err := e.ws.AppendStatus(project, "k5", "working: building"); err != nil {
-		t.Fatal(err)
-	}
 	calls := e.landed(landOutput, nil)
 
 	if *calls != 1 {
@@ -70,39 +54,20 @@ func TestAMergedPullRequestIsLandedQuietlyWhileAnotherCrewWorks(t *testing.T) {
 	if items := e.prItems(); len(items) != 0 {
 		t.Fatalf("outbox = %+v, want no line for the Mate", items)
 	}
-	notes := e.notes()
-	if len(notes) != 1 || !strings.Contains(notes[0], "landed k3 ("+prURL+" merged on GitHub as") ||
-		!strings.Contains(notes[0], "left for you: tracker: HU-7 not updated") {
-		t.Fatalf("app notes = %q", notes)
+	notes, _, err := e.ws.ReadAppNotes(project, 0)
+	if err != nil || len(notes) != 1 || !notes[0].Wake {
+		t.Fatalf("app notes = %+v, %v; want one that wakes the Mate", notes, err)
 	}
-}
-
-// With nobody else working, the landing is done but the Mate is woken to move
-// the work on, with what the landing printed.
-func TestAMergedPullRequestWakesTheMateWhenNothingElseRuns(t *testing.T) {
-	e := newEnv(t)
-	e.landed(landOutput, nil)
-
-	items := e.prItems()
-	if len(items) != 1 {
-		t.Fatalf("outbox = %+v, want one line for the Mate", items)
-	}
-	for _, want := range []string{"pr-merged: the app landed k3", "mark it done yourself", "next: 1 crew(s) open", "keep the work moving"} {
-		if !strings.Contains(items[0].Text, want) {
-			t.Fatalf("line %q does not carry %q", items[0].Text, want)
+	for _, want := range []string{"landed k3 (" + prURL + " merged on GitHub as", "left for you: tracker: HU-7 not updated", "next: 1 crew(s) open"} {
+		if !strings.Contains(notes[0].Text, want) {
+			t.Fatalf("note %q does not carry %q", notes[0].Text, want)
 		}
-	}
-	if notes := e.notes(); len(notes) != 0 {
-		t.Fatalf("app notes = %q, want none when the Mate is woken", notes)
 	}
 }
 
 // A landing that fails leaves the Mate the line it always got.
 func TestAFailedLandingLeavesItToTheMate(t *testing.T) {
 	e := newEnv(t)
-	if err := e.ws.AppendStatus(project, "k5", "working: building"); err != nil {
-		t.Fatal(err)
-	}
 	e.landed("", errors.New("refused"))
 
 	items := e.prItems()
