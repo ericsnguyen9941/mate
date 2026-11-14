@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/nguyenngocanh94/mate/internal/crewstate"
@@ -103,21 +102,8 @@ func (p *pass) fillTurnGaps(ctx context.Context) error {
 	if len(actors) == 0 {
 		return nil
 	}
-	args := []any{p.project}
-	for _, actor := range actors {
-		args = append(args, actor)
-	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(actors)), ",")
+	since := p.changedSince()
 	gap := p.ing.deps.thinkingGap()
-	rows, err := p.tx.QueryContext(ctx,
-		`SELECT t.id, t.actor_id, t.started_at, t.ended_at FROM turn t
-		   JOIN actor a ON a.id = t.actor_id
-		  WHERE a.project = ? AND t.started_at IS NOT NULL AND t.ended_at IS NOT NULL
-		  AND t.actor_id IN (`+placeholders+`)`,
-		args...)
-	if err != nil {
-		return err
-	}
 	type turnWindow struct {
 		id      string
 		actorID string
@@ -125,19 +111,34 @@ func (p *pass) fillTurnGaps(ctx context.Context) error {
 		to      time.Time
 	}
 	var windows []turnWindow
-	for rows.Next() {
-		var t turnWindow
-		var from, to string
-		if err := rows.Scan(&t.id, &t.actorID, &from, &to); err != nil {
-			rows.Close()
+	for _, actor := range actors {
+		// Only a turn that ends after the actor's earliest new turn or
+		// action can have a hole that changed. Reading all of them made a
+		// pass grow with the square of the actor's history: on mihuv2 the
+		// Mate's 10.9k turns, each scanning its 11.3k actions, 13-71 s a
+		// pass after two days of a core (CON-275).
+		rows, err := p.tx.QueryContext(ctx,
+			`SELECT id, actor_id, started_at, ended_at FROM turn
+			  WHERE actor_id = ? AND started_at IS NOT NULL AND ended_at IS NOT NULL
+			    AND ended_at >= ?`,
+			actor, db.FormatTime(since[actor]))
+		if err != nil {
 			return err
 		}
-		t.from, t.to = db.ParseTime(from), db.ParseTime(to)
-		windows = append(windows, t)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
+		for rows.Next() {
+			var t turnWindow
+			var from, to string
+			if err := rows.Scan(&t.id, &t.actorID, &from, &to); err != nil {
+				rows.Close()
+				return err
+			}
+			t.from, t.to = db.ParseTime(from), db.ParseTime(to)
+			windows = append(windows, t)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
 	}
 
 	for _, window := range windows {
@@ -160,37 +161,40 @@ func (p *pass) fillBusyStretches(ctx context.Context) error {
 	if len(actors) == 0 {
 		return nil
 	}
-	args := []any{p.project, KindHealthChanged}
-	for _, actor := range actors {
-		args = append(args, actor)
-	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(actors)), ",")
-	rows, err := p.tx.QueryContext(ctx,
-		`SELECT actor_id, at, json_extract(payload, '$.to') FROM event
-		  WHERE project = ? AND kind = ? AND actor_id IN (`+placeholders+`) ORDER BY actor_id, at, id`,
-		args...)
-	if err != nil {
-		return err
-	}
+	since := p.changedSince()
 	type mark struct {
 		actorID  string
 		at       time.Time
 		composer string
 	}
 	var marks []mark
-	for rows.Next() {
-		var m mark
-		var at string
-		if err := rows.Scan(&m.actorID, &at, &m.composer); err != nil {
-			rows.Close()
+	for _, actor := range actors {
+		// The marks from the last one before the actor's earliest new item
+		// on: only a stretch that ends after it can have changed (CON-275).
+		rows, err := p.tx.QueryContext(ctx,
+			`SELECT actor_id, at, json_extract(payload, '$.to') FROM event
+			  WHERE project = ? AND kind = ? AND actor_id = ?
+			    AND at >= COALESCE((SELECT MAX(at) FROM event
+			                         WHERE actor_id = ? AND kind = ? AND at < ?), '')
+			  ORDER BY at, id`,
+			p.project, KindHealthChanged, actor, actor, KindHealthChanged, db.FormatTime(since[actor]))
+		if err != nil {
 			return err
 		}
-		m.at = db.ParseTime(at)
-		marks = append(marks, m)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
+		for rows.Next() {
+			var m mark
+			var at string
+			if err := rows.Scan(&m.actorID, &at, &m.composer); err != nil {
+				rows.Close()
+				return err
+			}
+			m.at = db.ParseTime(at)
+			marks = append(marks, m)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
 	}
 
 	gap := p.ing.deps.thinkingGap()
@@ -243,6 +247,39 @@ func (p *pass) changedActivityActors() []string {
 	return out
 }
 
+// changedSince is, per actor changedActivityActors names, the earliest time
+// this pass brings anything for it: a turn's start, an action, a
+// health.changed. A hole that closes before it cannot have changed.
+func (p *pass) changedSince() map[string]time.Time {
+	out := map[string]time.Time{}
+	note := func(actor string, at time.Time) {
+		if at.IsZero() {
+			return
+		}
+		if have, ok := out[actor]; !ok || at.Before(have) {
+			out[actor] = at
+		}
+	}
+	for _, t := range p.b.turns {
+		note(t.ActorID, t.StartedAt)
+	}
+	for _, a := range p.b.actions {
+		note(a.ActorID, a.At)
+	}
+	for _, e := range p.b.events {
+		if e.Kind == KindHealthChanged {
+			note(e.ActorID, e.At)
+		}
+	}
+	return out
+}
+
+// coverageLookback bounds how far before a window coverage looks for an
+// action that started earlier and still covers it. The longest action on
+// record (mihuv2, 2026-11-14) ran 1.7 h; without a bound each lookup read
+// every earlier action of the actor (CON-275).
+const coverageLookback = 12 * time.Hour
+
 type span struct{ from, to time.Time }
 
 // coverage is every action of an actor that overlaps a window, as spans. An
@@ -251,9 +288,9 @@ type span struct{ from, to time.Time }
 func (p *pass) coverage(ctx context.Context, actorID string, from, to time.Time) ([]span, error) {
 	rows, err := p.tx.QueryContext(ctx,
 		`SELECT at, ended_at FROM action
-		  WHERE actor_id = ? AND at <= ? AND COALESCE(ended_at, at) >= ?
+		  WHERE actor_id = ? AND at <= ? AND at >= ? AND COALESCE(ended_at, at) >= ?
 		  ORDER BY at`,
-		actorID, db.FormatTime(to), db.FormatTime(from))
+		actorID, db.FormatTime(to), db.FormatTime(from.Add(-coverageLookback)), db.FormatTime(from))
 	if err != nil {
 		return nil, err
 	}
