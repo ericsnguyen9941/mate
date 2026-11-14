@@ -103,7 +103,7 @@ func TestTheConsoleSaysItIsTheConsole(t *testing.T) {
 		}
 	})
 	client := connectTo(t, w)
-	load := boundedLoad(consoleLoad(client.Snapshot, nil, coreNotices(client, nil)), consoleReadWait)
+	load := boundedLoad(consoleLoad(client.Snapshot, nil, coreNotices(client, nil)), consoleReadWait, nil)
 	if _, err := load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestAConsoleReadOfAHungCoreEnds(t *testing.T) {
 	answer = false
 	mu.Unlock()
 
-	load := boundedLoad(consoleLoad(client.Snapshot, nil, coreNotices(client, nil)), 200*time.Millisecond)
+	load := boundedLoad(consoleLoad(client.Snapshot, nil, coreNotices(client, nil)), 200*time.Millisecond, nil)
 	start := time.Now()
 	_, err := load(context.Background())
 	if took := time.Since(start); took > 2*time.Second {

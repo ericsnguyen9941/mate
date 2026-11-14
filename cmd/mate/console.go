@@ -160,7 +160,9 @@ func runConsole(dir string, stdout, stderr io.Writer) error {
 	// every action drops the core's cached snapshot, so the next read shows
 	// what it changed.
 	bindings := append(consoleCommandBindings(commands), links.bindings()...)
-	load := boundedLoad(consoleLoad(client.Snapshot, bindings, coreNotices(client, status.Notices)), consoleReadWait)
+	_, build := core.Build()
+	hint := readFailedHint(ws, build)
+	load := boundedLoad(consoleLoad(client.Snapshot, bindings, coreNotices(client, status.Notices)), consoleReadWait, hint)
 	act := tuiAction(client.Act, h)
 
 	notice := ""
@@ -232,7 +234,7 @@ func runConsole(dir string, stdout, stderr io.Writer) error {
 
 	// A Mate's session open in its TUI (CON-227): the console asks before
 	// it draws, and again whenever the flag goes up while it is open.
-	gate := tuiGate{load: boundedLoad(client.Snapshot, consoleReadWait), act: client.Act, in: stdinFile, out: stdoutFile}
+	gate := tuiGate{load: boundedLoad(client.Snapshot, consoleReadWait, hint), act: client.Act, in: stdinFile, out: stdoutFile}
 	for {
 		if err := gate.check(ctx); err != nil {
 			return err

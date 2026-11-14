@@ -219,8 +219,9 @@ const notificationsWord = "notifications: "
 // Longer than the 2 s tick, so a slow snapshot is not called a failure.
 const consoleReadWait = 5 * time.Second
 
-// boundedLoad is load with each read ended after wait.
-func boundedLoad(load coreapi.LoadFunc, wait time.Duration) coreapi.LoadFunc {
+// boundedLoad is load with each read ended after wait. A read that fails
+// says what the captain can do about it (hint), not only what went wrong.
+func boundedLoad(load coreapi.LoadFunc, wait time.Duration, hint func() string) coreapi.LoadFunc {
 	return func(ctx context.Context) (query.Snapshot, error) {
 		ctx, cancel := context.WithTimeout(ctx, wait)
 		defer cancel()
@@ -228,6 +229,31 @@ func boundedLoad(load coreapi.LoadFunc, wait time.Duration) coreapi.LoadFunc {
 		if err != nil && errors.Is(err, context.DeadlineExceeded) {
 			err = fmt.Errorf("mate core did not answer within %s", durationWord(wait))
 		}
+		if err != nil && hint != nil {
+			if h := hint(); h != "" {
+				err = fmt.Errorf("%w %s %s", err, "-", h)
+			}
+		}
 		return snap, err
+	}
+}
+
+// readFailedHint is what the captain can do when the console's read of the
+// core failed. It reads core.lock, not the socket that just failed: no core
+// holding the lock is one to start; a core of another build than this
+// console's was restarted on a mate installed after the console opened, and
+// the console is the one to reopen (2026-11-14: a console from 6/11 kept
+// failing for hours against a core restarted on 12/11); otherwise the core
+// is busy or stuck.
+func readFailedHint(ws *store.Workspace, build string) func() string {
+	return func() string {
+		h, running, err := ws.CoreRunning()
+		switch {
+		case err == nil && !running:
+			return "mate core is not running: quit (q) and run `mate console` again, which starts it"
+		case err == nil && build != "" && h.Build != "" && h.Build != build:
+			return "mate core runs a newer mate than this console: quit (q) and run `mate console` again"
+		}
+		return "r retries; if it keeps failing, run `mate core restart` (log: .mate/core.log)"
 	}
 }
