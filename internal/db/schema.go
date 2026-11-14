@@ -38,6 +38,14 @@ var indexes = []string{
 	// every commit of the workspace: 8 ms a call, 60% of an ingest pass on a
 	// 514k-event timeline (CON-254); with it, 16 µs.
 	`CREATE INDEX IF NOT EXISTS event_actor_kind_at ON event(actor_id, kind, at)`,
+	// causeCrewTurnAfterAnswer looks, for every crew `turn.started` with no
+	// cause yet, for the newest answer to that crew. Most crew turns follow
+	// no answer, so their cause stays empty and every pass asks again: on
+	// mihuv2 21.5k turns a pass, each walking event_kind_at over every
+	// answer before it and reading the row for its subject. 6-13 s a pass
+	// after two days of a core, and a 5.2 s snapshot the console gave up on
+	// (CON-275); with it, 0.25-0.45 s.
+	`CREATE INDEX IF NOT EXISTS event_kind_subject_at ON event(kind, subject_actor_id, at)`,
 }
 
 // schema1 is the M5 schema of docs/mvp.md. Times are RFC3339 with nanosecond

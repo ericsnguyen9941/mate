@@ -160,6 +160,37 @@ func TestOpenAddsTheActorKindIndexWithoutAVersionAndThePlanUsesIt(t *testing.T) 
 	}
 }
 
+// A crew turn's cause is the newest answer to that crew before it, looked
+// up for every crew turn with no cause on every pass (timeline's
+// causeCrewTurnAfterAnswer, CON-275): the lookup goes by kind and subject.
+func TestTheAnswerLookupUsesTheKindSubjectIndex(t *testing.T) {
+	d, err := db.OpenPath(filepath.Join(t.TempDir(), db.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	rows, err := d.SQL().Query(`EXPLAIN QUERY PLAN
+		SELECT a.id FROM event a
+		 WHERE a.kind = ? AND a.subject_actor_id = ? AND a.at <= ?
+		 ORDER BY a.at DESC, a.id DESC LIMIT 1`, "question.answered", "crew:p/k", "2026-11-14T00:00:00Z")
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	defer rows.Close()
+	var plan string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		plan += detail + "\n"
+	}
+	if !strings.Contains(plan, "event_kind_subject_at") {
+		t.Fatalf("plan does not use event_kind_subject_at:\n%s", plan)
+	}
+}
+
 // The single-writer rule of the M5 spec: the observer is the writer, and a
 // second one is refused rather than allowed to interleave.
 func TestASecondWriterIsRefusedAndAReaderIsNot(t *testing.T) {
