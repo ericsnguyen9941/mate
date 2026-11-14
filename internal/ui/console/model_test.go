@@ -298,7 +298,7 @@ func TestAFailedRefreshKeepsTheSnapshotAndSaysSo(t *testing.T) {
 	if m.tree.AsOf != goldenAsOf {
 		t.Fatalf("AsOf = %v, want it unchanged", m.tree.AsOf)
 	}
-	if !strings.Contains(m.msg.text, "database is locked") || !strings.Contains(m.msg.text, goldenAsOf.Format("15:04:05")) {
+	if !strings.Contains(m.msg.text, "database is locked") || !strings.Contains(m.msg.text, goldenAsOf.Local().Format("15:04:05")) {
 		t.Fatalf("message = %q, want the failure and the time still on screen", m.msg.text)
 	}
 	view := renderFrame(t, m)
@@ -379,5 +379,27 @@ func TestTooSmallAnswersOnlyQ(t *testing.T) {
 	}
 	if _, cmd := send(t, m, key("q")); cmd == nil {
 		t.Fatal("q must still quit on the too-small screen")
+	}
+}
+
+// A refresh that succeeds after a failed one takes the failure's line down:
+// left up, it said for hours that the picture was stale when every read
+// since had succeeded (2026-11-14). A line the reader caused since stays.
+func TestASucceedingRefreshClearsTheFailureLine(t *testing.T) {
+	m := loaded(t, sampleTree(), nil)
+	m, _ = send(t, m, treeLoadedMsg{err: errors.New("mate core did not answer within 5s")})
+	if !strings.HasPrefix(m.msg.text, "Refresh failed: ") {
+		t.Fatalf("message = %q, want the failure", m.msg.text)
+	}
+	m, _ = send(t, m, treeLoadedMsg{tree: sampleTree()})
+	if m.msg.text != "" || m.lastLoadErr != nil {
+		t.Fatalf("after a good read: message %q, lastLoadErr %v; want both cleared", m.msg.text, m.lastLoadErr)
+	}
+
+	m, _ = send(t, m, treeLoadedMsg{err: errors.New("database is locked")})
+	m.msg = okMsg("copied")
+	m, _ = send(t, m, treeLoadedMsg{tree: sampleTree()})
+	if m.msg.text != "copied" {
+		t.Fatalf("message = %q, want the reader's own line kept", m.msg.text)
 	}
 }

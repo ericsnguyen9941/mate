@@ -214,7 +214,7 @@ func TestBackgroundTickFailureShowsStaleAndKeepsTree(t *testing.T) {
 	if !strings.Contains(lines[0], "stale") {
 		t.Fatalf("list rule after a failed background tick = %q, want it to say stale", lines[0])
 	}
-	if !strings.Contains(m.msg.text, "database is locked") || !strings.Contains(m.msg.text, goldenAsOf.Format("15:04:05")) {
+	if !strings.Contains(m.msg.text, "database is locked") || !strings.Contains(m.msg.text, goldenAsOf.Local().Format("15:04:05")) {
 		t.Fatalf("message after a failed background tick = %q, want the error and the last good read's time", m.msg.text)
 	}
 	if !strings.Contains(renderFrame(t, m), sampleTree().Projects[0].Name) {

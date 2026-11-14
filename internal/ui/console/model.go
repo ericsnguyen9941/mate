@@ -159,6 +159,9 @@ type Model struct {
 	// field of its own the header would keep calling a known-bad picture
 	// "live".
 	lastLoadErr error
+	// refreshFailed is the footer line the last failed refresh put up, so
+	// the next refresh that succeeds takes it down if it is still showing.
+	refreshFailed footerMsg
 	// treeGen guards the auto-refresh tick chain the way sess.gen guards the
 	// session poll chain (session_mode.go): a tick whose gen does not match
 	// this one is a leftover from a chain that is no longer the current one

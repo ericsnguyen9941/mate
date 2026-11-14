@@ -76,7 +76,8 @@ func (m Model) onTreeLoaded(msg treeLoadedMsg) Model {
 			// "stale" and how old what they are looking at is; the message
 			// line says the refresh did not happen.
 			m.msg = errMsg("Refresh failed: " + msg.err.Error() + " " + m.g.Dot +
-				" still showing the snapshot from " + m.tree.AsOf.Format("15:04:05"))
+				" still showing the snapshot from " + m.tree.AsOf.Local().Format("15:04:05"))
+			m.refreshFailed = m.msg
 			return m
 		}
 		m.phase = phaseFailed
@@ -88,6 +89,13 @@ func (m Model) onTreeLoaded(msg treeLoadedMsg) Model {
 	m.phase = phaseReady
 	m.loadErr = nil
 	m.lastLoadErr = nil
+	if m.msg == m.refreshFailed {
+		// The failure it reported is over: left up, it would say for hours
+		// that the picture is stale when every read since succeeded
+		// (2026-11-14: one slow read at 13:15 still on screen at 18:00).
+		m.msg = footerMsg{}
+	}
+	m.refreshFailed = footerMsg{}
 	m.tree = msg.tree
 	m.hasLoaded = true
 	if first {
