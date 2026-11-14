@@ -23,6 +23,7 @@ import (
 	"github.com/nguyenngocanh94/mate/internal/core"
 	"github.com/nguyenngocanh94/mate/internal/coreapi"
 	"github.com/nguyenngocanh94/mate/internal/coreclient"
+	"github.com/nguyenngocanh94/mate/internal/query"
 	"github.com/nguyenngocanh94/mate/internal/store"
 	"github.com/nguyenngocanh94/mate/internal/ui/console"
 )
@@ -316,5 +317,43 @@ func TestAnOlderConsoleSaysToOpenItAgain(t *testing.T) {
 	}
 	if strings.Count(out.String(), "Restart it?") != 1 {
 		t.Errorf("the console asked %d times:\n%s", strings.Count(out.String(), "Restart it?"), out.String())
+	}
+}
+
+// A failed read says what to do, from core.lock: start a core that is not
+// running, reopen a console older than the core, otherwise retry and then
+// restart the core (2026-11-14).
+func TestAFailedReadSaysWhatToDo(t *testing.T) {
+	w := coreWorkspace(t)
+	hint := readFailedHint(w, "console-build")
+	if got := hint(); !strings.Contains(got, "not running") || !strings.Contains(got, "mate console") {
+		t.Fatalf("no core: hint %q", got)
+	}
+
+	lock, err := w.LockCore(store.CoreHolder{PID: os.Getpid(), Owner: store.CoreOwnerCore, Build: "newer-build"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hint(); !strings.Contains(got, "newer mate than this console") || !strings.Contains(got, "quit (q)") {
+		t.Fatalf("other build: hint %q", got)
+	}
+	lock.Unlock()
+
+	lock, err = w.LockCore(store.CoreHolder{PID: os.Getpid(), Owner: store.CoreOwnerCore, Build: "console-build"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Unlock()
+	if got := hint(); !strings.Contains(got, "mate core restart") {
+		t.Fatalf("same build: hint %q", got)
+	}
+
+	load := boundedLoad(func(ctx context.Context) (query.Snapshot, error) {
+		<-ctx.Done()
+		return query.Snapshot{}, ctx.Err()
+	}, 10*time.Millisecond, hint)
+	_, err = load(context.Background())
+	if err == nil || !strings.HasPrefix(err.Error(), "mate core did not answer within 10ms - r retries") {
+		t.Fatalf("read error %v", err)
 	}
 }
