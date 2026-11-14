@@ -207,7 +207,7 @@ func (m Model) footerMessage() footerMsg {
 		return w
 	}
 	if m.lastLoadErr != nil && m.hasLoaded {
-		return warnMsg("stale since " + m.tree.AsOf.Format("15:04") + " " + m.g.Dot + " r retries")
+		return warnMsg("stale since " + m.tree.AsOf.Local().Format("15:04") + " " + m.g.Dot + " r retries")
 	}
 	return footerMsg{}
 }
