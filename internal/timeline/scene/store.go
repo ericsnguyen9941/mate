@@ -81,24 +81,80 @@ func Load(ctx context.Context, q Querier, project string) ([]Actor, []Event, err
 }
 
 // Save replaces one project's transitions.
+//
+// It writes only the rows that changed. The machine is recomputed whole on
+// every pass that inserted an event, but its ids are a function of the
+// events, so almost every row it returns is already stored as it is. Deleting
+// and inserting them all rewrote mihuv2's 33k rows and their two indexes on
+// every pass: two thirds of the core's 16 MB of disk writes a minute
+// (2026-11-15).
 func Save(ctx context.Context, q Querier, project string, rows []Transition) error {
-	if _, err := q.ExecContext(ctx, `DELETE FROM transition WHERE project = ?`, project); err != nil {
+	stored, err := storedRows(ctx, q, project)
+	if err != nil {
 		return err
 	}
 	for _, t := range rows {
-		var target any
-		if t.Target != "" {
-			target = t.Target
+		r := row(t)
+		if old, ok := stored[t.ID]; ok {
+			delete(stored, t.ID)
+			if old == r {
+				continue
+			}
 		}
 		if _, err := q.ExecContext(ctx,
 			`INSERT INTO transition(id, actor_id, project, from_state, to_state, at, event_id, target_actor_id, detail)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			t.ID, t.ActorID, t.Project, string(t.From), string(t.To),
-			db.FormatTime(t.At), t.EventID, target, t.Detail); err != nil {
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(id) DO UPDATE SET actor_id = excluded.actor_id, project = excluded.project,
+			   from_state = excluded.from_state, to_state = excluded.to_state, at = excluded.at,
+			   event_id = excluded.event_id, target_actor_id = excluded.target_actor_id, detail = excluded.detail`,
+			r.id, r.actor, project, r.from, r.to, r.at, r.event, r.target, r.detail); err != nil {
+			return err
+		}
+	}
+	for id := range stored {
+		if _, err := q.ExecContext(ctx, `DELETE FROM transition WHERE id = ?`, id); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// storedRow is a `transition` row as Save compares it.
+type storedRow struct {
+	id, actor, from, to, at string
+	event                   int64
+	target                  sql.NullString
+	detail                  string
+}
+
+func row(t Transition) storedRow {
+	return storedRow{
+		id: t.ID, actor: t.ActorID, from: string(t.From), to: string(t.To),
+		at: db.FormatTime(t.At), event: t.EventID,
+		target: sql.NullString{String: t.Target, Valid: t.Target != ""}, detail: t.Detail,
+	}
+}
+
+// storedRows reads one project's rows by the range of their ids, which
+// start with the project and "|" (projector.id): `transition` has no index on
+// project.
+func storedRows(ctx context.Context, q Querier, project string) (map[string]storedRow, error) {
+	rows, err := q.QueryContext(ctx,
+		`SELECT id, actor_id, from_state, to_state, at, event_id, target_actor_id, detail
+		   FROM transition WHERE id >= ? AND id < ? AND project = ?`, project+"|", project+"}", project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]storedRow{}
+	for rows.Next() {
+		var r storedRow
+		if err := rows.Scan(&r.id, &r.actor, &r.from, &r.to, &r.at, &r.event, &r.target, &r.detail); err != nil {
+			return nil, err
+		}
+		out[r.id] = r
+	}
+	return out, rows.Err()
 }
 
 // NowQuery selects a snapshot.
