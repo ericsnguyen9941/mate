@@ -2981,7 +2981,7 @@
   // local day, the workspace or one project. It counts in tokens, never in
   // money, and has no merged column: the timeline sees only the merges
   // mate made itself.
-  var BOARD_RANGES = [7, 14, 30];
+  var BOARD_RANGES = [7, 14, 30, 60, 90];
 
   function storedBoardDays() {
     try {
@@ -3113,7 +3113,7 @@
     if (!days.length) return [head, controls, el("p", { class: "cab-empty", text: "Nothing recorded for " + (boardProject || "this workspace") + "." })];
     var err = p && p.error ? el("p", { class: "room-err", text: "Tasks could not be read: " + p.error }) : null;
     if (date) return [head, controls, err].concat(boardDayView(days, date), [boardTable(days, date)]);
-    return [head, controls, err, boardKpis(days, days.length - 1), boardTable(days, "")];
+    return [head, controls, err, boardKpis(days, days.length - 1), boardTrend(days), boardTable(days, "")];
   }
 
   // One day against the average of the other days in the window. Today is
@@ -3145,6 +3145,196 @@
         ]);
       }))
     ]);
+  }
+
+  // ------------------------------------------------------------ tokens per task done
+
+  // Is the work getting dearer? Tokens per ship or scout closed finished,
+  // two ways: everything spent (the Mate, every crew, reviews, dropped
+  // work) over the tasks done, and the done tasks' own lives with their
+  // reviews (done_tokens). Past two weeks a point is a week, so a quiet
+  // day does not read as a cliff. A bucket with nothing done has no point.
+  var TREND_SERIES = [
+    { key: "all", cls: "tp-all", label: "All tokens", why: "everything spent in the window - the Mate, every crew, reviews, dropped work - over the tasks done",
+      n: function (b) { return b.done ? b.tokens / b.done : null; } },
+    { key: "task", cls: "tp-task", label: "The task itself", why: "the done tasks' own tokens over their whole lives, their reviews included",
+      n: function (b) { return b.done ? b.doneTokens / b.done : null; } }
+  ];
+
+  // trendBuckets is days by day up to two weeks, else by week ending on
+  // the last day, so the newest point is the last seven days whole.
+  function trendBuckets(days) {
+    var size = days.length > 14 ? 7 : 1;
+    var out = [];
+    for (var end = days.length; end > 0; end -= size) {
+      var part = days.slice(Math.max(0, end - size), end);
+      var b = { from: part[0].date, to: part[part.length - 1].date, days: part.length, tokens: 0, done: 0, doneTokens: 0 };
+      part.forEach(function (d) {
+        b.tokens += d.tokens ? d.tokens.total : 0;
+        b.done += (d.closed || {}).finished || 0;
+        b.doneTokens += d.done_tokens || 0;
+      });
+      out.unshift(b);
+    }
+    return { size: size, buckets: out };
+  }
+
+  function trendBucketName(b, size) {
+    return size === 1 ? boardDayLabel(b.from) : boardDayLabel(b.from) + " – " + boardDayLabel(b.to);
+  }
+
+  // trendHalves sets the later half of the window against the earlier,
+  // each as its tokens over its tasks done, so a busy day weighs what it
+  // did rather than counting once.
+  function trendHalves(buckets) {
+    var mid = Math.floor(buckets.length / 2);
+    var sum = function (bs) {
+      var t = { tokens: 0, done: 0 };
+      bs.forEach(function (b) { t.tokens += b.tokens; t.done += b.done; });
+      return t;
+    };
+    return { before: sum(buckets.slice(0, mid)), after: sum(buckets.slice(buckets.length - mid)) };
+  }
+
+  function boardTrend(days) {
+    var tb = trendBuckets(days);
+    var buckets = tb.buckets;
+    var unit = tb.size === 1 ? "day" : "week";
+    var h = trendHalves(buckets);
+    var head = el("h3", { class: "sh" }, ["Tokens per task done", el("span", { class: "bleg" }, TREND_SERIES.map(function (s) {
+      return el("span", { class: "tpk", title: s.why }, [el("i", { class: s.cls }), s.label]);
+    }))]);
+    var verdict;
+    if (!h.before.done || !h.after.done) {
+      verdict = el("p", { class: "tpv", text: "Not enough finished tasks in both halves of the window to say which way it is going." });
+    } else {
+      var a = h.before.tokens / h.before.done, b = h.after.tokens / h.after.done;
+      var pct = Math.round((b - a) / a * 100);
+      var tone = pct > 5 ? " down" : pct < -5 ? " up" : "";
+      var word = pct > 5 ? "dearer" : pct < -5 ? "cheaper" : "about the same";
+      verdict = el("p", { class: "tpv" }, [
+        el("b", { class: "tpd" + tone, text: (pct > 0 ? "+" : "") + pct + "%" }),
+        " A task done takes " + tok(Math.round(b)) + " tokens now, " + tok(Math.round(a)) + " in the earlier half: " + word + ". ",
+        el("span", { class: "tpm", text: (h.after.done / h.after.tokens * 1e6).toFixed(2) + " tasks done per million tokens lately, "
+          + (h.before.done / h.before.tokens * 1e6).toFixed(2) + " before." })
+      ]);
+    }
+    var any = buckets.some(function (b) { return b.done; });
+    if (!any) return el("section", { class: "ds tp", "aria-label": "Tokens per task done" }, [head,
+      el("p", { class: "cab-empty", text: "No task was done in these " + days.length + " days, so there is nothing to divide by." })]);
+    return el("section", { class: "ds tp", "aria-label": "Tokens per task done" }, [head, verdict,
+      trendChart(buckets, tb.size), doneStrip(buckets, tb.size),
+      el("p", { class: "tpn", text: "One point per " + unit + "; a " + unit + " with nothing done has none. Done counts ships and scouts closed finished." })]);
+  }
+
+  function svgEl(tag, attrs, kids) {
+    var n = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { if (attrs[k] != null) n.setAttribute(k, String(attrs[k])); });
+    (kids || []).forEach(function (k) { if (k) n.appendChild(typeof k === "string" ? document.createTextNode(k) : k); });
+    return n;
+  }
+
+  var TP_W = 640, TP_H = 170, TP_L = 52, TP_R = 168, TP_T = 10, TP_B = 22;
+
+  function tpX(i, n) {
+    var w = TP_W - TP_L - TP_R;
+    return TP_L + (n > 1 ? w * i / (n - 1) : w / 2);
+  }
+
+  // trendChart is one y-axis, tokens per task done, both series on it:
+  // they measure the same thing, the second only a part of the first.
+  function trendChart(buckets, size) {
+    var max = 0;
+    buckets.forEach(function (b) { TREND_SERIES.forEach(function (s) { var v = s.n(b); if (v != null) max = Math.max(max, v); }); });
+    var top = niceTop(max);
+    var plotH = TP_H - TP_T - TP_B;
+    var y = function (v) { return TP_T + plotH - v / top * plotH; };
+    var n = buckets.length;
+    var kids = [], ends = [];
+    [0, 0.5, 1].forEach(function (f) {
+      kids.push(svgEl("line", { class: "tpg", x1: TP_L, x2: TP_W - TP_R, y1: y(top * f), y2: y(top * f) }));
+      kids.push(svgEl("text", { class: "tpa", x: TP_L - 6, y: y(top * f) + 4, "text-anchor": "end" }, [tok(Math.round(top * f))]));
+    });
+    var ticks = n > 2 ? [0, Math.floor((n - 1) / 2), n - 1] : n === 2 ? [0, 1] : [0];
+    ticks.forEach(function (i) {
+      kids.push(svgEl("text", { class: "tpa", x: tpX(i, n), y: TP_H - 6, "text-anchor": i === 0 && n > 1 ? "start" : i === n - 1 && n > 1 ? "end" : "middle" },
+        [i === n - 1 ? (size === 1 ? "today" : "last 7 days") : boardDayLabel(buckets[i].from)]));
+    });
+    TREND_SERIES.forEach(function (s) {
+      var d = "", last = null;
+      buckets.forEach(function (b, i) {
+        var v = s.n(b);
+        if (v == null) { last = null; return; }
+        d += (last == null ? "M" : "L") + tpX(i, n).toFixed(1) + " " + y(v).toFixed(1);
+        last = i;
+      });
+      if (d) kids.push(svgEl("path", { class: "tpl " + s.cls, d: d }));
+      buckets.forEach(function (b, i) {
+        var v = s.n(b);
+        if (v != null) kids.push(svgEl("circle", { class: "tpp " + s.cls, cx: tpX(i, n).toFixed(1), cy: y(v).toFixed(1), r: 4 }));
+      });
+      // The direct label sits at the newest point the series has.
+      for (var i = n - 1; i >= 0; i--) {
+        var v = s.n(buckets[i]);
+        if (v == null) continue;
+        ends.push({ s: s, x: tpX(i, n) + 8, y: y(v) + 4, v: v });
+        break;
+      }
+    });
+    // Two ends close together push apart, the higher value staying on top.
+    ends.sort(function (a, b) { return a.y - b.y; });
+    for (var k = 1; k < ends.length; k++) ends[k].y = Math.max(ends[k].y, ends[k - 1].y + 13);
+    ends.forEach(function (e) {
+      kids.push(svgEl("text", { class: "tpx", x: e.x, y: e.y }, [e.s.label + " " + tok(Math.round(e.v))]));
+    });
+    // Hover: a column per bucket, wider than its marks, naming both values.
+    var step = n > 1 ? (TP_W - TP_L - TP_R) / (n - 1) : TP_W - TP_L - TP_R;
+    buckets.forEach(function (b, i) {
+      kids.push(svgEl("rect", { class: "tph", x: (tpX(i, n) - step / 2).toFixed(1), y: TP_T, width: step.toFixed(1), height: plotH },
+        [svgEl("title", null, [trendTip(b, size)])]));
+    });
+    var labels = TREND_SERIES.map(function (s) { return s.label; }).join(" and ");
+    return svgEl("svg", { class: "tpc", viewBox: "0 0 " + TP_W + " " + TP_H, role: "img",
+      "aria-label": "Tokens per task done by " + (size === 1 ? "day" : "week") + ": " + labels }, kids);
+  }
+
+  function trendTip(b, size) {
+    var parts = [trendBucketName(b, size), b.done + " done, " + tok(b.tokens) + " spent"];
+    TREND_SERIES.forEach(function (s) {
+      var v = s.n(b);
+      parts.push(s.label + ": " + (v == null ? "-" : tok(Math.round(v)) + " per task"));
+    });
+    return parts.join("\n");
+  }
+
+  // doneStrip is the work itself, tasks done per bucket, on its own scale
+  // under the chart rather than a second axis on it.
+  function doneStrip(buckets, size) {
+    var max = 1;
+    buckets.forEach(function (b) { max = Math.max(max, b.done); });
+    var n = buckets.length, H = 44;
+    var step = n > 1 ? (TP_W - TP_L - TP_R) / (n - 1) : TP_W - TP_L - TP_R;
+    var bw = Math.max(3, Math.min(18, step - 2));
+    var kids = [svgEl("text", { class: "tpa", x: TP_L - 6, y: 14, "text-anchor": "end" }, ["done"]),
+      svgEl("line", { class: "tpg", x1: TP_L, x2: TP_W - TP_R, y1: H - 0.5, y2: H - 0.5 })];
+    buckets.forEach(function (b, i) {
+      var hgt = b.done ? Math.max(2, b.done / max * (H - 6)) : 0;
+      var x = tpX(i, n) - bw / 2;
+      if (hgt) kids.push(svgEl("rect", { class: "tpb", x: x.toFixed(1), y: (H - hgt).toFixed(1), width: bw.toFixed(1), height: hgt.toFixed(1), rx: 2 }));
+      kids.push(svgEl("rect", { class: "tph", x: (tpX(i, n) - step / 2).toFixed(1), y: 0, width: step.toFixed(1), height: H },
+        [svgEl("title", null, [trendBucketName(b, size) + ": " + b.done + " done"])]));
+    });
+    if (max > 0) kids.push(svgEl("text", { class: "tpx", x: TP_W - TP_R + 8, y: 14 }, ["max " + max]));
+    return svgEl("svg", { class: "tps", viewBox: "0 0 " + TP_W + " " + H, role: "img", "aria-label": "Tasks done by " + (size === 1 ? "day" : "week") }, kids);
+  }
+
+  // niceTop rounds a maximum up to 1, 2 or 5 times a power of ten.
+  function niceTop(v) {
+    if (!(v > 0)) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(v)));
+    var steps = [1, 2, 2.5, 5, 10];
+    for (var i = 0; i < steps.length; i++) if (steps[i] * p >= v) return steps[i] * p;
+    return 10 * p;
   }
 
   function boardDayName(days, date) {

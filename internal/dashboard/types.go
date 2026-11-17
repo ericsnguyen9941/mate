@@ -484,12 +484,16 @@ type BoardProject struct {
 // and crews' (MateTokens and CrewTokens split Tokens.Total). Spawned counts
 // tasks by role, Closed closed ships and scouts by final state, Reviews
 // closed reviewers by verdict, Incidents opened incidents by kind. No cost:
-// the board measures in tokens.
+// the board measures in tokens. DoneTokens is what the ships and scouts
+// closed finished that day cost over their whole lives, their reviews
+// included (Task.TokensWithReviews): the work's own share of the tokens,
+// where Tokens is everything spent that day.
 type BoardDay struct {
 	Date       string         `json:"date"`
 	Tokens     Tokens         `json:"tokens"`
 	MateTokens int64          `json:"mate_tokens"`
 	CrewTokens int64          `json:"crew_tokens"`
+	DoneTokens int64          `json:"done_tokens"`
 	Spawned    map[string]int `json:"spawned"`
 	Closed     map[string]int `json:"closed"`
 	Reviews    map[string]int `json:"reviews"`

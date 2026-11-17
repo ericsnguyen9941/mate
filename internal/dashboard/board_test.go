@@ -151,3 +151,50 @@ func TestBoardWordsAClosedTask(t *testing.T) {
 		}
 	}
 }
+
+// A finished ship's tokens, its reviews' included, land on the day it
+// closed: the work's share of what the board spent. A discarded task's
+// tokens do not.
+func TestBoardCountsWhatFinishedWorkCost(t *testing.T) {
+	f := newFixture(t)
+	var project ProjectResponse
+	f.get(t, "/api/projects/"+fixtureProject, http.StatusOK, &project)
+	var cost int64
+	for _, task := range project.Tasks {
+		if task.Crew == fixtureCrew {
+			cost = task.TokensWithReviews
+		}
+	}
+	if cost == 0 {
+		t.Fatalf("%s spent no tokens in the fixture", fixtureCrew)
+	}
+
+	closeAs := func(state string, at time.Time) {
+		t.Helper()
+		writer, err := db.Open(f.ws)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer writer.Close()
+		if _, err := writer.SQL().Exec(`UPDATE task SET close_state = ?, closed_at = ? WHERE crew_actor_id = ?`,
+			state, db.FormatTime(at), timeline.CrewActorID(fixtureProject, fixtureCrew)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	closeAs("finished", fixtureNow.Add(-24*time.Hour))
+	var got BoardResponse
+	f.get(t, "/api/board?days=7", http.StatusOK, &got)
+	if d := got.Total[5]; d.DoneTokens != cost || d.Closed["finished"] != 1 {
+		t.Errorf("yesterday: done tokens = %d with %v closed, want %d for one finished", d.DoneTokens, d.Closed, cost)
+	}
+	if d := got.Projects[0].Days[5]; d.DoneTokens != cost {
+		t.Errorf("the project's yesterday: done tokens = %d, want %d", d.DoneTokens, cost)
+	}
+
+	closeAs("failed", fixtureNow.Add(-24*time.Hour))
+	f.get(t, "/api/board?days=7", http.StatusOK, &got)
+	if d := got.Total[5]; d.DoneTokens != 0 || d.Closed["discarded"] != 1 {
+		t.Errorf("a discarded task: done tokens = %d with %v closed, want 0", d.DoneTokens, d.Closed)
+	}
+}

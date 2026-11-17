@@ -78,8 +78,12 @@ func (s *Server) handleBoard(ctx context.Context, r *http.Request, env envelope)
 			}
 			if role == "review" {
 				p.Days[i].Reviews[reviewWord(t.Review)]++
-			} else {
-				p.Days[i].Closed[closedWord(t)]++
+				continue
+			}
+			word := closedWord(t)
+			p.Days[i].Closed[word]++
+			if word == "finished" {
+				p.Days[i].DoneTokens += t.TokensWithReviews
 			}
 		}
 		out.Projects = append(out.Projects, p)
@@ -129,6 +133,7 @@ func (s *Server) handleBoard(ctx context.Context, r *http.Request, env envelope)
 			t.Tokens = addTokens(t.Tokens, d.Tokens)
 			t.MateTokens += d.MateTokens
 			t.CrewTokens += d.CrewTokens
+			t.DoneTokens += d.DoneTokens
 			addCounts(t.Spawned, d.Spawned)
 			addCounts(t.Closed, d.Closed)
 			addCounts(t.Reviews, d.Reviews)

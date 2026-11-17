@@ -224,12 +224,12 @@ function boardBody(days) {
   const dates = [];
   for (let i = days - 1; i >= 0; i--) dates.push(new Date(Date.UTC(2026, 9, 3 - i)).toISOString().slice(0, 10));
   const day = (date, o) => Object.assign({ date, tokens: { input: 0, cache_read: 0, cache_write: 0, output: 0, thinking: 0, total: 0 },
-    mate_tokens: 0, crew_tokens: 0, spawned: {}, closed: {}, reviews: {}, incidents: {} }, o);
+    mate_tokens: 0, crew_tokens: 0, done_tokens: 0, spawned: {}, closed: {}, reviews: {}, incidents: {} }, o);
   const toks = n => ({ input: 0, cache_read: n, cache_write: 0, output: 0, thinking: 0, total: n });
   const shop = dates.map((date, i) => i === days - 1
-    ? day(date, { tokens: toks(3000000), mate_tokens: 1000000, crew_tokens: 2000000, spawned: { ship: 2, review: 1 },
+    ? day(date, { tokens: toks(3000000), mate_tokens: 1000000, crew_tokens: 2000000, done_tokens: 2400000, spawned: { ship: 2, review: 1 },
         closed: { finished: 3, discarded: 1 }, reviews: { pass: 1, "changes-requested": 2 }, incidents: { stale: 1, budget: 2 } })
-    : day(date, { tokens: toks(2000000), mate_tokens: 500000, crew_tokens: 1500000, spawned: { ship: 1 },
+    : day(date, { tokens: toks(2000000), mate_tokens: 500000, crew_tokens: 1500000, done_tokens: 1000000, spawned: { ship: 1 },
         closed: { finished: 2 }, reviews: { "changes-requested": 1 }, incidents: { stale: 1 } }));
   const docs = dates.map((date, i) => i === days - 1
     ? day(date, { tokens: toks(500000), crew_tokens: 500000, spawned: { scout: 1 }, closed: { didnt_start: 1 } })
@@ -237,6 +237,7 @@ function boardBody(days) {
   const total = dates.map((date, i) => {
     const a = shop[i], b = docs[i], sum = (x, y) => { const o = Object.assign({}, x); for (const k in y) o[k] = (o[k] || 0) + y[k]; return o; };
     return day(date, { tokens: toks(a.tokens.total + b.tokens.total), mate_tokens: a.mate_tokens + b.mate_tokens, crew_tokens: a.crew_tokens + b.crew_tokens,
+      done_tokens: a.done_tokens + b.done_tokens,
       spawned: sum(a.spawned, b.spawned), closed: sum(a.closed, b.closed), reviews: sum(a.reviews, b.reviews), incidents: sum(a.incidents, b.incidents) });
   });
   return { generated_at: "2026-10-03T14:32:07.000000000Z", last_event_id: 1, days, zone: "+07:00", dates, total,
@@ -1262,6 +1263,32 @@ test("the board's range and project buttons re-read and narrow it", async () => 
   assert.match(kpi(d, "Dropped").getAttribute("title"), /1 didn't start/);
   const today = d.querySelector("tbody tr");
   assert.deepEqual(today.children.map(c => c.text), ["Today", "500k", "1", "0", "1", "0", "0", "0", "0"]);
+});
+
+test("the board says whether a task done is getting dearer, by day then by week", async () => {
+  const app = await boot({ hash: "#board" });
+  let tp = app.drawer().querySelector('section[aria-label="Tokens per task done"]');
+  assert.ok(tp, "the trend sits on the board");
+  // 14 days: the earlier 7 spent 14M on 14 tasks, the later 7 15.5M on 15.
+  assert.match(tp.querySelector(".tpv").text, /\+3%.*A task done takes 1M tokens now, 1M in the earlier half: about the same\..*0\.97 tasks done per million tokens lately, 1\.00 before/);
+  assert.equal(tp.querySelector(".tpd").classes.length, 1, "+3% is not news either way");
+  const chart = tp.querySelector("svg.tpc");
+  assert.equal(chart.querySelectorAll("circle.tp-all").length, 14, "a point a day");
+  assert.equal(chart.querySelectorAll("circle.tp-task").length, 14);
+  assert.match(chart.querySelectorAll(".tpx").map(n => n.text).join("|"), /All tokens 1\.2M\|The task itself 800k/, "labelled at the newest point");
+  const tips = chart.querySelectorAll("title").map(n => n.text);
+  assert.match(tips[13], /3 done, 3\.5M spent\sAll tokens: 1\.2M per task\sThe task itself: 800k per task/);
+  assert.match(tp.querySelectorAll("svg.tps title").map(n => n.text)[0], /: 2 done$/);
+  assert.doesNotMatch(tp.text, /\$|USD|cost/i, "tokens, not money");
+
+  await app.click(app.drawer().querySelectorAll(".bseg button").find(b => b.text === "30 days"));
+  tp = app.drawer().querySelector('section[aria-label="Tokens per task done"]');
+  assert.equal(tp.querySelector("svg.tpc").querySelectorAll("circle.tp-all").length, 5, "30 days are four weeks and two days");
+  assert.match(tp.querySelector(".tpn").text, /One point per week/);
+
+  await app.click(app.drawer().querySelectorAll(".bseg button").find(b => b.text === "docs-site"));
+  tp = app.drawer().querySelector('section[aria-label="Tokens per task done"]');
+  assert.match(tp.text, /No task was done in these 30 days/);
 });
 
 const section = (d, label) => d.querySelector(`section[aria-label="${label}"]`);
