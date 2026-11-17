@@ -173,6 +173,7 @@ async function boot(opts = {}) {
       else if (p === "/api/work") body = fx.work || { projects: [] };
       else if (p === "/api/board") body = boardBody(Number(u.searchParams.get("days")));
       else if (p === "/api/board/day") body = boardDayBody(u.searchParams.get("date"));
+      else if (p === "/api/board/trend") body = trendBody(u.searchParams);
       else if ((m = /^\/api\/projects\/([^/]+)\/actions$/.exec(p))) body = (opts.actions || {})[m[1]] ||
         { project: m[1], read_only: "this dashboard is read-only: actions run in the dashboard `mate console` serves", mate: [], crews: {} };
       else if ((m = /^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/diff$/.exec(p))) body = { project: m[1], crew: m[2], branch: "mate/" + m[2], exists: true, text: "diff --git a/x b/x\n+one line\n" };
@@ -242,6 +243,41 @@ function boardBody(days) {
   });
   return { generated_at: "2026-10-03T14:32:07.000000000Z", last_event_id: 1, days, zone: "+07:00", dates, total,
     projects: [{ name: "shop", days: shop }, { name: "docs-site", days: docs }, { name: "infra", days: dates.map(d => day(d)) }] };
+}
+
+// trendBody is /api/board/trend at +07:00 ending 2026-10-03. By start
+// time a day starts 3 tasks, 2 done, for 2M tokens and 4h; today starts 4,
+// 3 done and 1 open, for 6.5M and 6h. A week is seven such days. An hour
+// slot zooms into one day: 09:00 starts 1, done, for 1M and 1h; 14:00
+// starts 3, 2 done and 1 open, for 2.5M and 5h. docs-site starts nothing.
+function trendBody(q) {
+  const slot = q.get("slot"), project = q.get("project") || "";
+  const H = 3600000;
+  const b = (from, to, started) => ({ from, to, tokens: 0, mate_tokens: 0, crew_tokens: 0, done: 0, done_tokens: 0,
+    started: Object.assign({ tasks: 0, done: 0, open: 0, tokens: 0, work_ms: 0 }, started) });
+  const day = i => new Date(Date.UTC(2026, 9, 3 - i)).toISOString().slice(0, 10);
+  let buckets = [];
+  if (slot === "1h") {
+    const date = (q.get("from") || day(0) + "T").slice(0, 10);
+    for (let h = 0; h < 24; h++) {
+      const hh = String(h).padStart(2, "0"), next = String(h + 1).padStart(2, "0");
+      const from = date + "T" + hh + ":00:00+07:00", to = h === 23 ? date + "T24:00:00+07:00" : date + "T" + next + ":00:00+07:00";
+      buckets.push(b(from, to, h === 9 ? { tasks: 1, done: 1, tokens: 1000000, work_ms: H }
+        : h === 14 ? { tasks: 3, done: 2, open: 1, tokens: 2500000, work_ms: 5 * H } : {}));
+    }
+  } else if (slot === "1w") {
+    const n = Number(q.get("count")) || 13;
+    for (let i = n - 1; i >= 0; i--) buckets.push(b(day(7 * i + 6) + "T00:00:00+07:00", day(7 * i - 1) + "T00:00:00+07:00",
+      { tasks: 21, done: 14, tokens: 14000000, work_ms: 28 * H }));
+  } else {
+    const n = Number(q.get("count")) || 14;
+    for (let i = n - 1; i >= 0; i--) buckets.push(b(day(i) + "T00:00:00+07:00", day(i - 1) + "T00:00:00+07:00", i === 0
+      ? { tasks: 4, done: 3, open: 1, tokens: 6500000, work_ms: 6 * H }
+      : { tasks: 3, done: 2, tokens: 2000000, work_ms: 4 * H }));
+  }
+  if (project === "docs-site") buckets = buckets.map(x => b(x.from, x.to, {}));
+  return { generated_at: "2026-10-03T14:32:07.000000000Z", last_event_id: 1, slot: slot || "1d", zone: "+07:00", project,
+    from: buckets[0].from, to: buckets[buckets.length - 1].to, buckets };
 }
 
 // boardDayBody is /api/board/day: today has a shop ship opened and
@@ -1265,30 +1301,59 @@ test("the board's range and project buttons re-read and narrow it", async () => 
   assert.deepEqual(today.children.map(c => c.text), ["Today", "500k", "1", "0", "1", "0", "0", "0", "0"]);
 });
 
-test("the board says whether a task done is getting dearer, by day then by week", async () => {
+test("the board sets tokens, tasks done and hours side by side by when the tasks started, and its slots open finer", async () => {
   const app = await boot({ hash: "#board" });
-  let tp = app.drawer().querySelector('section[aria-label="Tokens per task done"]');
-  assert.ok(tp, "the trend sits on the board");
-  // 14 days: the earlier 7 spent 14M on 14 tasks, the later 7 15.5M on 15.
-  assert.match(tp.querySelector(".tpv").text, /\+3%.*A task done takes 1M tokens now, 1M in the earlier half: about the same\..*0\.97 tasks done per million tokens lately, 1\.00 before/);
-  assert.equal(tp.querySelector(".tpd").classes.length, 1, "+3% is not news either way");
-  const chart = tp.querySelector("svg.tpc");
-  assert.equal(chart.querySelectorAll("circle.tp-all").length, 14, "a point a day");
-  assert.equal(chart.querySelectorAll("circle.tp-task").length, 14);
-  assert.match(chart.querySelectorAll(".tpx").map(n => n.text).join("|"), /All tokens 1\.2M\|The task itself 800k/, "labelled at the newest point");
+  const chartOf = () => app.drawer().querySelector('section[aria-label="Work by start time"]');
+  const slotBtn = n => chartOf().querySelectorAll(".bseg button").find(b => b.text === n);
+  const tile = label => chartOf().querySelectorAll(".bk").find(n => n.querySelector(".bkl").text === label);
+  let tp = chartOf();
+  assert.ok(tp, "the chart sits on the board");
+  assert.ok(app.requests.some(r => r.url === "/api/board/trend?slot=1d&count=14"), "a day slot follows the board's range");
+  // The earlier 7 days: 14M, 14 done, 28h. The later 7: 18.5M, 15 done, 30h.
+  assert.match(tile("Tokens").text, /32\.5M.*later half \+32% · 18\.5M vs 14M/);
+  assert.match(tile("Tasks done").text, /29.*later half \+7% · 15 vs 14/);
+  assert.match(tile("Hours worked").text, /58h.*later half \+7% · 30h vs 28h/);
+  assert.match(tile("Tokens per task done").text, /1\.1M.*later half \+23% · 1\.2M vs 1M/);
+  assert.ok(tile("Tokens per task done").querySelector(".bkd").classes.includes("down"), "dearer is bad news");
+  assert.match(tile("Hours per task done").text, /2\.0h.*later half 0% · 2\.0h vs 2\.0h/);
+  assert.equal(tile("Hours per task done").querySelector(".bkd").classes.length, 1, "no change is not news");
+  assert.equal(tile("Tokens").querySelector(".bkd").classes.length, 1, "a total is neither good nor bad");
+
+  let chart = tp.querySelector("svg.tpc");
+  assert.equal(chart.querySelectorAll("rect.cr-tok").length, 14, "a column a day");
+  assert.equal(chart.querySelectorAll("rect.cr-done").length, 14);
+  assert.equal(chart.querySelectorAll("rect.cr-rest").length, 14, "started and not done sits on the done");
+  assert.equal(chart.querySelectorAll("rect.cr-hrs").length, 14);
+  assert.deepEqual(chart.querySelectorAll(".tpa").filter(n => /^max /.test(n.text)).map(n => n.text), ["max 6.5M", "max 4", "max 6.0h"]);
   const tips = chart.querySelectorAll("title").map(n => n.text);
-  assert.match(tips[13], /3 done, 3\.5M spent\sAll tokens: 1\.2M per task\sThe task itself: 800k per task/);
-  assert.match(tp.querySelectorAll("svg.tps title").map(n => n.text)[0], /: 2 done$/);
+  assert.match(tips[13], /Sat Oct 3\s4 tasks started: 3 done, 1 open\s6\.5M tokens, 6\.0h worked\s2\.2M tokens and 2\.0h per task done/);
+  assert.match(tp.querySelector(".tpn").text, /One column per day\. A task counts in the slot it started in.*1 task is still open.*Click a column to open it by hour/);
   assert.doesNotMatch(tp.text, /\$|USD|cost/i, "tokens, not money");
 
-  await app.click(app.drawer().querySelectorAll(".bseg button").find(b => b.text === "30 days"));
-  tp = app.drawer().querySelector('section[aria-label="Tokens per task done"]');
-  assert.equal(tp.querySelector("svg.tpc").querySelectorAll("circle.tp-all").length, 5, "30 days are four weeks and two days");
-  assert.match(tp.querySelector(".tpn").text, /One point per week/);
+  // A day opens by the hour, and Back closes it again.
+  const hits = chart.querySelectorAll("rect.tph");
+  await app.click(hits[hits.length - 1]);
+  assert.ok(app.requests.some(r => r.url === "/api/board/trend?slot=1h&from=2026-10-03T00%3A00%3A00%2B07%3A00&to=2026-10-03T16%3A59%3A59Z"),
+    app.requests.map(r => r.url).filter(u => u.includes("trend")).join("\n"));
+  tp = chartOf();
+  assert.match(tp.querySelector(".tpcrumb").text, /Sat Oct 3/);
+  assert.equal(tp.querySelector("svg.tpc").querySelectorAll("rect.cr-tok").length, 2, "only the hours that started something");
+  assert.match(tp.querySelector("svg.tpc").querySelectorAll("title").map(n => n.text)[14], /Sat Oct 3 14:00\s3 tasks started: 2 done, 1 open\s2\.5M tokens, 5\.0h worked/);
+  assert.match(tile("Tokens per task done").text, /later half \+25%/);
+  assert.doesNotMatch(tp.querySelector(".tpn").text, /Click a column/, "an hour opens no further");
+  await app.click(tp.querySelector(".tpback"));
+  assert.equal(chartOf().querySelector(".tpcrumb"), null);
+  assert.equal(chartOf().querySelector("svg.tpc").querySelectorAll("rect.cr-tok").length, 14);
+
+  await app.click(slotBtn("1w"));
+  assert.ok(app.requests.some(r => r.url === "/api/board/trend?slot=1w&count=2"));
+  assert.match(chartOf().querySelector(".tpn").text, /One column per week.*open it by day/);
+  await app.click(slotBtn("1h"));
+  assert.ok(app.requests.some(r => r.url === "/api/board/trend?slot=1h"), "an hour slot keeps its own window");
 
   await app.click(app.drawer().querySelectorAll(".bseg button").find(b => b.text === "docs-site"));
-  tp = app.drawer().querySelector('section[aria-label="Tokens per task done"]');
-  assert.match(tp.text, /No task was done in these 30 days/);
+  assert.ok(app.requests.some(r => r.url === "/api/board/trend?slot=1h&project=docs-site"));
+  assert.match(chartOf().text, /No task started in this window/);
 });
 
 const section = (d, label) => d.querySelector(`section[aria-label="${label}"]`);

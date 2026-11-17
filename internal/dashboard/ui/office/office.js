@@ -576,7 +576,7 @@
       return Promise.all([actRead, inboxMode[s.project] === "log" ? loadInboxLog(s.project) : null]);
     }
     if (!s || s.kind === "cab") return Promise.resolve();
-    if (s.kind === "board") return Promise.all([loadBoard(), s.date ? loadBoardDay(s.date) : null]);
+    if (s.kind === "board") return Promise.all([loadBoard(), s.date ? null : loadTrend(), s.date ? loadBoardDay(s.date) : null]);
     if (!detail || detail.key !== key) detail = { key: key, loading: true };
     var path = s.kind === "crew" ? taskPath(s.project, s.crew) : matePath(s.project);
     var reads = [api(path).then(function (body) {
@@ -3113,7 +3113,7 @@
     if (!days.length) return [head, controls, el("p", { class: "cab-empty", text: "Nothing recorded for " + (boardProject || "this workspace") + "." })];
     var err = p && p.error ? el("p", { class: "room-err", text: "Tasks could not be read: " + p.error }) : null;
     if (date) return [head, controls, err].concat(boardDayView(days, date), [boardTable(days, date)]);
-    return [head, controls, err, boardKpis(days, days.length - 1), boardTrend(days), boardTable(days, "")];
+    return [head, controls, err, boardKpis(days, days.length - 1), boardTrend(), boardTable(days, "")];
   }
 
   // One day against the average of the other days in the window. Today is
@@ -3147,84 +3147,186 @@
     ]);
   }
 
-  // ------------------------------------------------------------ tokens per task done
+  // ------------------------------------------------------------ work by start time
 
-  // Is the work getting dearer? Tokens per ship or scout closed finished,
-  // two ways: everything spent (the Mate, every crew, reviews, dropped
-  // work) over the tasks done, and the done tasks' own lives with their
-  // reviews (done_tokens). Past two weeks a point is a week, so a quiet
-  // day does not read as a cliff. A bucket with nothing done has no point.
-  var TREND_SERIES = [
-    { key: "all", cls: "tp-all", label: "All tokens", why: "everything spent in the window - the Mate, every crew, reviews, dropped work - over the tasks done",
-      n: function (b) { return b.done ? b.tokens / b.done : null; } },
-    { key: "task", cls: "tp-task", label: "The task itself", why: "the done tasks' own tokens over their whole lives, their reviews included",
-      n: function (b) { return b.done ? b.doneTokens / b.done : null; } }
-  ];
+  // Is the work getting dearer? /api/board/trend cuts the board into slots
+  // of an hour, six hours, a day or a week, and this chart counts each
+  // slot's ships and scouts by when they started, whenever they ended:
+  // their tokens, how many got done, and their hours from spawn to close.
+  // Three scales, so three strips on one time axis rather than three
+  // axes; the tiles above set the later half of the window against the
+  // earlier. A slot opens into the next finer grain.
+  var TREND_SLOTS = ["1h", "6h", "1d", "1w"];
+  var TREND_FINER = { "1w": "1d", "1d": "1h", "6h": "1h" };
+  var TREND_UNIT = { "1h": "hour", "6h": "six hours", "1d": "day", "1w": "week" };
 
-  // trendBuckets is days by day up to two weeks, else by week ending on
-  // the last day, so the newest point is the last seven days whole.
-  function trendBuckets(days) {
-    var size = days.length > 14 ? 7 : 1;
-    var out = [];
-    for (var end = days.length; end > 0; end -= size) {
-      var part = days.slice(Math.max(0, end - size), end);
-      var b = { from: part[0].date, to: part[part.length - 1].date, days: part.length, tokens: 0, done: 0, doneTokens: 0 };
-      part.forEach(function (d) {
-        b.tokens += d.tokens ? d.tokens.total : 0;
-        b.done += (d.closed || {}).finished || 0;
-        b.doneTokens += d.done_tokens || 0;
-      });
-      out.unshift(b);
+  var trendSlot = storedTrendSlot();
+  var trendZoom = [];   // the slots opened, outermost first: {slot, from, to, name}
+  var trend = null;     // /api/board/trend: {key, body} | {key, error}
+  var trendPending = "";
+
+  function storedTrendSlot() {
+    try {
+      var v = window.localStorage.getItem("mate.office.trendSlot");
+      if (TREND_SLOTS.indexOf(v) >= 0) return v;
+    } catch (e) { /* storage is a convenience */ }
+    return "1d";
+  }
+
+  // trendQuery is what the chart shows now: the innermost slot opened, or
+  // the chosen slot over the board's range (a day and a week slot) or its
+  // own default (the hour slots, which would be too many over 90 days).
+  function trendQuery() {
+    var q = { slot: trendSlot };
+    var z = trendZoom[trendZoom.length - 1];
+    if (z) q = { slot: z.slot, from: z.from, to: z.to };
+    else if (trendSlot === "1d") q.count = boardDays;
+    else if (trendSlot === "1w") q.count = Math.max(2, Math.ceil(boardDays / 7));
+    if (boardProject) q.project = boardProject;
+    return "/api/board/trend?" + Object.keys(q).map(function (k) { return k + "=" + enc(String(q[k])); }).join("&");
+  }
+
+  function loadTrend() {
+    var key = trendQuery();
+    trendPending = key;
+    return api(key).then(function (body) {
+      if (trendPending === key) trend = { key: key, body: body };
+    }, function (err) {
+      if (trendPending === key) trend = { key: key, error: err };
+    });
+  }
+
+  // slotName is a slot in the server's wall clock, read off its RFC 3339
+  // text, so a browser in another zone names it as the board does.
+  function slotName(b, slot) {
+    var day = boardDayLabel(b.from.slice(0, 10));
+    if (slot === "1h") return day + " " + b.from.slice(11, 16);
+    if (slot === "6h") return day + " " + b.from.slice(11, 16) + "–" + (b.to.slice(11, 16) === "00:00" ? "24:00" : b.to.slice(11, 16));
+    if (slot === "1w") {
+      var p = b.to.slice(0, 10).split("-");
+      return day + " – " + boardDayLabel(new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] - 1)).toISOString().slice(0, 10));
     }
-    return { size: size, buckets: out };
+    return day;
   }
 
-  function trendBucketName(b, size) {
-    return size === 1 ? boardDayLabel(b.from) : boardDayLabel(b.from) + " – " + boardDayLabel(b.to);
+  function slotTick(b, slot) {
+    if (slot === "1h" || slot === "6h") {
+      var p = b.from.slice(0, 10).split("-");
+      return MONTHS[+p[1] - 1] + " " + +p[2] + " " + b.from.slice(11, 16);
+    }
+    return boardDayLabel(b.from.slice(0, 10));
   }
 
-  // trendHalves sets the later half of the window against the earlier,
-  // each as its tokens over its tasks done, so a busy day weighs what it
-  // did rather than counting once.
+  // cohortOf is a slot's started tasks; trendHalves sums the earlier and
+  // the later half of the window, so a ratio weighs each slot by its work
+  // rather than counting a quiet slot as much as a busy one.
+  function cohortOf(b) {
+    return b.started || { tasks: 0, done: 0, open: 0, tokens: 0, work_ms: 0 };
+  }
+
   function trendHalves(buckets) {
     var mid = Math.floor(buckets.length / 2);
     var sum = function (bs) {
-      var t = { tokens: 0, done: 0 };
-      bs.forEach(function (b) { t.tokens += b.tokens; t.done += b.done; });
+      var t = { tasks: 0, done: 0, open: 0, tokens: 0, work_ms: 0 };
+      bs.forEach(function (b) {
+        var c = cohortOf(b);
+        Object.keys(t).forEach(function (k) { t[k] += c[k] || 0; });
+      });
       return t;
     };
-    return { before: sum(buckets.slice(0, mid)), after: sum(buckets.slice(buckets.length - mid)) };
+    return { all: sum(buckets), before: sum(buckets.slice(0, mid)), after: sum(buckets.slice(buckets.length - mid)) };
   }
 
-  function boardTrend(days) {
-    var tb = trendBuckets(days);
-    var buckets = tb.buckets;
-    var unit = tb.size === 1 ? "day" : "week";
-    var h = trendHalves(buckets);
-    var head = el("h3", { class: "sh" }, ["Tokens per task done", el("span", { class: "bleg" }, TREND_SERIES.map(function (s) {
-      return el("span", { class: "tpk", title: s.why }, [el("i", { class: s.cls }), s.label]);
-    }))]);
-    var verdict;
-    if (!h.before.done || !h.after.done) {
-      verdict = el("p", { class: "tpv", text: "Not enough finished tasks in both halves of the window to say which way it is going." });
-    } else {
-      var a = h.before.tokens / h.before.done, b = h.after.tokens / h.after.done;
-      var pct = Math.round((b - a) / a * 100);
-      var tone = pct > 5 ? " down" : pct < -5 ? " up" : "";
-      var word = pct > 5 ? "dearer" : pct < -5 ? "cheaper" : "about the same";
-      verdict = el("p", { class: "tpv" }, [
-        el("b", { class: "tpd" + tone, text: (pct > 0 ? "+" : "") + pct + "%" }),
-        " A task done takes " + tok(Math.round(b)) + " tokens now, " + tok(Math.round(a)) + " in the earlier half: " + word + ". ",
-        el("span", { class: "tpm", text: (h.after.done / h.after.tokens * 1e6).toFixed(2) + " tasks done per million tokens lately, "
-          + (h.before.done / h.before.tokens * 1e6).toFixed(2) + " before." })
-      ]);
+  function trendControls() {
+    var zoomed = trendZoom.length > 0;
+    var seg = el("div", { class: "bseg", role: "group", "aria-label": "Slot" }, TREND_SLOTS.map(function (n) {
+      var on = !zoomed && n === trendSlot;
+      var b = el("button", { type: "button", class: on ? "on" : "", "aria-pressed": on ? "true" : "false",
+        "data-focus": "trend-slot:" + n, title: "one point per " + TREND_UNIT[n], text: n });
+      b.addEventListener("click", function () {
+        if (on) return;
+        trendSlot = n;
+        trendZoom = [];
+        try { window.localStorage.setItem("mate.office.trendSlot", n); } catch (e) { /* convenience */ }
+        draw();
+      });
+      return b;
+    }));
+    var kids = [seg];
+    if (zoomed) {
+      var back = el("button", { type: "button", class: "tpback", "data-focus": "trend-back", text: "← Back" });
+      back.addEventListener("click", function () { trendZoom.pop(); draw(); });
+      kids.push(back);
+      kids.push(el("span", { class: "tpcrumb", text: trendZoom.map(function (z) { return z.name; }).join(" › ") }));
     }
-    var any = buckets.some(function (b) { return b.done; });
-    if (!any) return el("section", { class: "ds tp", "aria-label": "Tokens per task done" }, [head,
-      el("p", { class: "cab-empty", text: "No task was done in these " + days.length + " days, so there is nothing to divide by." })]);
-    return el("section", { class: "ds tp", "aria-label": "Tokens per task done" }, [head, verdict,
-      trendChart(buckets, tb.size), doneStrip(buckets, tb.size),
-      el("p", { class: "tpn", text: "One point per " + unit + "; a " + unit + " with nothing done has none. Done counts ships and scouts closed finished." })]);
+    return el("div", { class: "tpctl" }, kids);
+  }
+
+  // trendOpen zooms into one slot at the next finer grain.
+  function trendOpen(b, slot) {
+    var finer = TREND_FINER[slot];
+    if (!finer) return;
+    trendZoom.push({ slot: finer, from: b.from, to: new Date(Date.parse(b.to) - 1000).toISOString().replace(/\.\d+Z$/, "Z"),
+      name: slotName(b, slot) });
+    draw();
+  }
+
+  function hoursOf(ms) {
+    var h = ms / 3600000;
+    return h >= 100 ? Math.round(h) + "h" : h >= 10 ? h.toFixed(0) + "h" : h >= 1 ? h.toFixed(1) + "h" : Math.round(ms / 60000) + "m";
+  }
+
+  // The tiles: each a number for the whole window and how its later half
+  // compares with its earlier. good says which way is better, for the
+  // colour; a total has none, more of it is neither.
+  var COHORT_TILES = [
+    { label: "Tokens", good: 0, n: function (t) { return t.tokens; }, fmt: tok,
+      why: "tokens of the tasks started in the window, their reviews included" },
+    { label: "Tasks done", good: 1, n: function (t) { return t.done; }, fmt: String,
+      why: "tasks started in the window and closed finished" },
+    { label: "Hours worked", good: 0, n: function (t) { return t.work_ms; }, fmt: hoursOf,
+      why: "the started tasks' time from spawn to close, or to now while open" },
+    { label: "Tokens per task done", good: -1, n: function (t) { return t.done ? t.tokens / t.done : null; }, fmt: function (v) { return tok(Math.round(v)); },
+      why: "every token the started tasks spent, dropped and open ones included, over the ones done" },
+    { label: "Hours per task done", good: -1, n: function (t) { return t.done ? t.work_ms / t.done : null; }, fmt: hoursOf,
+      why: "every hour the started tasks ran over the ones done" }
+  ];
+
+  function cohortTiles(h) {
+    return el("div", { class: "bkpi tpk5" }, COHORT_TILES.map(function (m) {
+      var v = m.n(h.all), a = m.n(h.before), b = m.n(h.after);
+      var delta = a != null && b != null && a > 0 ? Math.round((b - a) / a * 100) : null;
+      var tone = delta == null || Math.abs(delta) <= 5 || !m.good ? "" : (delta > 0) === (m.good > 0) ? " up" : " down";
+      return el("div", { class: "bk", title: m.why }, [
+        el("span", { class: "bkl", text: m.label }),
+        el("b", { text: v == null ? "–" : m.fmt(v) }),
+        el("span", { class: "bkd" + tone, text: delta == null ? "no earlier half to compare"
+          : "later half " + (delta > 0 ? "+" : "") + delta + "% · " + m.fmt(b) + " vs " + m.fmt(a) })
+      ]);
+    }));
+  }
+
+  function boardTrend() {
+    var key = trendQuery();
+    if ((!trend || trend.key !== key) && trendPending !== key) loadTrend().then(draw);
+    var head = el("h3", { class: "sh" }, ["Work by start time", el("span", { text: "each task in the slot it started" })]);
+    var wrap = function (kids) { return el("section", { class: "ds tp", "aria-label": "Work by start time" }, [head, trendControls()].concat(kids)); };
+    // The last answer stays up, faded, while the next one comes.
+    if (!trend || (trend.key !== key && !trend.body)) return wrap([el("p", { class: "cab-empty", text: "loading…" })]);
+    if (trend.error) return wrap([el("p", { class: "cab-empty", text: "The chart could not be read: " + (trend.error.reason || trend.error.message) })]);
+    var body = trend.body;
+    var slot = body.slot;
+    var buckets = body.buckets || [];
+    var unit = TREND_UNIT[slot] || slot;
+    var h = trendHalves(buckets);
+    if (!h.all.tasks) return wrap([el("p", { class: "cab-empty", text: "No task started in this window." })]);
+    var errs = Object.keys(body.errors || {});
+    var note = "One column per " + unit + ". A task counts in the slot it started in, whenever it ended"
+      + (h.all.open ? "; " + plural(h.all.open, "task is", "tasks are") + " still open, so the newest slots will still grow" : "") + "."
+      + (TREND_FINER[slot] ? " Click a column to open it by " + TREND_UNIT[TREND_FINER[slot]] + "." : "");
+    return wrap([cohortTiles(h), el("div", { class: "tpbody" + (trend.key !== key ? " stale" : "") }, [cohortChart(buckets, slot)]),
+      errs.length ? el("p", { class: "room-err", text: "Tasks could not be read for " + errs.join(", ") + ": their work is missing." }) : null,
+      el("p", { class: "tpn", text: note })]);
   }
 
   function svgEl(tag, attrs, kids) {
@@ -3234,107 +3336,69 @@
     return n;
   }
 
-  var TP_W = 640, TP_H = 170, TP_L = 52, TP_R = 168, TP_T = 10, TP_B = 22;
+  // The strips share one time axis; each has its own scale, named at its
+  // left with its tallest value at its right.
+  var CH_W = 640, CH_L = 92, CH_R = 64, CH_ROW = 52, CH_GAP = 14, CH_TICKS = 20;
+  var COHORT_ROWS = [
+    { key: "tokens", label: "Tokens", cls: "cr-tok", n: function (c) { return c.tokens; }, fmt: tok },
+    { key: "tasks", label: "Tasks done", cls: "cr-done", n: function (c) { return c.done; }, rest: function (c) { return c.tasks - c.done; }, fmt: String },
+    { key: "hours", label: "Hours worked", cls: "cr-hrs", n: function (c) { return c.work_ms; }, fmt: hoursOf }
+  ];
 
-  function tpX(i, n) {
-    var w = TP_W - TP_L - TP_R;
-    return TP_L + (n > 1 ? w * i / (n - 1) : w / 2);
-  }
-
-  // trendChart is one y-axis, tokens per task done, both series on it:
-  // they measure the same thing, the second only a part of the first.
-  function trendChart(buckets, size) {
-    var max = 0;
-    buckets.forEach(function (b) { TREND_SERIES.forEach(function (s) { var v = s.n(b); if (v != null) max = Math.max(max, v); }); });
-    var top = niceTop(max);
-    var plotH = TP_H - TP_T - TP_B;
-    var y = function (v) { return TP_T + plotH - v / top * plotH; };
+  function cohortChart(buckets, slot) {
     var n = buckets.length;
-    var kids = [], ends = [];
-    [0, 0.5, 1].forEach(function (f) {
-      kids.push(svgEl("line", { class: "tpg", x1: TP_L, x2: TP_W - TP_R, y1: y(top * f), y2: y(top * f) }));
-      kids.push(svgEl("text", { class: "tpa", x: TP_L - 6, y: y(top * f) + 4, "text-anchor": "end" }, [tok(Math.round(top * f))]));
+    var band = (CH_W - CH_L - CH_R) / n;
+    var bw = Math.max(2, Math.min(22, band - 2));
+    var H = COHORT_ROWS.length * (CH_ROW + CH_GAP) + CH_TICKS;
+    var kids = [];
+    var cx = function (i) { return CH_L + band * (i + 0.5); };
+    COHORT_ROWS.forEach(function (r, ri) {
+      var top = ri * (CH_ROW + CH_GAP);
+      var base = top + CH_ROW;
+      var max = 0;
+      buckets.forEach(function (b) { var c = cohortOf(b); max = Math.max(max, r.n(c) + (r.rest ? r.rest(c) : 0)); });
+      kids.push(svgEl("text", { class: "tpx", x: CH_L - 8, y: top + 14, "text-anchor": "end" }, [r.label]));
+      if (r.rest) kids.push(svgEl("text", { class: "tpa", x: CH_L - 8, y: top + 28, "text-anchor": "end" }, ["of started"]));
+      kids.push(svgEl("line", { class: "tpg", x1: CH_L, x2: CH_W - CH_R, y1: base + 0.5, y2: base + 0.5 }));
+      kids.push(svgEl("text", { class: "tpa", x: CH_W - CH_R + 6, y: top + 10 }, ["max " + (max ? r.fmt(max) : "0")]));
+      if (!max) return;
+      buckets.forEach(function (b, i) {
+        var c = cohortOf(b);
+        var v = r.n(c), rest = r.rest ? r.rest(c) : 0;
+        var x = (cx(i) - bw / 2).toFixed(1);
+        var hv = v ? Math.max(2, v / max * (CH_ROW - 4)) : 0;
+        var hr = rest ? Math.max(2, rest / max * (CH_ROW - 4)) : 0;
+        if (hv) kids.push(svgEl("rect", { class: "crb " + r.cls, x: x, y: (base - hv).toFixed(1), width: bw.toFixed(1), height: hv.toFixed(1), rx: Math.min(3, bw / 3) }));
+        // Started but not done sits on top, faded, a 2px gap above the done.
+        if (hr) kids.push(svgEl("rect", { class: "crb cr-rest", x: x, y: (base - hv - (hv ? 2 : 0) - hr).toFixed(1), width: bw.toFixed(1), height: hr.toFixed(1), rx: Math.min(3, bw / 3) }));
+      });
     });
     var ticks = n > 2 ? [0, Math.floor((n - 1) / 2), n - 1] : n === 2 ? [0, 1] : [0];
     ticks.forEach(function (i) {
-      kids.push(svgEl("text", { class: "tpa", x: tpX(i, n), y: TP_H - 6, "text-anchor": i === 0 && n > 1 ? "start" : i === n - 1 && n > 1 ? "end" : "middle" },
-        [i === n - 1 ? (size === 1 ? "today" : "last 7 days") : boardDayLabel(buckets[i].from)]));
+      kids.push(svgEl("text", { class: "tpa", x: cx(i), y: H - 6, "text-anchor": n > 1 && i === 0 ? "start" : n > 1 && i === n - 1 ? "end" : "middle" }, [slotTick(buckets[i], slot)]));
     });
-    TREND_SERIES.forEach(function (s) {
-      var d = "", last = null;
-      buckets.forEach(function (b, i) {
-        var v = s.n(b);
-        if (v == null) { last = null; return; }
-        d += (last == null ? "M" : "L") + tpX(i, n).toFixed(1) + " " + y(v).toFixed(1);
-        last = i;
-      });
-      if (d) kids.push(svgEl("path", { class: "tpl " + s.cls, d: d }));
-      buckets.forEach(function (b, i) {
-        var v = s.n(b);
-        if (v != null) kids.push(svgEl("circle", { class: "tpp " + s.cls, cx: tpX(i, n).toFixed(1), cy: y(v).toFixed(1), r: 4 }));
-      });
-      // The direct label sits at the newest point the series has.
-      for (var i = n - 1; i >= 0; i--) {
-        var v = s.n(buckets[i]);
-        if (v == null) continue;
-        ends.push({ s: s, x: tpX(i, n) + 8, y: y(v) + 4, v: v });
-        break;
-      }
-    });
-    // Two ends close together push apart, the higher value staying on top.
-    ends.sort(function (a, b) { return a.y - b.y; });
-    for (var k = 1; k < ends.length; k++) ends[k].y = Math.max(ends[k].y, ends[k - 1].y + 13);
-    ends.forEach(function (e) {
-      kids.push(svgEl("text", { class: "tpx", x: e.x, y: e.y }, [e.s.label + " " + tok(Math.round(e.v))]));
-    });
-    // Hover: a column per bucket, wider than its marks, naming both values.
-    var step = n > 1 ? (TP_W - TP_L - TP_R) / (n - 1) : TP_W - TP_L - TP_R;
+    // Hover: a column per slot over all three strips, naming every number;
+    // a click opens the slot at the next finer grain.
     buckets.forEach(function (b, i) {
-      kids.push(svgEl("rect", { class: "tph", x: (tpX(i, n) - step / 2).toFixed(1), y: TP_T, width: step.toFixed(1), height: plotH },
-        [svgEl("title", null, [trendTip(b, size)])]));
+      var hit = svgEl("rect", { class: "tph" + (TREND_FINER[slot] ? " open" : ""), x: (CH_L + band * i).toFixed(1), y: 0, width: band.toFixed(1),
+        height: H - CH_TICKS, "data-from": b.from }, [svgEl("title", null, [cohortTip(b, slot)])]);
+      if (TREND_FINER[slot]) hit.addEventListener("click", function () { trendOpen(b, slot); });
+      kids.push(hit);
     });
-    var labels = TREND_SERIES.map(function (s) { return s.label; }).join(" and ");
-    return svgEl("svg", { class: "tpc", viewBox: "0 0 " + TP_W + " " + TP_H, role: "img",
-      "aria-label": "Tokens per task done by " + (size === 1 ? "day" : "week") + ": " + labels }, kids);
+    return svgEl("svg", { class: "tpc", viewBox: "0 0 " + CH_W + " " + H, role: "img",
+      "aria-label": "Tasks by the " + unitWord(slot) + " they started in: tokens, tasks done and hours worked" }, kids);
   }
 
-  function trendTip(b, size) {
-    var parts = [trendBucketName(b, size), b.done + " done, " + tok(b.tokens) + " spent"];
-    TREND_SERIES.forEach(function (s) {
-      var v = s.n(b);
-      parts.push(s.label + ": " + (v == null ? "-" : tok(Math.round(v)) + " per task"));
-    });
+  function unitWord(slot) { return slot === "6h" ? "six-hour slot" : TREND_UNIT[slot]; }
+
+  function cohortTip(b, slot) {
+    var c = cohortOf(b);
+    var dropped = c.tasks - c.done - c.open;
+    var parts = [slotName(b, slot), plural(c.tasks, "task", "tasks") + " started: " + c.done + " done"
+      + (c.open ? ", " + c.open + " open" : "") + (dropped ? ", " + dropped + " dropped" : ""),
+      tok(c.tokens) + " tokens, " + hoursOf(c.work_ms) + " worked"];
+    if (c.done) parts.push(tok(Math.round(c.tokens / c.done)) + " tokens and " + hoursOf(c.work_ms / c.done) + " per task done");
     return parts.join("\n");
-  }
-
-  // doneStrip is the work itself, tasks done per bucket, on its own scale
-  // under the chart rather than a second axis on it.
-  function doneStrip(buckets, size) {
-    var max = 1;
-    buckets.forEach(function (b) { max = Math.max(max, b.done); });
-    var n = buckets.length, H = 44;
-    var step = n > 1 ? (TP_W - TP_L - TP_R) / (n - 1) : TP_W - TP_L - TP_R;
-    var bw = Math.max(3, Math.min(18, step - 2));
-    var kids = [svgEl("text", { class: "tpa", x: TP_L - 6, y: 14, "text-anchor": "end" }, ["done"]),
-      svgEl("line", { class: "tpg", x1: TP_L, x2: TP_W - TP_R, y1: H - 0.5, y2: H - 0.5 })];
-    buckets.forEach(function (b, i) {
-      var hgt = b.done ? Math.max(2, b.done / max * (H - 6)) : 0;
-      var x = tpX(i, n) - bw / 2;
-      if (hgt) kids.push(svgEl("rect", { class: "tpb", x: x.toFixed(1), y: (H - hgt).toFixed(1), width: bw.toFixed(1), height: hgt.toFixed(1), rx: 2 }));
-      kids.push(svgEl("rect", { class: "tph", x: (tpX(i, n) - step / 2).toFixed(1), y: 0, width: step.toFixed(1), height: H },
-        [svgEl("title", null, [trendBucketName(b, size) + ": " + b.done + " done"])]));
-    });
-    if (max > 0) kids.push(svgEl("text", { class: "tpx", x: TP_W - TP_R + 8, y: 14 }, ["max " + max]));
-    return svgEl("svg", { class: "tps", viewBox: "0 0 " + TP_W + " " + H, role: "img", "aria-label": "Tasks done by " + (size === 1 ? "day" : "week") }, kids);
-  }
-
-  // niceTop rounds a maximum up to 1, 2 or 5 times a power of ten.
-  function niceTop(v) {
-    if (!(v > 0)) return 1;
-    var p = Math.pow(10, Math.floor(Math.log10(v)));
-    var steps = [1, 2, 2.5, 5, 10];
-    for (var i = 0; i < steps.length; i++) if (steps[i] * p >= v) return steps[i] * p;
-    return 10 * p;
   }
 
   function boardDayName(days, date) {

@@ -404,28 +404,27 @@ svg.fc { position: absolute; left: 17%; top: 17%; width: 66%; height: 66%; fill:
 .bleg { display: flex; align-items: center; gap: 5px; }
 .bleg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-left: 6px; }
 .bm { background: var(--bCw); } .bc { background: var(--bIn); }
-/* Tokens per task done: one axis, the work on its own strip under it. */
-:root { --tpAll: #2F5FA7; --tpTask: #DCA235; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tpAll: #5F90D8; --tpTask: #B8842A; } }
-:root[data-theme="dark"] { --tpAll: #5F90D8; --tpTask: #B8842A; }
-.tpk { display: inline-flex; align-items: center; gap: 5px; }
-.bleg i.tp-all { background: var(--tpAll); } .bleg i.tp-task { background: var(--tpTask); }
-.tpv { margin: 0 0 6px; font-size: 13px; color: var(--ink); }
-.tpd { font-family: "Bricolage Grotesque", sans-serif; font-size: 18px; margin-right: 4px; }
-.tpd.up { color: var(--okT); } .tpd.down { color: var(--badT); }
-.tpm, .tpn { color: var(--ink2); }
-.tpn { margin: 4px 0 0; font-size: 11.5px; }
-.tpc, .tps { display: block; width: 100%; height: auto; overflow: visible; }
+/* Work by start time: three strips on one time axis, tiles above. */
+:root { --crTok: #2F5FA7; --crHrs: #DCA235; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --crTok: #5F90D8; --crHrs: #B8842A; } }
+:root[data-theme="dark"] { --crTok: #5F90D8; --crHrs: #B8842A; }
+.tpk5 { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 10px; }
+.tpk5 .bkd { white-space: normal; }
+.tpn { margin: 4px 0 0; font-size: 11.5px; color: var(--ink2); }
+.tpc { display: block; width: 100%; height: auto; overflow: visible; }
 .tpg { stroke: var(--line); stroke-width: 1; }
 .tpa { fill: var(--ink2); font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.tpx { fill: var(--ink); font-size: 11px; font-weight: 600; }
-.tpl { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.tpl.tp-all { stroke: var(--tpAll); } .tpl.tp-task { stroke: var(--tpTask); }
-.tpp { stroke: var(--surface); stroke-width: 2; }
-.tpp.tp-all { fill: var(--tpAll); } .tpp.tp-task { fill: var(--tpTask); }
-.tpb { fill: var(--ink2); opacity: .55; }
+.tpx { fill: var(--ink); font-size: 11.5px; font-weight: 600; }
+.crb.cr-tok { fill: var(--crTok); } .crb.cr-hrs { fill: var(--crHrs); }
+.crb.cr-done { fill: var(--ink); } .crb.cr-rest { fill: var(--ink2); opacity: .3; }
 .tph { fill: transparent; }
+.tph.open { cursor: zoom-in; }
 .tph:hover { fill: var(--hover); }
+.tpctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
+.tpback { min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer; }
+.tpcrumb { font-size: 12.5px; color: var(--ink2); }
+.tpbody.stale { opacity: .5; }
+@media (max-width: 759px) { .tpk5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .btab { overflow-x: auto; }
 .btab table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .btab th, .btab td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }

@@ -500,6 +500,51 @@ type BoardDay struct {
 	Incidents  map[string]int `json:"incidents"`
 }
 
+// BoardTrendResponse is GET /api/board/trend: the board's tokens and
+// finished work in slots of Slot (1h, 6h, 1d or 1w), From to To (RFC 3339,
+// To exclusive), for Project or, empty, the workspace. Errors names a
+// project whose tasks could not be read; its tokens still count.
+type BoardTrendResponse struct {
+	envelope
+	Slot    string             `json:"slot"`
+	Zone    string             `json:"zone"`
+	Project string             `json:"project,omitempty"`
+	From    string             `json:"from"`
+	To      string             `json:"to"`
+	Buckets []BoardTrendBucket `json:"buckets"`
+	Errors  map[string]string  `json:"errors,omitempty"`
+}
+
+// BoardTrendBucket is one slot: the tokens of the turns started in it,
+// split Mate and crews as a board day is, and the ships and scouts closed
+// finished in it with what they cost over their lives, reviews included
+// (BoardDay.DoneTokens).
+type BoardTrendBucket struct {
+	From       string `json:"from"`
+	To         string `json:"to"`
+	Tokens     int64  `json:"tokens"`
+	MateTokens int64  `json:"mate_tokens"`
+	CrewTokens int64  `json:"crew_tokens"`
+	Done       int    `json:"done"`
+	DoneTokens int64  `json:"done_tokens"`
+	// Started is the ships and scouts spawned in the slot, whenever they
+	// ended: the slot's work counted from when it began.
+	Started BoardCohort `json:"started"`
+}
+
+// BoardCohort is a set of ships and scouts counted by when they started:
+// Tasks of them, Done closed finished, Open still running, the rest
+// dropped. Tokens is their own tokens with their reviews' (Task.
+// TokensWithReviews) and WorkMs their time from spawn to close, or to now
+// for an open one (Task.AgeMs), so an open task's numbers still grow.
+type BoardCohort struct {
+	Tasks  int   `json:"tasks"`
+	Done   int   `json:"done"`
+	Open   int   `json:"open"`
+	Tokens int64 `json:"tokens"`
+	WorkMs int64 `json:"work_ms"`
+}
+
 // BoardDayResponse is GET /api/board/day: one of the board's days opened
 // up (CON-88). Every project is in it; the page filters by project.
 // Actors are who spent tokens that day, biggest first; Tasks every task
