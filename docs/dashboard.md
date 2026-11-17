@@ -256,7 +256,7 @@ A valid file has no top-level `error`.
 ## 3c. `GET /api/board?days=<n>`
 
 The Office's daily board (CON-84): one column per calendar day, oldest first, for the workspace and for each project.
-`days` defaults to 14 and is capped at 90; the board offers 7, 14 and 30.
+`days` defaults to 14 and is capped at 90; the board offers 7, 14, 30, 60 and 90.
 A day is the server clock's zone, named in `zone`, not UTC: `v_now.tokens_today` and the top bar's `Today` are a UTC day, so the two disagree in the hours the zones do.
 The response is not cached, because the window moves at midnight whether or not an event does.
 
@@ -266,6 +266,7 @@ Each day carries:
 - `spawned`: tasks spawned that day by `role` (`ship`, `scout`, `review`, as in section 3).
 - `closed`: ships and scouts closed that day by final state: `finished`, `discarded` (a `failed` task with no `failed_reason`), `didnt_start` (one with), or any other `close_state` as it is. There is no `merged`: the timeline sees only the merges mate made itself, and a PR merged on GitHub is not one of them, so a merged count would read as work not landing.
 - `reviews`: reviewers closed that day by verdict: `pass`, `changes-requested`, `incomplete`, or `no_verdict` for one closed without a Verdict. The Office calls `changes-requested` rework.
+- `done_tokens`: what the ships and scouts closed `finished` that day cost over their whole lives, their reviewers included (section 3's `tokens_with_reviews`). `tokens` is everything spent that day; this is the done work's own share of it.
 - `incidents`: incidents opened that day by `kind` (`stale`, `runtime_lost`, `wedged`, `budget`). `budget` is a crew or the project crossing its token budget. A harness running out of quota is not recorded on the timeline yet (CON-85), so the board cannot count it.
 
 `total` is every project summed. A project whose tasks could not be read carries `error`, and its tokens and incidents are still counted.
@@ -278,6 +279,27 @@ Each day carries:
              "mate_tokens": 0, "crew_tokens": 0, "spawned": {"ship": 5, "review": 7}, "closed": {"finished": 6, "discarded": 1},
              "reviews": {"pass": 5, "changes-requested": 2}, "incidents": {"budget": 7, "runtime_lost": 2}}],
   "projects": [{"name": "shop", "days": ["…one per date…"]}]
+}
+```
+
+## 3c-1. `GET /api/board/trend?slot=&from=&to=&count=&project=`
+
+The board's tokens and finished work cut into slots, for the Office's `Work by start time` chart: is a task done getting dearer?
+`slot` is `1h`, `6h`, `1d` (the default) or `1w`. Slots are the server clock's zone, as the board's days are: an hour, six hours from midnight, a day, a week from Monday.
+`from` and `to` are RFC 3339 instants, each moved to the start of its slot; `to`'s slot is the last one, and `to` defaults to now.
+Without `from` the window is `count` slots ending at `to`, or the slot's default (48 hours, 28 six-hour slots, 14 days, 13 weeks); `count` is 1 to 500.
+More than 500 slots, an unknown slot, `from` not before the end, or an unparseable time is a 400. `project` narrows it to one project; an unknown one is an empty window, not a 404.
+
+Each bucket is `from` and `to` (exclusive), the `tokens` of the turns started in it with `mate_tokens` and `crew_tokens` as on the board, and `done` and `done_tokens`: the ships and scouts closed `finished` in it and what they cost (3c). A `1d` bucket is the board's day.
+`started` counts the ships and scouts spawned in the slot instead, whenever they ended: `tasks`, `done` (closed `finished`), `open`, `tokens` (their `tokens_with_reviews`) and `work_ms` (spawn to close, or to now while open, section 3's `age_ms`). An open task's numbers keep growing. `errors` names a project whose tasks could not be read; its tokens still count.
+
+```json
+{
+  "generated_at": "…", "last_event_id": 412, "slot": "1h", "zone": "+07:00", "project": "shop",
+  "from": "2026-11-16T00:00:00+07:00", "to": "2026-11-17T00:00:00+07:00",
+  "buckets": [{"from": "2026-11-16T00:00:00+07:00", "to": "2026-11-16T01:00:00+07:00",
+               "tokens": 4200000, "mate_tokens": 900000, "crew_tokens": 3300000, "done": 2, "done_tokens": 2600000,
+               "started": {"tasks": 3, "done": 1, "open": 1, "tokens": 2100000, "work_ms": 5400000}}]
 }
 ```
 
@@ -804,17 +826,18 @@ A `configuration error` shows its message as text; when any app has an MCP serve
 A project with no apps has no block, and a failed read shows `Apps: ?` while the rest of the drawer still draws.
 It is a view, not a place to manage apps: no form, button or request beyond that GET.
 
-The hallway holds a whiteboard, `Daily board`, that opens `#board`: section 3c's numbers in a wide drawer, the whole workspace or one project, over 7, 14 or 30 days (the choice is remembered in the browser).
+The hallway holds a whiteboard, `Daily board`, that opens `#board`: section 3c's numbers in a wide drawer, the whole workspace or one project, over 7, 14, 30, 60 or 90 days (the choice is remembered in the browser).
 `Today so far` sets today against the average of the days before it in the window - tokens, tasks opened, done, dropped (discarded and didn't start), approved reviews, rework (reviews that requested changes), incidents and over budget - with the change coloured by which way is better; today is still running, so a lower number before evening is not news.
+`Work by start time` charts section 3c-1's `started` by `1h`, `6h`, `1d` or `1w` slot (remembered in the browser): each slot's ships and scouts counted where they started, whenever they ended. Three strips share one time axis, each on its own scale rather than a second axis: tokens, tasks done with the started-but-not-done faded on top, and hours worked. Five tiles above give the window's tokens, tasks done, hours, tokens per task done and hours per task done, each with its later half against its earlier; a per-task change past 5% is coloured (dearer or slower is bad news), a total is not. A day or week slot follows the board's range, the hour slots keep their own window. Hovering a column names all its numbers; clicking it opens that slot at the next finer grain (week to day, day or six hours to hour) with a `Back`; an hour opens no further. Open tasks keep growing, so the note under the chart says how many there are.
 `By day` is one row per day, newest first, with a token bar split into Mate and crews and each count's breakdown as its tooltip.
-The board reads `/api/board` only while it is open, and again when an event lands.
+The board reads `/api/board` and `/api/board/trend` only while it is open, and again when an event lands.
 
 The captain's desk in the hallway (on a phone, the captain's card) is a button that opens `#captain`; under the inbox line it says how much news is unread or waiting for an answer.
 The drawer lists every Mate's news, newest first: `Waiting on you` (unread and read-not-answered), `The Mate is on it` (answered), and `Earlier` (closed and dropped, the latest ten with `Show all`).
 Each row names its project, crew and `#id` with a status chip; opening it shows the question, context, options, when it was sent, read and answered, the captain's answer and the Mate's updates.
 It is a view: a news is answered in its Mate's REPL, and nothing here marks one seen. A project whose log cannot be read shows `<project>: news ?` with the reason as its tooltip.
 
-Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, `/api/news` (again on every quiet poll, because news moves without an event), and for an open drawer `/api/projects/{p}/mate` plus `/api/plugins?project=<p>`, `/api/projects/{p}/tasks/{crew}`, or `/api/board?days=<n>`.
+Reads: `/api/workspace`, `/api/now`, `/api/projects/{p}` per project, `/api/news` (again on every quiet poll, because news moves without an event), and for an open drawer `/api/projects/{p}/mate` plus `/api/plugins?project=<p>`, `/api/projects/{p}/tasks/{crew}`, or `/api/board?days=<n>` with `/api/board/trend`.
 It long-polls `/api/events` from the lowest `last_event_id` it holds (`wait=5` with a drawer open, 20 otherwise) and re-reads the floor when anyone moved.
 A `timeline_stale` in the answer turns the live pill `stale` with `timeline <p> since <time>: <error>` until an answer without it.
 
