@@ -1,0 +1,17 @@
+operator@host agy-measure % agy --dangerously-skip-permissions --model gemini-3.8-flash-low
+
+      ▄▀▀▄        Antigravity CLI 1.5.10
+     ▀▀▀▀▀▀       operator@example.com (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)
+   ▄▀▀    ▀▀▄     /private/tmp/agy-measure
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Reply with exactly: pong
+
+  pong
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+? for shortcuts                                                                           auto · Gemini 3.8 Flash · low

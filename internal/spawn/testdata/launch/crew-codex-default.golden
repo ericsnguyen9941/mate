@@ -118,7 +118,7 @@ worktree=.worktrees/shop-k3
 (rendered asset) sha256=6550e4c71b4dfd5a61adaefcae34600ba9778a3c796cf06492458df5010afc16
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/brief.md ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json mode=-rw------- bytes=2354 ---
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json mode=-rw------- bytes=2631 ---
 {
   "version": 1,
   "captured_at": "2026-09-17T10:00:00Z",
@@ -192,6 +192,18 @@ worktree=.worktrees/shop-k3
       "state": "missing"
     },
     {
+      "path": ".worktrees/shop-k3/.agents/rules/mate-brief.md",
+      "role": "agy_rule",
+      "bytes": 0,
+      "state": "missing"
+    },
+    {
+      "path": ".worktrees/shop-k3/GEMINI.md",
+      "role": "repo_gemini",
+      "bytes": 0,
+      "state": "missing"
+    },
+    {
       "path": "embedded:crew/brief.md.tmpl",
       "role": "crew_prompt_template",
       "sha256": "58a0a81abcb4f071bdcd491853caa4179abd70c139ef28fa3092add46b85edb9",
@@ -199,7 +211,7 @@ worktree=.worktrees/shop-k3
       "state": "configured"
     }
   ],
-  "fingerprint": "6d64adca7ad61f1008c4586a368ec42aed9ac139d34590b5a03588954ee00799"
+  "fingerprint": "a58f2547e6785cb8a596f7117d9ff5b586776f27a379a0ddc31839094bfca522"
 }
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json ---
 

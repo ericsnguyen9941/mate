@@ -1,0 +1,19 @@
+{
+  "captures": [
+    {"file": "../../../agy/testdata/screens/empty.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "empty"},
+    {"file": "../../../agy/testdata/screens/idle-after-turn.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "empty"},
+    {"file": "../../../agy/testdata/screens/idle-after-tools.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "empty"},
+    {"file": "../../../agy/testdata/screens/resume.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "empty"},
+    {"file": "../../../agy/testdata/screens/busy-generating.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "busy"},
+    {"file": "../../../agy/testdata/screens/busy-editing.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "busy"},
+    {"file": "../../../agy/testdata/screens/busy-running-command.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "busy"},
+    {"file": "../../../agy/testdata/screens/draft-pong.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "draft"},
+    {"file": "../../../agy/testdata/screens/draft-long.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "draft"},
+    {"file": "../../../agy/testdata/screens/draft-slash-menu.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "draft"},
+    {"file": "../../../agy/testdata/screens/exit-armed-draft.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "draft"},
+    {"file": "../../../agy/testdata/screens/empty.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "ready"},
+    {"file": "../../../agy/testdata/screens/idle-after-turn.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "ready"},
+    {"file": "../../../agy/testdata/screens/resume.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "ready"},
+    {"file": "../../../agy/testdata/screens/trust.txt", "version": "agy 1.5.10", "pane": "120x40", "source": "visible", "want": "unrecognized"}
+  ]
+}

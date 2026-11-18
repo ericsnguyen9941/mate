@@ -109,7 +109,8 @@ type LaunchFile struct {
 	Data []byte
 	// Exclude says the file is mate's, never the agent's work: in a git
 	// working tree it is excluded locally, so a `git add -A` cannot commit
-	// it onto the branch the Mate reviews. It must sit at the cwd's top.
+	// it onto the branch the Mate reviews. It must sit inside the cwd, so
+	// the exclude rule can name it from the tree's top.
 	Exclude bool
 }
 

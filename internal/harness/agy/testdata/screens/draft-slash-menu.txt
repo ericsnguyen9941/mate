@@ -1,0 +1,35 @@
+   ▄▀▀    ▀▀▄     /private/tmp/agy-measure2
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> What is the codeword? Answer with it only, do not read any file.
+
+  Unknown
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Resume with -c (or command below):
+agy --conversation=25e293c7-6659-4bdd-8e0f-9eafe3fd03a7
+operator@host agy-measure2 % agy --dangerously-skip-permissions --model gemini-3.8-flash-low --settings '
+{"trustedWorkspaces":["/private/tmp/agy-measure2"]}'
+
+      ▄▀▀▄        Antigravity CLI 1.5.10
+     ▀▀▀▀▀▀       operator@example.com (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)
+   ▄▀▀    ▀▀▄     /private/tmp/agy-measure2
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> What is the codeword? Answer with it only, do not read any file.
+
+  zebra-42
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> /quit
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> /exit (quit)  Exit the CLI
+
+  ↑/↓ Navigate · enter Select · tab Complete
+esc to cancel                                                                             auto · Gemini 3.8 Flash · low

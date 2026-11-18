@@ -126,7 +126,7 @@ func TestContractScreenReadsItsOwnReadyScreen(t *testing.T) {
 // Item 2: Prepare lays out each role on fixture directories and Build turns
 // that into a Crew spec, and a Mate spec or a refusal that names the
 // capability it lacks. Every file Prepare names lands inside the agent's cwd
-// or its state directory, and one to keep out of git sits at the cwd's top,
+// or its state directory, and one to keep out of git sits inside the cwd,
 // where spawn's local exclude rule can name it. Every env key a profile
 // declares points at an empty directory so no file of the operator's
 // reaches the launch.
@@ -163,8 +163,8 @@ func TestContractLauncherBuildsEachRole(t *testing.T) {
 				if !inside(cwd) && !inside(state) {
 					t.Errorf("%s: Prepare names %s, outside the cwd %s and the state directory %s", role, f.Path, cwd, state)
 				}
-				if f.Exclude && filepath.Dir(f.Path) != cwd {
-					t.Errorf("%s: %s is to be kept out of git but is not at the top of the cwd %s", role, f.Path, cwd)
+				if f.Exclude && !inside(cwd) {
+					t.Errorf("%s: %s is to be kept out of git but is not inside the cwd %s", role, f.Path, cwd)
 				}
 				if err := os.MkdirAll(filepath.Dir(f.Path), 0o755); err != nil {
 					t.Fatal(err)

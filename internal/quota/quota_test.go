@@ -186,17 +186,17 @@ func TestReadIsReadOnlyAndNamesBothHarnesses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snap.Version != "0.1.34" || len(snap.Readings) != 4 || !snap.Read.Equal(now) {
+	if snap.Version != "0.1.34" || len(snap.Readings) != 5 || !snap.Read.Equal(now) {
 		t.Fatalf("snapshot = %+v", snap)
 	}
-	// pi and grok name no quota-axi row (their Quota is unsupported), so
-	// each is read as assumed, and quota-axi is not asked about them.
-	// Order is the Crew default, then registration: codex, claude, pi, grok.
-	if pi := snap.Readings[2]; pi.Harness != "pi" || pi.Status != "unmeasured" || pi.Assumed == "" {
-		t.Fatalf("pi reading = %+v, want an assumed one", pi)
-	}
-	if g := snap.Readings[3]; g.Harness != "grok" || g.Status != "unmeasured" || g.Assumed == "" {
-		t.Fatalf("grok reading = %+v, want an assumed one", g)
+	// pi, grok and agy name no quota-axi row (their Quota is not verified),
+	// so each is read as assumed, and quota-axi is not asked about them.
+	// Order is the Crew default, then registration: codex, claude, pi, grok,
+	// agy.
+	for i, kind := range []string{"pi", "grok", "agy"} {
+		if r := snap.Readings[2+i]; string(r.Harness) != kind || r.Status != "unmeasured" || r.Assumed == "" {
+			t.Fatalf("%s reading = %+v, want an assumed one", kind, r)
+		}
 	}
 	got := process.CommandKey(fr.Calls[1])
 	if got != "quota-axi --json --no-credential-refresh --provider codex,claude" {

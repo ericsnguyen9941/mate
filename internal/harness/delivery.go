@@ -272,7 +272,7 @@ func (s LaunchSpec) deliveryLimit() (deliveryLimit, error) {
 		}
 		return deliveryLimit{
 			max:  max,
-			note: " (Codex 0.151.0 project_doc_max_bytes silently truncates the concatenated chain)",
+			note: " (the harness silently truncates instructions past its budget: Codex 0.151.0 project_doc_max_bytes, agy 1.5.10's 24000-byte rule cap)",
 		}, nil
 	case DeliveryAppendSystemPromptFile:
 		// The flag is the harness's spelling (LaunchPlan.ContextFlag); the
