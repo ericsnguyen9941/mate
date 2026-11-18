@@ -956,7 +956,9 @@ function chatView(p) {
   const list = [
     from ? h('button', { type: 'button', class: 'fold', onclick: () => (S.folded.set(p.name, true), render()) }, `Show ${from} earlier turn${from === 1 ? '' : 's'}`) : null,
     ...items.slice(from).flatMap((x) => [
-      h('div', { class: 'msg captain' }, x.text, h('div', { class: 'meta' }, h('span', {}, clock(x.at)))),
+      // A report (CON-280) heads with the app line the Mate replies to.
+      x.source === 'app' ? h('div', { class: 'msg-app' }, `· ${x.text}`, h('span', { class: 'at' }, clock(x.at)))
+        : h('div', { class: 'msg captain' }, x.text, h('div', { class: 'meta' }, h('span', {}, clock(x.at)))),
       x.error ? h('div', { class: 'msg mate' }, h('div', { class: 'meta' }, h('span', {}, `✕ This turn failed · ${x.error.split('\n')[0]}`)))
         : x.reply ? h('div', { class: 'msg mate' }, chatMarkdown(x.reply), h('div', { class: 'meta' },
           x.interrupted ? h('span', {}, '⊘ interrupted · the reply above is not complete') : h('span', {}, chatMeta(x)),

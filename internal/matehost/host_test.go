@@ -632,3 +632,36 @@ func TestSocketCaptainOps(t *testing.T) {
 		t.Fatalf("sessions = %+v, %v", list, err)
 	}
 }
+
+// TestRecentReadsTheEndOfTheHistory: Recent reads only the last bytes of a
+// history, skipping the line they cut, and the whole of a short one.
+func TestRecentReadsTheEndOfTheHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), HistoryName)
+	at := time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)
+	var size []int64
+	for i := range 3 {
+		appendItemFile(path, Item{At: at.Add(time.Duration(i) * time.Minute), Source: SourceApp, Text: strings.Repeat("x", 100), Reply: string(rune('a' + i)), Done: true})
+		st, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		size = append(size, st.Size())
+	}
+	replies := func(items []Item) string {
+		var b strings.Builder
+		for _, it := range items {
+			b.WriteString(it.Reply)
+		}
+		return b.String()
+	}
+	if got := replies(Recent(path, 1<<20)); got != "abc" {
+		t.Fatalf("whole history = %q, want abc", got)
+	}
+	// One byte into the first line: the cut line is skipped.
+	if got := replies(Recent(path, size[2]-1)); got != "bc" {
+		t.Fatalf("history less its first byte = %q, want bc", got)
+	}
+	if got := replies(Recent(filepath.Join(t.TempDir(), "none"), 10)); got != "" {
+		t.Fatalf("missing history = %q", got)
+	}
+}

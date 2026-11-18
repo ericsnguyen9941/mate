@@ -424,10 +424,20 @@ func (m *Model) sendDraft(text string) {
 }
 
 // InChat reports whether a finished item takes room in the chat: a
-// captain message outside any news, with the Mate's reply to it. The
-// dashboard's chats show the same items.
+// captain message outside any news, with the Mate's reply to it, or a
+// Report. The dashboard's chats show the same items.
 func (it Item) InChat() bool {
-	return it.News == 0 && it.Source == SourceCaptain
+	return it.News == 0 && (it.Source == SourceCaptain || it.Report())
+}
+
+// Report reports whether a finished item is the Mate telling the captain
+// about an app line, such as a crew's hand-back (CON-280): the manual has
+// the Mate say what the captain should know in its reply to the line, so
+// the chat shows that reply and the core notifies it. A reply of `—`, a
+// turn that failed or was cut off, and a stow's receipt are not.
+func (it Item) Report() bool {
+	return it.Source == SourceApp && it.Done && it.News == 0 && it.Label != "stow" &&
+		it.Error == "" && !it.Interrupted && !it.Silent && !Silent(it.Reply) && strings.TrimSpace(it.Reply) != ""
 }
 
 func (m Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {

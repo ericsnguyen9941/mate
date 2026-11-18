@@ -208,23 +208,26 @@ func TestREPLMouseWheel(t *testing.T) {
 }
 
 // TestREPLChatIsTheConversation: the chat is the captain's messages and
-// the Mate's replies (CON-151). App turns stay out, whether the Mate had
-// something to say or saved itself before a restart.
+// the Mate's replies (CON-151), and what the Mate tells the captain about
+// an app line, under that line (CON-280). A reply of `—`, a stow's receipt
+// and a failed app turn stay out.
 func TestREPLChatIsTheConversation(t *testing.T) {
 	m := sampleModel(80, 30)
 	m.items = append(m.items[:3],
-		Item{At: m.now(), Source: SourceApp, Label: "digest", Text: Marker + "digest: e1 merged", Reply: "HU-165 is done and set to Done in Linear.", Done: true, MS: 4000},
+		Item{At: m.now(), Source: SourceApp, Label: "digest", Text: Marker + "digest: 1 item(s) — e1 wait-mate: \"report ready\" — status files under /x; act per AGENTS.md section 10",
+			Reply: "HU-165 is done and set to Done in Linear.", Done: true, MS: 4000},
 		Item{At: m.now(), Source: SourceApp, Label: "stow", Text: Marker + "stow: you are about to be restarted",
 			Reply: "Everything is saved, so a restart loses nothing this session knew.", Done: true, MS: 9000},
 		Item{At: m.now(), Source: SourceApp, Label: "event", Text: Marker + "event: e1 failed", Done: true, Error: "exit status 1"})
-	for _, view := range []string{ansi.Strip(m.View()), func() string {
-		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
-		return ansi.Strip(next.(Model).View())
-	}()} {
-		for _, not := range []string{"HU-165", "Everything is saved", "ghi nhớ", "digest", "lỗi"} {
-			if strings.Contains(view, not) {
-				t.Fatalf("an app turn entered the chat (%q):\n%s", not, view)
-			}
+	view := ansi.Strip(m.View())
+	for _, want := range []string{"· e1 wait-mate: \"report ready\"", "● HU-165 is done"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the Mate's report is not in the chat (%q):\n%s", want, view)
+		}
+	}
+	for _, not := range []string{"Everything is saved", "e1 failed", "lỗi", "act per AGENTS.md"} {
+		if strings.Contains(view, not) {
+			t.Errorf("an app turn that is no report entered the chat (%q):\n%s", not, view)
 		}
 	}
 }
@@ -261,9 +264,9 @@ func TestREPLHoldsTheReadPlace(t *testing.T) {
 	if got := top(m); got != before {
 		t.Fatalf("a growing turn moved the view: %q, was %q", got, before)
 	}
-	m.apply(Event{Item: &Item{At: at, Source: SourceApp, Label: "event", Reply: "Crew e1 xong.", Done: true}})
+	m.apply(Event{Item: &Item{At: at, Source: SourceApp, Label: "event", Reply: "—", Silent: true, Done: true}})
 	if m.unseen != 0 {
-		t.Fatalf("an app turn counted as unseen: %d", m.unseen)
+		t.Fatalf("an app turn with nothing for the captain counted as unseen: %d", m.unseen)
 	}
 	m.apply(Event{Item: &Item{At: at, Source: SourceCaptain, Text: "đang chạy", Reply: "một\n\nhai\n\nba\n\nbốn", Done: true}})
 	if got := top(m); got != before {
@@ -271,6 +274,10 @@ func TestREPLHoldsTheReadPlace(t *testing.T) {
 	}
 	if m.unseen != 1 {
 		t.Fatalf("unseen = %d, want 1", m.unseen)
+	}
+	m.apply(Event{Item: &Item{At: at.Add(time.Second), Source: SourceApp, Label: "event", Text: Marker + "event: e1 done", Reply: "Crew e1 xong.", Done: true}})
+	if m.unseen != 2 {
+		t.Fatalf("the Mate's report did not count as unseen: %d, want 2", m.unseen)
 	}
 
 	// At the end the chat still follows what comes.
