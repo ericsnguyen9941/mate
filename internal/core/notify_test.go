@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,7 @@ func loadNotifications(ws *store.Workspace, dashboardURL string, now time.Time) 
 	if err != nil {
 		return notifications.Snapshot{}, err
 	}
-	return notificationSnapshot(context.Background(), ws, snap, dashboardURL, now), nil
+	return notificationSnapshot(context.Background(), ws, snap, dashboardURL, &replyReader{}, now), nil
 }
 
 func TestNotificationSnapshotUsesOwedNewsAcrossProjects(t *testing.T) {
@@ -251,5 +252,50 @@ func TestNativeNotifierFollowsSupported(t *testing.T) {
 	}
 	if got, want := NativeNotifier() != nil, notifications.Supported(); got != want {
 		t.Fatalf("notify-send on PATH: notifier %v, Supported() %v", got, want)
+	}
+}
+
+// TestNotificationSnapshotCarriesTheMatesReports: what a headless Mate
+// told the captain in reply to an app line reaches the notifications, in
+// plain words, and a reply of `—` or a stow's receipt does not (CON-280).
+func TestNotificationSnapshotCarriesTheMatesReports(t *testing.T) {
+	ws := shopWorkspace(t)
+	if err := ws.WriteMateMeta("shop", map[string]string{"harness": "claude", "agent": "mate-shop", store.MetaMateMode: store.MateModeHeadless}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 18, 3, 37, 0, 0, time.UTC)
+	history := matehost.HistoryPath(ws.MateDir("shop"))
+	for _, it := range []matehost.Item{
+		{At: at, Source: matehost.SourceApp, Label: "digest", Text: matehost.Marker + "digest: e1 wait-mate", Reply: "—", Silent: true, Done: true},
+		{At: at.Add(time.Minute), Source: matehost.SourceApp, Label: "digest", Text: matehost.Marker + "digest: e2 wait-mate", Done: true, MS: 60000,
+			Reply: "Bản thử **ElevenLabs** đã có trên `VID-48`.\n\n- **Làm được:** đoạn trầm"},
+		{At: at.Add(3 * time.Minute), Source: matehost.SourceApp, Label: "stow", Text: matehost.Marker + "stow: restart", Reply: "Saved.", Done: true},
+	} {
+		appendItemFileForTest(t, history, it)
+	}
+	snap, err := loadNotifications(ws, "http://127.0.0.1:9999/", at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := snap.Projects[0].Replies
+	want := notifications.Reply{At: at.Add(2 * time.Minute), Text: "Bản thử ElevenLabs đã có trên VID-48. Làm được: đoạn trầm", URL: "http://127.0.0.1:9999/office/#mate/shop"}
+	if len(got) != 1 || !got[0].At.Equal(want.At) || got[0].Text != want.Text || got[0].URL != want.URL {
+		t.Fatalf("replies = %+v, want [%+v]", got, want)
+	}
+}
+
+func appendItemFileForTest(t *testing.T, path string, it matehost.Item) {
+	t.Helper()
+	data, err := json.Marshal(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		t.Fatal(err)
 	}
 }

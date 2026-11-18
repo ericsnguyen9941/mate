@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -963,6 +964,43 @@ func appendItemFile(path string, it Item) {
 	}
 	defer f.Close()
 	_, _ = f.Write(append(data, '\n'))
+}
+
+// Recent returns the items in the last max bytes of a history file, oldest
+// first: History for a reader that wants only what came lately, without
+// reading a file the host lets grow to a megabyte (spawn.HostLogMax). The
+// line those bytes start in is skipped, whole or cut, like one that does
+// not parse.
+func Recent(path string, max int64) []Item {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil
+	}
+	cut := st.Size() > max
+	if cut {
+		if _, err := f.Seek(st.Size()-max, io.SeekStart); err != nil {
+			return nil
+		}
+	}
+	var items []Item
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 8*1024*1024)
+	for sc.Scan() {
+		if cut {
+			cut = false
+			continue
+		}
+		var it Item
+		if json.Unmarshal(sc.Bytes(), &it) == nil {
+			items = append(items, it)
+		}
+	}
+	return items
 }
 
 // History returns the last n items of a history file, oldest first. A

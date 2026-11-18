@@ -1,5 +1,5 @@
-// Package notifications delivers captain news, work board moves and periodic
-// recorded-state reports.
+// Package notifications delivers captain news, work board moves, the
+// Mate's replies to app lines and periodic recorded-state reports.
 // It does not call a model or infer that an agent is stuck from silence.
 package notifications
 
@@ -42,10 +42,20 @@ type Work struct {
 	URL   string
 }
 
+// Reply is what the Mate told the captain in its reply to an app line,
+// such as a crew's hand-back (CON-280): At is when the reply ended, and
+// Text its first words.
+type Reply struct {
+	At   time.Time
+	Text string
+	URL  string
+}
+
 type Project struct {
 	Name    string
-	News    []News // Only news waiting for the captain.
-	Work    []Work // Each open row's latest move.
+	News    []News  // Only news waiting for the captain.
+	Work    []Work  // Each open row's latest move.
+	Replies []Reply // The Mate's latest replies, oldest first.
 	Summary string
 }
 type Snapshot struct {
@@ -63,6 +73,8 @@ type state struct {
 	// that saw a receipts file without it. Older moves never alert, so the
 	// first run does not replay a board's history.
 	WorkFrom time.Time `json:"work_from,omitzero"`
+	// RepliesFrom is WorkFrom for the Mate's replies.
+	RepliesFrom time.Time `json:"replies_from,omitzero"`
 }
 
 // NextReport is when the periodic report falls due by the receipts at
@@ -115,6 +127,9 @@ func Tick(ctx context.Context, path string, snap Snapshot, sender Sender, now ti
 	}
 	if s.WorkFrom.IsZero() {
 		s.WorkFrom = now
+	}
+	if s.RepliesFrom.IsZero() {
+		s.RepliesFrom = now
 	}
 	save := func() error {
 		b, err := json.Marshal(s)
@@ -175,6 +190,40 @@ func Tick(ctx context.Context, path string, snap Snapshot, sender Sender, now ti
 			if err := save(); err != nil {
 				return err
 			}
+		}
+	}
+	// A reply is a report too. Only a project's newest one alerts, saying
+	// how many came with it, so a core that was down does not replay them;
+	// it replaces the project's last one in the notification centre.
+	for _, p := range snap.Projects {
+		key := p.Name + "/reply"
+		from := s.RepliesFrom
+		if t, err := time.Parse(time.RFC3339Nano, s.Delivered[key]); err == nil && t.After(from) {
+			from = t
+		}
+		var fresh []Reply
+		for _, r := range p.Replies {
+			if r.At.After(from) {
+				fresh = append(fresh, r)
+			}
+		}
+		if len(fresh) == 0 {
+			continue
+		}
+		last := fresh[len(fresh)-1]
+		body := last.Text
+		if len(fresh) > 1 {
+			body += fmt.Sprintf("\n(+%d tin trước đó)", len(fresh)-1)
+		}
+		digest := sha256.Sum256([]byte(path + "\x00" + key))
+		msg := Message{ID: fmt.Sprintf("reply-%x", digest[:12]), Title: "Mate · " + p.Name + " · Mate báo", Body: body + "\nMở Mate để đọc hết.", URL: last.URL}
+		if err := sender.Send(ctx, msg); err != nil {
+			return err
+		}
+		s.Delivered[key] = last.At.UTC().Format(time.RFC3339Nano)
+		s.ReportAt = now
+		if err := save(); err != nil {
+			return err
 		}
 	}
 	// Begin a fresh quiet interval after the last poll with outstanding news.

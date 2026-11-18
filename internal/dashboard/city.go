@@ -193,9 +193,9 @@ func (s *Server) addProject(w http.ResponseWriter, r *http.Request, req ActionRe
 }
 
 // ChatResponse is GET /api/projects/{project}/chat: the headless Mate's
-// conversation as its REPL shows it (`mate/history.jsonl`, captain
-// messages outside a news only), newest last, and what the Mate is doing
-// now.
+// conversation as its REPL shows it (`mate/host.jsonl`, captain messages
+// outside a news and the Mate's reports, matehost.Item.InChat), newest
+// last, and what the Mate is doing now.
 type ChatResponse struct {
 	envelope
 	Project  string          `json:"project"`
@@ -223,7 +223,9 @@ type ChatHeld struct {
 	LeftMS int64  `json:"left_ms"`
 }
 
-// ChatItem is one message and its reply.
+// ChatItem is one message and its reply. For a report (Source app) Text is
+// the app line in one line (matehost.Summary), which the chat shows above
+// the reply.
 type ChatItem struct {
 	At          string   `json:"at"`
 	Source      string   `json:"source"`
@@ -244,8 +246,8 @@ type ChatItem struct {
 const chatLimit = 80
 
 // chatHistory is the last n items of a Mate's history the chat shows: the
-// captain's messages and the Mate's replies, as its REPL shows them
-// (CON-151).
+// captain's messages and the Mate's replies (CON-151) and reports
+// (CON-280), as its REPL shows them.
 func chatHistory(path string, n int) []matehost.Item {
 	var out []matehost.Item
 	for _, it := range matehost.History(path, 0) {
@@ -265,6 +267,9 @@ func chatItems(items []matehost.Item) []ChatItem {
 		c := ChatItem{At: db.FormatTime(it.At), Source: it.Source, Label: it.Label, Text: it.Text, Reply: it.Reply,
 			Silent: it.Silent, Interrupted: it.Interrupted, Error: it.Error, Done: it.Done, MS: it.MS, Tokens: it.Tokens,
 			News: it.News, Tools: []string{}}
+		if it.Source == matehost.SourceApp {
+			c.Text = matehost.Summary(it.Text)
+		}
 		for _, t := range it.Tools {
 			c.Tools = append(c.Tools, t.Name)
 		}

@@ -159,6 +159,8 @@ h3.sec .r { margin-left: auto; text-transform: none; letter-spacing: 0; font-siz
 .msg { max-width: 92%; padding: 8px 11px; border-radius: 12px; overflow-wrap: anywhere; }
 .msg.captain { white-space: pre-wrap; align-self: flex-end; background: var(--ink); color: var(--card); border-bottom-right-radius: 4px; }
 .msg.mate { align-self: flex-start; background: var(--card-2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.msg-app { align-self: stretch; display: flex; gap: 8px; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.msg-app .at { margin-left: auto; white-space: nowrap; }
 .msg.pending { background: var(--card); color: var(--ink); border: 1px dashed var(--ink); }
 .msg .meta { display: flex; gap: 8px; font-size: 11.5px; color: var(--muted); margin-top: 4px; flex-wrap: wrap; align-items: center; }
 .msg.captain .meta { color: rgba(255, 253, 248, .7); }

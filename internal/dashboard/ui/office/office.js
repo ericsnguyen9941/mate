@@ -2004,7 +2004,8 @@
         } else if (it.interrupted) reply = el("p", { class: "turn-meta" }, "⊘ interrupted");
         nodes.push(el("div", { class: "tx" }, [
           el("div", { class: "tx-h" }, head),
-          el("div", { class: "msg me", text: it.text }),
+          // A report (CON-280) heads with the app line the Mate replies to.
+          it.source === "app" ? el("p", { class: "turn-meta", text: "· " + it.text }) : el("div", { class: "msg me", text: it.text }),
           reply
         ]));
       });

@@ -198,3 +198,46 @@ func TestWorkMovesAlertOncePerMoveAfterTheFirstTick(t *testing.T) {
 		t.Fatalf("report did not follow: %+v", sender.messages)
 	}
 }
+
+// TestRepliesAlertTheNewestOnceAfterTheFirstTick: the Mate's replies to
+// app lines alert (CON-280), never the ones before the first tick, and
+// several at once alert as the newest with a count.
+func TestRepliesAlertTheNewestOnceAfterTheFirstTick(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notifications.json")
+	at := time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)
+	sender := &recordingSender{}
+	old := Reply{At: at.Add(-time.Hour), Text: "cũ"}
+	snap := Snapshot{Complete: true, Projects: []Project{{Name: "vf", Summary: "yên", Replies: []Reply{old}}}}
+	tick := func(d time.Duration) {
+		t.Helper()
+		if err := Tick(context.Background(), path, snap, sender, at.Add(d)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tick(0)
+	if len(sender.messages) != 0 {
+		t.Fatalf("history replayed: %+v", sender.messages)
+	}
+	one := Reply{At: at.Add(time.Minute), Text: "Bản thử đã lên VID-48", URL: "http://x/office/#mate/vf"}
+	snap.Projects[0].Replies = []Reply{old, one}
+	tick(2 * time.Minute)
+	tick(3 * time.Minute)
+	if len(sender.messages) != 1 {
+		t.Fatalf("messages: %+v", sender.messages)
+	}
+	m := sender.messages[0]
+	if m.Title != "Mate · vf · Mate báo" || m.Body != "Bản thử đã lên VID-48\nMở Mate để đọc hết." || m.URL != one.URL {
+		t.Fatalf("message: %+v", m)
+	}
+	two := Reply{At: at.Add(4 * time.Minute), Text: "hai"}
+	three := Reply{At: at.Add(5 * time.Minute), Text: "ba"}
+	snap.Projects[0].Replies = []Reply{old, one, two, three}
+	tick(6 * time.Minute)
+	if len(sender.messages) != 2 || sender.messages[1].ID != m.ID || sender.messages[1].Body != "ba\n(+1 tin trước đó)\nMở Mate để đọc hết." {
+		t.Fatalf("two new replies should alert once, as the newest: %+v", sender.messages)
+	}
+	tick(7 * time.Minute)
+	if len(sender.messages) != 2 {
+		t.Fatalf("a reply alerted twice: %+v", sender.messages)
+	}
+}

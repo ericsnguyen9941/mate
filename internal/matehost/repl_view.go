@@ -426,7 +426,7 @@ func (m Model) itemLines(it Item, w int, last bool) []string {
 	if it.Source == SourceCaptain {
 		out = append(captainLines(it, w), "")
 	} else {
-		out = []string{styleFaint.Render(fmt.Sprintf("   · %s · %s", it.Label, it.At.Format("15:04")))}
+		out = []string{appLine(it, w), ""}
 	}
 	switch {
 	case !it.Done:
@@ -459,6 +459,13 @@ func (m Model) liveLines(it Item, w int) []string {
 	out := replyLines(said, w)
 	out[len(out)-1] += styleAccent.Render("▌")
 	return out
+}
+
+// appLine heads a Report: the app line the Mate replies to, in one line.
+func appLine(it Item, w int) string {
+	at := it.At.Format("15:04")
+	text := ansi.Truncate(Summary(it.Text), max(10, w-3-len(at)-3), "…")
+	return spread(styleFaint.Render(" · "+text), styleMuted.Render(at)+" ", w)
 }
 
 func captainLines(it Item, w int) []string {

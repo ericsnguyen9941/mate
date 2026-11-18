@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	neturl "net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -67,6 +68,8 @@ type notifyLoop struct {
 	// stat records each tick past the shared snapshot it waits for, which
 	// is the snapshot's own cost (CON-263); nil records nothing.
 	stat *loopstat.Loop
+	// replies reads the Mates' reports for each tick.
+	replies replyReader
 
 	// cancel and done are set by Start and read by Stop: the engine calls
 	// each once, Stop on a goroutine it starts after Start has returned.
@@ -209,7 +212,7 @@ func (n *notifyLoop) run(ctx context.Context, ws *store.Workspace, path, dashboa
 		now := time.Now()
 		if err == nil {
 			start := n.stat.Begin()
-			err = notifications.Tick(ctx, path, notificationSnapshot(ctx, ws, snap, dashboardURL, now), n.sender, now)
+			err = notifications.Tick(ctx, path, notificationSnapshot(ctx, ws, snap, dashboardURL, &n.replies, now), n.sender, now)
 			n.stat.End(start)
 		}
 		n.setStatus(err)
@@ -262,7 +265,7 @@ func (n *notifyLoop) read() (string, error) {
 	return n.status, n.err
 }
 
-func notificationSnapshot(ctx context.Context, ws *store.Workspace, snap query.Snapshot, dashboardURL string, now time.Time) notifications.Snapshot {
+func notificationSnapshot(ctx context.Context, ws *store.Workspace, snap query.Snapshot, dashboardURL string, replies *replyReader, now time.Time) notifications.Snapshot {
 	out := notifications.Snapshot{Complete: true}
 	// The dashboard's URL can be the loopback one followed by the LAN one
 	// (dashboardPart); the click opens on this machine, so loopback.
@@ -280,6 +283,9 @@ func notificationSnapshot(ctx context.Context, ws *store.Workspace, snap query.S
 			np.News = append(np.News, notifications.News{Key: fmt.Sprintf("%s/news/%d", p.ProjectID, n.ID), Revision: n.At.UTC().Format(time.RFC3339Nano), Title: fmt.Sprintf("#%d · %s", n.ID, n.Title)})
 		}
 		np.Work = workMoves(p, office)
+		if ws.MateHeadless(p.ProjectID) {
+			np.Replies = replies.replies(ws.MateDir(p.ProjectID), office, p.ProjectID)
+		}
 		np.Summary = notificationSummary(ctx, ws, p, now)
 		out.Projects = append(out.Projects, np)
 	}
@@ -330,6 +336,83 @@ func workMoves(p query.ProjectNode, office string) []notifications.Work {
 		out = append(out, notifications.Work{Key: fmt.Sprintf("%s/work/%d", p.ProjectID, w.ID), At: move.At, Title: title, Body: body, URL: url})
 	}
 	return out
+}
+
+// replyTail is how much of the end of a Mate's history replyReader reads:
+// a reply the Mate wrote longer ago than that much history is not news.
+const replyTail = 256 << 10
+
+// replyRunes bounds the opening of a reply a notification carries.
+const replyRunes = 240
+
+// replyReader reads a headless Mate's reports (matehost.Item.Report) off
+// its host's history (CON-280): the manual has the Mate tell the captain
+// what an app line brought in its reply, and a notification is how the
+// captain hears it. It reads a history again only when the file changed.
+type replyReader struct {
+	mu   sync.Mutex
+	read map[string]replyFile
+}
+
+type replyFile struct {
+	size    int64
+	mod     time.Time
+	reports []matehost.Item
+}
+
+// replies are the reports in the history under mateDir, oldest first. A
+// click opens the Mate's chat.
+func (r *replyReader) replies(mateDir, office, project string) []notifications.Reply {
+	url := ""
+	if office != "" {
+		url = office + "#mate/" + neturl.PathEscape(project)
+	}
+	var out []notifications.Reply
+	for _, it := range r.reports(matehost.HistoryPath(mateDir)) {
+		out = append(out, notifications.Reply{At: it.At.Add(time.Duration(it.MS) * time.Millisecond), Text: replyText(it.Reply), URL: url})
+	}
+	return out
+}
+
+func (r *replyReader) reports(path string) []matehost.Item {
+	st, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if f, ok := r.read[path]; ok && f.size == st.Size() && f.mod.Equal(st.ModTime()) {
+		return f.reports
+	}
+	var reports []matehost.Item
+	for _, it := range matehost.Recent(path, replyTail) {
+		if it.Report() {
+			reports = append(reports, it)
+		}
+	}
+	if r.read == nil {
+		r.read = map[string]replyFile{}
+	}
+	r.read[path] = replyFile{size: st.Size(), mod: st.ModTime(), reports: reports}
+	return reports
+}
+
+// replyText is the opening of a reply in plain words, for a notification:
+// its lines joined without markdown marks, at most replyRunes runes.
+func replyText(reply string) string {
+	unmark := strings.NewReplacer("**", "", "__", "", "`", "")
+	var lines []string
+	for _, l := range strings.Split(reply, "\n") {
+		l = strings.TrimSpace(unmark.Replace(strings.TrimLeft(strings.TrimSpace(l), "-*#>• ")))
+		if l != "" {
+			lines = append(lines, l)
+		}
+	}
+	text := strings.Join(lines, " ")
+	if r := []rune(text); len(r) > replyRunes {
+		text = strings.TrimSpace(string(r[:replyRunes-1])) + "…"
+	}
+	return text
 }
 
 func notificationSummary(ctx context.Context, ws *store.Workspace, p query.ProjectNode, now time.Time) string {
