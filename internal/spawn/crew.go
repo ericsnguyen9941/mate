@@ -919,16 +919,23 @@ func prepareCrewLaunch(ctx context.Context, w *store.Workspace, deps Deps, git g
 	return prep, nil
 }
 
-// excludeGeneratedFile appends an anchored literal name to the working
-// tree's local `info/exclude`, once. git shares that file across a repo's
-// worktrees, which is why the rule names only this one generated file and is
-// never written twice. No tracked ignore file and no global config is
-// touched, and a pre-existing file of that name is never hidden - the caller
-// has just written it.
+// excludeGeneratedFile appends an anchored literal path to the working
+// tree's local `info/exclude`, once. name is slash-separated and relative to
+// the tree's top. git shares that file across a repo's worktrees, which is
+// why the rule names only this one generated file and is never written
+// twice. No tracked ignore file and no global config is touched, and a
+// pre-existing file of that name is never hidden - the caller has just
+// written it.
 func excludeGeneratedFile(ctx context.Context, git gitx.Git, worktree, name string) error {
-	if name == "" || strings.ContainsAny(name, "/\\\r\n*?[]!# ") {
+	literal := name != "" && !strings.ContainsAny(name, "\\\r\n*?[]!# ")
+	for _, seg := range strings.Split(name, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			literal = false
+		}
+	}
+	if !literal {
 		return observability.NewError(observability.CodeUsage,
-			fmt.Sprintf("generated context name %q must be a literal filename", name))
+			fmt.Sprintf("generated context path %q must be a literal path inside the working tree", name))
 	}
 	path, err := git.GitPath(ctx, worktree, "info/exclude")
 	if err != nil {

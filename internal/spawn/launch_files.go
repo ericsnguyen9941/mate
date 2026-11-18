@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nguyenngocanh94/mate/internal/gitx"
 	"github.com/nguyenngocanh94/mate/internal/harness"
@@ -20,7 +21,8 @@ import (
 //
 // git is the working tree the cwd is, nil when it is none (a Mate's
 // directory). There, a file marked Exclude is added to the tree's local
-// exclude, which is why it must sit at the cwd's top.
+// exclude, by its path from the cwd, which is why it must sit inside the cwd
+// (agy's brief is a rule under .agents/rules, CON-278).
 func writeLaunchFiles(ctx context.Context, w *store.Workspace, git *gitx.Git, cwd string, files []harness.LaunchFile) error {
 	for _, f := range files {
 		if _, err := w.Resolve(f.Path); err != nil {
@@ -34,11 +36,12 @@ func writeLaunchFiles(ctx context.Context, w *store.Workspace, git *gitx.Git, cw
 		if !f.Exclude || git == nil {
 			continue
 		}
-		if filepath.Dir(f.Path) != filepath.Clean(cwd) {
+		rel, err := filepath.Rel(filepath.Clean(cwd), f.Path)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return observability.NewError(observability.CodeUsage,
-				fmt.Sprintf("generated file %s is to be kept out of git but is not at the top of %s", f.Path, cwd))
+				fmt.Sprintf("generated file %s is to be kept out of git but is not inside %s", f.Path, cwd))
 		}
-		if err := excludeGeneratedFile(ctx, *git, cwd, filepath.Base(f.Path)); err != nil {
+		if err := excludeGeneratedFile(ctx, *git, cwd, filepath.ToSlash(rel)); err != nil {
 			return err
 		}
 	}

@@ -1,0 +1,40 @@
+
+      ▄▀▀▄        Antigravity CLI 1.5.10
+     ▀▀▀▀▀▀       operator@example.com (Google AI Ultra)
+    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)
+   ▄▀▀    ▀▀▄     /private/tmp/agy-measure
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Reply with exactly: pong
+
+  pong
+
+────────────────────────────────────────────────────────────
+> Create a file notes.txt containing the word hi, then run the shell command: git status --short && sleep 5 && echo
+  done
+
+● Edited 1 file (notes.txt)
+● Ran (git status --short && sleep 5 && echo done) (ctrl+o to expand)
+
+  The file notes.txt was created with the content hi, and the command completed successfully:
+
+    ?? notes.txt
+    done
+
+────────────────────────────────────────────────────────────
+> Run exactly this shell command and show its output: mkdir -p /tmp/agy-outside && echo x > /tmp/agy-outside/f && cat
+  ~/.config/git/config 2>&1 | head -2; curl -sI https://example.com | head -1
+
+● Ran (mkdir -p /tmp/agy-outside && echo x > /tmp/agy-outside/f && cat ~/.config/git/config 2...) (ctrl+o to expand)
+
+  Output of the command:
+
+    cat: /Users/operator/.config/git/config: No such file or directory
+    HTTP/2 200
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> This is a long draft that should wrap across more than one row of the composer because it keeps going and going
+  well past the width of the pane
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                          auto · Gemini 3.8 Flash · low

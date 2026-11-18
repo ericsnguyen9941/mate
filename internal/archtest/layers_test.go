@@ -103,6 +103,7 @@ var layers = map[string]layer{
 	"internal/harness/claude":  integration,
 	"internal/harness/codex":   integration,
 	"internal/harness/grok":    integration,
+	"internal/harness/agy":     integration,
 	"internal/harness/pi":      integration,
 	"internal/screen":          integration,
 	"internal/screen/fixture":  integration,
