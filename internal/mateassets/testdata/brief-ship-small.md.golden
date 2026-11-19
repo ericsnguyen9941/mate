@@ -58,7 +58,7 @@ Everything you read stays in your context and is paid for again on every later c
 - Inspect to answer the next implementation question: start from the supplied paths and the repository reading map, locate symbols with a scoped search, then read the relevant ranges. Batch independent reads in one tool round; follow dependent results in the next. Stop exploring once you can name the affected path, local pattern and verification; expand only for a concrete unresolved dependency.
 - Change an existing file with a targeted edit (an edit tool, `apply_patch`), never by writing the whole file again.
 - In another Crew's report or hand-back, read `## For the next crew` first, and the rest only for what it does not answer.
-- Wait for a build, a test run, a simulator or a pull-request check once: one blocking command with the longest timeout the tool allows, or a background command that wakes you when it exits, then end your turn. Never `sleep` or poll; polling once cost crews 40% of their build minutes.
+- Wait for a build, a test run, a simulator or a pull-request check once: one blocking command with the longest timeout the tool allows, or a background command that wakes you when it exits, then end your turn. Bound a background command with `timeout` (`timeout 45m make ...`) so a hang ends it and wakes you too. Never `sleep` or poll; polling once cost crews 40% of their build minutes.
 - Never rerun a failed command unchanged: read its log and change something first.
 - Never read a whole directory of images; downscale a PNG before you read it, and read only the ones a step needs.
 

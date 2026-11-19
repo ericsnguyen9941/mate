@@ -145,8 +145,8 @@ CODEX_HOME={{CODEX_HOME}}
 }
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/settings.json ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-recovery/SKILL.md mode=-rw-r--r-- bytes=14250 ---
-(rendered asset) sha256=855d2861dcb12eb8b65fea42ef4fbee8e2527b3b38c29068ebbdf2146cc47f4c
+--- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-recovery/SKILL.md mode=-rw-r--r-- bytes=14799 ---
+(rendered asset) sha256=2dac97a368c0c40eb73867c9fb69d72431ae39448dbe48474112a46c1ca0ab02
 --- end {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/crew-recovery/SKILL.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/mate/.claude/skills/mate-commands/SKILL.md mode=-rw-r--r-- bytes=15629 ---

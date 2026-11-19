@@ -123,8 +123,8 @@ worktree=.worktrees/shop-k3
 (empty)
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3.status ---
 
---- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/brief.md mode=-rw-r--r-- bytes=9713 ---
-(rendered asset) sha256=6550e4c71b4dfd5a61adaefcae34600ba9778a3c796cf06492458df5010afc16
+--- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/brief.md mode=-rw-r--r-- bytes=9817 ---
+(rendered asset) sha256=9cb8c8dca53218cd376ffcc0bd4e8dd5046a4524346a02ea4af606a4e17bede0
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/brief.md ---
 
 --- created {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json mode=-rw------- bytes=2481 ---
@@ -214,12 +214,12 @@ worktree=.worktrees/shop-k3
     {
       "path": "embedded:crew/brief.md.tmpl",
       "role": "crew_prompt_template",
-      "sha256": "58a0a81abcb4f071bdcd491853caa4179abd70c139ef28fa3092add46b85edb9",
-      "bytes": 16651,
+      "sha256": "c14ed42a6d0bca88a89af78a49291c2b22b66a436038fcdfd5bc185caa79cb95",
+      "bytes": 16755,
       "state": "configured"
     }
   ],
-  "fingerprint": "78d15bd8654a3740124d743f631d14565c6e723025a8fbced3bb7b15617ef8e5"
+  "fingerprint": "aa16c93abde373295cd474b97a253ad1f97f7341c36bb548b91933786b11d942"
 }
 --- end {{WORKSPACE}}/.mate/projects/shop/crews/k3/harness-profile.json ---
 
