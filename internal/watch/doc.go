@@ -27,7 +27,12 @@
 //     reported it was done is waiting for a human, not stuck, and silence
 //     is the correct behaviour for it. Nor is a pane whose state, asked
 //     once of the still snapshot, is busy or busy_background: between
-//     turns, waiting on a shell or monitor it left running.
+//     turns, waiting on a shell or monitor it left running - until that
+//     pane has held still past the working ceiling (DefaultStaleWorkingAfter,
+//     project.yaml's stale_working_after, CON-281). Then it opens too,
+//     saying the pane reads as working, since a background task that hung
+//     leaves its crew waiting with nothing to wake it; only the pane or
+//     the status file moving resolves that one, not a busy composer.
 //   - `runtime_lost`: Herdr answered that it does not have that agent, and
 //     no `crew stop` of it is in flight or has closed it.
 //
