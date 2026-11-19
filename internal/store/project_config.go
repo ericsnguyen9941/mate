@@ -1,5 +1,10 @@
 package store
 
+import (
+	"strings"
+	"time"
+)
+
 // MateConfig pins the coordinator profile independently of the captain's CLI.
 type MateConfig struct {
 	Model  string `yaml:"model,omitempty"`
@@ -44,6 +49,12 @@ type ProjectConfig struct {
 	// AutorouteOn lands such a hand-back, or sends a review's findings back
 	// to the crew, and tells the Mate in its next digest.
 	Autoroute string `yaml:"autoroute,omitempty"`
+	// StaleWorkingAfter is how long a crew's pane may stay still while it
+	// reads as working - busy, or waiting on a background task - before
+	// the observer opens `stale` anyway (CON-281): a Go duration such as
+	// "45m". Empty, unparseable or not positive means the observer's
+	// default (StaleWorkingAfterMode).
+	StaleWorkingAfter string `yaml:"stale_working_after,omitempty"`
 	// Workflow is the project's own process as the admin task page checks
 	// it (docs/design/task-page.md, CON-148): the steps the harness asks a
 	// crew to take, each with the evidence that proves it was taken. Empty
@@ -125,6 +136,16 @@ func (c ProjectConfig) AutorouteMode() string {
 		return c.Autoroute
 	}
 	return AutorouteOff
+}
+
+// StaleWorkingAfterMode is StaleWorkingAfter parsed, or def when it is
+// empty, does not parse or is not positive: a typo in project.yaml keeps
+// the ceiling rather than removing it.
+func (c ProjectConfig) StaleWorkingAfterMode(def time.Duration) time.Duration {
+	if d, err := time.ParseDuration(strings.TrimSpace(c.StaleWorkingAfter)); err == nil && d > 0 {
+		return d
+	}
+	return def
 }
 
 // The values of ProjectConfig.NextWork.

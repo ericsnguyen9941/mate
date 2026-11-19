@@ -43,6 +43,13 @@ const (
 	// DefaultStaleAfter is how long the pane and the status file must both
 	// be unchanged before `stale` opens.
 	DefaultStaleAfter = 3 * time.Minute
+	// DefaultStaleWorkingAfter is how long a pane that reads as working -
+	// busy, or between turns waiting on a background task - may stay
+	// still before `stale` opens anyway (CON-281). A build or a test can
+	// run this long; a background task that hung runs forever, and a crew
+	// waiting on it never wakes. project.yaml's stale_working_after
+	// overrides it per project.
+	DefaultStaleWorkingAfter = 30 * time.Minute
 	// DefaultHerdrTimeout bounds each Herdr question the observer asks: a
 	// crew's handle, its agent, its pane, and the session. It is the
 	// console's own bound on a Herdr question (cmd/mate livenessBound).
@@ -223,6 +230,10 @@ type Deps struct {
 	// StaleAfter is the quiet period that opens `stale`; zero means
 	// DefaultStaleAfter.
 	StaleAfter time.Duration
+	// StaleWorkingAfter is the quiet period past which a pane that reads
+	// as working opens `stale` too; zero means project.yaml's
+	// stale_working_after, else DefaultStaleWorkingAfter.
+	StaleWorkingAfter time.Duration
 	// NoTurnAfter is how long after launch a working crew with no turn in
 	// the ledger opens `no_turn`; zero means DefaultNoTurnAfter.
 	NoTurnAfter time.Duration
@@ -286,6 +297,22 @@ func (d Deps) staleAfter() time.Duration {
 		return d.StaleAfter
 	}
 	return DefaultStaleAfter
+}
+
+// staleWorkingAfter is the ceiling on a still pane that reads as working
+// in project: Deps.StaleWorkingAfter, else project.yaml's
+// stale_working_after, else DefaultStaleWorkingAfter. A project.yaml that
+// does not read keeps the default: it is read only for a pane already
+// still past StaleAfter, and an unreadable file must not lift the ceiling.
+func (w *Watcher) staleWorkingAfter(project string) time.Duration {
+	if w.deps.StaleWorkingAfter > 0 {
+		return w.deps.StaleWorkingAfter
+	}
+	cfg, err := w.ws.LoadProject(project)
+	if err != nil {
+		return DefaultStaleWorkingAfter
+	}
+	return cfg.StaleWorkingAfterMode(DefaultStaleWorkingAfter)
 }
 
 func (d Deps) noTurnAfter() time.Duration {
@@ -391,6 +418,10 @@ type observation struct {
 	// the stale rule has asked (observe.go's stillWorking).
 	stateOf string
 	state   screen.PaneState
+	// staleWorking is set while the open `stale` was opened past the
+	// working ceiling (CON-281), on a pane that read as working: a busy
+	// composer does not resolve it, only the pane or the status moving.
+	staleWorking bool
 }
 
 // New builds an observer over a workspace. It does not poll until Start or
@@ -871,30 +902,49 @@ func (w *Watcher) pollCrew(ctx context.Context, ref CrewRef, now time.Time,
 	// snapshot (stillWorking), stub first and Jev only when the stub cannot
 	// name it: a pane between turns that waits on work it left running is
 	// not stale (2026-10-13). The column shows the observer's composer.
+	//
+	// Working is not forever (CON-281): a pane that reads as working but
+	// has not changed past the project's ceiling (staleWorkingAfter) opens
+	// `stale` all the same - a background task that hung leaves its crew
+	// waiting between turns with nothing to wake it.
 	deterministic := read.deterministic
 	switch {
 	case open[incidentKey{ref, box.IncidentStale}]:
-		if reason, ok := staleCleared(paneMoved, statusMoved, deterministic); ok {
+		if reason, ok := staleCleared(paneMoved, statusMoved, deterministic, obs.staleWorking); ok {
 			if err := w.resolveIncident(ref, box.IncidentStale, now, open, reason); err != nil {
 				return err
 			}
+			obs.staleWorking = false
 		}
-	case quiet >= w.deps.staleAfter() && deterministic != send.StateBusy && !waiting(obs.verb):
-		working, err := w.stillWorking(ctx, obs, screens, screen, hash)
-		if err != nil {
-			return err
+	case quiet >= w.deps.staleAfter() && !waiting(obs.verb):
+		working := deterministic == send.StateBusy
+		if !working {
+			var err error
+			if working, err = w.stillWorking(ctx, obs, screens, screen, hash); err != nil {
+				return err
+			}
 		}
-		if working {
+		var text string
+		switch {
+		case !working:
+			text = fmt.Sprintf("no status line and no pane change for %s; composer %s",
+				quiet.Round(time.Second), send.ComposerLabel(deterministic))
+		case quiet >= w.staleWorkingAfter(ref.Project):
+			text = fmt.Sprintf("the pane reads as %s but neither it nor the status file changed for %s; a background task or tool may be hung",
+				workingWord(deterministic, obs.state), quiet.Round(time.Second))
+		default:
+			// Working, and still under the ceiling.
+		}
+		if text == "" {
 			break
 		}
-		text := fmt.Sprintf("no status line and no pane change for %s; composer %s",
-			quiet.Round(time.Second), send.ComposerLabel(deterministic))
 		if obs.verb != "" {
 			text += fmt.Sprintf("; last status verb %s", obs.verb)
 		}
 		if err := w.openIncident(ref, box.IncidentStale, now, open, text); err != nil {
 			return err
 		}
+		obs.staleWorking = working
 	}
 
 	results[ref] = Health{
@@ -995,17 +1045,26 @@ func noticeLine(s string) string {
 
 // staleCleared is the resolve side of the stale rule: the pane moved, the
 // crew spoke, or the harness is working again.
-func staleCleared(paneMoved, statusMoved bool, composer send.ComposerState) (string, bool) {
+func staleCleared(paneMoved, statusMoved bool, composer send.ComposerState, working bool) (string, bool) {
 	switch {
 	case statusMoved:
 		return "the crew wrote a status line", true
 	case paneMoved:
 		return "the pane changed", true
-	case composer == send.StateBusy:
+	case composer == send.StateBusy && !working:
 		return "the composer is busy again", true
 	default:
 		return "", false
 	}
+}
+
+// workingWord names what a still pane read as when `stale` opened past the
+// working ceiling: the composer's own busy, else the observer's state.
+func workingWord(composer send.ComposerState, state screen.PaneState) string {
+	if composer == send.StateBusy || state == screen.PaneBusy {
+		return "busy"
+	}
+	return "waiting on a background task"
 }
 
 // waiting reports whether a status verb means the crew is waiting on a human

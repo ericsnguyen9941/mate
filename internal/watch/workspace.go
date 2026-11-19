@@ -5,7 +5,8 @@ import "github.com/nguyenngocanh94/mate/internal/store"
 // Workspace is the part of *store.Workspace that a Watcher uses: the
 // projects in workspace.yaml (LoadConfig re-reads it into the handle's
 // memory), the Mate's mate.meta (whether it is live, CON-267), each crew's
-// metadata, status file and stop mark, and the project's incidents.log,
+// metadata, status file and stop mark, the project's project.yaml (its
+// stale_working_after, CON-281), and the project's incidents.log,
 // which AppendIncident is its one write to
 // (CON-241, plan docs/plans/store-split-2026-11-06.md section 3).
 type Workspace interface {
@@ -13,6 +14,7 @@ type Workspace interface {
 	CrewStopping(project, crew string) (bool, error)
 	CrewsDir(project string) string
 	LoadConfig() error
+	LoadProject(name string) (store.ProjectConfig, error)
 	Projects() []store.ProjectRef
 	ReadCrewMeta(project, crew string) (map[string]string, error)
 	ReadIncidents(project string, from int64) ([]store.IncidentEntry, int64, error)
