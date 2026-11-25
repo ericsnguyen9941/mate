@@ -133,15 +133,15 @@ func TestClaudePrepareCrewWritesNothingInTheWorktree(t *testing.T) {
 }
 
 // --setting-sources project drops the captain's settings.json, so a Crew's
-// own settings carry its apiKeyHelper and env over, from the config dir the
-// launch uses, and nothing else of it. A captain file that is not JSON
+// own settings carry its apiKeyHelper, env and accepted Bypass Permissions
+// screen over, from the config dir the launch uses, and nothing else of it. A captain file that is not JSON
 // refuses the launch rather than silently changing the Crew's auth path.
 func TestClaudePrepareCrewKeepsTheCaptainsAuthPath(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(ClaudeConfigDirEnv, configDir)
 	captain := filepath.Join(configDir, ClaudeSettingsFile)
-	if err := os.WriteFile(captain, []byte(`{"apiKeyHelper":"echo k","env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8317"},"hooks":{"Stop":[]},"model":"opus","autoMemoryEnabled":true}`), 0o644); err != nil {
+	if err := os.WriteFile(captain, []byte(`{"apiKeyHelper":"echo k","env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8317"},"skipDangerousModePermissionPrompt":true,"hooks":{"Stop":[]},"model":"opus","autoMemoryEnabled":true}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	req := harnesstest.PrepareFixture(t, harness.RoleCrew)
@@ -154,8 +154,11 @@ func TestClaudePrepareCrewKeepsTheCaptainsAuthPath(t *testing.T) {
 	if err := json.Unmarshal(keys["env"], &env); err != nil || string(keys["apiKeyHelper"]) != `"echo k"` || env["ANTHROPIC_BASE_URL"] != "http://127.0.0.1:8317" || len(env) != 1 {
 		t.Fatalf("crew settings lost the captain's auth: %s", prep.Files[0].Data)
 	}
-	if string(keys[AutoMemoryKey]) != "false" || keys["permissions"] == nil || len(keys) != 4 {
-		t.Fatalf("crew settings took more than apiKeyHelper and env: %s", prep.Files[0].Data)
+	if string(keys["skipDangerousModePermissionPrompt"]) != "true" {
+		t.Fatalf("crew settings lost the captain's Bypass Permissions acceptance: %s", prep.Files[0].Data)
+	}
+	if string(keys[AutoMemoryKey]) != "false" || keys["permissions"] == nil || len(keys) != 5 {
+		t.Fatalf("crew settings took more than apiKeyHelper, env and the bypass acceptance: %s", prep.Files[0].Data)
 	}
 	if err := os.WriteFile(captain, []byte("not json"), 0o644); err != nil {
 		t.Fatal(err)

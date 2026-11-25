@@ -166,8 +166,12 @@ func EnsureSessionHook(data []byte, binary string) (out []byte, changed bool, er
 // included (docs/evidence/crew-setting-sources-2026-10-14.md), so copying
 // them keeps every Crew, and every Mate (EnsureCaptainSettings), on the
 // captain's auth path while the rest of the user settings - hooks, plugins,
-// skills - stays out.
-var CrewInheritedSettings = []string{"apiKeyHelper", "env"}
+// skills - stays out. skipDangerousModePermissionPrompt is where Claude
+// saves the captain's own "Yes, I accept" on the Bypass Permissions screen;
+// since Claude Code 2.1.325 that choice is read only from the settings
+// sources a launch loads, so without it every Crew stops on that screen.
+// It is carried over only when the captain accepted it, never set by mate.
+var CrewInheritedSettings = []string{"apiKeyHelper", "env", "skipDangerousModePermissionPrompt"}
 
 // CrewDeniedTools are the built-in Claude Code tools a Crew's settings file
 // denies outright (`permissions.deny`). A bare tool name in deny takes the
