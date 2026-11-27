@@ -1,0 +1,6 @@
+{
+  "fixture": "../../../agy/testdata/transcript/conversation.db",
+  "version": "agy 1.5.18",
+  "turns": 3,
+  "usage": {"input": 32383, "cache_read": 13044, "cache_write": 0, "output": 209, "reasoning": 161}
+}

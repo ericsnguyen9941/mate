@@ -79,8 +79,11 @@ func measured(proof string) harness.Evidence {
 // hooksReason is why agy's Hooks are not verified, and so why it runs no Mate.
 const hooksReason = "agy loads PreToolUse, Stop and SessionStart hooks from a plugin's hooks.json, but mate has not measured a hook command whose stdin is the payload `mate hook` writes, so no HookInstaller is implemented"
 
-// transcriptReason is why agy's transcript is not read yet.
-const transcriptReason = "agy keeps each conversation in a SQLite database in WAL mode (conversations/<id>.db), its steps as protobuf with no published schema; the database file does not grow while the WAL does, which the timeline's size-based watch would miss, so no reader is written yet (CON-279)"
+// measuredTranscript is when agy's conversation database was measured
+// against its own stream-json usage (CON-279).
+func measuredTranscript(proof string) harness.Evidence {
+	return harness.Evidence{Version: "agy 1.5.18", Measured: "2026-11-27 (agy -p --output-format stream-json)", Proof: proof}
+}
 
 // Capabilities implements Profile.
 func (a Agy) Capabilities() harness.Capabilities {
@@ -97,9 +100,14 @@ func (a Agy) Capabilities() harness.Capabilities {
 			Evidence: measured("a launch cannot name its conversation (--conversation with a new UUID warns \"not found\" and starts another); cache/last_conversations.json maps the cwd to the conversation it ran, and --conversation <id> resumed it with the earlier scrollback " +
 				"(TestAgySessionAtStopReadsTheCwdMap, TestAgyResumableLooksForTheDatabase)"),
 		},
-		Hooks:      harness.Cap[harness.HookInstaller]{Status: harness.CapUnknown, Reason: hooksReason},
-		TurnEnd:    harness.Cap[harness.TurnEndEvidence]{Status: harness.CapUnknown, Reason: "the end of a turn is recorded only in the conversation database, which is not read yet: " + transcriptReason},
-		Transcript: harness.Cap[harness.TranscriptSource]{Status: harness.CapUnknown, Reason: transcriptReason},
+		Hooks:   harness.Cap[harness.HookInstaller]{Status: harness.CapUnknown, Reason: hooksReason},
+		TurnEnd: harness.Cap[harness.TurnEndEvidence]{Status: harness.CapUnknown, Reason: "the end of a turn is in the conversation database, but TurnEndEvidence reads a transcript as bytes, which a SQLite database in WAL mode is not; agy runs no Mate, the one agent whose stow reads it"},
+		Transcript: harness.Cap[harness.TranscriptSource]{
+			Status: harness.CapVerified,
+			Impl:   agyTranscripts{home: a.Home},
+			Evidence: measuredTranscript("conversations/<id>.db `steps`: a response's metadata field 9 gave the stream-json usage of the same calls (9.2 input 15098 and 2180, 9.5 cache read 13044, 9.3 output 168 = 9.9 thinking 161 + 9.10 visible 7), and a tool call's field 4 its id, name and arguments; " +
+				"the database file changes only when agy checkpoints its WAL, so a running Crew's tokens arrive in steps and all of them once it exits (TestAgyTranscriptReadsTheMeasuredUsage)"),
+		},
 		Quota: harness.Cap[harness.QuotaProvider]{
 			Status: harness.CapUnknown,
 			Reason: "quota-axi 0.1.69 has an agy row, but it bounds Gemini and Claude/GPT models in separate scopes and none provider-wide, and mate folds only provider-wide scopes (CON-279)",

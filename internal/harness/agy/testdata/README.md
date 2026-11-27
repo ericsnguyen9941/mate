@@ -18,6 +18,6 @@ The account, host and home directory in the screens are replaced with `operator@
 - `resume.txt` — `--conversation <id>` of that session: the earlier scrollback and the composer holding the hint again.
 - `draft-slash-menu.txt` — `/quit` typed: the slash menu opens below the composer, and the footer reads `esc to cancel`, as during a turn.
 
-## not captured
+## transcript
 
-- The conversation database (`conversations/<id>.db`): SQLite in WAL mode, with protobuf steps. In step metadata, field 9.2 held the input tokens and 9.3 the output tokens of the measured turn (9841 and 1, the same as `--output-format stream-json` reported). No reader is written yet.
+- `transcript/conversation.db` — the `steps` table of two conversations run with `agy -p --output-format stream-json` on agy 1.5.18 (2026-11-27), with every other table and column dropped, so no prompt, payload or path is kept. Steps 0–3 read a file with a tool: a response of input 15098, a `read_file` call, a response of input 2180 with 13044 cache reads. Steps 4–5 are the second conversation, renumbered: a response with effort high, output 168 of which 161 thinking. Each figure is the one stream-json printed for that call.

@@ -157,7 +157,7 @@ Clear a draft with ctrl+u. Steer a Crew by typing into the empty composer and pr
 agy names its conversation only once it runs. The exit prints `agy --conversation=<id>`, and mate reads the id from agy's map of the last conversation per directory.
 
 The Crew uses the operator's agy home, because the sign-in lives there: the operator's plugins, terminal sandbox and rendering mode apply to it.
-mate does not read agy's transcript yet, so an agy Crew's turns and tokens are not on the timeline.
+mate reads an agy Crew's tokens from its conversation database (`conversations/<id>.db`, found through that map). The database changes only when agy checkpoints it, so a running Crew's tokens arrive in steps and are complete once it exits.
 
 A Mate cannot run on agy.
 
