@@ -212,6 +212,12 @@ func stepsBatch(steps []step) harness.TranscriptBatch {
 			b.Skipped[fmt.Sprintf("step_type_%d", s.kind)]++
 		}
 	}
+	// A response that issued tool calls did not end the turn.
+	for i := range b.UsageTurns {
+		if len(b.UsageTurns[i].Calls) > 0 && b.UsageTurns[i].Outcome == "end_turn" {
+			b.UsageTurns[i].Outcome = "tool_use"
+		}
+	}
 	if n := len(steps); n > 0 {
 		b.TotalBytes = steps[n-1].idx + 1
 	}

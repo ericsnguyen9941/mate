@@ -42,6 +42,9 @@ func TestAgyTranscriptReadsTheMeasuredUsage(t *testing.T) {
 		first.Calls[0].InputJSON != `{"Path":"/tmp/mate-repro/agyprobe/a.txt"}` {
 		t.Fatalf("first call's tool calls = %+v", first.Calls)
 	}
+	if first.Outcome != "tool_use" || b.UsageTurns[1].Outcome != "end_turn" {
+		t.Errorf("outcomes %q, %q: a response that called a tool did not end the turn", first.Outcome, b.UsageTurns[1].Outcome)
+	}
 	if len(b.ToolResults) != 1 || b.ToolResults[0].CallID != first.Calls[0].SourceRef || b.ToolResults[0].IsError {
 		t.Fatalf("tool results = %+v", b.ToolResults)
 	}
