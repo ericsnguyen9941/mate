@@ -368,6 +368,10 @@ func (p *codexParse) add(rec codexEnvelope, raw string, offset int64, ordinal in
 			p.batch.ToolResults = append(p.batch.ToolResults, result)
 		case "reasoning":
 			appendRecord(harness.TranscriptKindAssistant)
+		case "additional_tools":
+			// Codex 0.167 opens a rollout with the developer-role list of the
+			// session's extra tools (MCP, plugins); it carries no activity.
+			appendRecord(harness.TranscriptKindSystem)
 		default:
 			return &codexParseError{harness.MalformedCodexShape, "unrecognized response_item type " + payload.Type}
 		}
@@ -375,7 +379,9 @@ func (p *codexParse) add(rec codexEnvelope, raw string, offset int64, ordinal in
 		appendRecord(harness.TranscriptKindContextEvent)
 	case "token_usage_record":
 		appendRecord(harness.TranscriptKindUsage)
-	case "world_state":
+	case "world_state", "realtime_item":
+		// realtime_item is a voice session's transcript segment, outside the
+		// typed turn the token counts follow.
 		p.batch.Skipped[rec.Type]++
 	default:
 		return &codexParseError{harness.MalformedCodexShape, "unrecognized top-level type " + rec.Type}
