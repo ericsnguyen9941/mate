@@ -215,13 +215,15 @@ func TestCodexNormalizesAllMeasuredActivityShapes(t *testing.T) {
 		`{"timestamp":"2026-09-13T08:00:04Z","ordinal":4,"type":"response_item","payload":{"type":"tool_search_call","id":"tool-1","call_id":"call-t","arguments":{"query":"vault"}}}`,
 		`{"timestamp":"2026-09-13T08:00:05Z","ordinal":5,"type":"response_item","payload":{"type":"tool_search_output","call_id":"call-t","tools":[{"name":"mcp_tool"}]}}`,
 		`{"timestamp":"2026-09-13T08:00:06Z","ordinal":6,"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-1","item":{"type":"AgentMessage","id":"msg-1"}}}`,
+		`{"timestamp":"2026-11-27T08:20:21Z","ordinal":7,"type":"response_item","payload":{"type":"additional_tools","id":"at-1","role":"developer","tools":[{"name":"mcp_tool"}]}}`,
+		`{"timestamp":"2026-11-09T08:29:32Z","ordinal":8,"type":"realtime_item","payload":{"id":"rt-1","realtime_session_id":"rs-1","type":"realtime_session_started"}}`,
 	}, "\n") + "\n"
 	batch := (Codex{}).ParseTranscript(harness.TranscriptParseState{}, []byte(input))
 	if batch.Malformed != nil {
 		t.Fatalf("activity batch malformed: %+v", batch.Malformed)
 	}
-	if len(batch.ToolCalls) != 3 || len(batch.ToolResults) != 3 || len(batch.Records) != 7 {
-		t.Fatalf("calls=%d results=%d records=%d, want 3/3/7", len(batch.ToolCalls), len(batch.ToolResults), len(batch.Records))
+	if len(batch.ToolCalls) != 3 || len(batch.ToolResults) != 3 || len(batch.Records) != 8 || batch.Skipped["realtime_item"] != 1 {
+		t.Fatalf("calls=%d results=%d records=%d skipped=%v, want 3/3/8 and one realtime_item", len(batch.ToolCalls), len(batch.ToolResults), len(batch.Records), batch.Skipped)
 	}
 	if batch.ToolCalls[0].InputJSON != `{"cmd":"pwd"}` || batch.ToolCalls[1].CommandClass != harness.CommandSearch || batch.ToolCalls[2].CommandClass != harness.CommandMCP {
 		t.Fatalf("calls = %+v", batch.ToolCalls)
@@ -248,9 +250,9 @@ func TestLiveCodexCorpusInventoryRejectsUnknownActivityTypes(t *testing.T) {
 	if root == "" {
 		t.Skip("set MATE_CODEX_SESSIONS_DIR to inventory installed Codex rollout files")
 	}
-	knownTop := map[string]bool{"session_meta": true, "event_msg": true, "response_item": true, "turn_context": true, "world_state": true, "token_usage_record": true, "compacted": true}
+	knownTop := map[string]bool{"session_meta": true, "event_msg": true, "response_item": true, "turn_context": true, "world_state": true, "realtime_item": true, "token_usage_record": true, "compacted": true}
 	knownEvents := map[string]bool{"task_started": true, "task_complete": true, "token_count": true, "item_completed": true, "thread_settings_applied": true, "turn_aborted": true}
-	knownResponses := map[string]bool{"message": true, "reasoning": true, "custom_tool_call": true, "custom_tool_call_output": true, "function_call": true, "function_call_output": true, "web_search_call": true, "web_search_call_output": true, "tool_search_call": true, "tool_search_output": true}
+	knownResponses := map[string]bool{"message": true, "reasoning": true, "custom_tool_call": true, "custom_tool_call_output": true, "function_call": true, "function_call_output": true, "web_search_call": true, "web_search_call_output": true, "tool_search_call": true, "tool_search_output": true, "additional_tools": true}
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || filepath.Ext(path) != ".jsonl" {
 			return err
